@@ -157,7 +157,7 @@ import {
 } from './card-policy'
 import { CardVectorStore } from './card-vectors'
 import { CardQuota } from './card-quota'
-import { fileNameKey, folderNameKey, NameVectorStore, type NameVectorRecord } from './name-vectors'
+import { fileNameKey, folderNameKey, type NameVectorRecord } from './name-vectors'
 import { normalizeKnowledgeDocument } from '../../utils/normalize'
 import type { AiMessage } from '../ai.service'
 
@@ -182,7 +182,6 @@ export class KnowledgeService extends EventEmitter {
   /** 人建过、或放过文件的目录。文件挪走后还在，直到被删掉 */
   private explicitFolders: string[] = []
   private cardVectors: CardVectorStore
-  private nameVectors: NameVectorStore
   private nameSync: Promise<void> | null = null
   private cardQuota: CardQuota
   private cardTimer: ReturnType<typeof setInterval> | null = null
@@ -233,7 +232,6 @@ export class KnowledgeService extends EventEmitter {
     this.documentsMetaPath = path.join(app.getPath('userData'), 'knowledge', 'documents.json')
     const knowledgeDir = path.dirname(this.documentsMetaPath)
     this.cardVectors = new CardVectorStore(path.join(knowledgeDir, 'card-vectors.json'))
-    this.nameVectors = new NameVectorStore(path.join(knowledgeDir, 'name-vectors.json'))
     this.cardQuota = new CardQuota(path.join(knowledgeDir, 'card-quota.json'))
     
     // 加载文档索引
@@ -1302,7 +1300,9 @@ export class KnowledgeService extends EventEmitter {
     // 删除 BM25 索引记录
     await this.bm25Index.removeDocumentChunks(docId)
     this.cardVectors.remove(docId)
-    this.nameVectors.remove(fileNameKey(docId))
+    await this.vectorStorage.removeNames([fileNameKey(docId)]).catch(error => {
+      log.warn('删档案时没能清掉文件名向量:', error)
+    })
 
     // 删除文档索引
     this.documentsIndex.delete(docId)
@@ -1516,7 +1516,7 @@ export class KnowledgeService extends EventEmitter {
     })
     const folder = resolveRecallFolder(options?.pathPrefix, this.getSettings().recallFolder)
     try {
-      if (this.namesUsable(folder) || await this.cardsUsable(folder)) {
+      if (await this.namesUsable(folder) || await this.cardsUsable(folder)) {
         return await this.buildImpressionContext(query, { ...options, pathPrefix: folder })
       }
     } catch (error) {
@@ -1540,10 +1540,12 @@ export class KnowledgeService extends EventEmitter {
     return ready.some(doc => this.cardVectors.has(doc.id))
   }
 
-  private namesUsable(scope: string): boolean {
-    if (this.nameVectors.isBroken()) return false
+  private async namesUsable(scope: string): Promise<boolean> {
+    if (this.vectorStorage.isNameIndexBroken()) return false
+    const listed = await this.vectorStorage.listNameMeta()
+    if (!listed) return false
     const docs = new Set(this.libraryDocs(scope).map(doc => doc.id))
-    return this.nameVectors.listMeta().some(row => {
+    return listed.some(row => {
       if (row.kind === 'file') return !!row.docId && docs.has(row.docId)
       return !!row.folder && row.folder !== scope && inFolder(row.folder, scope)
     })
@@ -1583,9 +1585,22 @@ export class KnowledgeService extends EventEmitter {
     return desired
   }
 
+  private forgetLegacyNameFile(): void {
+    const legacy = path.join(path.dirname(this.documentsMetaPath), 'name-vectors.json')
+    if (!fs.existsSync(legacy)) return
+    try {
+      fs.rmSync(legacy, { force: true })
+    } catch (error) {
+      log.warn('旧的目录文件名文本索引没能删掉:', error)
+    }
+  }
+
   private async writeCatalogNames(): Promise<void> {
-    if (this.nameVectors.isBroken()) return
-    const have = this.nameVectors.snapshot()
+    this.forgetLegacyNameFile()
+    if (this.vectorStorage.isNameIndexBroken()) return
+    const listed = await this.vectorStorage.listNameMeta()
+    if (!listed) return
+    const have = new Map(listed.map(row => [row.id, { text: row.text, folder: row.folder }]))
     const firstPlan = planNameVectorUpdates(this.catalogNameDrafts(), have)
     if (firstPlan.embed.length === 0 && firstPlan.reuse.length === 0 && firstPlan.stale.length === 0) return
     const pending = this.catalogNameDrafts().filter(row => firstPlan.embed.includes(row.id))
@@ -1598,16 +1613,21 @@ export class KnowledgeService extends EventEmitter {
     const embedded = new Map(pending.map((row, index) => [row.id, vectors[index]]))
     const desired = this.catalogNameDrafts()
     const plan = planNameVectorUpdates(desired, have)
-    const upserts = desired.flatMap(row => {
-      if (plan.reuse.includes(row.id)) {
-        const vector = have.get(row.id)?.vector
+    await this.vectorStorage.applyNameEdits({
+      removeIds: plan.stale,
+      updates: desired.filter(row => plan.reuse.includes(row.id)).map(row => ({
+        id: row.id,
+        kind: row.kind,
+        text: row.text,
+        folder: row.folder,
+        docId: row.docId || '',
+      })),
+      inserts: desired.flatMap(row => {
+        if (!plan.embed.includes(row.id)) return []
+        const vector = embedded.get(row.id)
         return vector?.length ? [{ ...row, vector }] : []
-      }
-      if (!plan.embed.includes(row.id)) return []
-      const vector = embedded.get(row.id)
-      return vector?.length ? [{ ...row, vector }] : []
+      }),
     })
-    this.nameVectors.replace(plan.stale, upserts)
   }
 
   private plainChunk(content: string): string | undefined {
@@ -1646,7 +1666,7 @@ export class KnowledgeService extends EventEmitter {
       .filter(hit => hit.score >= CARD_SIMILARITY && scoped.has(hit.docId))
       .slice(0, MAX_IMPRESSIONS)
 
-    const nameHits = this.nameVectors.search(embedding, 0)
+    const nameHits = (await this.vectorStorage.searchNames(embedding))
       .filter(hit => hit.score >= NAME_SIMILARITY)
     const pickedNames = pickCatalogNameHits(nameHits, folder)
     const cardIds = cardHits.map(hit => hit.docId).filter(id => !pickedNames.fileIds.includes(id))
@@ -2342,7 +2362,6 @@ export class KnowledgeService extends EventEmitter {
     await this.vectorStorage.clear()
     await this.bm25Index.clear()
     this.cardVectors.clear()
-    this.nameVectors.clear()
     this.documentsIndex.clear()
     this.explicitFolders = []
     const saved = this.saveDocumentsIndex()

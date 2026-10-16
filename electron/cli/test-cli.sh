@@ -394,11 +394,22 @@ if [[ "$MODE" != "quick" ]]; then
     $CLI knowledge:context "这是一份关于 Kubernetes 容器编排部署的技术文档"
   assert_last_contains "说明向量坏了仍是目录印象" "按相关度从档案室翻到的线索"
 
-  echo '{' > "$SFT_DATA_DIR/knowledge/name-vectors.json"
+  node --input-type=module -e '
+    import * as lancedb from "@lancedb/lancedb"
+    const db = await lancedb.connect(process.argv[1])
+    const names = await db.tableNames()
+    if (names.includes("knowledge_names")) await db.dropTable("knowledge_names")
+    await db.createTable("knowledge_names", [{ id: "broken", note: "not-a-vector" }])
+  ' "$SFT_DATA_DIR/knowledge/lancedb"
   assert_contains "目录索引也坏了仍能召回正文" "kubernetes.md" \
     $CLI knowledge:context "这是一份关于 Kubernetes 容器编排部署的技术文档"
   assert_last_excludes "目录索引也坏了退回正文片段" "按相关度从档案室翻到的线索"
-  rm -f "$SFT_DATA_DIR/knowledge/name-vectors.json"
+  node --input-type=module -e '
+    import * as lancedb from "@lancedb/lancedb"
+    const db = await lancedb.connect(process.argv[1])
+    const names = await db.tableNames()
+    if (names.includes("knowledge_names")) await db.dropTable("knowledge_names")
+  ' "$SFT_DATA_DIR/knowledge/lancedb"
 
   TITLE_DOC="$TEST_DOC_DIR/差旅报销.md"
   MENU_DOC="$TEST_DOC_DIR/菜单.md"

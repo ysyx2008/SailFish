@@ -30,6 +30,7 @@ import {
 import { createLogger } from '../../utils/logger'
 import { UtilityWorkerSession, type WorkerSessionOptions } from './worker-session'
 import { lanceEquals } from './lance-filter'
+import type { NameVectorRecord, NameVectorUpdate } from './name-vectors'
 
 const log = createLogger('KnowledgeStorage')
 
@@ -130,6 +131,8 @@ export class VectorStorage extends EventEmitter {
   // ── In-process 模式（CLI / worker 启动失败） ────────────────────
   private db: any = null
   private table: any = null
+  private nameTable: any = null
+  private nameIndexBroken = false
   private corruptionMarkerPath: string
   private deleteCount = 0
   private lastCompactTime = 0
@@ -675,6 +678,71 @@ export class VectorStorage extends EventEmitter {
     await this.compactInProc(aggressive)
   }
 
+  isNameIndexBroken(): boolean {
+    return this.nameIndexBroken
+  }
+
+  async listNameMeta(): Promise<{ id: string; kind: 'file' | 'folder'; text: string; folder: string; docId: string }[] | null> {
+    if (this.nameIndexBroken) return null
+    if (await this.useWorkerPath()) {
+      const result = await this.callWorker<{ broken?: boolean; rows: { id: string; kind: 'file' | 'folder'; text: string; folder: string; docId: string }[] }>('nameList')
+      if (result.broken) {
+        this.nameIndexBroken = true
+        return null
+      }
+      return result.rows || []
+    }
+    return this.listNameMetaInProc()
+  }
+
+  async searchNames(
+    embedding: number[],
+    limit = 10000,
+  ): Promise<{ kind: 'file' | 'folder'; folder: string; docId?: string; score: number }[]> {
+    if (this.nameIndexBroken || embedding.length === 0) return []
+    if (await this.useWorkerPath()) {
+      const result = await this.callWorker<{
+        broken?: boolean
+        hits: { kind: 'file' | 'folder'; folder: string; docId: string; score: number }[]
+      }>('nameSearch', { embedding, limit })
+      if (result.broken) {
+        this.nameIndexBroken = true
+        return []
+      }
+      return (result.hits || []).map(hit => ({
+        kind: hit.kind,
+        folder: hit.folder,
+        docId: hit.docId || undefined,
+        score: hit.score,
+      }))
+    }
+    return this.searchNamesInProc(embedding, limit)
+  }
+
+  async applyNameEdits(edit: {
+    removeIds: string[]
+    updates: NameVectorUpdate[]
+    inserts: NameVectorRecord[]
+  }): Promise<void> {
+    if (this.nameIndexBroken) return
+    const inserts = edit.inserts.map(row => ({ ...row, docId: row.docId || '' }))
+    if (await this.useWorkerPath()) {
+      const result = await this.callWorker<{ broken?: boolean }>('nameApply', {
+        removeIds: edit.removeIds,
+        updates: edit.updates,
+        inserts,
+      })
+      if (result.broken) this.nameIndexBroken = true
+      return
+    }
+    await this.applyNameEditsInProc({ ...edit, inserts })
+  }
+
+  async removeNames(ids: string[]): Promise<void> {
+    if (ids.length === 0) return
+    await this.applyNameEdits({ removeIds: ids, updates: [], inserts: [] })
+  }
+
   async clear(): Promise<void> {
     // 清库不为了删除先把 worker 拉起来：进程不在时文件句柄已释放，直接删目录即可。
     // （用户来清库往往正是因为库坏了、worker 起不来）
@@ -682,20 +750,141 @@ export class VectorStorage extends EventEmitter {
       if (this.workerReady && this.session?.isAlive) {
         await this.callWorker('dropTable')
       }
-    } else if (this.table && this.db) {
-      await this.db.dropTable('knowledge_vectors')
+    } else if (this.db) {
+      const names = await this.db.tableNames()
+      if (names.includes('knowledge_names')) await this.db.dropTable('knowledge_names')
+      if (names.includes('knowledge_vectors')) await this.db.dropTable('knowledge_vectors')
       this.table = null
+      this.nameTable = null
+      this.nameIndexBroken = false
     }
 
     // fs.rmSync 在主进程执行（worker 进程的文件句柄在 dropTable 后已释放）
-    const tablePath = path.join(this.storagePath, 'knowledge_vectors.lance')
-    if (fs.existsSync(tablePath)) {
-      fs.rmSync(tablePath, { recursive: true, force: true })
-      log.info('已删除 LanceDB 数据目录:', tablePath)
+    for (const dirName of ['knowledge_vectors.lance', 'knowledge_names.lance']) {
+      const tablePath = path.join(this.storagePath, dirName)
+      if (fs.existsSync(tablePath)) {
+        fs.rmSync(tablePath, { recursive: true, force: true })
+        log.info('已删除 LanceDB 数据目录:', tablePath)
+      }
     }
 
     if (!this.workerMode) this.deleteCount = 0
     this.emit('cleared')
+  }
+
+  private markNameIndexBroken(error: unknown): void {
+    log.warn('目录和文件名这张表读不开，这次自动翻阅改看正文:', error)
+    this.nameIndexBroken = true
+    this.nameTable = null
+  }
+
+  private async openNameTableInProc(): Promise<any> {
+    if (this.nameIndexBroken || !this.db) return null
+    if (this.nameTable) return this.nameTable
+    let names: string[]
+    try {
+      names = await this.db.tableNames()
+    } catch (error) {
+      this.markNameIndexBroken(error)
+      return null
+    }
+    if (!names.includes('knowledge_names')) return null
+    try {
+      const opened = await this.db.openTable('knowledge_names')
+      const sample = await opened.query().select(['vector']).limit(1).toArray()
+      const width = sample[0]?.vector?.length
+      if (width && width !== this.dimensions) {
+        await this.db.dropTable('knowledge_names')
+        return null
+      }
+      this.nameTable = opened
+      return this.nameTable
+    } catch (error) {
+      this.markNameIndexBroken(error)
+      return null
+    }
+  }
+
+  private async listNameMetaInProc() {
+    try {
+      const opened = await this.openNameTableInProc()
+      if (this.nameIndexBroken) return null
+      if (!opened) return []
+      const rows = await opened.query().select(['id', 'kind', 'text', 'folder', 'docId']).toArray()
+      return rows.map((row: { id: string; kind: 'file' | 'folder'; text: string; folder?: string; docId?: string }) => ({
+        id: row.id,
+        kind: row.kind,
+        text: row.text,
+        folder: row.folder || '',
+        docId: row.docId || '',
+      }))
+    } catch (error) {
+      this.markNameIndexBroken(error)
+      return null
+    }
+  }
+
+  private async searchNamesInProc(embedding: number[], limit: number) {
+    try {
+      const opened = await this.openNameTableInProc()
+      if (this.nameIndexBroken || !opened) return []
+      const hits = await opened
+        .vectorSearch(embedding)
+        .distanceType('cosine')
+        .limit(limit)
+        .select(['kind', 'folder', 'docId'])
+        .toArray()
+      return hits.map((row: { kind: 'file' | 'folder'; folder?: string; docId?: string; _distance?: number }) => ({
+        kind: row.kind,
+        folder: row.folder || '',
+        docId: row.docId || undefined,
+        score: 1 - (typeof row._distance === 'number' ? row._distance : 0),
+      }))
+    } catch (error) {
+      this.markNameIndexBroken(error)
+      return []
+    }
+  }
+
+  private async applyNameEditsInProc(edit: {
+    removeIds: string[]
+    updates: NameVectorUpdate[]
+    inserts: NameVectorRecord[]
+  }): Promise<void> {
+    if (!this.db) throw new Error('数据库未初始化')
+    try {
+      if (edit.inserts.length > 0) {
+        let opened = await this.openNameTableInProc()
+        if (this.nameIndexBroken) return
+        if (!opened) {
+          opened = await this.db.createTable('knowledge_names', edit.inserts)
+          this.nameTable = opened
+          return
+        }
+        for (const row of edit.inserts) {
+          await opened.delete(lanceEquals('id', row.id))
+        }
+        await opened.add(edit.inserts)
+      }
+      const opened = await this.openNameTableInProc()
+      if (this.nameIndexBroken || !opened) return
+      for (const id of edit.removeIds) {
+        await opened.delete(lanceEquals('id', id))
+      }
+      for (const row of edit.updates) {
+        await opened.update({
+          where: lanceEquals('id', row.id),
+          values: {
+            kind: row.kind,
+            text: row.text,
+            folder: row.folder,
+            docId: row.docId || '',
+          },
+        })
+      }
+    } catch (error) {
+      this.markNameIndexBroken(error)
+    }
   }
 
   // ────────────────────────── 公开 API（读操作） ──────────────────────────
@@ -948,6 +1137,8 @@ export class VectorStorage extends EventEmitter {
     this.workerMode = false
     this.db = null
     this.table = null
+    this.nameTable = null
+    this.nameIndexBroken = false
   }
 
   /**

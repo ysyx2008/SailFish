@@ -20,6 +20,9 @@
  *   ⇢ { id, type: 'getValidRecords',      data: { docIds: string[] } }
  *   ⇢ { id, type: 'getAllDocIds' }
  *   ⇢ { id, type: 'compact',              data: { aggressive? } }
+ *   ⇢ { id, type: 'nameList' }
+ *   ⇢ { id, type: 'nameSearch',           data: { embedding, limit } }
+ *   ⇢ { id, type: 'nameApply',            data: { removeIds, updates, inserts } }
  *   ⇢ { id, type: 'ping' }
  *
  * 响应（worker → 主进程）：
@@ -43,6 +46,9 @@ const fs = require('fs')
 let lancedb = null
 let db = null
 let table = null
+let nameTable = null
+let nameBroken = false
+const nameTableName = 'knowledge_names'
 
 // 配置（由 initialize 消息写入）
 let storagePath = ''
@@ -429,7 +435,13 @@ async function handleGetStats() {
 async function handleDropTable() {
   if (!db) return { ok: true }
   try {
-    if (table) {
+    const names = await db.tableNames()
+    if (names.includes(nameTableName)) {
+      await db.dropTable(nameTableName)
+    }
+    nameTable = null
+    nameBroken = false
+    if (table || names.includes(tableName)) {
       await db.dropTable(tableName)
       table = null
     }
@@ -438,6 +450,141 @@ async function handleDropTable() {
   } catch (error) {
     console.error('[LanceDBWorker] dropTable failed:', error)
     throw error
+  }
+}
+
+async function openNameTable() {
+  if (nameBroken || !db) return null
+  if (nameTable) return nameTable
+  let names
+  try {
+    names = await db.tableNames()
+  } catch (error) {
+    console.error('[LanceDBWorker] 目录表列不出来:', error)
+    nameBroken = true
+    return null
+  }
+  if (!names.includes(nameTableName)) return null
+  try {
+    const opened = await db.openTable(nameTableName)
+    const sample = await opened.query().select(['vector']).limit(1).toArray()
+    const width = sample[0] && sample[0].vector && sample[0].vector.length
+    if (width && width !== dimensions) {
+      await db.dropTable(nameTableName)
+      return null
+    }
+    nameTable = opened
+    return nameTable
+  } catch (error) {
+    console.error('[LanceDBWorker] 目录和文件名这张表读不开:', error)
+    nameBroken = true
+    nameTable = null
+    return null
+  }
+}
+
+async function ensureNameTable(sample) {
+  const existing = await openNameTable()
+  if (nameBroken) return null
+  if (existing) return existing
+  nameTable = await db.createTable(nameTableName, [sample])
+  return nameTable
+}
+
+async function handleNameList() {
+  if (nameBroken) return { broken: true, rows: [] }
+  try {
+    const opened = await openNameTable()
+    if (nameBroken) return { broken: true, rows: [] }
+    if (!opened) return { rows: [] }
+    const rows = await opened.query().select(['id', 'kind', 'text', 'folder', 'docId']).toArray()
+    return {
+      rows: rows.map(row => ({
+        id: row.id,
+        kind: row.kind,
+        text: row.text,
+        folder: row.folder || '',
+        docId: row.docId || '',
+      })),
+    }
+  } catch (error) {
+    console.error('[LanceDBWorker] nameList failed:', error)
+    nameBroken = true
+    nameTable = null
+    return { broken: true, rows: [] }
+  }
+}
+
+async function handleNameSearch(data) {
+  if (nameBroken) return { broken: true, hits: [] }
+  try {
+    const opened = await openNameTable()
+    if (nameBroken) return { broken: true, hits: [] }
+    if (!opened) return { hits: [] }
+    const limit = (data && data.limit) || 10000
+    const hits = await opened
+      .vectorSearch(data.embedding)
+      .distanceType('cosine')
+      .limit(limit)
+      .select(['kind', 'folder', 'docId'])
+      .toArray()
+    return {
+      hits: hits.map(row => {
+        const distance = typeof row._distance === 'number' ? row._distance : 0
+        return {
+          kind: row.kind,
+          folder: row.folder || '',
+          docId: row.docId || '',
+          score: 1 - distance,
+        }
+      }),
+    }
+  } catch (error) {
+    console.error('[LanceDBWorker] nameSearch failed:', error)
+    nameBroken = true
+    nameTable = null
+    return { broken: true, hits: [] }
+  }
+}
+
+async function handleNameApply(data) {
+  if (!db) throw new Error('数据库未初始化')
+  if (nameBroken) return { ok: false, broken: true }
+  const removeIds = (data && data.removeIds) || []
+  const updates = (data && data.updates) || []
+  const inserts = (data && data.inserts) || []
+  try {
+    if (inserts.length > 0) {
+      const opened = await ensureNameTable(inserts[0])
+      if (!opened) return { ok: false, broken: true }
+      for (const row of inserts) {
+        await opened.delete(lanceEquals('id', row.id))
+      }
+      await opened.add(inserts)
+    }
+    const opened = await openNameTable()
+    if (nameBroken) return { ok: false, broken: true }
+    if (!opened) return { ok: true }
+    for (const id of removeIds) {
+      await opened.delete(lanceEquals('id', id))
+    }
+    for (const row of updates) {
+      await opened.update({
+        where: lanceEquals('id', row.id),
+        values: {
+          kind: row.kind,
+          text: row.text,
+          folder: row.folder,
+          docId: row.docId || '',
+        },
+      })
+    }
+    return { ok: true }
+  } catch (error) {
+    console.error('[LanceDBWorker] nameApply failed:', error)
+    nameBroken = true
+    nameTable = null
+    return { ok: false, broken: true }
   }
 }
 
@@ -526,6 +673,9 @@ async function dispatch(message) {
       case 'getAllDocIds':          result = await handleGetAllDocIds();             break
       case 'getChunkCount':         result = await handleGetChunkCount();            break
       case 'compact':              result = await handleCompact(data);              break
+      case 'nameList':             result = await handleNameList();                 break
+      case 'nameSearch':           result = await handleNameSearch(data);           break
+      case 'nameApply':            result = await handleNameApply(data);            break
       case 'ping':                 result = { ok: true };                           break
       default:
         throw new Error(`未知消息类型：${type}`)

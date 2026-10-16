@@ -30,7 +30,6 @@ import {
   resumeInterrupted,
 } from '../card-policy'
 import { CardVectorStore } from '../card-vectors'
-import { NameVectorStore } from '../name-vectors'
 import { CardQuota } from '../card-quota'
 import { normalizeKnowledgeDocument } from '../../../utils/normalize'
 import type { KnowledgeDocument } from '../types'
@@ -311,46 +310,6 @@ describe('说明向量和每日额度', () => {
     const again = new CardQuota(file)
     expect(again.usedToday(today)).toBe(1)
     expect(again.take(tomorrow, 1)).toBe(true)
-  })
-})
-
-describe('目录和文件名的向量', () => {
-  it('文件坏了就当作没有', () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sf-names-')), 'name-vectors.json')
-    fs.writeFileSync(file, '{', 'utf-8')
-    const store = new NameVectorStore(file)
-    expect(store.isBroken()).toBe(true)
-    expect(store.search([1, 0], 0)).toEqual([])
-  })
-
-  it('改了字就换向量，删掉的名字不再留下', () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sf-names-')), 'name-vectors.json')
-    const store = new NameVectorStore(file)
-    store.replace([], [{
-      id: 'folder:公司制度/差旅',
-      kind: 'folder',
-      text: '公司制度/差旅',
-      folder: '公司制度/差旅',
-      vector: [1, 0],
-    }, {
-      id: 'file:leave',
-      kind: 'file',
-      text: '差旅报销.md',
-      folder: '公司制度/差旅',
-      docId: 'leave',
-      vector: [0, 1],
-    }])
-    const again = new NameVectorStore(file)
-    again.replace(['file:leave'], [{
-      id: 'folder:公司制度/差旅',
-      kind: 'folder',
-      text: '公司制度/差旅',
-      folder: '公司制度/差旅',
-      vector: [1, 0],
-    }])
-    const hits = again.search([0, 1], 0)
-    expect(hits.map(hit => hit.kind)).toEqual(['folder'])
-    expect(again.texts().has('file:leave')).toBe(false)
   })
 })
 
