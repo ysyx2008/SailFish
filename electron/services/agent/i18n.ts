@@ -171,12 +171,15 @@ const translations = {
 这一步只写小结，不执行任何操作，因此直接输出正文即可。`,
     'agent.compress_summary_user_hint': '写小结时请看见：{hint}',
     'agent.companion_pick_prompt': `用户在联络对话里点了某一段的「从这里创建任务」，要把它开成一个新任务。
-新任务是一场全新的对话：它只知道被选中带进去的各段（每段含完整过程），其余聊过的事它都不知道，漏选相关的段它就缺少做这件事需要的前文，多选无关的段它就背着用不上的内容。第 {anchor} 段一定会带上，它之后的对话不会带进去。
+新任务是一场全新的对话：它只知道被选中带进去的各段（每段含完整过程），其余聊过的事它都不知道。漏选相关的段，它就缺少做这件事需要的前文；多选无关的段，它就背着用不上的内容。第 {anchor} 段一定会带上，它之后的对话不会带进去。
+侧栏用一个短标题认出这场新任务（不超过 20 个汉字或等价长度）。这个标题只根据将被带进去的各段来起。
 
 下面按时间列出了第 {anchor} 段及之前的各段，用户点的是第 {anchor} 段：
 {list}
 
-这一步只做选择，不执行任何操作。直接输出被选中的段号，段号之间用英文逗号分隔，不输出其他内容。`,
+这一步只做选择和起标题，不执行任何操作。分两行输出，不要其他内容：
+第一行只写被选中的段号，段号之间用英文逗号分隔
+第二行只写标题本身`,
     'agent.companion_pick_line': '{n}. [{time}] 用户：{user}',
     'agent.companion_pick_line_result': '{n}. [{time}] 用户：{user} → 结果：{result}',
     'agent.compact_in_progress': '正在压缩上下文',
@@ -2012,11 +2015,14 @@ This step only writes the summary and performs no action, so just output the tex
     'agent.compress_summary_user_hint': 'Take this into account when writing the summary: {hint}',
     'agent.companion_pick_prompt': `The user clicked "Create task from here" on one segment of the companion conversation and wants to turn it into a new task.
 The new task is a brand-new conversation: it only knows the selected segments carried into it (each with its full process) and nothing else that was discussed. Leaving out a relevant segment means it lacks background it needs for this job; carrying an unrelated segment means it lugs around content it has no use for. Segment {anchor} is always carried, and nothing after it is.
+The sidebar recognizes this new task by a short title (about 8–10 words, under 40 characters). The title is based only on the segments that will be carried in.
 
 Segment {anchor} and the segments before it, in time order. The user clicked segment {anchor}:
 {list}
 
-This step only selects; do not perform any action. Output only the numbers of the selected segments, separated by commas, and nothing else.`,
+This step only selects and names the task; do not perform any action. Output exactly two lines and nothing else:
+Line 1: only the numbers of the selected segments, separated by commas
+Line 2: only the title itself`,
     'agent.companion_pick_line': '{n}. [{time}] User: {user}',
     'agent.companion_pick_line_result': '{n}. [{time}] User: {user} -> Result: {result}',
     'agent.compact_in_progress': 'Compressing context',

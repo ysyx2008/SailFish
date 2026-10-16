@@ -944,9 +944,9 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
 
     // 优先级：① Tab 栏手动重命名（customTitle）② 侧栏/会话 title ③ tab 默认标题
-    // companion 升格：标题用锚点那段内容（后端 sourceUserTask 已含后缀），不用「联络 · 分支」
+    // companion 升格：挑选时一并起的短标题优先；没有则用锚点那段（sourceUserTask 已含后缀）
     const forkTitle = isCompanionSource
-      ? result.sourceUserTask
+      ? (result.newRecord.title?.trim() || result.sourceUserTask)
       : (() => {
           const sidebarTitle = sourceTab.agentState?.title
           const baseTitle = sourceTab.customTitle || sidebarTitle || sourceTab.title

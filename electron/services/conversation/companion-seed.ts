@@ -7,10 +7,11 @@
  */
 import { t } from '../agent/i18n'
 import type { CompanionPickCandidate } from './conversation'
+import { sanitizeConversationTitle } from './title-generator'
 
 /** 单行简述里每句话最多保留的字数（按字符，不切坏 emoji） */
 const BRIEF_TEXT_MAX_CHARS = 80
-/** 只接受数字与分隔符的回复；带别的文字一律视为对不上，由调用方回退 */
+/** 只接受数字与分隔符的一行；这一行之外只允许再有一行标题 */
 const STRICT_ORDINAL_REPLY = /^[\d\s,，、;；]+$/
 /** 等待提示里只留思考过程的末尾这些字 */
 const THINKING_PREVIEW_CHARS = 160
@@ -64,6 +65,12 @@ export function createThinkingFeed(emit: (preview: string) => void) {
   }
 }
 
+/** 挑选回复：要带上的各段，以及可选的侧栏短标题 */
+export interface CompanionPickReply {
+  stepIds: string[]
+  title?: string
+}
+
 export class CompanionSeedPicker {
   /** 候选上限：取最靠近锚点的这些段，避免简述本身过长 */
   static readonly MAX_CANDIDATES = 60
@@ -90,21 +97,41 @@ export class CompanionSeedPicker {
   }
 
   /**
-   * 把模型回复还原成被挑中各段的 id（按序号升序、去重）。
-   * 回复里夹着别的文字、或没有任何有效序号 → null（调用方回退时间窗口）。
+   * 把模型回复还原成被挑中各段的 id（按序号升序、去重），并取出侧栏短标题。
+   * 段号占一行；标题另占一行。没有标题行时仍返回段号。
+   * 段号和标题以外还有别的文字、或没有任何有效序号 → null（调用方回退时间窗口）。
    * 超出范围的序号忽略；锚点是否出现在回复里无所谓，抽取时锚点恒带。
    */
-  parseReply(reply: string | null | undefined): string[] | null {
+  parseReply(reply: string | null | undefined): CompanionPickReply | null {
     const text = reply?.trim()
-    if (!text || !STRICT_ORDINAL_REPLY.test(text)) return null
+    if (!text) return null
+    const lines = text
+      .replace(/\r/g, '')
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0 && !line.startsWith('```'))
+
+    const ordinalLines: string[] = []
+    const otherLines: string[] = []
+    for (const line of lines) {
+      if (STRICT_ORDINAL_REPLY.test(line)) ordinalLines.push(line)
+      else otherLines.push(line)
+    }
+    if (ordinalLines.length === 0 || otherLines.length > 1) return null
+
     const ordinals = new Set<number>()
-    for (const token of text.split(/[\s,，、;；]+/)) {
-      if (!token) continue
-      const n = Number(token)
-      if (Number.isInteger(n) && n >= 1 && n <= this.candidates.length) ordinals.add(n)
+    for (const line of ordinalLines) {
+      for (const token of line.split(/[\s,，、;；]+/)) {
+        if (!token) continue
+        const n = Number(token)
+        if (Number.isInteger(n) && n >= 1 && n <= this.candidates.length) ordinals.add(n)
+      }
     }
     if (ordinals.size === 0) return null
-    return [...ordinals].sort((a, b) => a - b).map(n => this.candidates[n - 1].stepId)
+
+    const stepIds = [...ordinals].sort((a, b) => a - b).map(n => this.candidates[n - 1].stepId)
+    const title = otherLines.length === 1 ? sanitizeConversationTitle(otherLines[0]) ?? undefined : undefined
+    return title ? { stepIds, title } : { stepIds }
   }
 
   private static formatLine(c: CompanionPickCandidate, n: number): string {

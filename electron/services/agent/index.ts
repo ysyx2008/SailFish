@@ -32,7 +32,7 @@ import { getDefaultShell, getLocalOS } from '../../utils/platform'
 import { SailFish } from './sailfish'
 import { TaskSupervisor } from './task-supervisor'
 import { ConversationStore, ConversationManager, Companion, Conversation } from '../conversation'
-import { CompanionSeedPicker, createThinkingFeed } from '../conversation/companion-seed'
+import { CompanionSeedPicker, createThinkingFeed, type CompanionPickReply } from '../conversation/companion-seed'
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import type { CommandHandlingInfo } from './risk-assessor'
 import { setConfigService as setI18nConfigService } from './i18n'
@@ -547,7 +547,7 @@ export class AgentService {
    * 流程：
    *  1. `Companion.extractTask` 拉最近 N 条 record 合并 + 时间窗口选择产出新 Conversation
    *  2. `startTaskFromConversation` 落盘 + 建 Agent + 装载
-   *  3. companion 始终视为 assistant 模式，cache snapshot 恒传递
+   *  3. 带过去的是历史对话，不传前缀缓存。继续说的第一轮冷启动，重做系统提示
    */
   async extractTaskFromCompanion(opts: {
     newAgentId: string
@@ -583,11 +583,11 @@ export class AgentService {
     }
 
     // 挑选可能要等几秒（模型作答）；挑完再取一次联络最新记录，等待期间新进来的话不丢
-    const pickedTaskStepIds = await this.pickCompanionSegments(forkOpts, hooks?.onThinking)
+    const picked = await this.pickCompanionSegments(forkOpts, hooks?.onThinking)
     const forked = this._companion.extractTaskWithLiveOverlay(
       newSessionId,
       this.getAgent(COMPANION_AGENT_KEY)?.toRecordForFork() ?? undefined,
-      { ...forkOpts, pickedTaskStepIds }
+      { ...forkOpts, pickedTaskStepIds: picked?.stepIds }
     )
     if (!forked) {
       log.warn(
@@ -599,6 +599,10 @@ export class AgentService {
       return null
     }
     const { conversation: newConversation, record: newRecord } = forked
+    if (picked?.title) {
+      newRecord.title = picked.title
+      newConversation.setTitle(picked.title)
+    }
 
     // 不把存档当成上一轮请求。继续说时冷启动一次，系统提示按这场任务重做，历史从工作记忆装。
     this.startTaskFromConversation(newConversation, newRecord, opts.newAgentId)
@@ -607,7 +611,8 @@ export class AgentService {
       `Extracted task from companion: new=${opts.newAgentId}, ` +
       `sessionId=${newSessionId}, anchorTaskStepId=${opts.anchorTaskStepId ?? 'n/a'}, ` +
       `anchorTaskIndex=${opts.anchorTaskIndex ?? 'n/a'}, ` +
-      `titleSuffix="${opts.titleSuffix ?? ''}", newRecord.userTask="${newRecord.userTask}"`
+      `titleSuffix="${opts.titleSuffix ?? ''}", newRecord.userTask="${newRecord.userTask}", ` +
+      `title="${newRecord.title ?? ''}"`
     )
 
     return {
@@ -622,11 +627,12 @@ export class AgentService {
    * 让 AI 从锚点之前的各段用户对话里挑出相关的几段（回的是各段的 id）。
    * 联络眼前有对话前缀就接在它后面问（吃缓存）；没有就只发各段简述。
    * 返回 undefined：不必挑 / 挑选失败 / 回复对不上——调用方回退时间窗口。
+   * 挑到了但没有可用标题时，title 缺省，侧栏仍用锚点那句话。
    */
   private async pickCompanionSegments(
     forkOpts: import('../conversation').CompanionExtractTaskOptions,
     onThinking?: (preview: string) => void
-  ): Promise<string[] | undefined> {
+  ): Promise<CompanionPickReply | undefined> {
     const companionAgent = this.getAgent(COMPANION_AGENT_KEY)
     const candidates = this._companion?.listPickCandidates(
       companionAgent?.toRecordForFork() ?? undefined,
@@ -644,13 +650,16 @@ export class AgentService {
       const reply = hot
         ? await companionAgent!.askOnConversationPrefix(instruction, askOpts)
         : await this.askPickWithoutPrefix(instruction, feed?.push)
-      const ids = picker.parseReply(reply)
-      if (!ids) {
+      const parsed = picker.parseReply(reply)
+      if (!parsed) {
         log.warn(`pickCompanionSegments: reply unusable, fall back to time window (hot=${hot})`)
         return undefined
       }
-      log.info(`pickCompanionSegments: picked ${ids.length}/${picker.size} segments (hot=${hot})`)
-      return ids
+      log.info(
+        `pickCompanionSegments: picked ${parsed.stepIds.length}/${picker.size} segments (hot=${hot})` +
+        (parsed.title ? `, title="${parsed.title}"` : '')
+      )
+      return parsed
     } catch (e) {
       log.warn('pickCompanionSegments failed, fall back to time window:', e)
       return undefined

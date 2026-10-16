@@ -113,6 +113,7 @@ describe('CompanionSeedPicker', () => {
     expect(text).not.toContain('2. [10-09 10:10] 用户：今天天气 →')
     expect(text).toContain('3. [10-09 10:20] 用户：把发票发给财务 → 结果：已发送')
     expect(text).toContain('第 3 段')
+    expect(text).toContain('第二行只写标题本身')
   })
 
   it('简述单行、过长截断', () => {
@@ -138,21 +139,44 @@ describe('CompanionSeedPicker', () => {
     expect(text).not.toContain('用户：话0\n')
     expect(text).toContain(`${CompanionSeedPicker.MAX_CANDIDATES}. `)
     // 序号 1 对应被保留的第一条（原下标 5）
-    expect(picker.parseReply('1')).toEqual(['ut_5'])
+    expect(picker.parseReply('1')).toEqual({ stepIds: ['ut_5'] })
   })
 
   it('回复解析：序号还原成 step id，升序去重，越界忽略', () => {
     const picker = new CompanionSeedPicker(candidates)
-    expect(picker.parseReply('1, 3')).toEqual(['ut_a', 'ut_c'])
-    expect(picker.parseReply('3,1,1')).toEqual(['ut_a', 'ut_c'])
-    expect(picker.parseReply('1，3')).toEqual(['ut_a', 'ut_c'])
-    expect(picker.parseReply('2, 9, 0')).toEqual(['ut_b'])
+    expect(picker.parseReply('1, 3')).toEqual({ stepIds: ['ut_a', 'ut_c'] })
+    expect(picker.parseReply('3,1,1')).toEqual({ stepIds: ['ut_a', 'ut_c'] })
+    expect(picker.parseReply('1，3')).toEqual({ stepIds: ['ut_a', 'ut_c'] })
+    expect(picker.parseReply('2, 9, 0')).toEqual({ stepIds: ['ut_b'] })
+  })
+
+  it('段号下一行是侧栏标题；标题在段号前面、包着引号、过长，都收成短标题', () => {
+    const picker = new CompanionSeedPicker(candidates)
+    expect(picker.parseReply('1,3\n把发票发给财务')).toEqual({
+      stepIds: ['ut_a', 'ut_c'],
+      title: '把发票发给财务'
+    })
+    expect(picker.parseReply('把发票发给财务\n1,3')).toEqual({
+      stepIds: ['ut_a', 'ut_c'],
+      title: '把发票发给财务'
+    })
+    expect(picker.parseReply('1,3\n「把发票发给财务」')).toEqual({
+      stepIds: ['ut_a', 'ut_c'],
+      title: '把发票发给财务'
+    })
+    const long = '发票'.repeat(30)
+    expect(picker.parseReply(`1,3\n${long}`)?.title).toHaveLength(40)
+  })
+
+  it('只有段号、没有标题行 → 仍返回段号，不带标题', () => {
+    expect(new CompanionSeedPicker(candidates).parseReply('1,3')).toEqual({ stepIds: ['ut_a', 'ut_c'] })
   })
 
   it('回复里夹着别的文字 / 为空 / 没有有效序号 → null（交给调用方回退）', () => {
     const picker = new CompanionSeedPicker(candidates)
     expect(picker.parseReply('选 1 和 3')).toBeNull()
     expect(picker.parseReply('1,3 因为相关')).toBeNull()
+    expect(picker.parseReply('1,3\n把发票发给财务\n因为相关')).toBeNull()
     expect(picker.parseReply('')).toBeNull()
     expect(picker.parseReply(null)).toBeNull()
     expect(picker.parseReply('9, 10')).toBeNull()
@@ -298,6 +322,24 @@ describe('AgentService.extractTaskFromCompanion 的挑选', () => {
     const userSteps = saved[0].steps!.filter(s => s.type === 'user_task').map(s => s.content)
     expect(userSteps).toEqual(['查发票', '发票发给财务'])
     expect(result!.sourceUserTask).toBe('发票发给财务')
+    expect(saved[0].title).toBeUndefined()
+  })
+
+  it('回复在段号下面给了标题 → 新任务用这个标题，不再另起一次', async () => {
+    const chat = vi.fn().mockResolvedValue({ content: '1,3\n发票交给财务' })
+    const { service, saved } = setup(chat)
+
+    await service.extractTaskFromCompanion({
+      newAgentId: 'new-titled',
+      anchorTaskStepId: 'ut_c',
+      sourceSteps: sourceSteps()
+    })
+
+    expect(chat).toHaveBeenCalledTimes(1)
+    expect(saved[0].title).toBe('发票交给财务')
+    expect(saved[0].titleLocked).toBeUndefined()
+    expect(saved[0].steps!.filter(s => s.type === 'user_task').map(s => s.content)).toEqual(['查发票', '发票发给财务'])
+    expect(service.getAgent('new-titled')?.toRecordForFork()?.title).toBe('发票交给财务')
   })
 
   it('联络眼前有对话前缀 → 接在前缀后面问，前缀末尾落缓存断点，带 tools', async () => {
