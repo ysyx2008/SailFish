@@ -5,7 +5,17 @@
 import { createLogger } from '../../../../utils/logger'
 import type { ToolResult, AgentConfig } from '../../types'
 import type { ToolExecutorConfig } from '../../tool-executor'
-import { t } from '../../i18n'
+import { t, type TranslationKey } from '../../i18n'
+import {
+  mergeRRule,
+  readRRuleValue,
+  readRecurrencePatch,
+  recurrenceEndedBefore,
+  replaceEventRRule,
+  untilOnOrAfterStart,
+  viewRecurrence,
+  type RecurrenceReadError,
+} from './recurrence'
 import { riskNeedsConfirm } from '../../command-audit/confirm-policy'
 
 const log = createLogger('CalendarExecutor')
@@ -510,18 +520,9 @@ async function calendarList(
       if (!obj.data) continue
       
       const event = parseICalEvent(obj.data, obj.url, obj.etag)
-      if (event) {
-        // 本地时间范围过滤
-        const eventStart = event.start.getTime()
-        const eventEnd = event.end.getTime()
-        
-        // 检查事件是否在查询范围内
-        if ((eventStart >= startTime && eventStart <= endTime) ||
-            (eventEnd >= startTime && eventEnd <= endTime) ||
-            (eventStart <= startTime && eventEnd >= endTime)) {
-          events.push(event)
-          if (events.length >= limit) break
-        }
+      if (event && eventInRange(event, startTime, endTime)) {
+        events.push(event)
+        if (events.length >= limit) break
       }
     }
 
@@ -548,7 +549,11 @@ async function calendarList(
         ? `📅 ${formatDate(event.start)}（全天）`
         : `🕐 ${formatDateTime(event.start)} - ${formatTime(event.end)}`
       const location = event.location ? `\n  📍 ${event.location}` : ''
-      return `- **${event.title}**\n  ${timeStr}${location}\n  ID: \`${event.uid}\``
+      const recur = event.recurrence ? `\n  🔁 ${formatRecurrenceLabel(event.recurrence)}` : ''
+      const first = event.recurrence && event.start.getTime() < startTime
+        ? `\n  ${t('calendar.recurrence_first')}`
+        : ''
+      return `- **${event.title}**\n  ${timeStr}${location}${recur}${first}\n  ID: \`${event.uid}\``
     })
 
     const output = `## ${t('calendar.event_list')} (${formatDate(startDate)} ~ ${formatDate(endDate)})\n\n${t('calendar.total_events', { count: events.length })}\n\n${eventList.join('\n\n')}`
@@ -583,10 +588,14 @@ async function calendarCreate(
   const location = args.location as string | undefined
   const description = args.description as string | undefined
   const reminderMinutes = args.reminder_minutes as number | undefined
-  const recurrence = args.recurrence as string | undefined
 
   if (!calendarId || !title || !startStr) {
     return { success: false, output: '', error: t('calendar.params_required') }
+  }
+
+  const recurrenceRead = readRecurrencePatch(args, 'create')
+  if (!recurrenceRead.ok) {
+    return { success: false, output: '', error: recurrenceReadError(recurrenceRead.error) }
   }
 
   const session = getFirstOpenSession()
@@ -599,17 +608,22 @@ async function calendarCreate(
   const endDate = endStr 
     ? new Date(endStr) 
     : new Date(startDate.getTime() + 60 * 60 * 1000) // 默认 1 小时
+  const allDayFlag = Boolean(allDay)
+
+  if (recurrenceRead.patch?.until && !untilOnOrAfterStart(recurrenceRead.patch.until, startDate, allDayFlag)) {
+    return { success: false, output: '', error: t('calendar.recurrence_until_before_start') }
+  }
+  const rrule = mergeRRule(undefined, recurrenceRead.patch, allDayFlag)
 
   // 构建确认信息
   let confirmInfo = `${t('calendar.create_confirm')}\n\n`
   confirmInfo += `**${t('calendar.title')}**: ${title}\n`
   confirmInfo += `**${t('calendar.time')}**: ${formatDateTime(startDate)} - ${formatDateTime(endDate)}\n`
-  if (allDay) confirmInfo += `**${t('calendar.all_day')}**: ${t('misc.yes')}\n`
+  if (allDayFlag) confirmInfo += `**${t('calendar.all_day')}**: ${t('misc.yes')}\n`
   if (location) confirmInfo += `**${t('calendar.location')}**: ${location}\n`
   if (reminderMinutes) confirmInfo += `**${t('calendar.reminder')}**: ${t('calendar.reminder_minutes', { minutes: reminderMinutes })}\n`
-  if (recurrence) {
-    const recurrenceKey = `calendar.recurrence_${recurrence}` as keyof typeof import('../../i18n')
-    confirmInfo += `**${t('calendar.recurrence')}**: ${t(recurrenceKey as any)}\n`
+  if (rrule) {
+    confirmInfo += `**${t('calendar.recurrence')}**: ${formatRecurrenceLabel(rrule)}\n`
   }
 
   // 显示创建信息
@@ -644,11 +658,11 @@ async function calendarCreate(
       title,
       start: startDate,
       end: endDate,
-      allDay: allDay || false,
+      allDay: allDayFlag,
       location,
       description,
       reminderMinutes,
-      recurrence
+      rrule
     })
 
     // 创建事件
@@ -694,6 +708,11 @@ async function calendarUpdate(
     return { success: false, output: '', error: t('calendar.event_id_required') }
   }
 
+  const recurrenceRead = readRecurrencePatch(args, 'update')
+  if (!recurrenceRead.ok) {
+    return { success: false, output: '', error: recurrenceReadError(recurrenceRead.error) }
+  }
+
   const session = getFirstOpenSession()
   if (!session || !session.client) {
     return { success: false, output: '', error: t('calendar.not_connected') }
@@ -712,12 +731,41 @@ async function calendarUpdate(
       return { success: false, output: '', error: t('calendar.event_parse_failed') }
     }
 
+    const allDayFlag = originalEvent.allDay || false
+    const nextStart = startStr ? new Date(startStr) : originalEvent.start
+    if (recurrenceRead.patch?.until && !untilOnOrAfterStart(recurrenceRead.patch.until, nextStart, allDayFlag)) {
+      return { success: false, output: '', error: t('calendar.recurrence_until_before_start') }
+    }
+    const mergedRRule = mergeRRule(originalEvent.recurrence, recurrenceRead.patch, allDayFlag)
+    const setsBound = recurrenceRead.patch?.until != null
+      || (typeof recurrenceRead.patch?.count === 'number' && recurrenceRead.patch.count > 0)
+    // 认不出原来的频率时不要把整条重复写丢；让调用方带上频率再改
+    if (recurrenceRead.patch && !mergedRRule && (setsBound || originalEvent.recurrence)) {
+      return { success: false, output: '', error: t('calendar.recurrence_freq_required') }
+    }
+    const nextRRule = recurrenceRead.patch ? mergedRRule : originalEvent.recurrence
+
     // 构建确认信息
     const changes: string[] = []
-    if (title && title !== originalEvent.title) changes.push(`${t('calendar.title')}: ${originalEvent.title} → ${title}`)
-    if (startStr) changes.push(`${t('calendar.start')}: ${formatDateTime(originalEvent.start)} → ${startStr}`)
-    if (endStr) changes.push(`${t('calendar.end')}: ${formatDateTime(originalEvent.end)} → ${endStr}`)
-    if (location !== undefined && location !== originalEvent.location) changes.push(`${t('calendar.location')}: ${originalEvent.location || '(无)'} → ${location || '(无)'}`)
+    const titleChanged = Boolean(title) && title !== originalEvent.title
+    const startChanged = Boolean(startStr) && new Date(startStr as string).getTime() !== originalEvent.start.getTime()
+    const endChanged = Boolean(endStr) && new Date(endStr as string).getTime() !== originalEvent.end.getTime()
+    const locationChanged = location !== undefined && location !== originalEvent.location
+    const descriptionChanged = description !== undefined && description !== (originalEvent.description || '')
+    if (titleChanged) changes.push(`${t('calendar.title')}: ${originalEvent.title} → ${title}`)
+    if (startChanged) changes.push(`${t('calendar.start')}: ${formatDateTime(originalEvent.start)} → ${startStr}`)
+    if (endChanged) changes.push(`${t('calendar.end')}: ${formatDateTime(originalEvent.end)} → ${endStr}`)
+    if (locationChanged) changes.push(`${t('calendar.location')}: ${originalEvent.location || '(无)'} → ${location || '(无)'}`)
+    if (descriptionChanged) changes.push(`${t('calendar.description')}: ${originalEvent.description || '(无)'} → ${description || '(无)'}`)
+    if ((nextRRule ?? '') !== (originalEvent.recurrence ?? '')) {
+      const before = originalEvent.recurrence
+        ? formatRecurrenceLabel(originalEvent.recurrence)
+        : t('calendar.recurrence_none')
+      const after = nextRRule
+        ? formatRecurrenceLabel(nextRRule)
+        : t('calendar.recurrence_none')
+      changes.push(`${t('calendar.recurrence')}: ${before} → ${after}`)
+    }
 
     if (changes.length === 0) {
       return { success: false, output: '', error: t('calendar.no_changes') }
@@ -759,15 +807,20 @@ async function calendarUpdate(
       description: description !== undefined ? description : originalEvent.description
     }
 
-    const icalData = buildICalEvent({
-      uid: originalEvent.uid,
-      title: updatedEvent.title,
-      start: updatedEvent.start,
-      end: updatedEvent.end,
-      allDay: updatedEvent.allDay || false,
-      location: updatedEvent.location,
-      description: updatedEvent.description
-    })
+    const onlyRecurrenceChanged = !titleChanged && !startChanged && !endChanged && !locationChanged && !descriptionChanged
+    const icalData = onlyRecurrenceChanged
+      ? replaceEventRRule(eventObj.data, nextRRule)
+      : buildICalEvent({
+        uid: originalEvent.uid,
+        title: updatedEvent.title,
+        start: updatedEvent.start,
+        end: updatedEvent.end,
+        allDay: updatedEvent.allDay || false,
+        location: updatedEvent.location,
+        description: updatedEvent.description,
+        alarmBlock: originalEvent.alarmBlock,
+        rrule: nextRRule
+      })
 
     // 更新事件
     await session.client.updateCalendarObject({
@@ -1667,6 +1720,55 @@ async function fetchEventByUid(
   return null
 }
 
+function recurrenceReadError(code: RecurrenceReadError): string {
+  switch (code) {
+    case 'bound_conflict':
+      return t('calendar.recurrence_bound_conflict')
+    case 'freq_invalid':
+      return t('calendar.recurrence_freq_invalid')
+    case 'until_invalid':
+      return t('calendar.recurrence_until_invalid')
+    case 'count_invalid':
+      return t('calendar.recurrence_count_invalid')
+    case 'freq_required':
+      return t('calendar.recurrence_freq_required')
+  }
+}
+
+function formatRecurrenceLabel(rrule: string): string {
+  const view = viewRecurrence(rrule)
+  if (!view) return rrule
+  let label = t(`calendar.recurrence_${view.freq}` as TranslationKey)
+  if (view.until) label += t('calendar.recurrence_until', { date: view.until })
+  if (view.count != null) label += t('calendar.recurrence_count', { count: view.count })
+  return label
+}
+
+/** 单次看开始结束是否落在范围内；重复系列则看到查询结束前还没截止。 */
+function eventInRange(event: CalendarEvent, startTime: number, endTime: number): boolean {
+  const eventStart = event.start.getTime()
+  const eventEnd = event.end.getTime()
+  if ((eventStart >= startTime && eventStart <= endTime) ||
+      (eventEnd >= startTime && eventEnd <= endTime) ||
+      (eventStart <= startTime && eventEnd >= endTime)) {
+    return true
+  }
+  if (!event.recurrence || eventStart > endTime) return false
+  return !recurrenceEndedBefore(event.recurrence, new Date(startTime), event.start, event.end)
+}
+
+function readAlarmBlock(icalData: string): string | undefined {
+  const eventStart = icalData.indexOf('BEGIN:VEVENT')
+  const eventEnd = icalData.indexOf('END:VEVENT')
+  const scope = eventStart >= 0 && eventEnd > eventStart
+    ? icalData.slice(eventStart, eventEnd)
+    : icalData
+  const start = scope.indexOf('BEGIN:VALARM')
+  const end = scope.indexOf('END:VALARM')
+  if (start < 0 || end < start) return undefined
+  return scope.slice(start, end + 'END:VALARM'.length)
+}
+
 /**
  * 从日历 URL 中提取名称
  */
@@ -1789,6 +1891,7 @@ function parseICalEvent(icalData: string | undefined, url?: string, etag?: strin
       summary = '(无标题)'
     }
 
+    const alarmBlock = readAlarmBlock(unfoldedData)
     return {
       uid,
       title: summary,
@@ -1797,6 +1900,8 @@ function parseICalEvent(icalData: string | undefined, url?: string, etag?: strin
       allDay: isAllDay,
       location: location || undefined,
       description: description || undefined,
+      recurrence: readRRuleValue(unfoldedData),
+      alarmBlock,
       url,
       etag
     }
@@ -1888,9 +1993,12 @@ function buildICalEvent(params: {
   location?: string
   description?: string
   reminderMinutes?: number
-  recurrence?: string
+  /** 修改时原样写回，避免把已有提醒换成另一种 */
+  alarmBlock?: string
+  /** RRULE 正文，不含前缀 */
+  rrule?: string
 }): string {
-  const { uid, title, start, end, allDay, location, description, reminderMinutes, recurrence } = params
+  const { uid, title, start, end, allDay, location, description, reminderMinutes, alarmBlock, rrule } = params
   
   const now = new Date()
   const dtstamp = formatICalDate(now, false)
@@ -1931,18 +2039,12 @@ TRIGGER:-PT${reminderMinutes}M
 ACTION:DISPLAY
 DESCRIPTION:Reminder
 END:VALARM`
+  } else if (alarmBlock) {
+    ical += `\n${alarmBlock}`
   }
   
-  if (recurrence) {
-    const rruleMap: Record<string, string> = {
-      daily: 'FREQ=DAILY',
-      weekly: 'FREQ=WEEKLY',
-      monthly: 'FREQ=MONTHLY',
-      yearly: 'FREQ=YEARLY'
-    }
-    if (rruleMap[recurrence]) {
-      ical += `\nRRULE:${rruleMap[recurrence]}`
-    }
+  if (rrule) {
+    ical += `\nRRULE:${rrule}`
   }
   
   ical += `

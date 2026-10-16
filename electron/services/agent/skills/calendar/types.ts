@@ -22,8 +22,10 @@ export interface CalendarEvent {
   description?: string
   /** 提醒（分钟） */
   reminder?: number
-  /** 重复规则 */
+  /** 重复规则正文，如 FREQ=WEEKLY;UNTIL=20270731T235959 */
   recurrence?: string
+  /** 原始提醒，修改日程时原样写回 */
+  alarmBlock?: string
   /** 状态 */
   status?: 'confirmed' | 'tentative' | 'cancelled'
   /** 原始数据（用于更新） */
@@ -168,8 +170,12 @@ export interface CreateEventParams {
   description?: string
   /** 提前提醒分钟数 */
   reminderMinutes?: number
-  /** 重复规则 */
+  /** 重复频率 */
   recurrence?: 'daily' | 'weekly' | 'monthly' | 'yearly'
+  /** 重复截止日期（含当天）。与重复次数互斥 */
+  recurrenceUntil?: string
+  /** 重复次数（含第一次）。与截止日期互斥 */
+  recurrenceCount?: number
 }
 
 /**
@@ -190,6 +196,12 @@ export interface UpdateEventParams {
   location?: string
   /** 新描述 */
   description?: string
+  /** 重复频率。不填则保持原来的 */
+  recurrence?: 'daily' | 'weekly' | 'monthly' | 'yearly'
+  /** 重复截止日期（含当天）。空字符串表示去掉截止日期 */
+  recurrenceUntil?: string
+  /** 重复次数（含第一次）。0 表示去掉次数限制 */
+  recurrenceCount?: number
 }
 
 /**

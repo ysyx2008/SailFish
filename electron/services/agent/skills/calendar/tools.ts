@@ -98,7 +98,7 @@ const calendarToolDefs: ToolDefinition[] = [
 - 设置标题、开始/结束时间、地点、描述
 - 创建全天事件
 - 设置提醒（提前 N 分钟）
-- 设置重复规则（每天/每周/每月/每年）
+- 重复：每天、每周、每月或每年。可写到哪一天为止（含当天），或一共重复几次；两项只填一个，都不填则一直重复
 
 **时间格式**：
 - 普通事件：ISO 8601 格式，如 "2024-01-15T09:00:00"
@@ -143,7 +143,15 @@ const calendarToolDefs: ToolDefinition[] = [
           recurrence: {
             type: 'string',
             enum: ['daily', 'weekly', 'monthly', 'yearly'],
-            description: '重复规则（可选）'
+            description: '重复频率（可选）。不填则不重复'
+          },
+          recurrence_until: {
+            type: 'string',
+            description: '重复截止日期，含当天，如 2027-07-31；也可写到具体时刻，如 2027-07-31T18:00:00。只写日期时，当天的场次都算在内。须与 recurrence 一起用。与 recurrence_count 互斥'
+          },
+          recurrence_count: {
+            type: 'number',
+            description: '一共重复几次，含第一次，1 到 5000。须与 recurrence 一起用。与 recurrence_until 互斥'
           }
         },
         required: ['calendar_id', 'title', 'start']
@@ -164,6 +172,11 @@ const calendarToolDefs: ToolDefinition[] = [
 - end：结束时间
 - location：地点
 - description：描述
+- recurrence：重复频率（每天/每周/每月/每年）。不填则保持原来的频率
+- recurrence_until：重复截止日期（含当天）。日程已经在重复时可以只改这一项；传空字符串则去掉截止日期
+- recurrence_count：一共重复几次（含第一次）。日程已经在重复时可以只改这一项；传 0 则去掉次数限制
+
+截止日期和次数只填一个。只改标题、时间、地点时，原来的重复方式保留。
 
 **注意**：修改日程需要用户确认。`,
       parameters: {
@@ -196,6 +209,19 @@ const calendarToolDefs: ToolDefinition[] = [
           description: {
             type: 'string',
             description: '新描述'
+          },
+          recurrence: {
+            type: 'string',
+            enum: ['daily', 'weekly', 'monthly', 'yearly'],
+            description: '重复频率。不填则保持原来的频率'
+          },
+          recurrence_until: {
+            type: 'string',
+            description: '重复截止日期，含当天，如 2027-07-31。日程已经在重复时可以只改这一项。传空字符串则去掉截止日期。与 recurrence_count 互斥'
+          },
+          recurrence_count: {
+            type: 'number',
+            description: '一共重复几次，含第一次。日程已经在重复时可以只改这一项。传 0 则去掉次数限制。与 recurrence_until 互斥'
           }
         },
         required: ['calendar_id', 'event_id']

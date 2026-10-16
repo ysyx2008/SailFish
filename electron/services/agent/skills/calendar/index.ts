@@ -14,7 +14,7 @@ const log = createLogger('CalendarSkill')
 const calendarSkill: Skill = {
   id: 'calendar',
   name: '日程管理',
-  description: '日程管理：查看、创建、修改、删除日历事件；日历待办为 CalDAV VTODO，工具名为 calendar_todo_*（与本地秘书 todo 技能的 todo_* 不同）。支持 CalDAV 协议。',
+  description: '日程管理：查看、创建、修改、删除日历事件。重复日程可写到哪一天为止（含当天），或一共重复几次，两项只填一个；都不填则一直重复。日历待办为 CalDAV VTODO，工具名为 calendar_todo_*（与本地秘书 todo 技能的 todo_* 不同）。支持 CalDAV 协议。',
   tools: calendarTools,
   
   async init() {
