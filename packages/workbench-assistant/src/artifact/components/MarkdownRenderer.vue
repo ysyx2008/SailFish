@@ -24,6 +24,10 @@ import { registerSelectionScopeProvider } from '../selection-scope'
 import { useToast } from '@sailfish/workbench-sdk/toast'
 import type { MarkdownWysiwygHandle } from '../editor/markdown-wysiwyg-editor'
 import { clampContextMenuPosition, intersectViewport } from '../domain/context-menu-position'
+import {
+  claimMarkdownSaveShortcut,
+  isMarkdownSaveShortcut
+} from '../domain/markdown-save-shortcut'
 import { useSelectionActionHint } from '../composables/useSelectionActionHint'
 import SelectionActionHint from '../ui/SelectionActionHint.vue'
 import '../ui/quote-context-menu.css'
@@ -262,6 +266,19 @@ type QuoteMeta = {
   endLine: number | null
 }
 
+/**
+ * 眼前这份才响应保存。
+ * 切走的对话用 v-show 藏着，编辑器还在，布局盒为空。
+ */
+function isMarkdownEditorInFront(): boolean {
+  const root = rootRef.value
+  if (!root?.isConnected) return false
+  if (root.getClientRects().length === 0) return false
+  if (!artifactStore.isVisible(props.tabId)) return false
+  const active = artifactStore.getActiveArtifact(props.tabId)
+  return active?.id === props.artifactId && active.renderer === 'markdown'
+}
+
 /** 面板激活即可引用（失焦后选区由 sticky decoration + 缓存保留） */
 function isMarkdownPanelActive(): boolean {
   const root = rootRef.value
@@ -437,15 +454,16 @@ function onWindowKeydown(e: KeyboardEvent) {
     }
   }
 
-  if (!canSave.value) return
-  if (e.key === 's') {
-    e.preventDefault()
-    if (!isDirty.value) {
-      toastInfo(t('canvas.saveNoChanges'))
-      return
-    }
-    void saveToDisk()
+  if (!isMarkdownSaveShortcut(e)) return
+  if (!canSave.value || !isMarkdownEditorInFront()) return
+  if (!claimMarkdownSaveShortcut()) return
+  e.preventDefault()
+  e.stopImmediatePropagation()
+  if (!isDirty.value) {
+    toastInfo(t('canvas.saveNoChanges'))
+    return
   }
+  void saveToDisk()
 }
 
 let unregisterSelectionScope: (() => void) | null = null
