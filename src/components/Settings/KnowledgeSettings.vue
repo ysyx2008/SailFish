@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Loader2, X, Trash2, AlertTriangle } from 'lucide-vue-next'
 import { showConfirm, showAlert } from '../../composables/useConfirm'
+import AttachmentFileIcon from '../AttachmentFileIcon.vue'
 import {
   SettingsPage,
   SettingsGroup,
@@ -153,6 +154,14 @@ const sourceOptions = computed(() => [
 
 function onSourceFilter(value: string) {
   if (value === 'all' || value === 'user' || value === 'agent') addedByFilter.value = value
+}
+
+/** 档案里没有原文件，用扩展名向系统要图标。 */
+function typeIconPath(doc: { filename: string; fileType: string }): string {
+  const fromName = doc.filename.includes('.') ? doc.filename.slice(doc.filename.lastIndexOf('.') + 1) : ''
+  const raw = (fromName || doc.fileType || 'txt').replace(/^\./, '').toLowerCase()
+  const ext = /^[a-z0-9]{1,12}$/.test(raw) ? raw : 'txt'
+  return `/__icon__.${ext}`
 }
 
 function inBrowseFolder(folder: string | undefined): boolean {
@@ -591,7 +600,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <SettingsPage :title="t('settings.tabs.knowledge')" :desc="t('knowledgeSettings.description')">
+  <SettingsPage class="knowledge-page" :title="t('settings.tabs.knowledge')" :desc="t('knowledgeSettings.description')">
     <SettingNotice v-if="loading">{{ t('common.loading') }}</SettingNotice>
     <SettingNotice v-else-if="!isKnowledgeInitialized">
       <Loader2 class="spinner" :size="16" />
@@ -686,7 +695,13 @@ onUnmounted(() => {
                     <label class="doc-check" @click.stop>
                       <input type="checkbox" :checked="selectedDocIds.has(doc.id)" @change="toggleDocSelection(doc.id, $event)" />
                     </label>
-                    <div class="doc-icon">{{ doc.fileType === 'pdf' ? '📄' : doc.fileType === 'docx' ? '📝' : '📃' }}</div>
+                    <AttachmentFileIcon
+                      class="doc-type-icon"
+                      :file-type="doc.fileType"
+                      :filename="doc.filename"
+                      :file-path="typeIconPath(doc)"
+                      :size="22"
+                    />
                     <div class="doc-info">
                       <div class="doc-name">{{ doc.folder ? `${doc.folder}/` : '' }}{{ doc.filename }}</div>
                       <div class="doc-meta">
@@ -748,47 +763,48 @@ onUnmounted(() => {
               <!-- 知识库文档详情 -->
               <template v-else>
                 <template v-if="selectedDoc">
-                  <div class="detail-header">
-                    <h3>{{ selectedDoc.filename }}</h3>
-                    <div class="detail-meta">
-                      <span>{{ selectedDoc.fileType }}</span>
-                      <span>{{ formatSize(selectedDoc.fileSize) }}</span>
-                      <span>{{ selectedDoc.chunkCount }} {{ t('knowledgeManager.chunk') }}</span>
-                    </div>
-                  </div>
-                  <div class="detail-tags" v-if="selectedDoc.tags?.length">
-                    <span v-for="tag in selectedDoc.tags" :key="tag" class="tag">{{ tag }}</span>
-                  </div>
-                  <div class="detail-time">
-                    {{ t('knowledgeManager.createdAt') }}：{{ formatDate(selectedDoc.createdAt) }} ·
-                    {{ t('knowledgeManager.updatedAt') }}：{{ formatDate(selectedDoc.updatedAt) }}
-                    · {{ selectedDoc.addedBy === 'agent' ? t('knowledgeManager.sourceAgent') : t('knowledgeManager.sourceUser') }}
-                  </div>
-                  <div class="detail-block">
-                    <label class="card-label">{{ t('knowledgeManager.cardLabel') }}</label>
-                    <p v-if="selectedDoc.cardStatus === 'stale'" class="card-stale">{{ t('knowledgeManager.cardStale') }}</p>
-                    <textarea v-model="cardDraft" class="card-input" rows="4" :placeholder="t('knowledgeManager.cardPlaceholder')"></textarea>
-                    <div class="editor-actions">
-                      <button class="btn btn-primary btn-sm" @click="saveCard" :disabled="cardSaving">
-                        {{ cardSaving ? t('knowledgeManager.savingMemory') : t('knowledgeManager.saveCard') }}
-                      </button>
-                      <button v-if="selectedDoc.cardStatus === 'stale'" class="btn btn-sm" @click="confirmCard">
+                  <div class="reader">
+                    <header class="reader-head">
+                      <AttachmentFileIcon
+                        :file-type="selectedDoc.fileType"
+                        :filename="selectedDoc.filename"
+                        :file-path="typeIconPath(selectedDoc)"
+                        :size="32"
+                      />
+                      <div class="reader-titles">
+                        <h3>{{ selectedDoc.filename }}</h3>
+                        <p class="reader-meta">
+                          <span>{{ selectedDoc.fileType }}</span>
+                          <span>{{ formatSize(selectedDoc.fileSize) }}</span>
+                          <span>{{ selectedDoc.chunkCount }} {{ t('knowledgeManager.chunk') }}</span>
+                          <span>{{ t('knowledgeManager.createdAt') }} {{ formatDate(selectedDoc.createdAt) }}</span>
+                          <span>{{ t('knowledgeManager.updatedAt') }} {{ formatDate(selectedDoc.updatedAt) }}</span>
+                          <span>{{ selectedDoc.addedBy === 'agent' ? t('knowledgeManager.sourceAgent') : t('knowledgeManager.sourceUser') }}</span>
+                        </p>
+                        <div class="detail-tags" v-if="selectedDoc.tags?.length">
+                          <span v-for="tag in selectedDoc.tags" :key="tag" class="tag">{{ tag }}</span>
+                        </div>
+                      </div>
+                    </header>
+                    <article class="reader-body">{{ selectedDoc.content }}</article>
+                    <footer class="reader-tools">
+                      <p v-if="selectedDoc.cardStatus === 'stale'" class="card-stale">{{ t('knowledgeManager.cardStale') }}</p>
+                      <div class="tool-line">
+                        <label class="card-label">{{ t('knowledgeManager.cardLabel') }}</label>
+                        <textarea v-model="cardDraft" class="card-input" rows="2" :placeholder="t('knowledgeManager.cardPlaceholder')"></textarea>
+                        <button class="btn btn-primary btn-sm" @click="saveCard" :disabled="cardSaving">
+                          {{ cardSaving ? t('knowledgeManager.savingMemory') : t('knowledgeManager.saveCard') }}
+                        </button>
+                      </div>
+                      <button v-if="selectedDoc.cardStatus === 'stale'" class="btn btn-sm tool-confirm" @click="confirmCard">
                         {{ t('knowledgeManager.confirmCard') }}
                       </button>
-                    </div>
-                  </div>
-                  <div class="detail-block">
-                    <label class="card-label">{{ t('knowledgeManager.folderLabel') }}</label>
-                    <div class="folder-edit">
-                      <input v-model="folderDraft" class="search-input" :placeholder="t('knowledgeManager.folderPlaceholder')" />
-                      <button class="btn btn-sm" @click="moveSelected">{{ t('knowledgeManager.moveFolder') }}</button>
-                    </div>
-                  </div>
-                  <div class="content-preview">
-                    {{ selectedDoc.content.slice(0, 2000) }}
-                    <span v-if="selectedDoc.content.length > 2000" class="more">
-                      ... ({{ t('knowledgeManager.totalChars', { count: selectedDoc.content.length }) }})
-                    </span>
+                      <div class="tool-line">
+                        <label class="card-label">{{ t('knowledgeManager.folderLabel') }}</label>
+                        <input v-model="folderDraft" class="search-input" :placeholder="t('knowledgeManager.folderPlaceholder')" />
+                        <button class="btn btn-sm" @click="moveSelected">{{ t('knowledgeManager.moveFolder') }}</button>
+                      </div>
+                    </footer>
                   </div>
                 </template>
                 <div v-else class="no-selection">
@@ -959,8 +975,8 @@ onUnmounted(() => {
 
 .manager-body {
   display: flex;
-  height: calc(100vh - 280px);
-  min-height: 360px;
+  height: calc(100vh - 220px);
+  min-height: 560px;
 }
 
 .list-panel {
@@ -974,11 +990,11 @@ onUnmounted(() => {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  padding: 20px 24px;
+  padding: 16px 18px 14px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
 }
 
 /* 左侧筛选：目录、搜索、进度各自留开，不贴边 */
@@ -1073,7 +1089,7 @@ onUnmounted(() => {
 
 .doc-check { display: flex; align-items: center; flex-shrink: 0; }
 .doc-check input { width: 13px; height: 13px; cursor: pointer; }
-.doc-icon { font-size: 20px; flex-shrink: 0; }
+.doc-type-icon { flex-shrink: 0; }
 .doc-info { flex: 1; min-width: 0; }
 .doc-name { font-size: 13px; font-weight: 500; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .folder-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
@@ -1088,20 +1104,14 @@ onUnmounted(() => {
 }
 .folder-chip.on { border-color: var(--accent-primary); color: var(--accent-primary); }
 .card-progress { margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
-.detail-block {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex-shrink: 0;
-}
 .card-label { display: block; margin: 0; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
 .card-stale { color: var(--warning, #b86e00); font-size: 12px; line-height: 1.5; margin: 0; }
 .card-input {
   width: 100%;
-  min-height: 96px;
-  padding: 10px 12px;
+  min-height: 0;
+  padding: 8px 10px;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.5;
   font-family: inherit;
   color: var(--text-primary);
   background: var(--bg-tertiary);
@@ -1110,9 +1120,6 @@ onUnmounted(() => {
   resize: vertical;
 }
 .card-input:focus { outline: none; border-color: var(--accent-primary); }
-.folder-edit { display: flex; gap: 10px; align-items: center; }
-.folder-edit .search-input { flex: 1; width: auto; min-width: 0; }
-.folder-edit .btn { flex-shrink: 0; white-space: nowrap; }
 .doc-meta { display: flex; gap: 8px; font-size: 11px; line-height: 1.4; color: var(--text-muted); margin-top: 4px; }
 .doc-item.active .doc-meta { color: rgba(255, 255, 255, 0.7); }
 
@@ -1140,11 +1147,78 @@ onUnmounted(() => {
 .tag { padding: 2px 8px; font-size: 11px; background: var(--accent-primary); color: white; border-radius: 4px; }
 .detail-time { font-size: 12px; line-height: 1.5; color: var(--text-muted); margin: 0; flex-shrink: 0; }
 
-.content-preview {
-  font-size: 13px; line-height: 1.75; color: var(--text-secondary);
-  background: var(--bg-tertiary); padding: 14px 16px; border-radius: 8px;
-  flex: 1; min-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+.reader {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
+.reader-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.reader-titles { min-width: 0; flex: 1; }
+.reader-titles .detail-tags { margin-top: 8px; }
+.reader-titles h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.reader-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+.reader-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 20px;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.reader-tools {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+}
+.tool-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.tool-line .card-label {
+  width: 64px;
+  flex-shrink: 0;
+  padding-top: 8px;
+}
+.tool-line .card-input,
+.tool-line .search-input {
+  flex: 1;
+  min-width: 0;
+}
+.tool-line .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.tool-confirm { align-self: flex-start; margin-left: 74px; }
 .more { color: var(--text-muted); font-style: italic; }
 
 .no-selection {

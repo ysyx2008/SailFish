@@ -5973,6 +5973,27 @@ ipcMain.handle('localFs:openFile', async (_event, filePath: string) => {
 
 const fileIconByExt = new Map<string, string>()
 
+/** 文件不在磁盘上时，按扩展名放一个空样本再取系统图标。不存在的路径在 macOS 上经常只给一张白纸。 */
+async function fileIconTarget(resolved: string): Promise<string> {
+  try {
+    await fs.promises.access(resolved)
+    return resolved
+  } catch {
+    /* 接着用扩展名样本 */
+  }
+  const ext = path.extname(resolved).toLowerCase()
+  if (!/^\.[a-z0-9]{1,12}$/.test(ext)) return resolved
+  const dir = path.join(app.getPath('userData'), 'file-icon-stubs')
+  await fs.promises.mkdir(dir, { recursive: true })
+  const stub = path.join(dir, `sample${ext}`)
+  try {
+    await fs.promises.access(stub)
+  } catch {
+    await fs.promises.writeFile(stub, Buffer.alloc(0))
+  }
+  return stub
+}
+
 ipcMain.handle('localFs:getFileIcon', async (_event, filePath: string) => {
   if (!filePath || typeof filePath !== 'string') {
     return { success: false, error: 'invalid path' }
@@ -5982,7 +6003,8 @@ ipcMain.handle('localFs:getFileIcon', async (_event, filePath: string) => {
   const cached = ext ? fileIconByExt.get(ext) : undefined
   if (cached) return { success: true, dataUrl: cached }
   try {
-    const image = await app.getFileIcon(resolved, { size: 'normal' })
+    const target = await fileIconTarget(resolved)
+    const image = await app.getFileIcon(target, { size: 'normal' })
     const dataUrl = image.toDataURL()
     if (ext) fileIconByExt.set(ext, dataUrl)
     return { success: true, dataUrl }
