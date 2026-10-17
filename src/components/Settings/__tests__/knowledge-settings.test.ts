@@ -153,7 +153,7 @@ describe('档案室管理界面', () => {
     document.body.innerHTML = ''
   })
 
-  it('能看目录、改说明、按来源筛、批量删，并看见队列进度', async () => {
+  it('能看目录、改说明、按来源筛、批量删', async () => {
     const el = document.createElement('div')
     document.body.appendChild(el)
     const i18n = createI18n({
@@ -169,7 +169,7 @@ describe('档案室管理界面', () => {
     buttonNamed(el, '知识库').click()
     await nextTick()
 
-    expect(el.textContent).toContain('说明：待写 1 · 已好 1 · 脱节 1 · 失败 0')
+    expect(el.textContent).not.toContain('待写')
     expect(el.textContent).toContain('公司制度')
     expect(el.textContent).toContain('公司制度/差旅')
     expect(el.textContent).toContain('空目录')
@@ -183,7 +183,7 @@ describe('档案室管理界面', () => {
 
     buttonNamed(el, '全部').click()
     await nextTick()
-    await chooseSource(el, '秘书放的')
+    await chooseSource(el, '秘书添加')
     expect(el.textContent).toContain('style.md')
     expect(el.textContent).not.toContain('leave.md')
 

@@ -129,18 +129,6 @@ const folders = computed(() => {
   return [...set].sort((a, b) => a.localeCompare(b, 'zh'))
 })
 
-const cardCounts = computed(() => {
-  const counts = { pending: 0, ready: 0, failed: 0, stale: 0 }
-  for (const doc of kbDocuments.value) {
-    const status = doc.cardStatus || 'pending'
-    if (status === 'generating' || status === 'pending') counts.pending += 1
-    else if (status === 'ready') counts.ready += 1
-    else if (status === 'failed') counts.failed += 1
-    else if (status === 'stale') counts.stale += 1
-  }
-  return counts
-})
-
 const cardProfileOptions = computed(() => [
   { value: '', label: t('knowledgeManager.cardProfileOff') },
   ...cardProfiles.value.map(profile => ({ value: profile.id, label: profile.name })),
@@ -670,9 +658,6 @@ onUnmounted(() => {
                       @update:model-value="onSourceFilter"
                     />
                   </div>
-                  <p class="card-progress">
-                    {{ t('knowledgeManager.cardProgress', cardCounts) }}
-                  </p>
                 </div>
                 <div class="batch-bar" v-if="filteredDocuments.length > 0">
                   <label class="check-wrap">
@@ -1100,7 +1085,6 @@ onUnmounted(() => {
   cursor: pointer;
 }
 .folder-chip.on { border-color: var(--accent-primary); color: var(--accent-primary); }
-.card-progress { margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
 .card-label { display: block; margin: 0; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
 .card-stale { color: var(--warning, #b86e00); font-size: 12px; line-height: 1.5; margin: 0; }
 .card-input {
