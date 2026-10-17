@@ -123,10 +123,21 @@ async function settle() {
   }
 }
 
-function buttonNamed(root: HTMLElement, text: string): HTMLButtonElement {
+function buttonNamed(root: ParentNode, text: string): HTMLButtonElement {
   const found = [...root.querySelectorAll('button')].find(button => button.textContent?.includes(text))
   if (!found) throw new Error(`找不到按钮：${text}`)
   return found as HTMLButtonElement
+}
+
+async function chooseSource(root: ParentNode, label: string) {
+  const trigger = root.querySelector('.list-toolbar .app-select-trigger') as HTMLButtonElement | null
+  if (!trigger) throw new Error('找不到来源选择')
+  trigger.click()
+  await nextTick()
+  const option = [...document.body.querySelectorAll('.app-select-option')].find(node => node.textContent?.includes(label))
+  if (!option) throw new Error(`找不到来源：${label}`)
+  ;(option as HTMLButtonElement).click()
+  await nextTick()
 }
 
 describe('档案室管理界面', () => {
@@ -172,16 +183,11 @@ describe('档案室管理界面', () => {
 
     buttonNamed(el, '全部').click()
     await nextTick()
-    const source = el.querySelector('select.source-select') as HTMLSelectElement
-    source.value = 'agent'
-    source.dispatchEvent(new Event('change'))
-    await nextTick()
+    await chooseSource(el, '秘书放的')
     expect(el.textContent).toContain('style.md')
     expect(el.textContent).not.toContain('leave.md')
 
-    source.value = 'all'
-    source.dispatchEvent(new Event('change'))
-    await nextTick()
+    await chooseSource(el, '全部来源')
 
     const oldRow = [...el.querySelectorAll('.doc-item')].find(row => row.textContent?.includes('old.md'))
     if (!oldRow) throw new Error('找不到 old.md')

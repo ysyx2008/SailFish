@@ -145,6 +145,16 @@ const cardProfileOptions = computed(() => [
   ...cardProfiles.value.map(profile => ({ value: profile.id, label: profile.name })),
 ])
 
+const sourceOptions = computed(() => [
+  { value: 'all', label: t('knowledgeManager.sourceAll') },
+  { value: 'user', label: t('knowledgeManager.sourceUser') },
+  { value: 'agent', label: t('knowledgeManager.sourceAgent') },
+])
+
+function onSourceFilter(value: string) {
+  if (value === 'all' || value === 'user' || value === 'agent') addedByFilter.value = value
+}
+
 function inBrowseFolder(folder: string | undefined): boolean {
   const prefix = browseFolder.value
   const value = folder || ''
@@ -628,30 +638,33 @@ onUnmounted(() => {
 
               <!-- ===== 知识库 tab ===== -->
               <template v-if="activeTab === 'knowledge'">
-                <div class="folder-bar">
-                  <button type="button" class="folder-chip" :class="{ on: browseFolder === '' }" @click="browseFolder = ''">
-                    {{ t('knowledgeManager.folderAll') }}
-                  </button>
-                  <button
-                    v-for="folder in folders"
-                    :key="folder"
-                    type="button"
-                    class="folder-chip"
-                    :class="{ on: browseFolder === folder }"
-                    @click="browseFolder = folder"
-                  >{{ folder }}</button>
+                <div class="list-toolbar">
+                  <div class="folder-bar">
+                    <button type="button" class="folder-chip" :class="{ on: browseFolder === '' }" @click="browseFolder = ''">
+                      {{ t('knowledgeManager.folderAll') }}
+                    </button>
+                    <button
+                      v-for="folder in folders"
+                      :key="folder"
+                      type="button"
+                      class="folder-chip"
+                      :class="{ on: browseFolder === folder }"
+                      @click="browseFolder = folder"
+                    >{{ folder }}</button>
+                  </div>
+                  <div class="search-bar">
+                    <input type="text" v-model="searchQuery" :placeholder="t('knowledgeManager.searchPlaceholder')" class="search-input" />
+                    <SettingSelect
+                      :model-value="addedByFilter"
+                      block
+                      :options="sourceOptions"
+                      @update:model-value="onSourceFilter"
+                    />
+                  </div>
+                  <p class="card-progress">
+                    {{ t('knowledgeManager.cardProgress', cardCounts) }}
+                  </p>
                 </div>
-                <div class="search-bar">
-                  <input type="text" v-model="searchQuery" :placeholder="t('knowledgeManager.searchPlaceholder')" class="search-input" />
-                  <select v-model="addedByFilter" class="source-select">
-                    <option value="all">{{ t('knowledgeManager.sourceAll') }}</option>
-                    <option value="user">{{ t('knowledgeManager.sourceUser') }}</option>
-                    <option value="agent">{{ t('knowledgeManager.sourceAgent') }}</option>
-                  </select>
-                </div>
-                <p class="card-progress">
-                  {{ t('knowledgeManager.cardProgress', cardCounts) }}
-                </p>
                 <div class="batch-bar" v-if="filteredDocuments.length > 0">
                   <label class="check-wrap">
                     <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" />
@@ -751,21 +764,25 @@ onUnmounted(() => {
                     {{ t('knowledgeManager.updatedAt') }}：{{ formatDate(selectedDoc.updatedAt) }}
                     · {{ selectedDoc.addedBy === 'agent' ? t('knowledgeManager.sourceAgent') : t('knowledgeManager.sourceUser') }}
                   </div>
-                  <label class="card-label">{{ t('knowledgeManager.cardLabel') }}</label>
-                  <p v-if="selectedDoc.cardStatus === 'stale'" class="card-stale">{{ t('knowledgeManager.cardStale') }}</p>
-                  <textarea v-model="cardDraft" class="card-input" rows="4" :placeholder="t('knowledgeManager.cardPlaceholder')"></textarea>
-                  <div class="editor-actions">
-                    <button class="btn btn-primary btn-sm" @click="saveCard" :disabled="cardSaving">
-                      {{ cardSaving ? t('knowledgeManager.savingMemory') : t('knowledgeManager.saveCard') }}
-                    </button>
-                    <button v-if="selectedDoc.cardStatus === 'stale'" class="btn btn-sm" @click="confirmCard">
-                      {{ t('knowledgeManager.confirmCard') }}
-                    </button>
+                  <div class="detail-block">
+                    <label class="card-label">{{ t('knowledgeManager.cardLabel') }}</label>
+                    <p v-if="selectedDoc.cardStatus === 'stale'" class="card-stale">{{ t('knowledgeManager.cardStale') }}</p>
+                    <textarea v-model="cardDraft" class="card-input" rows="4" :placeholder="t('knowledgeManager.cardPlaceholder')"></textarea>
+                    <div class="editor-actions">
+                      <button class="btn btn-primary btn-sm" @click="saveCard" :disabled="cardSaving">
+                        {{ cardSaving ? t('knowledgeManager.savingMemory') : t('knowledgeManager.saveCard') }}
+                      </button>
+                      <button v-if="selectedDoc.cardStatus === 'stale'" class="btn btn-sm" @click="confirmCard">
+                        {{ t('knowledgeManager.confirmCard') }}
+                      </button>
+                    </div>
                   </div>
-                  <label class="card-label">{{ t('knowledgeManager.folderLabel') }}</label>
-                  <div class="folder-edit">
-                    <input v-model="folderDraft" class="search-input" :placeholder="t('knowledgeManager.folderPlaceholder')" />
-                    <button class="btn btn-sm" @click="moveSelected">{{ t('knowledgeManager.moveFolder') }}</button>
+                  <div class="detail-block">
+                    <label class="card-label">{{ t('knowledgeManager.folderLabel') }}</label>
+                    <div class="folder-edit">
+                      <input v-model="folderDraft" class="search-input" :placeholder="t('knowledgeManager.folderPlaceholder')" />
+                      <button class="btn btn-sm" @click="moveSelected">{{ t('knowledgeManager.moveFolder') }}</button>
+                    </div>
                   </div>
                   <div class="content-preview">
                     {{ selectedDoc.content.slice(0, 2000) }}
@@ -957,45 +974,79 @@ onUnmounted(() => {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  padding: 16px;
+  padding: 20px 24px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  gap: 18px;
+}
+
+/* 左侧筛选：目录、搜索、进度各自留开，不贴边 */
+.list-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--border-color);
 }
 
 /* 搜索 */
-.search-bar { padding: 10px 12px; border-bottom: 1px solid var(--border-color); }
+.search-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  border: none;
+}
 .search-input {
-  width: 100%; padding: 6px 10px; font-size: 12px;
-  border: 1px solid var(--border-color); border-radius: 5px;
-  background: var(--bg-tertiary); color: var(--text-primary);
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-family: inherit;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
 }
 
 /* 批量操作 */
 .batch-bar {
   display: flex; align-items: center; gap: 12px;
-  padding: 6px 12px; background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border-color); font-size: 11px;
+  padding: 10px 14px; background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color); font-size: 12px;
 }
-.check-wrap { display: flex; align-items: center; gap: 4px; cursor: pointer; color: var(--text-secondary); }
+.check-wrap { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-secondary); }
 .check-wrap input { width: 13px; height: 13px; cursor: pointer; }
 .sel-info { color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
 .btn-link { background: none; border: none; color: var(--accent-primary); cursor: pointer; font-size: 11px; padding: 0; }
 .btn-link:hover { text-decoration: underline; }
 
 /* 列表 */
-.item-list { flex: 1; overflow-y: auto; padding: 6px; }
+.item-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 
 .list-actions {
-  padding: 8px 12px;
+  padding: 12px 14px;
   border-top: 1px solid var(--border-color);
-  display: flex; flex-wrap: wrap; gap: 6px;
+  display: flex; flex-wrap: wrap; gap: 8px;
 }
 
 /* 记忆条目 */
 .memory-item {
-  display: flex; flex-direction: column; gap: 3px;
-  padding: 8px 10px; border-radius: 5px; cursor: pointer;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 12px; border-radius: 6px; cursor: pointer;
   transition: all 0.15s; border: 1px solid transparent; position: relative;
 }
 .memory-item:hover { background: var(--bg-hover); }
@@ -1011,8 +1062,8 @@ onUnmounted(() => {
 
 /* 文档条目 */
 .doc-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; border-radius: 5px; cursor: pointer;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 6px; cursor: pointer;
   transition: all 0.15s; border: 1px solid transparent;
 }
 .doc-item:hover { background: var(--bg-hover); }
@@ -1024,17 +1075,45 @@ onUnmounted(() => {
 .doc-check input { width: 13px; height: 13px; cursor: pointer; }
 .doc-icon { font-size: 20px; flex-shrink: 0; }
 .doc-info { flex: 1; min-width: 0; }
-.doc-name { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.folder-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.folder-chip { border: 1px solid var(--border-color, #ddd); background: transparent; border-radius: 999px; padding: 2px 8px; font-size: 12px; cursor: pointer; }
+.doc-name { font-size: 13px; font-weight: 500; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.folder-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+.folder-chip {
+  border: 1px solid var(--border-color, #ddd);
+  background: transparent;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
 .folder-chip.on { border-color: var(--accent-primary); color: var(--accent-primary); }
-.source-select { margin-left: 8px; font-size: 12px; }
-.card-progress { margin: 6px 0; font-size: 12px; opacity: 0.75; }
-.card-label { display: block; margin: 10px 0 4px; font-size: 12px; }
-.card-stale { color: var(--warning, #b86e00); font-size: 12px; margin: 0 0 6px; }
-.card-input { width: 100%; font-size: 13px; }
-.folder-edit { display: flex; gap: 8px; align-items: center; }
-.doc-meta { display: flex; gap: 6px; font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+.card-progress { margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+.detail-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.card-label { display: block; margin: 0; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.card-stale { color: var(--warning, #b86e00); font-size: 12px; line-height: 1.5; margin: 0; }
+.card-input {
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  resize: vertical;
+}
+.card-input:focus { outline: none; border-color: var(--accent-primary); }
+.folder-edit { display: flex; gap: 10px; align-items: center; }
+.folder-edit .search-input { flex: 1; width: auto; min-width: 0; }
+.folder-edit .btn { flex-shrink: 0; white-space: nowrap; }
+.doc-meta { display: flex; gap: 8px; font-size: 11px; line-height: 1.4; color: var(--text-muted); margin-top: 4px; }
 .doc-item.active .doc-meta { color: rgba(255, 255, 255, 0.7); }
 
 /* 按钮 */
@@ -1052,19 +1131,19 @@ onUnmounted(() => {
 .empty-state .hint, .hint { font-size: 11px; margin-top: 6px; color: var(--text-muted); }
 
 /* 右侧详情 */
-.detail-header { margin-bottom: 12px; }
-.detail-header h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-.detail-meta { display: flex; gap: 12px; font-size: 11px; color: var(--text-muted); }
+.detail-header { margin: 0; flex-shrink: 0; }
+.detail-header h3 { font-size: 15px; font-weight: 600; line-height: 1.4; margin: 0 0 8px; overflow-wrap: anywhere; }
+.detail-meta { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 12px; line-height: 1.4; color: var(--text-muted); }
 .unsaved { color: var(--color-warning); font-weight: 500; }
 
-.detail-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
-.tag { padding: 1px 6px; font-size: 10px; background: var(--accent-primary); color: white; border-radius: 3px; }
-.detail-time { font-size: 11px; color: var(--text-muted); margin-bottom: 10px; }
+.detail-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; flex-shrink: 0; }
+.tag { padding: 2px 8px; font-size: 11px; background: var(--accent-primary); color: white; border-radius: 4px; }
+.detail-time { font-size: 12px; line-height: 1.5; color: var(--text-muted); margin: 0; flex-shrink: 0; }
 
 .content-preview {
-  font-size: 12px; line-height: 1.5; color: var(--text-secondary);
-  background: var(--bg-tertiary); padding: 10px; border-radius: 6px;
-  flex: 1; min-height: 0; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+  font-size: 13px; line-height: 1.75; color: var(--text-secondary);
+  background: var(--bg-tertiary); padding: 14px 16px; border-radius: 8px;
+  flex: 1; min-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
 }
 .more { color: var(--text-muted); font-style: italic; }
 
@@ -1093,6 +1172,6 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 .editor-textarea:focus { outline: none; border-color: var(--accent-primary); }
-.editor-actions { display: flex; align-items: center; gap: 10px; padding-top: 8px; }
+.editor-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding-top: 0; margin: 0; }
 .editor-hint { font-size: 11px; color: var(--text-muted); }
 </style>
