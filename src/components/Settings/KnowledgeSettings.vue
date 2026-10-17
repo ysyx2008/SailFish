@@ -706,7 +706,6 @@ onUnmounted(() => {
                       <div class="doc-name">{{ doc.folder ? `${doc.folder}/` : '' }}{{ doc.filename }}</div>
                       <div class="doc-meta">
                         <span>{{ formatSize(doc.fileSize) }}</span>
-                        <span>{{ doc.chunkCount }} {{ t('knowledgeManager.chunk') }}</span>
                       </div>
                     </div>
                     <button class="btn-icon btn-del-hover" @click.stop="deleteDocument(doc)" :title="t('knowledgeManager.delete')">
@@ -774,9 +773,7 @@ onUnmounted(() => {
                       <div class="reader-titles">
                         <h3>{{ selectedDoc.filename }}</h3>
                         <p class="reader-meta">
-                          <span>{{ selectedDoc.fileType }}</span>
                           <span>{{ formatSize(selectedDoc.fileSize) }}</span>
-                          <span>{{ selectedDoc.chunkCount }} {{ t('knowledgeManager.chunk') }}</span>
                           <span>{{ t('knowledgeManager.createdAt') }} {{ formatDate(selectedDoc.createdAt) }}</span>
                           <span>{{ t('knowledgeManager.updatedAt') }} {{ formatDate(selectedDoc.updatedAt) }}</span>
                           <span>{{ selectedDoc.addedBy === 'agent' ? t('knowledgeManager.sourceAgent') : t('knowledgeManager.sourceUser') }}</span>
