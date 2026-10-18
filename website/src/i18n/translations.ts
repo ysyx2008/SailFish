@@ -48,8 +48,8 @@ export const translations = {
       companion: {
         id: 'companion',
         title: '它也会来找你',
-        body: '电脑上聊，手机上也能聊。有事要说时，它会主动联系你。',
-        points: ['多渠道一条线', '主动找你', '常在线'],
+        body: '电脑上聊，手机上也能聊。有事要说时，它会主动联系你。一件事也可以交办成独立任务。',
+        points: ['多渠道一条线', '主动找你', '可交办任务'],
         image: '/screenshot-im.png',
         imageEn: '/screenshot-im_en.png',
         imageAlt: '旗鱼远程联络界面',
@@ -1003,8 +1003,8 @@ export const translations = {
       companion: {
         id: 'companion',
         title: 'It reaches you too',
-        body: 'On your computer or your phone. When something matters, it reaches out first.',
-        points: ['One line, many channels', 'Reaches out first', 'Always on'],
+        body: 'On your computer or your phone. When something matters, it reaches out first. A piece of work can also be handed off as its own task.',
+        points: ['One line, many channels', 'Reaches out first', 'Hands work off'],
         image: '/screenshot-im.png',
         imageEn: '/screenshot-im_en.png',
         imageAlt: 'SailFish remote companion',

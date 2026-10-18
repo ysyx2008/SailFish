@@ -38,7 +38,7 @@ SailFish isn't a chatbot waiting for commands. It's a **personal secretary** liv
 | Pain Point | SailFish Approach |
 |------------|-------------------|
 | Chat-only AI can't act | Your secretary runs commands, reads/writes files, controls the browser, sends email, and makes documents |
-| Every conversation starts from zero | Three-tier memory + knowledge base: knows you, recalls past work, file archive on demand |
+| Every conversation starts from zero | Three-tier memory + knowledge base: knows you, recalls past work, files retrieved when needed |
 | You have to watch and wait | Awaken + Watch: proactive monitoring, scheduled work, push notifications |
 | Tied to your desk | The same secretary via WeChat, DingTalk, Feishu, WeCom, Slack, Telegram, or the web |
 | Don't know the command? | Describe it in natural language; your secretary plans and executes. Risky steps ask first |
@@ -53,11 +53,11 @@ SailFish isn't a chatbot waiting for commands. It's a **personal secretary** liv
 | Entry | Relationship | Character |
 |-------|--------------|-----------|
 | **Tasks** | You delegate specific work | One-off, parallel, isolated; the desktop mainstay. Queue the next message while a task is still running |
-| **Reach** | Your ongoing relationship | Always-on, multi-channel; your secretary can reach out first |
+| **Reach** | Your ongoing relationship | Always-on, multi-channel; your secretary can reach out first; work can be handed off as its own task |
 
 Tasks come first on desktop. All IM channels flow into one Reach line — not a different bot each time.
 
-The window is three columns: new chat, Reach, Terminal, and recent conversations on the left; the current work in the middle; artifacts on the right, gone when collapsed. Watch and Todos have their own panels.
+The window is three columns: new chat, Reach, Terminal, and recent conversations on the left; the current work in the middle; artifacts on the right, gone when collapsed. Watch, Todos, Contacts, and Memory have their own panels.
 
 ## Core Capabilities
 
@@ -66,8 +66,8 @@ The window is three columns: new chat, Reach, Terminal, and recent conversations
 | Feature | Description |
 |---------|-------------|
 | 🧬 **Identity & Personality** | Your secretary has a character; a birth conversation on first launch, more “yours” the more you use it |
-| 🧠 **Three-Tier Memory** | Knows your habits and facts; recalls past work on demand; the knowledge base is the archive you hand over |
-| 📚 **Knowledge Base** | Documents stay on your machine and are retrieved when needed |
+| 🧠 **Three-Tier Memory** | Knows your habits and facts; recalls past work on demand; view and edit it from the secretary menu |
+| 📚 **Knowledge Base** | Documents stay on your machine, can be organized in folders, and are retrieved when needed |
 
 ### It actually works
 
@@ -85,6 +85,7 @@ The window is three columns: new chat, Reach, Terminal, and recent conversations
 
 | Feature | Description |
 |---------|-------------|
+| 👤 **Contacts** | People and organizations, with an address and how to reach them; people mentioned in conversation are recognized |
 | ✅ **Todos** | Local todos with due-soon reminders and importance sorting; hand one off into a new task |
 | 📧 **Email** | Read, search, write, reply — Gmail, Outlook, QQ Mail, 163, and more |
 | 📅 **Calendar** | Google, iCloud, Outlook, CalDAV — manage the schedule in natural language |

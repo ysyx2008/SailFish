@@ -2,7 +2,48 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v11.13.1 (2026-10-02) (Latest)
+## v11.14.0 (2026-10-18) (Latest)
+
+> Reach can manage tasks: work is handed off as its own task, and confirmations and results return to Reach before you are told. The secretary menu also adds Contacts and Memory, the knowledge base can be organized in folders, and files in the input sit inside the sentence.
+
+### New Features
+- 🎯 **Reach can manage tasks**: Work can be handed off as its own task. You can check how it is going, give further instructions, or stop it. For tasks Reach assigned, confirmations and results return to Reach first, and Reach decides whether to tell you
+- 🎯 **Contacts**: View, search, and edit them in the secretary menu, including an address and how to reach someone. People mentioned in the conversation are recognized
+- 🎯 **Memory**: View and edit memory in the secretary menu; Settings keeps only the related options. The entry about you stays at the top. After an upgrade, the former “You” page under Awaken is folded in
+- 🎯 **Knowledge base folders**: Browse, create, rename, and delete folders. The secretary can search by name and help organize them
+- 🎯 **File chips**: A file in the input sits inside the text and stays in place after it is sent. You can open it, undo adding it, and undo removing it
+
+### Improvements
+- ⚡ **Repeating events**: An end date or a number of occurrences can be set
+- ⚡ **Approval is kept per conversation**: A change here applies only to this conversation. New conversations still use the default in Settings
+- ⚡ **A task receipt collapses to one line**: What is actually said to you still appears as usual
+- ⚡ **Simplified view keeps dispatched assistants**
+- ⚡ **Hovering usage shows the full breakdown**
+- ⚡ **The secretary menu is grouped by how often each item is used**, with a divider between groups
+- ⚡ **Skill search includes SkillHub**
+- ⚡ **Pasting a large image asks whether to save a smaller copy**
+- ⚡ **Without a GPU, the knowledge base uses the CPU**: It still works when there is no discrete graphics processor
+
+### Bug Fixes
+- 🐛 **The installed app can read PDFs**
+- 🐛 **PDF text follows the page layout**, so columns no longer come out of order
+- 🐛 **A full backup no longer includes the window cache**
+- 🐛 **Editing Word and Excel no longer saves a backup on every change**; overwriting a file created in this conversation is no longer treated as high risk
+- 🐛 **Long Chinese text no longer breaks into garbled characters while streaming**
+- 🐛 **An interrupted or reopened reply keeps the part already written**
+- 🐛 **A queued message continues after it appears**, including one with an image
+- 🐛 **A message that was not delivered is returned**, and the rest of the queue pauses
+- 🐛 **After Stop, the process no longer keeps counting time**
+- 🐛 **Recalled conversations are marked with where they came from**
+- 🐛 **The approval note stays next to the confirmation**; actions already approved for you are recorded in the process and are not labeled with a risk level again
+- 🐛 **Sending only a file no longer adds an explanatory line**
+- 🐛 **A dropped folder is treated as a folder** and no longer shows an extra chip
+- 🐛 **A reply on WeChat no longer delays process messages**
+- 🐛 **Reopening the control panel still shows a backup in progress**
+- 🐛 **Saving Markdown no longer repeats that there is nothing to save**
+- 🐛 **The new-conversation entry no longer shows an unread mark twice**
+
+## v11.13.1 (2026-10-02)
 
 > Reach shows when something was said, and turns close together are not stamped again. Compacting context in Reach works.
 
