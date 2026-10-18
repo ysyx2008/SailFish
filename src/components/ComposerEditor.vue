@@ -406,7 +406,8 @@ defineExpose({
 .composer-editor :deep(.composer-chip-host) {
   display: inline-flex;
   vertical-align: top;
-  margin: 0 2px;
+  /* 用内边距而不是外边距：光标画在胶囊外框的边上，留白放在框里，光标才不会贴着胶囊边缘 */
+  padding: 0 3px;
   white-space: nowrap;
   user-select: none;
   -webkit-user-select: none;
