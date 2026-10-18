@@ -33,6 +33,15 @@ description: When committing or staging changes, only include files related to t
 - **哈希后补**：提交完成后，把这次的短哈希写进对得上的那几条。若工作区因此只多了想法本这一处改动，再单独提交这一处，说明是补哈希。不要为了补哈希改写刚才那次提交。
 - **不要顺手全本对照**。整本从「上次对照提交」重对一遍，只在用户说「对照一下 / 哪些做了」时做。
 
+## 提交标题
+
+标题一律写成 `类型(范围): 描述`，格式出处是 `CONTRIBUTING.md` 的「提交规范」。
+
+- **类型**：`feat` / `fix` / `docs` / `refactor` / `perf` / `test` / `chore` 等，必填。只改文档用 `docs`，改技能或提示词文件也算 `docs`。
+- **范围**：模块名，如 `composer`、`knowledge`、`memory`、`skills`；跨得太散时可省。
+- **描述**：中文，写用户能感知的结果。
+- 不带类型前缀的标题不合规，提交前自查；已经提交且没推送的，用改写标题补上。
+
 ## 要求
 
 - 只 `git add` 和 `git commit` 与当前需求、当前修复或当前功能相关的文件。
