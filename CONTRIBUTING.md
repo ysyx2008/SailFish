@@ -131,13 +131,15 @@ git checkout -b feature/fix-紧急问题
 
 `scope`（范围）可选，写改动所在的模块名，如 `composer`、`knowledge`、`memory`、`skills`；改动跨得太散、说不出单一模块时可省略，写成 `<type>: <description>`。
 
+`description`（描述）用中文，写用户能感知的结果。
+
 ### 类型说明
 
 | 类型 | 说明 |
 |------|------|
 | `feat` | 新增功能 |
 | `fix` | 修复 bug |
-| `docs` | 文档更新 |
+| `docs` | 文档更新（技能、提示词文件的改动也算） |
 | `style` | 代码格式调整（不影响逻辑） |
 | `refactor` | 代码重构 |
 | `perf` | 性能优化 |
