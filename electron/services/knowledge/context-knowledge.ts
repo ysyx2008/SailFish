@@ -89,41 +89,28 @@ export class ContextKnowledgeService {
     return this.cache.get(this.normalizeId(contextId)) ?? ''
   }
 
-  /** 磁盘上实际存着的内容；读不到返回 null（写盘失败时与内存里的不一致） */
-  getPersistedDocument(contextId: string): string | null {
-    try {
-      return fs.readFileSync(path.join(this.storageDir, `${this.normalizeId(contextId)}.md`), 'utf-8')
-    } catch {
-      return null
-    }
-  }
-
   /**
    * 直接设置知识文档（用于用户手动编辑或初始化）
+   * 写盘失败会抛错，此时内存里的文档保持原样。
    */
   setDocument(contextId: string, content: string): void {
     const safeId = this.normalizeId(contextId)
     const truncated = content.length > this.maxDocChars
       ? content.substring(0, this.maxDocChars)
       : content
-    this.cache.set(safeId, truncated)
     this.saveToDisk(safeId, truncated)
+    this.cache.set(safeId, truncated)
   }
 
   /**
    * 删除知识文档
+   * 文件删不掉会抛错，此时内存里的文档保持原样。
    */
   deleteDocument(contextId: string): void {
     const safeId = this.normalizeId(contextId)
-    this.cache.delete(safeId)
     const filePath = path.join(this.storageDir, `${safeId}.md`)
-    try {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath)
-      }
-    } catch (error) {
-      log.warn('删除文档失败:', error)
-    }
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    this.cache.delete(safeId)
   }
 
   /**
@@ -188,10 +175,13 @@ export class ContextKnowledgeService {
   /**
    * 把模型回复里的改动并回各份记忆。
    * 只认给定的那几份；合并后超过上限、或改动无法落脚的那份不保存。
+   * 有哪份写不进磁盘，其余照常写完后抛错，由调用方按「这次没记成」处理。
    * @returns 实际改动了的 contextId
    */
   applyRefreshResponse(response: string, contextIds: readonly string[]): string[] {
     const updated: string[] = []
+    const failed: string[] = []
+    let firstError: unknown
     for (const [id, patch] of parseMemoryBlocks(response)) {
       if (!contextIds.includes(id)) {
         log.warn(`记忆更新交来了不在本次范围内的「${id}」，忽略`)
@@ -208,8 +198,16 @@ export class ContextKnowledgeService {
         continue
       }
       if (merged === current) continue
-      this.setDocument(id, merged)
-      updated.push(id)
+      try {
+        this.setDocument(id, merged)
+        updated.push(id)
+      } catch (err) {
+        failed.push(id)
+        firstError ??= err
+      }
+    }
+    if (failed.length > 0) {
+      throw new Error(`记忆「${failed.join('、')}」写不进磁盘: ${firstError instanceof Error ? firstError.message : String(firstError)}`)
     }
     return updated
   }
@@ -217,13 +215,16 @@ export class ContextKnowledgeService {
   // ==================== 内部方法 ====================
 
   private saveToDisk(safeId: string, content: string): void {
+    this.ensureDir()
+    const tempPath = path.join(this.storageDir, `${safeId}.md.tmp`)
+    const finalPath = path.join(this.storageDir, `${safeId}.md`)
     try {
-      const tempPath = path.join(this.storageDir, `${safeId}.md.tmp`)
-      const finalPath = path.join(this.storageDir, `${safeId}.md`)
       fs.writeFileSync(tempPath, content, 'utf-8')
       fs.renameSync(tempPath, finalPath)
     } catch (error) {
       log.error('写入失败:', error)
+      try { fs.unlinkSync(tempPath) } catch { /* 临时文件没写出来就没有可清的 */ }
+      throw error
     }
   }
 

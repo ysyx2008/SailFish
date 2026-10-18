@@ -3,8 +3,7 @@ import { UserProfileConsolidator, stripOuterFence } from '../user-profile-consol
 
 function setup(opts: { legacy?: string; current?: string; max?: number; replies?: Array<string | Error | { text: string; complete: false }>; outputLimit?: number; onChat?: () => void; diskFails?: boolean }) {
   const docs = new Map<string, string>()
-  const disk = new Map<string, string>()
-  if (opts.current) { docs.set('personal', opts.current); disk.set('personal', opts.current) }
+  if (opts.current) docs.set('personal', opts.current)
   const backups: Array<[string, string]> = []
   const state = { archived: false, chats: 0, prompts: [] as string[], tokens: [] as number[] }
   const replies = [...(opts.replies ?? [])]
@@ -14,8 +13,7 @@ function setup(opts: { legacy?: string; current?: string; max?: number; replies?
     saveBackup: (name, content) => { backups.push([name, content]) },
     memory: {
       getDocument: id => docs.get(id) ?? '',
-      setDocument: (id, content) => { docs.set(id, content); if (!opts.diskFails) disk.set(id, content) },
-      getPersistedDocument: id => disk.get(id) ?? null,
+      setDocument: (id, content) => { if (opts.diskFails) throw new Error('ENOSPC'); docs.set(id, content) },
       getMaxDocChars: () => opts.max ?? 100,
     },
     getOutputLimit: () => opts.outputLimit ?? 100000,
