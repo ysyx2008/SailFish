@@ -31,6 +31,8 @@ import ToolCallContent from './ToolCallContent.vue'
 import ImageContextMenu from './ImageContextMenu.vue'
 import AttachmentContextMenu from './AttachmentContextMenu.vue'
 import AttachmentFileIcon from './AttachmentFileIcon.vue'
+import MessageInlineFiles from './MessageInlineFiles.vue'
+import { splitMessageByAttachments } from '../composables/message-attachment-inline'
 import EChartsCanvas from './EChartsCanvas.vue'
 import WelcomePanel from './WelcomePanel.vue'
 import HistorySearchModal from './HistorySearchModal.vue'
@@ -93,7 +95,7 @@ const props = withDefaults(defineProps<{
 })
 
 // i18n
-const { t, tm } = useI18n()
+const { t, tm, availableLocales } = useI18n()
 
 // Stores
 const configStore = useConfigStore()
@@ -1831,6 +1833,14 @@ const attachmentContextMenu = reactive<{
   show: false, x: 0, y: 0, filename: null, filePath: null
 })
 
+/** 已发出的消息：把文字里的「[附件：名称]」标记对回附件，嵌进句子里；对不上的留在气泡下方 */
+const splitSentMessage = (text: string | undefined, files: AttachmentInfo[] | undefined) =>
+  splitMessageByAttachments(
+    text ?? '',
+    files ?? [],
+    (file) => availableLocales.map(locale => t('ai.attachmentMarker', { name: file.filename }, { locale })),
+  )
+
 const openAttachmentFile = (file: AttachmentInfo) => {
   void openAttachment(file)
 }
@@ -2786,6 +2796,17 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                          命令安全也不变。renderToolCallContent 把 content 拆成 [前缀, url, 后缀]，
                          三段都走 Vue 文本插值，零 XSS 风险。 -->
                     <ToolCallContent v-else-if="item.step!.type === 'tool_call'" :content="item.step!.content" :toolArgs="item.step!.toolArgs" />
+                    <div
+                      v-else-if="item.step!.type === 'user_supplement' && splitSentMessage(item.step!.content, item.step!.attachments).hasInline"
+                      class="step-text"
+                    >
+                      <MessageInlineFiles
+                        :segments="splitSentMessage(item.step!.content, item.step!.attachments).segments"
+                        :format-file-size="formatFileSize"
+                        @open="openAttachmentFile"
+                        @contextmenu="openAttachmentContextMenu"
+                      />
+                    </div>
                     <div v-else class="step-text markdown-content" v-html="renderMarkdown(item.step!.content)"></div>
                     <!-- 并行子 Agent 卡片组 -->
                     <div v-if="item.step!.subAgents && item.step!.subAgents.length > 0" class="sub-agents-group">
@@ -2835,9 +2856,9 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                         </div>
                       </div>
                     </div>
-                    <div v-if="item.step!.type === 'user_supplement' && item.step!.attachments && item.step!.attachments.length > 0" class="message-attachments">
+                    <div v-if="item.step!.type === 'user_supplement' && splitSentMessage(item.step!.content, item.step!.attachments).rest.length > 0" class="message-attachments">
                       <span
-                        v-for="(file, fileIdx) in item.step!.attachments"
+                        v-for="(file, fileIdx) in splitSentMessage(item.step!.content, item.step!.attachments).rest"
                         :key="fileIdx"
                         class="attachment-chip"
                         :class="{ clickable: !!file.filePath }"
@@ -2851,7 +2872,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                       >
                         <AttachmentFileIcon :file-type="file.fileType" :filename="file.filename" :file-path="file.filePath" :size="15" />
                         <span class="attachment-name">{{ file.filename }}</span>
-                        <span class="attachment-size">{{ formatFileSize(file.fileSize) }}</span>
+                        <span v-if="file.fileType !== 'folder'" class="attachment-size">{{ formatFileSize(file.fileSize) }}</span>
                       </span>
                     </div>
                     <!-- 拒绝步骤（rejected）的 content 与 toolResult 在语义上是同一句"用户拒绝…"，
@@ -3054,7 +3075,15 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
               <div v-else-if="item.type === 'user_task'" class="message user">
                 <div class="message-wrapper">
                   <div class="message-content">
-                    <span class="user-task-text">{{ item.group!.userTask }}</span>
+                    <MessageInlineFiles
+                      v-if="splitSentMessage(item.group!.userTask, item.group!.attachments).hasInline"
+                      class="user-task-text"
+                      :segments="splitSentMessage(item.group!.userTask, item.group!.attachments).segments"
+                      :format-file-size="formatFileSize"
+                      @open="openAttachmentFile"
+                      @contextmenu="openAttachmentContextMenu"
+                    />
+                    <span v-else class="user-task-text">{{ item.group!.userTask }}</span>
                     <div v-if="item.group!.images && item.group!.images.length > 0" class="message-images">
                       <img
                         v-for="(imgUrl, imgIdx) in item.group!.images"
@@ -3072,9 +3101,9 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                     >
                       仅预览前 {{ hint.previewPages }} 页（共 {{ hint.totalPages }} 页）
                     </div>
-                    <div v-if="item.group!.attachments && item.group!.attachments.length > 0" class="message-attachments">
+                    <div v-if="splitSentMessage(item.group!.userTask, item.group!.attachments).rest.length > 0" class="message-attachments">
                       <span 
-                        v-for="(file, fileIdx) in item.group!.attachments" 
+                        v-for="(file, fileIdx) in splitSentMessage(item.group!.userTask, item.group!.attachments).rest" 
                         :key="fileIdx" 
                         class="attachment-chip"
                         :class="{ clickable: !!file.filePath }"
@@ -3088,7 +3117,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                       >
                         <AttachmentFileIcon :file-type="file.fileType" :filename="file.filename" :file-path="file.filePath" :size="15" />
                         <span class="attachment-name">{{ file.filename }}</span>
-                        <span class="attachment-size">{{ formatFileSize(file.fileSize) }}</span>
+                        <span v-if="file.fileType !== 'folder'" class="attachment-size">{{ formatFileSize(file.fileSize) }}</span>
                       </span>
                     </div>
                   </div>
