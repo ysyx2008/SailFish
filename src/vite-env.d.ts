@@ -1051,6 +1051,7 @@ interface Window {
         ok: boolean
         shimPath?: string
         binDir?: string
+        command?: string
         error?: string
         pathHint?: boolean
       }>

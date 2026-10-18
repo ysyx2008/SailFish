@@ -106,12 +106,12 @@ describe('旧用户画像并入记忆', () => {
   })
 
   it('整合期间记忆被更新过：结果作废，不覆盖', async () => {
-    let docsRef: Map<string, string> | undefined
+    const docsHolder: { current?: Map<string, string> } = {}
     const { consolidator, docs, state } = setup({
       legacy: 'a', current: 'b', replies: ['合成'],
-      onChat: () => { docsRef?.set('personal', '对话后刚更新的记忆') },
+      onChat: () => { docsHolder.current?.set('personal', '对话后刚更新的记忆') },
     })
-    docsRef = docs
+    docsHolder.current = docs
     expect(await consolidator.run()).toBe('failed')
     expect(docs.get('personal')).toBe('对话后刚更新的记忆')
     expect(state.archived).toBe(false)

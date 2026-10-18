@@ -1,3 +1,4 @@
+/* eslint-disable no-irregular-whitespace -- 报告用全角空格对齐中文列 */
 /**
  * 召回基线：报告呈现与两次结果对比
  *

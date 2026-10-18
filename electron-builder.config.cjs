@@ -1,3 +1,4 @@
+/* eslint-env node */
 /**
  * 打包配置：以 electron-builder.yml 为底，安装身份和更新地址改读 OEM 配置。
  * Steam 构建不走这份文件。开源默认与 yml 里的旗鱼身份一致。

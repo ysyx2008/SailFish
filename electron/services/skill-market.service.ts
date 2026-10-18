@@ -409,16 +409,18 @@ export class SkillMarketService {
       }
       const chunks: Uint8Array[] = []
       let received = 0
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        if (!value) continue
-        received += value.byteLength
-        if (received > maxBytes) {
-          await reader.cancel()
-          throw new Error(`Skill package too large (max 1MB)`)
+      let readResult = await reader.read()
+      while (!readResult.done) {
+        const { value } = readResult
+        if (value) {
+          received += value.byteLength
+          if (received > maxBytes) {
+            await reader.cancel()
+            throw new Error(`Skill package too large (max 1MB)`)
+          }
+          chunks.push(value)
         }
-        chunks.push(value)
+        readResult = await reader.read()
       }
       return Buffer.concat(chunks)
     } finally {
