@@ -151,7 +151,7 @@ async function chooseSource(root: ParentNode, label: string) {
   await nextTick()
 }
 
-describe('记忆栏目（档案室管理）', () => {
+describe('记忆栏目（知识库管理）', () => {
   beforeEach(() => {
     calls.updateCard.length = 0
     calls.confirmCard.length = 0

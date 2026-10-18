@@ -1642,7 +1642,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     terminalPlaceActive.value = false
   }
 
-  /** 打开记忆栏目（记忆 + 档案室的内容管理，与待办同一位置）；保留 Hub 焦点，切回任务区可恢复 */
+  /** 打开记忆栏目（记忆 + 知识库的内容管理，与待办同一位置）；保留 Hub 焦点，切回任务区可恢复 */
   function openMemory(): void {
     secretaryPanel.value = 'memory'
     activeTabId.value = ''

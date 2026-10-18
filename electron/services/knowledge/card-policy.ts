@@ -138,7 +138,7 @@ export function buildCardPrompt(filename: string, folder: string, content: strin
   const truncated = content.length > CARD_SOURCE_CHARS
   const body = truncated ? content.slice(0, CARD_SOURCE_CHARS) : content
   const lines = [
-    '下面是用户放进档案室的一份原文。写一段导航说明，用来以后按语意找回这份文件：它讲什么、适用于什么范围、有哪些关键概念和数字。',
+    '下面是用户放进知识库的一份原文。写一段导航说明，用来以后按语意找回这份文件：它讲什么、适用于什么范围、有哪些关键概念和数字。',
     '保留原文里的专有名词。这段说明不能代替原文。不要加标题，一段话，三百字以内。',
     '',
     `文件名：${filename}`,

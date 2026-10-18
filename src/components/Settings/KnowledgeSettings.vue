@@ -62,7 +62,7 @@ const contextKnowledgeMaxCharsMin = ref(1000)
 const contextKnowledgeMaxCharsMax = ref(20000)
 const contextKnowledgeMaxCharsSaving = ref(false)
 
-// ==================== 档案室状态 ====================
+// ==================== 知识库状态 ====================
 
 const cardProfiles = ref<{ id: string; name: string }[]>([])
 const clearing = ref(false)
@@ -161,7 +161,7 @@ const loadMemoryLimits = async () => {
   }
 }
 
-/** 清空全库只清档案室里的文件，记忆和主机画像不算 */
+/** 清空全库只清知识库里的文件，记忆和主机画像不算 */
 const loadKnowledgeDocs = async () => {
   try {
     const docs: Array<{ id: string; fileType: string }> = await api.knowledge.getDocuments() || []

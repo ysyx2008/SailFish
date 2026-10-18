@@ -1,5 +1,5 @@
 /**
- * 档案室整理。搜索和放入不在这里，那些是手头一直有的工具。
+ * 知识库整理。搜索和放入不在这里，那些是手头一直有的工具。
  */
 import { registerSkill } from '../registry'
 import type { Skill } from '../types'
@@ -10,8 +10,8 @@ const log = createLogger('ArchiveSkill')
 
 const archiveSkill: Skill = {
   id: 'archive',
-  name: '档案室管理',
-  description: '管理档案室：把本机文件放进去、删除一份、建目录、挪动文件、给目录改名、删除目录。',
+  name: '知识库管理',
+  description: '管理知识库：把本机文件放进去、删除一份、建目录、挪动文件、给目录改名、删除目录。',
   tools: archiveTools,
 }
 

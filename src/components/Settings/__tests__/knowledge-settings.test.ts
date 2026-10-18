@@ -82,7 +82,7 @@ describe('记忆与知识库设置页', () => {
     app.unmount()
   })
 
-  it('清空全库只清档案室里的文件', async () => {
+  it('清空全库只清知识库里的文件', async () => {
     removed.length = 0
     const { el, app } = mountSettings()
     await settle()

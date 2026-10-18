@@ -878,7 +878,9 @@ export default {
   // Memory panel
   memoryPanel: {
     title: 'Memory',
-    desc: 'View, edit and organize memories about the user and each host, and the files in the archive',
+    desc: 'View, edit and organize memories about the user and each host, and the files in the knowledge base',
+    hintMemory: 'Facts the AI remembers about you and each host, included in every conversation.',
+    hintKnowledge: 'Original files you add; the AI looks them up when needed.',
   },
 
   // Knowledge Manager

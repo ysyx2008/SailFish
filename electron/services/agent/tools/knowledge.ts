@@ -294,8 +294,8 @@ export async function addKnowledge(
     const doc = service.getDocument(docId)
     const where = doc?.folder ? `${doc.folder}/${doc.filename}` : (doc?.filename || parsed.filename)
     const output = before.isDuplicate
-      ? `档案室里已经有同样内容：${where}（doc_id: ${docId}）。正文没有放进这次对话。`
-      : `已放入档案室：${where}（doc_id: ${docId}）。正文没有放进这次对话。`
+      ? `知识库里已经有同样内容：${where}（doc_id: ${docId}）。正文没有放进这次对话。`
+      : `已放入知识库：${where}（doc_id: ${docId}）。正文没有放进这次对话。`
     executor.addStep({ type: 'tool_result', content: output, toolName: 'add_knowledge' })
     return { success: true, output }
   } catch (error) {
@@ -340,7 +340,7 @@ export async function removeKnowledge(
   }
   const removed = await service.removeDocument(docId)
   if (!removed) return { success: false, output: '', error: `文档不存在: ${docId}` }
-  const output = `已从档案室删除：${doc.filename}。没有回收站。`
+  const output = `已从知识库删除：${doc.filename}。没有回收站。`
   executor.addStep({ type: 'tool_result', content: output, toolName: 'remove_knowledge' })
   return { success: true, output }
 }
@@ -355,7 +355,7 @@ export async function focusKnowledgeFolder(
     const normalized = setAgentRecallFolder(executor.agentId, folder)
     const output = normalized
       ? `这场对话之后，自动翻档案只在「${normalized}」及其下级里。`
-      : '这场对话之后，自动翻档案改看整个档案室。'
+      : '这场对话之后，自动翻知识库改看整个知识库。'
     executor.addStep({
       type: 'tool_call',
       content: output,

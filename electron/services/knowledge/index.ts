@@ -1453,7 +1453,7 @@ export class KnowledgeService extends EventEmitter {
   }
 
   /**
-   * 档案室按字面找：正文走已有的词索引，目录名和文件名在清单里对词。
+   * 知识库按字面找：正文走已有的词索引，目录名和文件名在清单里对词。
    * 不嵌入，也不碰自动翻阅。
    */
   async searchLiteral(query: string, limit = 5): Promise<LiteralRow[]> {

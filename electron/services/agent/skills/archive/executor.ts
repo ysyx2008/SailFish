@@ -1,5 +1,5 @@
 /**
- * 档案室整理技能的执行。
+ * 知识库整理技能的执行。
  */
 import type { AgentConfig, ToolExecutorConfig, ToolResult } from '../../tools/types'
 import { t } from '../../i18n'

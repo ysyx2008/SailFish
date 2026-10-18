@@ -1,5 +1,5 @@
 /**
- * 档案室目录与「目录印象」召回的纯逻辑。
+ * 知识库目录与「目录印象」召回的纯逻辑。
  * 不碰向量库，也不改主机记忆 / 过往对话那条融合。
  */
 
@@ -198,7 +198,7 @@ export function renderLibraryRecall(args: {
 }): string {
   const budget = args.charBudget ?? RECALL_CHAR_BUDGET
   const lines: string[] = [
-    '按相关度从档案室翻到的线索。不是用户刚说的话。线索和下面的摘录不是全文。',
+    '按相关度从知识库翻到的线索。不是用户刚说的话。线索和下面的摘录不是全文。',
     '',
   ]
   let used = lines.join('\n').length
@@ -452,9 +452,9 @@ export function formatCatalog(
   const files = docs
     .filter(doc => doc.folder === prefix)
     .sort((a, b) => a.filename.localeCompare(b.filename, 'zh'))
-  const where = prefix ? `「${prefix}」` : '档案室'
+  const where = prefix ? `「${prefix}」` : '知识库'
   if (subfolders.length === 0 && files.length === 0) {
-    return prefix ? `${where}是空目录，里面还没有文件。` : '档案室里还没有文档。'
+    return prefix ? `${where}是空目录，里面还没有文件。` : '知识库里还没有文档。'
   }
 
   const sections: string[] = []
@@ -496,7 +496,7 @@ export function formatFolderTree(
   const inside = folders
     .filter(folder => folder.startsWith(head) && folder.length > head.length)
     .sort((a, b) => a.localeCompare(b, 'zh'))
-  const where = prefix ? `「${prefix}」` : '档案室'
+  const where = prefix ? `「${prefix}」` : '知识库'
   if (inside.length === 0) return `${where}下面没有目录。`
 
   const counts = new Map<string, number>()

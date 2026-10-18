@@ -53,7 +53,7 @@ export type DownloadProgressCallback = (
 /** 记忆易变性等级 */
 export type MemoryVolatility = 'stable' | 'moderate' | 'volatile'
 
-/** 谁把这份资料放进档案室的。和观察来源 `source` 不是一回事。 */
+/** 谁把这份资料放进知识库的。和观察来源 `source` 不是一回事。 */
 export type LibraryAddedBy = 'user' | 'agent'
 
 /** 检索说明的状态。pending 的集合就是待写队列。 */

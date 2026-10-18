@@ -396,7 +396,7 @@ const loadAllData = async () => {
     isKnowledgeInitialized.value = await api.knowledge.isInitialized()
     await Promise.all([loadContextDocs(), loadKnowledgeDocs()])
   } catch (error) {
-    console.error('加载记忆与档案室失败:', error)
+    console.error('加载记忆与知识库失败:', error)
   } finally {
     loading.value = false
   }
@@ -740,6 +740,7 @@ onUnmounted(() => {
           :tabs="libraryTabs"
           @update:model-value="onLibraryTab"
         />
+        <p class="tab-hint">{{ activeTab === 'memory' ? t('memoryPanel.hintMemory') : t('memoryPanel.hintKnowledge') }}</p>
     <div class="manager-panel">
       <div class="manager-body">
         <div v-if="activeTab === 'knowledge'" class="folder-tree" role="tree" @click="closeMenus">
@@ -1084,6 +1085,7 @@ onUnmounted(() => {
   border: 1px solid color-mix(in srgb, var(--accent-primary) 28%, transparent);
 }
 .memory-header-text { min-width: 0; flex: 1; }
+.tab-hint { margin: 2px 0 8px; font-size: 12px; color: var(--text-muted); }
 .memory-header h1 { margin: 0; font-size: 16px; font-weight: 600; }
 .memory-header p { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); }
 

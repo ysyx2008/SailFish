@@ -655,7 +655,7 @@ ${execWaitAndUsage}`
       type: 'function',
       function: {
         name: 'search_knowledge',
-        description: '搜索档案室。返回片段和 doc_id，不是全文。全文由 get_knowledge_doc 按 doc_id 返回。match 不填或为 related 时按相关度。match 为 keyword 时，在正文、目录名和文件名里查找字面出现过的词：目录对上只给出目录本身，文件名对上给出该文件的路径、标题和 doc_id，正文对上给出含这些词的片段。',
+        description: '搜索知识库。返回片段和 doc_id，不是全文。全文由 get_knowledge_doc 按 doc_id 返回。match 不填或为 related 时按相关度。match 为 keyword 时，在正文、目录名和文件名里查找字面出现过的词：目录对上只给出目录本身，文件名对上给出该文件的路径、标题和 doc_id，正文对上给出含这些词的片段。',
         parameters: {
           type: 'object',
           properties: {
@@ -682,7 +682,7 @@ ${execWaitAndUsage}`
       type: 'function',
       function: {
         name: 'list_knowledge',
-        description: '列出档案室里一个目录这一层的内容：直属的下级目录（含里面一共多少份文件），和直属的文件（路径、标题、一行说明），不返回正文。更深的层级列那个下级目录。all_folders 为 true 时改为列出这个目录下所有层级的目录（只列目录，不列文件，最多 1000 个）。目录不存在会报错。',
+        description: '列出知识库里一个目录这一层的内容：直属的下级目录（含里面一共多少份文件），和直属的文件（路径、标题、一行说明），不返回正文。更深的层级列那个下级目录。all_folders 为 true 时改为列出这个目录下所有层级的目录（只列目录，不列文件，最多 1000 个）。目录不存在会报错。',
         parameters: {
           type: 'object',
           properties: {

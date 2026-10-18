@@ -1,5 +1,5 @@
 /**
- * 档案室管理技能的工具。
+ * 知识库管理技能的工具。
  * 搜索、列目录、打开全文、限定这场对话的范围不在这里，那些更常用。
  */
 import type { ToolDefinition, ToolDefinitionWithMeta } from '../../tools'
@@ -11,7 +11,7 @@ export const archiveTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'add_knowledge',
-      description: '把本机上的一个文件放进档案室。只收本机路径，文件正文不会出现在这次对话里。可指定目录。',
+      description: '把本机上的一个文件放进知识库。只收本机路径，文件正文不会出现在这次对话里。可指定目录。',
       parameters: {
         type: 'object',
         properties: {
@@ -33,7 +33,7 @@ export const archiveTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'remove_knowledge',
-      description: '从档案室删除一份文档。自己放进去的可以直接删；用户放进去的会先征得同意。没有回收站。',
+      description: '从知识库删除一份文档。自己放进去的可以直接删；用户放进去的会先征得同意。没有回收站。',
       parameters: {
         type: 'object',
         properties: {
@@ -48,7 +48,7 @@ export const archiveTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'archive_create_folder',
-      description: '在档案室建一个目录。folder 用斜杠表示下级，例如 公司制度/差旅。',
+      description: '在知识库建一个目录。folder 用斜杠表示下级，例如 公司制度/差旅。',
       parameters: {
         type: 'object',
         properties: {
@@ -63,7 +63,7 @@ export const archiveTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'archive_move',
-      description: '把档案室里已有的一份文件挪到另一个目录。folder 为空则挪到根上。同一目录已有同名文件时不会挪。',
+      description: '把知识库里已有的一份文件挪到另一个目录。folder 为空则挪到根上。同一目录已有同名文件时不会挪。',
       parameters: {
         type: 'object',
         properties: {
@@ -79,7 +79,7 @@ export const archiveTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'archive_rename_folder',
-      description: '给档案室的一个目录改名。里面的文件和下级目录跟着走。目标位置已经有东西时不会改。',
+      description: '给知识库的一个目录改名。里面的文件和下级目录跟着走。目标位置已经有东西时不会改。',
       parameters: {
         type: 'object',
         properties: {
@@ -95,7 +95,7 @@ export const archiveTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'archive_delete_folder',
-      description: '删掉档案室的一个目录，连同里面的文件和下级目录。目录里还有文件时会先征得同意，并说明有多少份。没有回收站。',
+      description: '删掉知识库的一个目录，连同里面的文件和下级目录。目录里还有文件时会先征得同意，并说明有多少份。没有回收站。',
       parameters: {
         type: 'object',
         properties: {

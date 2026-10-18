@@ -390,19 +390,19 @@ if [[ "$MODE" != "quick" ]]; then
 
   assert_contains "没写说明时文件名也能到场" "kubernetes.md" \
     $CLI knowledge:context "这是一份关于 Kubernetes 容器编排部署的技术文档"
-  assert_last_contains "没写说明时也按目录印象到场" "按相关度从档案室翻到的线索"
+  assert_last_contains "没写说明时也按目录印象到场" "按相关度从知识库翻到的线索"
   assert_last_excludes "正文问法不带出无关目录" "公司制度"
 
   assert_contains "写上检索说明" "已写说明" \
     $CLI knowledge:card "$K8S_ID" --text "航海图：Kubernetes 容器编排"
-  assert_contains "有说明时召回是目录印象" "按相关度从档案室翻到的线索" \
+  assert_contains "有说明时召回是目录印象" "按相关度从知识库翻到的线索" \
     $CLI knowledge:context "这是一份关于 Kubernetes 容器编排部署的技术文档"
   assert_last_contains "目录印象带上那行说明" "航海图：Kubernetes 容器编排"
 
   echo '{' > "$SFT_DATA_DIR/knowledge/card-vectors.json"
   assert_contains "说明向量坏了文件名还在" "kubernetes.md" \
     $CLI knowledge:context "这是一份关于 Kubernetes 容器编排部署的技术文档"
-  assert_last_contains "说明向量坏了仍是目录印象" "按相关度从档案室翻到的线索"
+  assert_last_contains "说明向量坏了仍是目录印象" "按相关度从知识库翻到的线索"
 
   node --input-type=module -e '
     import * as lancedb from "@lancedb/lancedb"
@@ -413,7 +413,7 @@ if [[ "$MODE" != "quick" ]]; then
   ' "$SFT_DATA_DIR/knowledge/lancedb"
   assert_contains "目录索引也坏了仍能召回正文" "kubernetes.md" \
     $CLI knowledge:context "这是一份关于 Kubernetes 容器编排部署的技术文档"
-  assert_last_excludes "目录索引也坏了退回正文片段" "按相关度从档案室翻到的线索"
+  assert_last_excludes "目录索引也坏了退回正文片段" "按相关度从知识库翻到的线索"
   node --input-type=module -e '
     import * as lancedb from "@lancedb/lancedb"
     const db = await lancedb.connect(process.argv[1])
