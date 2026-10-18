@@ -109,6 +109,119 @@ function globToRegExp(pattern) {
   return new RegExp(re)
 }
 
+/** 解包脚本里的相对 import / 动态 import('./x')。裸包名不在这里管。 */
+const RELATIVE_SPECIFIER = /(?:\bfrom\s*|import\s*\(\s*)['"](\.[^'"]+)['"]/g
+
+function relativeImportSpecifiers(filePath) {
+  const text = fs.readFileSync(filePath, 'utf8')
+  const specs = []
+  RELATIVE_SPECIFIER.lastIndex = 0
+  let match
+  while ((match = RELATIVE_SPECIFIER.exec(text))) specs.push(match[1])
+  return specs
+}
+
+function resolveRelativeFile(fromFile, spec) {
+  const base = path.resolve(path.dirname(fromFile), spec)
+  const candidates = [
+    base,
+    `${base}.mjs`,
+    `${base}.js`,
+    `${base}.cjs`,
+    path.join(base, 'index.mjs'),
+    path.join(base, 'index.js'),
+  ]
+  return candidates.find((candidate) => {
+    if (!exists(candidate)) return false
+    try {
+      return fs.statSync(candidate).isFile()
+    } catch {
+      return false
+    }
+  }) || null
+}
+
+/**
+ * 正式包里 utilityProcess 从 asar.unpacked 加载这些脚本，相对 import 只在磁盘上找邻居。
+ * 入口在 asarUnpack 里、被 import 的同目录模块不在，就是这次 PDF 读失败的缺口。
+ */
+function staticSiblingGaps(patterns) {
+  const gaps = []
+  const seen = new Set()
+  const queue = []
+  for (const pattern of patterns) {
+    if (pattern.includes('*')) continue
+    const norm = pattern.replace(/\\/g, '/')
+    if (!norm.startsWith('dist-electron/')) continue
+    const abs = path.join(ROOT, norm.replace(/^dist-electron\//, 'electron/'))
+    if (!exists(abs)) continue
+    try {
+      if (fs.statSync(abs).isFile()) queue.push(abs)
+    } catch {
+      // 源文件不在仓库里（只在构建产物里）时跳过
+    }
+  }
+
+  while (queue.length) {
+    const file = queue.pop()
+    if (seen.has(file)) continue
+    seen.add(file)
+    for (const spec of relativeImportSpecifiers(file)) {
+      const target = resolveRelativeFile(file, spec)
+      const fromRel = path.relative(ROOT, file).replace(/\\/g, '/')
+      if (!target) {
+        gaps.push({
+          from: fromRel,
+          dep: spec,
+          detail: '相对 import 在 electron/ 下找不到目标文件',
+        })
+        continue
+      }
+      const underElectron = path.relative(path.join(ROOT, 'electron'), target).replace(/\\/g, '/')
+      if (underElectron.startsWith('..')) continue
+      if (!seen.has(target)) queue.push(target)
+      const distRel = `dist-electron/${underElectron}`
+      if (!isCoveredByAsarUnpack(distRel, patterns)) {
+        gaps.push({
+          from: fromRel,
+          dep: distRel,
+          detail: '被解包脚本以相对路径 import，未列入 asarUnpack——正式包会 Cannot find module',
+        })
+      }
+    }
+  }
+  return gaps
+}
+
+/** 打包后：解包目录里的脚本，相对 import 的目标必须真的躺在 unpacked 里。 */
+function unpackedSiblingGaps(nmRoot) {
+  const unpackedRoot = path.dirname(nmRoot)
+  const dist = path.join(unpackedRoot, 'dist-electron')
+  if (!exists(dist)) return []
+  const gaps = []
+  const files = []
+  const walk = (dir) => {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const child = path.join(dir, ent.name)
+      if (ent.isDirectory()) walk(child)
+      else if (/\.(mjs|cjs|js)$/.test(ent.name)) files.push(child)
+    }
+  }
+  walk(dist)
+  for (const file of files) {
+    for (const spec of relativeImportSpecifiers(file)) {
+      const target = resolveRelativeFile(file, spec)
+      if (target && isInside(target, unpackedRoot)) continue
+      gaps.push({
+        from: path.relative(unpackedRoot, file).replace(/\\/g, '/'),
+        dep: spec,
+        detail: '相对 import 在 app.asar.unpacked 内找不到目标文件',
+      })
+    }
+  }
+  return gaps
+}
+
 function isCoveredByAsarUnpack(relPosix, patterns) {
   const rel = relPosix.replace(/\\/g, '/')
   const candidates = [
@@ -329,6 +442,12 @@ function checkAsarUnpackDeps(opts) {
     }
   }
 
+  if (mode === 'static') {
+    gaps.push(...staticSiblingGaps(patterns))
+  } else {
+    gaps.push(...unpackedSiblingGaps(nmRoot))
+  }
+
   return { ok: gaps.length === 0, gaps, packageCount: pkgs.length }
 }
 
@@ -344,7 +463,7 @@ function printReport(result, mode) {
     console.error(`    ${g.detail}`)
   }
   console.error(
-    '\n请在 electron-builder.yml 的 asarUnpack 中补上对应 node_modules/<pkg>/**/*，然后重新打包。',
+    '\n请在 electron-builder.yml 的 asarUnpack 中补上对应项（node_modules/<pkg>/**/*，或被相对 import 的 dist-electron 脚本），然后重新打包。',
   )
 }
 

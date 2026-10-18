@@ -47,6 +47,7 @@ asarUnpack:
   - dist-electron/services/pdf-worker.js
   - dist-electron/services/pdfjs-config.mjs
   - dist-electron/services/pdf-text-extract.mjs
+  - dist-electron/services/pdf-layout.mjs
   - node_modules/pdfjs-dist/**/*
   - node_modules/@napi-rs/canvas/**/*
   - node_modules/@napi-rs/canvas-*/**/*

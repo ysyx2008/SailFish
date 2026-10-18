@@ -62,9 +62,12 @@ asarUnpack:
   - node_modules/tslib/**/*
   - node_modules/flatbuffers/**/*
   - dist-electron/services/speech/**/*
+  # 这几个被 utilityProcess 用相对路径互相 import，必须一起解包。
+  # 少一个（曾漏 pdf-layout.mjs）正式包读 PDF 就报 Cannot find module。
   - dist-electron/services/pdf-worker.js
   - dist-electron/services/pdfjs-config.mjs
   - dist-electron/services/pdf-text-extract.mjs
+  - dist-electron/services/pdf-layout.mjs
   - dist-electron/services/knowledge/**/*
   - node_modules/@huggingface/transformers/**/*
   # LanceDB 原生 Rust addon（lancedb-worker.js 在 utilityProcess 中 require，必须在 asar 外）
