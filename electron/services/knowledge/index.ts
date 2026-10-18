@@ -132,7 +132,9 @@ import {
   isLibraryFileType,
   normalizeFolder,
   normalizeFolderSafe,
+  assembleLiteralSearch,
   planFolderRename,
+  type LiteralRow,
   renderLibraryRecall,
   resolveRecallFolder,
   visibleFolders,
@@ -1450,6 +1452,36 @@ export class KnowledgeService extends EventEmitter {
   }
 
   /**
+   * 档案室按字面找：正文走已有的词索引，目录名和文件名在清单里对词。
+   * 不嵌入，也不碰自动翻阅。
+   */
+  async searchLiteral(query: string, limit = 5): Promise<LiteralRow[]> {
+    if (!this.isInitialized) await this.initialize()
+    const tokens = await this.bm25Index.tokenize(query)
+    const docs = this.listLibraryDocuments().map(doc => ({
+      id: doc.id,
+      filename: doc.filename,
+      folder: doc.folder || '',
+      summary: doc.cardSummary,
+    }))
+    const raw = this.bm25Index.isReady()
+      ? await this.bm25Index.search(query, Math.max(limit * 4, 20))
+      : []
+    const body = raw.flatMap(hit => {
+      const doc = this.documentsIndex.get(hit.docId)
+      if (!doc || !isLibraryFileType(doc.fileType)) return []
+      return [{ docId: hit.docId, content: hit.content, score: hit.score }]
+    })
+    return assembleLiteralSearch({
+      tokens,
+      folders: this.listFolders(),
+      docs,
+      body,
+      limit,
+    })
+  }
+
+  /**
    * 结果去重
    */
   private deduplicateResults(results: SearchResult[]): SearchResult[] {
@@ -1943,7 +1975,9 @@ export class KnowledgeService extends EventEmitter {
   /** 列出档案（不含主机记忆和过往对话）。只含路径、标题和一行说明。 */
   listCatalog(folder = ''): string {
     const prefix = folder ? normalizeFolder(folder) : ''
-    return formatCatalog(this.libraryDocs(prefix).map(doc => this.impressionDoc(doc)), prefix)
+    const folders = this.listFolders()
+    if (prefix && !folders.includes(prefix)) throw new FolderPathError(`没有这个目录：${prefix}`)
+    return formatCatalog(this.libraryDocs(prefix).map(doc => this.impressionDoc(doc)), prefix, folders)
   }
 
   listLibraryDocuments(): KnowledgeDocument[] {

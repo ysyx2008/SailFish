@@ -345,19 +345,139 @@ export function planFolderRename(
   return { explicit: [...new Set(nextExplicit)], updates }
 }
 
-export function formatCatalog(docs: ImpressionDoc[], prefix: string, limit = 200): string {
-  const rows = docs
-    .filter(doc => inFolder(doc.folder, prefix))
-    .sort((a, b) => displayPath(a.folder, a.filename).localeCompare(displayPath(b.folder, b.filename), 'zh'))
-  if (rows.length === 0) return prefix ? `「${prefix}」里没有文档。` : '档案室里还没有文档。'
-  const visible = rows.slice(0, limit)
-  const body = visible.map(doc => {
-    const summary = doc.cardSummary ? `\n  ${doc.cardSummary}` : ''
-    const stale = doc.cardStatus === 'stale' ? '\n  （说明还停在旧版）' : ''
-    return `- ${displayPath(doc.folder, doc.filename)}（doc_id: ${doc.id}）${summary}${stale}`
-  }).join('\n')
-  if (rows.length > limit) return `${body}\n\n还有 ${rows.length - limit} 份没有列出。`
-  return body
+export interface LiteralDoc {
+  id: string
+  filename: string
+  folder: string
+  summary?: string
+}
+
+export interface LiteralBodyHit {
+  docId: string
+  content: string
+  score: number
+}
+
+export type LiteralRow =
+  | { kind: 'folder'; folder: string }
+  | { kind: 'file'; id: string; filename: string; folder: string; summary?: string; excerpt?: string }
+  | { kind: 'excerpt'; id: string; filename: string; folder: string; excerpt: string }
+
+function containsEveryToken(haystack: string, tokens: string[]): boolean {
+  const text = haystack.toLowerCase()
+  return tokens.every(token => text.includes(token))
+}
+
+/**
+ * 字面查找：目录、文件名、正文片段合成一份有上限的结果。
+ * 目录只留目录本身。文件名对上的不因为正文没对上就丢掉；正文也对上时，摘录附在这一条上。
+ */
+export function assembleLiteralSearch(input: {
+  tokens: string[]
+  folders: string[]
+  docs: LiteralDoc[]
+  body: LiteralBodyHit[]
+  limit: number
+}): LiteralRow[] {
+  const tokens = input.tokens.map(token => token.trim().toLowerCase()).filter(Boolean)
+  if (tokens.length === 0) return []
+  const limit = Math.max(1, input.limit)
+  const rows: LiteralRow[] = []
+
+  for (const folder of input.folders) {
+    if (!folder || !containsEveryToken(folder, tokens)) continue
+    rows.push({ kind: 'folder', folder })
+    if (rows.length >= limit) return rows
+  }
+
+  const bodyByDoc = new Map<string, LiteralBodyHit>()
+  for (const hit of input.body) {
+    const prev = bodyByDoc.get(hit.docId)
+    if (!prev || hit.score > prev.score) bodyByDoc.set(hit.docId, hit)
+  }
+
+  const named = new Set<string>()
+  for (const doc of input.docs) {
+    if (!containsEveryToken(doc.filename, tokens)) continue
+    named.add(doc.id)
+    const body = bodyByDoc.get(doc.id)
+    rows.push({
+      kind: 'file',
+      id: doc.id,
+      filename: doc.filename,
+      folder: doc.folder,
+      summary: doc.summary,
+      excerpt: body?.content,
+    })
+    if (rows.length >= limit) return rows
+  }
+
+  const docById = new Map(input.docs.map(doc => [doc.id, doc]))
+  const excerpts = [...bodyByDoc.values()]
+    .filter(hit => !named.has(hit.docId) && docById.has(hit.docId))
+    .sort((a, b) => b.score - a.score)
+  for (const hit of excerpts) {
+    const doc = docById.get(hit.docId)!
+    rows.push({
+      kind: 'excerpt',
+      id: doc.id,
+      filename: doc.filename,
+      folder: doc.folder,
+      excerpt: hit.content,
+    })
+    if (rows.length >= limit) return rows
+  }
+  return rows
+}
+
+/** prefix 的直属下级目录（folders 是整棵树上所有看得见的目录） */
+function childFolders(folders: string[], prefix: string): string[] {
+  const head = prefix ? `${prefix}/` : ''
+  return folders
+    .filter(folder => folder.startsWith(head) && folder.length > head.length && !folder.slice(head.length).includes('/'))
+    .sort((a, b) => a.localeCompare(b, 'zh'))
+}
+
+/**
+ * 列一个目录，只给这一层：直属下级目录（写明里面一共多少份文件）+ 直属文件。
+ * docs 是这个目录及其下级里的全部档案。目录不存在由调用方先拦住。
+ */
+export function formatCatalog(
+  docs: ImpressionDoc[],
+  prefix: string,
+  folders: string[],
+  limit = 200,
+): string {
+  const subfolders = childFolders(folders, prefix)
+  const files = docs
+    .filter(doc => doc.folder === prefix)
+    .sort((a, b) => a.filename.localeCompare(b.filename, 'zh'))
+  const where = prefix ? `「${prefix}」` : '档案室'
+  if (subfolders.length === 0 && files.length === 0) {
+    return prefix ? `${where}是空目录，里面还没有文件。` : '档案室里还没有文档。'
+  }
+
+  const sections: string[] = []
+  if (subfolders.length > 0) {
+    const lines = subfolders.map(folder => {
+      const count = docs.filter(doc => inFolder(doc.folder, folder)).length
+      return `- ${folder}/（${count > 0 ? `一共 ${count} 份文件` : '还没有文件'}）`
+    })
+    sections.push(`下级目录：\n${lines.join('\n')}`)
+  }
+  if (files.length > 0) {
+    const visible = files.slice(0, limit)
+    const lines = visible.map(doc => {
+      const summary = doc.cardSummary ? `\n  ${doc.cardSummary}` : ''
+      const stale = doc.cardStatus === 'stale' ? '\n  （说明还停在旧版）' : ''
+      return `- ${displayPath(doc.folder, doc.filename)}（doc_id: ${doc.id}）${summary}${stale}`
+    })
+    const more = files.length > limit ? `\n\n还有 ${files.length - limit} 份没有列出。` : ''
+    sections.push(`${where}里直属的文件：\n${lines.join('\n')}${more}`)
+  } else {
+    sections.push(`${where}里没有直属的文件。`)
+  }
+  return sections.join('\n\n')
 }
 
 export function capChunkText(text: string, max: number): string {

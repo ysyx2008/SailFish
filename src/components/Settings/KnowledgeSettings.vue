@@ -224,9 +224,13 @@ const visibleFolders = computed(() => {
       if (open) walk(node.children, depth + 1)
     }
   }
-  walk(folderTree.value.children, 0)
+  // 根目录是树的顶端，它下面的目录从第 1 层起缩进
+  if (expandedFolders.value.has('')) walk(folderTree.value.children, 1)
   return rows
 })
+
+const rootOpen = computed(() => expandedFolders.value.has(''))
+const rootHasChildren = computed(() => folderTree.value.children.length > 0)
 
 function toggleFolder(path: string) {
   const next = new Set(expandedFolders.value)
@@ -276,11 +280,9 @@ function filesInside(path: string): number {
 }
 
 function startCreate(parent: string) {
-  if (parent) {
-    const next = new Set(expandedFolders.value)
-    next.add(parent)
-    expandedFolders.value = next
-  }
+  const next = new Set(expandedFolders.value)
+  next.add(parent)
+  expandedFolders.value = next
   naming.value = { mode: 'create', parent, path: parent, draft: '' }
   closeMenus()
 }
@@ -828,7 +830,16 @@ onUnmounted(() => {
         <div class="manager-body">
           <div v-if="activeTab === 'knowledge'" class="folder-tree" role="tree" @click="closeMenus">
             <div class="tree-row" :class="{ on: browseFolder === '' }" @contextmenu.prevent="openTreeMenu($event, '')">
-              <span class="tree-chevron"></span>
+              <button
+                v-if="rootHasChildren"
+                type="button"
+                class="tree-chevron"
+                @click="toggleFolder('')"
+              >
+                <ChevronDown v-if="rootOpen" :size="14" />
+                <ChevronRight v-else :size="14" />
+              </button>
+              <span v-else class="tree-chevron"></span>
               <button type="button" class="tree-name" @click="browseFolder = ''">
                 <Folder :size="14" />
                 <span>{{ t('knowledgeManager.folderAll') }}</span>
@@ -837,6 +848,7 @@ onUnmounted(() => {
             <div
               v-if="naming?.mode === 'create' && naming.parent === ''"
               class="tree-row"
+              :style="{ paddingLeft: '14px' }"
             >
               <span class="tree-chevron"></span>
               <input

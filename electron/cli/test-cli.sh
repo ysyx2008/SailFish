@@ -272,6 +272,12 @@ assert_contains "knowledge:folder:create 空目录留下来" "公司制度/差�
   $CLI knowledge:folder:create "公司制度/差旅"
 assert_contains "knowledge:folder:list 看得到空目录" "公司制度/差旅" \
   $CLI knowledge:folder:list
+assert_contains "秘书列目录：看得见空的下级目录" "公司制度/差旅/（还没有文件）" \
+  $CLI knowledge:catalog "公司制度"
+assert_contains "秘书列根：根上有下级目录" "公司制度/（还没有文件）" \
+  $CLI knowledge:catalog
+assert_fails "秘书列不存在的目录要报错，不当成空目录" \
+  $CLI knowledge:catalog "不存在的目录"
 assert_contains "knowledge:folder:rename 下级跟着走" "规章/差旅" \
   $CLI knowledge:folder:rename "公司制度" "规章"
 assert_contains "knowledge:folder:delete 删掉空目录" "已删除目录" \

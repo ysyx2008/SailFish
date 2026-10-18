@@ -5,6 +5,7 @@ import * as path from 'path'
 import {
   FolderPathError,
   bestKeywordPerDoc,
+  assembleLiteralSearch,
   formatCatalog,
   fuseByDocument,
   folderDeleteNeedsConfirm,
@@ -114,14 +115,40 @@ describe('档案目录', () => {
     expect(resolveRecallFolder('个人', '公司制度')).toBe('个人')
   })
 
+  const docs = [
+    { id: 'a', filename: '差旅管理办法', folder: '公司制度/差旅', cardSummary: '讲报销额度', cardStatus: 'ready' as const },
+    { id: 'b', filename: '总则', folder: '公司制度', cardSummary: undefined, cardStatus: 'pending' as const },
+    { id: 'c', filename: '随手记', folder: '', cardSummary: undefined, cardStatus: 'pending' as const },
+  ]
+  const tree = ['公司制度', '公司制度/差旅', '空目录']
+
   it('列目录只有路径、标题和一行说明', () => {
-    const text = formatCatalog([
-      { id: 'a', filename: '差旅管理办法', folder: '公司制度/差旅', cardSummary: '讲报销额度', cardStatus: 'ready' },
-    ], '公司制度')
+    const text = formatCatalog(docs, '公司制度/差旅', tree)
     expect(text).toContain('公司制度/差旅/差旅管理办法')
     expect(text).toContain('doc_id: a')
     expect(text).toContain('讲报销额度')
     expect(text).not.toContain('全文')
+  })
+
+  it('列根只给这一层：下级目录写明份数，空目录也在，直属文件在后面', () => {
+    const text = formatCatalog(docs, '', tree)
+    expect(text).toContain('公司制度/（一共 2 份文件）')
+    expect(text).toContain('空目录/（还没有文件）')
+    expect(text).toContain('随手记')
+    expect(text).not.toContain('总则')
+    expect(text).not.toContain('差旅管理办法')
+  })
+
+  it('列一个目录时，更深的层级只露出目录，不摊开里面的文件', () => {
+    const text = formatCatalog(docs, '公司制度', tree)
+    expect(text).toContain('公司制度/差旅/（一共 1 份文件）')
+    expect(text).toContain('公司制度/总则')
+    expect(text).not.toContain('差旅管理办法')
+  })
+
+  it('空目录说明是空的', () => {
+    expect(formatCatalog([], '空目录', tree)).toContain('空目录')
+    expect(formatCatalog([], '空目录', tree)).toContain('还没有文件')
   })
 })
 
@@ -320,6 +347,54 @@ describe('说明向量和每日额度', () => {
     const again = new CardQuota(file)
     expect(again.usedToday(today)).toBe(1)
     expect(again.take(tomorrow, 1)).toBe(true)
+  })
+})
+
+describe('按字面找', () => {
+  const docs = [
+    { id: 'leave', filename: '差旅报销.md', folder: '公司制度/差旅', summary: '审批' },
+    { id: 'menu', filename: '菜单.md', folder: '公司制度/差旅' },
+    { id: 'code', filename: '备忘.md', folder: '' },
+  ]
+
+  it('目录只留目录本身，文件名对上的才带文件', () => {
+    const rows = assembleLiteralSearch({
+      tokens: ['差旅'],
+      folders: ['公司制度', '公司制度/差旅'],
+      docs,
+      body: [],
+      limit: 10,
+    })
+    expect(rows.map(row => row.kind === 'folder' ? row.folder : row.filename)).toEqual([
+      '公司制度/差旅',
+      '差旅报销.md',
+    ])
+  })
+
+  it('文件名和正文都对上时合成一条，并带上摘录', () => {
+    const rows = assembleLiteralSearch({
+      tokens: ['差旅'],
+      folders: ['公司制度/差旅'],
+      docs,
+      body: [{ docId: 'leave', content: '差旅要审批', score: 3 }, { docId: 'menu', content: '食堂', score: 1 }],
+      limit: 10,
+    })
+    const file = rows.find(row => row.kind === 'file' && row.id === 'leave')
+    expect(file && file.kind === 'file' && file.excerpt).toBe('差旅要审批')
+    expect(rows.filter(row => row.kind === 'excerpt').map(row => row.kind === 'excerpt' ? row.id : '')).toEqual(['menu'])
+  })
+
+  it('编号按整段出现在文件名里才算对上', () => {
+    const rows = assembleLiteralSearch({
+      tokens: ['zebra-7731-quartz'],
+      folders: [],
+      docs: [{ id: 'z', filename: 'ZEBRA-7731-QUARTZ.pdf', folder: '规章' }],
+      body: [],
+      limit: 5,
+    })
+    expect(rows).toEqual([
+      { kind: 'file', id: 'z', filename: 'ZEBRA-7731-QUARTZ.pdf', folder: '规章', summary: undefined, excerpt: undefined },
+    ])
   })
 })
 

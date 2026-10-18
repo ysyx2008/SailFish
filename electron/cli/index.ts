@@ -382,6 +382,18 @@ async function knowledgeFolderList(): Promise<void> {
   for (const folder of folders) console.log(folder)
 }
 
+/** 打印秘书列目录时会看到的内容（一次一层） */
+async function knowledgeCatalog(args: string[]): Promise<void> {
+  const { positional } = parseArgs(args)
+  const service = await knowledgeService()
+  try {
+    console.log(service.listCatalog(positional[0] || ''))
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exit(1)
+  }
+}
+
 async function knowledgeFolderRename(args: string[]): Promise<void> {
   const { positional } = parseArgs(args)
   const from = positional[0]
@@ -2599,6 +2611,7 @@ async function runCli(): Promise<void> {
       case 'knowledge:list':    await knowledgeList(); break
       case 'knowledge:folder:create': await knowledgeFolderCreate(cmdArgs); break
       case 'knowledge:folder:list': await knowledgeFolderList(); break
+      case 'knowledge:catalog': await knowledgeCatalog(cmdArgs); break
       case 'knowledge:folder:rename': await knowledgeFolderRename(cmdArgs); break
       case 'knowledge:folder:delete': await knowledgeFolderDelete(cmdArgs); break
       case 'knowledge:context': await knowledgeContext(cmdArgs); break

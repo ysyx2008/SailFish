@@ -7,11 +7,32 @@ import * as path from 'path'
 import { t } from '../i18n'
 import { getKnowledgeService } from '../../knowledge'
 import { getDocumentParserService } from '../../document-parser.service'
-import { FolderPathError } from '../../knowledge/catalog'
+import { FolderPathError, type LiteralRow } from '../../knowledge/catalog'
 import { setAgentRecallFolder } from '../../knowledge/recall-scope'
 import { isUserDataForbidden } from '../command-audit/userdata-guard'
 import { truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, ToolResult } from './types'
+
+function clipLiteral(text: string): string {
+  const max = 1000
+  if (text.length <= max) return text
+  return `${text.slice(0, max)}\n\n... [内容已截断，完整内容共 ${text.length} 字符]`
+}
+
+function formatLiteralHits(rows: LiteralRow[]): string {
+  const lines = rows.map((row, index) => {
+    const n = index + 1
+    if (row.kind === 'folder') return `### ${n}. 目录：${row.folder}`
+    const title = row.folder ? `${row.folder}/${row.filename}` : row.filename
+    if (row.kind === 'file') {
+      const summary = row.summary ? `\n${row.summary}` : ''
+      const excerpt = row.excerpt ? `\n${clipLiteral(row.excerpt)}` : ''
+      return `### ${n}. ${title}\ndoc_id: ${row.id}${summary}${excerpt}`
+    }
+    return `### ${n}. ${title}\ndoc_id: ${row.id}\n${clipLiteral(row.excerpt)}`
+  })
+  return `找到 ${rows.length} 条：\n\n${lines.join('\n\n')}`
+}
 
 /**
  * 搜索知识库
@@ -56,10 +77,33 @@ export async function searchKnowledge(
       return { success: false, output: '', error: t('error.knowledge_not_enabled') }
     }
 
-    const results = await knowledgeService.search(query, { 
-      limit,
-      hostId: executor.getHostId()
-    })
+    const literal = args.match === 'keyword'
+    const results = literal
+      ? await knowledgeService.searchLiteral(query, limit)
+      : await knowledgeService.search(query, {
+        limit,
+        hostId: executor.getHostId()
+      })
+
+    if (literal) {
+      if (results.length === 0) {
+        executor.addStep({
+          type: 'tool_result',
+          content: t('knowledge.no_results'),
+          toolName: 'search_knowledge'
+        })
+        return { success: true, output: t('success.no_knowledge_found') }
+      }
+      const output = formatLiteralHits(results)
+      const displayOutput = output.length > 500 ? truncateFromEnd(output, 500) : output
+      executor.addStep({
+        type: 'tool_result',
+        content: t('knowledge.found_results', { count: results.length, chars: output.length }),
+        toolName: 'search_knowledge',
+        toolResult: displayOutput
+      })
+      return { success: true, output }
+    }
 
     if (results.length === 0) {
       executor.addStep({

@@ -655,13 +655,18 @@ ${execWaitAndUsage}`
       type: 'function',
       function: {
         name: 'search_knowledge',
-        description: '搜索档案室。返回相关片段和 doc_id，不是全文。全文由 get_knowledge_doc 按 doc_id 返回。',
+        description: '搜索档案室。返回片段和 doc_id，不是全文。全文由 get_knowledge_doc 按 doc_id 返回。match 不填或为 related 时按相关度。match 为 keyword 时，在正文、目录名和文件名里查找字面出现过的词：目录对上只给出目录本身，文件名对上给出该文件的路径、标题和 doc_id，正文对上给出含这些词的片段。',
         parameters: {
           type: 'object',
           properties: {
             query: {
               type: 'string',
               description: '简短的搜索词，1-3个核心关键词即可，避免堆砌'
+            },
+            match: {
+              type: 'string',
+              enum: ['related', 'keyword'],
+              description: 'related：按相关度（默认）。keyword：正文、目录名、文件名里要出现这些词。'
             },
             limit: {
               type: 'integer',
@@ -677,13 +682,13 @@ ${execWaitAndUsage}`
       type: 'function',
       function: {
         name: 'list_knowledge',
-        description: '列出档案室里的文档。只返回目录、标题和一行说明，不返回正文。folder 为空则列出全部；写了目录则包含它的下级。',
+        description: '列出档案室里一个目录这一层的内容：直属的下级目录（含里面一共多少份文件），和直属的文件（路径、标题、一行说明），不返回正文。更深的层级列那个下级目录。目录不存在会报错。',
         parameters: {
           type: 'object',
           properties: {
             folder: {
               type: 'string',
-              description: '目录，例如「公司制度/差旅」。不填则列出全部。'
+              description: '目录，例如「公司制度/差旅」。不填则列根目录。'
             }
           }
         }
