@@ -214,14 +214,24 @@ function pick(action: 'open-todos' | 'open-contacts' | 'open-memory' | 'open-wat
       </div>
 
       <div v-if="menuOpen" class="secretary-menu" @click.stop>
-        <button type="button" class="menu-item" @click="pick('open-contacts')">
-          <BookUser :size="14" />
-          <span>{{ t('shell.contacts') }}</span>
+        <!-- 菜单从按钮向上弹出：越靠下越近手边，所以自下而上按使用频率从高到低排 -->
+        <button
+          v-if="showingEmployee"
+          type="button"
+          class="menu-item menu-item--danger"
+          @click="closeMenu(); emit('logout')"
+        >
+          <span>{{ t('header.ssoLogout') }}</span>
         </button>
-        <button type="button" class="menu-item" @click="pick('open-todos')">
-          <ListTodo :size="14" />
-          <span>{{ t('shell.todos') }}</span>
-          <span v-if="overdueCount > 0" class="menu-badge">{{ overdueCount > 99 ? '99+' : overdueCount }}</span>
+        <button type="button" class="menu-item" @click="pick('open-settings')">
+          <Settings :size="14" />
+          <span>{{ t('shell.settings') }}</span>
+        </button>
+        <div v-if="canShowMemory || canShowWatch || canShowAwaken" class="menu-sep" role="separator" />
+        <button v-if="canShowAwaken" type="button" class="menu-item" @click="pick('open-awaken')">
+          <Heart :size="14" :fill="props.awakened ? 'currentColor' : 'none'" />
+          <span>{{ t('shell.awaken') }}</span>
+          <span v-if="showingEmployee && !props.awakened" class="menu-hint">{{ t('shell.notAwakened') }}</span>
         </button>
         <button v-if="canShowMemory" type="button" class="menu-item" @click="pick('open-memory')">
           <Brain :size="14" />
@@ -232,22 +242,15 @@ function pick(action: 'open-todos' | 'open-contacts' | 'open-memory' | 'open-wat
           <span>{{ t('shell.watch') }}</span>
           <span v-if="watchAnomalyCount > 0" class="menu-badge">{{ watchAnomalyCount > 99 ? '99+' : watchAnomalyCount }}</span>
         </button>
-        <button v-if="canShowAwaken" type="button" class="menu-item" @click="pick('open-awaken')">
-          <Heart :size="14" :fill="props.awakened ? 'currentColor' : 'none'" />
-          <span>{{ t('shell.awaken') }}</span>
-          <span v-if="showingEmployee && !props.awakened" class="menu-hint">{{ t('shell.notAwakened') }}</span>
+        <div class="menu-sep" role="separator" />
+        <button type="button" class="menu-item" @click="pick('open-contacts')">
+          <BookUser :size="14" />
+          <span>{{ t('shell.contacts') }}</span>
         </button>
-        <button type="button" class="menu-item" @click="pick('open-settings')">
-          <Settings :size="14" />
-          <span>{{ t('shell.settings') }}</span>
-        </button>
-        <button
-          v-if="showingEmployee"
-          type="button"
-          class="menu-item menu-item--danger"
-          @click="closeMenu(); emit('logout')"
-        >
-          <span>{{ t('header.ssoLogout') }}</span>
+        <button type="button" class="menu-item" @click="pick('open-todos')">
+          <ListTodo :size="14" />
+          <span>{{ t('shell.todos') }}</span>
+          <span v-if="overdueCount > 0" class="menu-badge">{{ overdueCount > 99 ? '99+' : overdueCount }}</span>
         </button>
       </div>
     </div>
@@ -443,6 +446,12 @@ function pick(action: 'open-todos' | 'open-contacts' | 'open-memory' | 'open-wat
 
 .menu-item:hover {
   background: var(--bg-hover, rgba(127, 127, 127, 0.12));
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border-color);
 }
 
 .menu-item--danger {
