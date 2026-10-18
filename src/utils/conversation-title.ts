@@ -5,8 +5,8 @@
 import i18n from '../i18n'
 import { markersToFileNames } from '../composables/message-attachment-inline'
 
-/** 标题里的「[附件：名称]」标记显示成文件名本身（各界面语言的写法都认） */
-function withFileNames(text: string): string {
+/** 文字里的「[附件：名称]」标记显示成文件名本身（各界面语言的写法都认）；标题、排队条这类纯文字场合用 */
+export function withFileNames(text: string): string {
   const { t, availableLocales } = i18n.global
   return markersToFileNames(
     text,

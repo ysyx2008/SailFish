@@ -17,6 +17,7 @@ import {
 import type { TodoItem, TodoPriority, TodoSource, TodoStatus } from '@sailfish/shared-types'
 import { useTerminalStore, COMPANION_TAB_AGENT_ID } from '../../stores/terminal'
 import { toast } from '../../composables/useToast'
+import { resolveConversationDisplayTitle } from '../../utils/conversation-title'
 import type { UrgencyTier } from './urgency'
 import AppSelect from '../common/AppSelect.vue'
 import TodoRowHoverTip from './TodoRowHoverTip.vue'
@@ -355,7 +356,7 @@ async function resolveSourceLabels(item: TodoItem | null) {
     const id = s.sessionId!
     try {
       const rec = await window.electronAPI.history.getAgentRecordById(id)
-      const title = (rec as { title?: string } | undefined)?.title || rec?.userTask
+      const title = rec ? resolveConversationDisplayTitle(rec) : ''
       if (title) next[id] = title
     } catch {
       /* 失效无所谓 */

@@ -39,6 +39,14 @@ describe('splitMessageByAttachments', () => {
     expect(r.hasInline).toBe(true)
   })
 
+  it('只发了文件（句子里只有标记）：气泡里只有文件，没有多余文字', () => {
+    const r = splitMessageByAttachments(`${mk('a.pdf')} ${mk('b.md')}`, [f('a.pdf'), f('b.md')], markers)
+    expect(r.hasInline).toBe(true)
+    expect(r.rest).toEqual([])
+    const text = r.segments.map(s => (s.type === 'text' ? s.text : '')).join('').trim()
+    expect(text).toBe('')
+  })
+
   it('换行和前后文字原样保留', () => {
     const r = splitMessageByAttachments(`${mk('a')}这是个文件\n${mk('b')}这也是\n\n对吧？`, [f('a'), f('b')], markers)
     const text = r.segments.map(s => (s.type === 'text' ? s.text : '')).join('')

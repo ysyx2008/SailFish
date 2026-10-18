@@ -29,6 +29,7 @@ import AttachmentContextMenu from './AttachmentContextMenu.vue'
 import { useAttachmentActions } from '../composables/useAttachmentActions'
 import { COMPOSER_CHIP_CHAR } from '../composables/composer-editor-text'
 import { chipsToMarkers, markersToChips } from '../composables/composer-attachment-chips'
+import { withFileNames } from '../utils/conversation-title'
 import { isSameAttachment, useComposerAttachmentChips } from '../composables/useComposerAttachmentChips'
 import { SUPPORTED_IMAGE_TYPES } from '../composables/useImageUpload'
 import { useHoverTip, BUTTON_HOVER_TIP_DELAY_MS } from '../composables/useHoverTip'
@@ -860,7 +861,7 @@ function closeComposerChipMenu() {
 /** 给模型看的文件标记：夹在文字里替胶囊说「这里是哪个文件」 */
 const attachmentMarker = (doc: { filename: string }) => t('ai.attachmentMarker', { name: doc.filename })
 
-/** 发送前：把文字里的胶囊换成各自文件的标记；没有别的文字时返回空串（沿用「只发了文件」的默认提示） */
+/** 发送前：把文字里的胶囊换成各自文件的标记；没有别的文字时返回空串（发送处按「只发了文件」处理） */
 function serializeChipText(text: string): string {
   const withoutChips = text.split(COMPOSER_CHIP_CHAR).join('')
   if (!withoutChips.trim()) return ''
@@ -1341,7 +1342,8 @@ const handleSend = async (opts?: { enqueue?: boolean }) => {
   } else if (!mergedUser.trim() && quotesSnapshot.length > 0) {
     mergedUser = t('ai.quoteOnlyPrompt')
   } else if (!mergedUser.trim() && hasDocs) {
-    mergedUser = t('ai.docsOnlyPrompt')
+    // 只发了文件：发出去的就是这些文件本身，不替用户补一句话（气泡里嵌成文件胶囊，标题显示文件名）
+    mergedUser = props.uploadedDocs.map(attachmentMarker).join(' ')
   }
 
   // 显式引用胶囊仍附正文（终端等）；选区作用域不再拼进可见字符串
@@ -1653,7 +1655,7 @@ const handleSendClick = (event: MouseEvent) => {
         class="follow-up-row-text follow-up-row-text-editing"
       >{{ t('ai.followUpQueueEditing') }}</span>
       <div v-else class="follow-up-row-body">
-        <span class="follow-up-row-text" :title="item.message">{{ item.message }}</span>
+        <span class="follow-up-row-text" :title="withFileNames(item.message)">{{ withFileNames(item.message) }}</span>
         <span
           v-if="item.failed"
           class="follow-up-row-failed"

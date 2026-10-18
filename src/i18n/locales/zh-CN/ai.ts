@@ -198,7 +198,6 @@ export default {
     quoteSnippetTerminalTabFallback: '终端',
     quoteOnlyPrompt: '（用户在本消息仅附上引用摘录，见下文；请结合摘录作答。）',
     attachmentMarker: '[附件：{name}]',
-    docsOnlyPrompt: '（用户在本消息仅附上文件，请查看附件。）',
     selectionScopeOnlyPrompt: '处理选中内容',
     selectionScopeAppendixIntro:
       '【选区作用域】用户正在对以下原文下指令。请只改这段（以原文内容为锚），除非用户明确要求扩大范围。',

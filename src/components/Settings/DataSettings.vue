@@ -14,6 +14,7 @@ const isSteamBuild = __STEAM_BUILD__
 import type { AgentRecord } from '@shared/types'
 import { oemResolved } from '@shared/oem-resolve'
 import { showConfirm } from '../../composables/useConfirm'
+import { withFileNames } from '../../utils/conversation-title'
 import { SettingsPage, SettingsGroup, SettingRow, SettingInput, SettingNotice } from './kit'
 
 // 存储统计
@@ -1012,7 +1013,7 @@ onUnmounted(() => {
                         <span :class="['status-badge', getStatusClass(record.status)]">
                           {{ getStatusText(record.status) }}
                         </span>
-                        <span class="agent-task">{{ record.userTask }}</span>
+                        <span class="agent-task">{{ withFileNames(record.userTask) }}</span>
                       </div>
                       <div class="agent-meta">
                         <span v-if="record.sshHost" class="agent-host">
