@@ -13,7 +13,7 @@ const log = createLogger('SkillCreator')
 const skillCreatorSkill: Skill = {
   id: 'skill-manager',
   name: '技能管理与市场',
-  description: '管理用户技能和技能市场。支持创建、更新、删除用户技能，以及搜索、预览、安装SailFish官方和ClawHub社区技能',
+  description: '管理用户技能和技能市场。可以创建、更新、删除用户技能，以及搜索、预览、安装 SailFish 官方技能、ClawHub 社区技能和 SkillHub（skillhub.cn）技能',
   tools: skillCreatorTools,
 
   content: [

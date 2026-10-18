@@ -4,7 +4,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { getUserSkillService } from '../../../user-skill.service'
-import { getSkillMarketService, type SkillSource } from '../../../skill-market.service'
+import { getSkillMarketService, skillHubLocalId, type MarketSkill, type SkillSource } from '../../../skill-market.service'
 import { getConfigService } from '../../../config.service'
 import { setSkillEnv, deleteSkillEnv, listSkillEnvNames } from '../../../credential.service'
 import { createLogger } from '../../../../utils/logger'
@@ -596,52 +596,75 @@ async function marketSearch(args: Record<string, unknown>): Promise<ToolResult> 
 
   try {
     const service = getMarketService()
+    const installed = getUserSkillService().getAllSkills()
+    const want = (name: string) => source === 'all' || source === name
+
+    const empty = { skills: [] as MarketSkill[], unavailable: false }
+    const [sfResults, chOutcome, shOutcome] = await Promise.all([
+      want('sailfish') ? service.searchSkills(query) : Promise.resolve([]),
+      want('clawhub') ? service.searchClawHubResult(query) : Promise.resolve(empty),
+      want('skillhub') ? service.searchSkillHubResult(query) : Promise.resolve(empty),
+    ])
+    const chResults = chOutcome.skills
+    const shResults = shOutcome.skills
+
     const results: Array<{ id: string; name: string; description: string; author: string; source: string; version: string; installed: boolean }> = []
 
-    if (source === 'all' || source === 'sailfish') {
-      const sfResults = await service.searchSkills(query)
-      for (const s of sfResults) {
-        results.push({
-          id: s.id,
-          name: s.name,
-          description: s.description,
-          author: s.author,
-          source: 'sailfish',
-          version: s.version,
-          installed: s.installed,
-        })
-      }
+    for (const s of sfResults) {
+      results.push({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        author: s.author,
+        source: 'sailfish',
+        version: s.version,
+        installed: s.installed,
+      })
     }
 
-    if (source === 'all' || source === 'clawhub') {
-      const chResults = await service.searchClawHub(query)
-      const installed = getUserSkillService().getAllSkills()
-      for (const s of chResults) {
-        results.push({
-          id: s.id,
-          name: s.name,
-          description: s.description,
-          author: s.author,
-          source: 'clawhub',
-          version: s.version,
-          installed: installed.some(local => local.id === s.id),
-        })
-      }
+    for (const s of chResults) {
+      results.push({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        author: s.author,
+        source: 'clawhub',
+        version: s.version,
+        installed: installed.some(local => local.id === s.id),
+      })
     }
+
+    for (const s of shResults) {
+      results.push({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        author: s.author,
+        source: 'skillhub',
+        version: s.version,
+        installed: installed.some(local => local.id === skillHubLocalId(s.id)),
+      })
+    }
+
+    const down = [
+      chOutcome.unavailable ? 'ClawHub 暂时不可用' : '',
+      shOutcome.unavailable ? 'SkillHub 暂时不可用' : '',
+    ].filter(Boolean)
+    const downNote = down.length ? `\n\n${down.join('；')}。` : ''
 
     if (results.length === 0) {
-      return { success: true, output: `未找到与 "${query}" 相关的技能。` }
+      return { success: true, output: `未找到与 "${query}" 相关的技能。${downNote}` }
     }
 
     const lines = results.map(r => {
-      const badge = r.source === 'clawhub' ? '[ClawHub]' : '[SailFish]'
+      const badge = r.source === 'clawhub' ? '[ClawHub]' : r.source === 'skillhub' ? '[SkillHub]' : '[SailFish]'
       const status = r.installed ? ' ✓已安装' : ''
       return `- **${r.name}** (${r.id}) ${badge}${status}\n  ${r.description}\n  作者: ${r.author} | 版本: ${r.version}`
     })
 
     return {
       success: true,
-      output: `找到 ${results.length} 个技能：\n\n${lines.join('\n\n')}\n\n使用 \`skill_preview\` 查看详情和安全审查，然后用 \`skill_market_install\` 安装。`
+      output: `找到 ${results.length} 个技能：\n\n${lines.join('\n\n')}${downNote}\n\n使用 \`skill_preview\` 查看详情和安全审查，然后用 \`skill_market_install\` 安装。SkillHub 的 ID 是搜索结果里的 @作者/名称。`
     }
   } catch (error) {
     return {
@@ -699,7 +722,13 @@ async function skillPreview(args: Record<string, unknown>): Promise<ToolResult> 
       scanSection = t('scan.status_warnings', { count: scan.warnings.length }) + '\n\n' + warningLines.join('\n')
     }
 
-    const sourceLabel = source === 'clawhub' ? 'ClawHub' : source === 'local' ? t('scan.source_local') : 'SailFish'
+    const sourceLabel = source === 'clawhub'
+      ? 'ClawHub'
+      : source === 'skillhub'
+        ? 'SkillHub'
+        : source === 'local'
+          ? t('scan.source_local')
+          : 'SailFish'
     const permissionsLine = skill.permissions?.length
       ? `${t('scan.permissions')}: ${skill.permissions.join(', ')}`
       : `${t('scan.permissions')}: ${t('scan.none')}`
@@ -889,6 +918,8 @@ async function marketInstall(
     let installResult
     if (source === 'clawhub') {
       installResult = await service.installClawHubSkill(skillId)
+    } else if (source === 'skillhub') {
+      installResult = await service.installSkillHubSkill(skillId)
     } else {
       installResult = await service.installSkill(skillId)
     }

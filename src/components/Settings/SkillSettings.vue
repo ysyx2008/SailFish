@@ -37,7 +37,7 @@ interface UserSkill {
   content: string
   filePath: string
   lastModified: number
-  source?: 'sailfish' | 'clawhub'
+  source?: 'sailfish' | 'clawhub' | 'skillhub'
   author?: string
   permissions?: string[]
   requires?: { env?: string[]; bins?: string[] }
@@ -54,7 +54,7 @@ interface MarketSkillItem {
   description: string
   version: string
   author: string
-  source?: 'sailfish' | 'clawhub'
+  source?: 'sailfish' | 'clawhub' | 'skillhub'
   category?: string
   tags?: string[]
   featured?: boolean
@@ -568,6 +568,7 @@ watch(() => props.pendingInstallSkillId, (newId) => {
                 {{ skill.name }}
                 <span class="skill-version" v-if="skill.version">v{{ skill.version }}</span>
                 <span v-if="skill.source === 'clawhub'" class="source-badge clawhub">ClawHub</span>
+                <span v-if="skill.source === 'skillhub'" class="source-badge skillhub">SkillHub</span>
               </div>
               <div class="skill-desc" v-if="skill.description" :title="skill.description">{{ skill.description }}</div>
               <!-- env key 内联行 -->
@@ -773,6 +774,7 @@ enabled: true
                   <span class="skill-name">{{ skill.name }}</span>
                   <span class="skill-version">v{{ skill.version }}</span>
                   <span v-if="skill.source === 'clawhub'" class="source-badge clawhub">ClawHub</span>
+                  <span v-if="skill.source === 'skillhub'" class="source-badge skillhub">SkillHub</span>
                   <span v-if="skill.hasUpdate" class="update-badge">{{ t('skillSettings.updateAvailable') }}</span>
                 </div>
                 <div class="skill-desc" v-if="skill.description" :title="skill.description">{{ skill.description }}</div>
@@ -1399,6 +1401,11 @@ enabled: true
 
 .source-badge.clawhub {
   background: var(--accent-purple, #8b5cf6);
+  color: #fff;
+}
+
+.source-badge.skillhub {
+  background: var(--accent-blue, #3b82f6);
   color: #fff;
 }
 

@@ -37,7 +37,7 @@ interface UserSkill {
   version?: string, enabled: boolean
   content: string, filePath: string, baseDir: string
   lastModified: number
-  source?: "sailfish" | "clawhub", author?: string
+  source?: "sailfish" | "clawhub" | "skillhub", author?: string
   permissions?: string[], commands?: string[]
   requires?: { bins?: string[], env?: string[] }
   files?: string[]

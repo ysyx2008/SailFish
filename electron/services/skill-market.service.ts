@@ -1,7 +1,7 @@
 /**
  * 技能市场服务
  * 从远程 registry 获取、安装、更新社区共享的 SKILL.md 技能
- * 支持 SailFish 官方 registry 和 ClawHub 社区 registry
+ * 支持 SailFish 官方 registry、ClawHub 社区和国内 SkillHub
  */
 import * as fs from 'fs'
 import * as path from 'path'
@@ -15,11 +15,17 @@ const log = createLogger('SkillMarket')
 
 const DEFAULT_REGISTRY_URL = SAILFISH_SKILL_REGISTRY
 const CLAWHUB_API_BASE = 'https://wry-manatee-359.convex.site'
+const SKILLHUB_API_BASE = 'https://api.skillhub.cn'
+const SKILLHUB_SEARCH_LIMIT = 20
+/** 列表里的描述可能很长，搜索结果只留开头，全文在预览里 */
+const SKILLHUB_DESCRIPTION_MAX = 300
 
 const SAFE_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/
 
 /** 技能来源 */
-export type SkillSource = 'sailfish' | 'clawhub'
+export type SkillSource = 'sailfish' | 'clawhub' | 'skillhub'
+
+type CommunitySkillSource = 'clawhub' | 'skillhub'
 
 /** 分类元数据 */
 export interface SkillCategory {
@@ -99,6 +105,107 @@ export interface SkillPreviewResult {
 
 function validateSkillId(id: string): boolean {
   return SAFE_ID_RE.test(id) && !id.includes('..') && id.length <= 128
+}
+
+function communityApiBase(source: CommunitySkillSource): string {
+  return source === 'skillhub' ? SKILLHUB_API_BASE : CLAWHUB_API_BASE
+}
+
+function communityMetaFilename(source: CommunitySkillSource): string {
+  return source === 'skillhub' ? 'skillhub.meta.json' : 'clawhub.meta.json'
+}
+
+/** SkillHub 上短名会重复，唯一身份是 @作者/名称 */
+const SKILLHUB_CANONICAL_RE = /^@[^/@\s]+\/[^/@\s]+$/
+const SKILLHUB_LOCAL_PREFIX = 'skillhub-'
+
+export interface CommunitySearchOutcome {
+  skills: MarketSkill[]
+  /** 这一处请求失败，不是「没有匹配」 */
+  unavailable: boolean
+}
+
+/**
+ * 把 @作者/名称 收成能当目录名的本地 ID。
+ * 同一短名的不同作者不会落到同一个目录。
+ */
+export function skillHubLocalId(canonical: string): string {
+  return SKILLHUB_LOCAL_PREFIX + Buffer.from(canonical, 'utf8').toString('base64url')
+}
+
+/** 接受搜索结果里的 @作者/名称，也接受已经装到本地的目录名 */
+function locateCommunitySkill(
+  skillId: string,
+  source: CommunitySkillSource
+): { downloadSlug: string; localId: string; publicId: string } | null {
+  if (source === 'skillhub') {
+    const parsed = parseSkillHubInstallId(skillId)
+    if (!parsed) return null
+    return { downloadSlug: parsed.canonical, localId: parsed.localId, publicId: parsed.canonical }
+  }
+  if (!validateSkillId(skillId)) return null
+  return { downloadSlug: skillId, localId: skillId, publicId: skillId }
+}
+
+function communityIdError(source: CommunitySkillSource, skillId: string): string {
+  return source === 'skillhub'
+    ? `SkillHub skill id must be the author-qualified name from search, like @owner/excel (got "${skillId}")`
+    : `Invalid skill ID: "${skillId}"`
+}
+
+export function parseSkillHubInstallId(raw: string): { canonical: string; localId: string } | null {
+  const trimmed = raw.trim()
+  if (SKILLHUB_CANONICAL_RE.test(trimmed)) {
+    const localId = skillHubLocalId(trimmed)
+    if (!validateSkillId(localId)) return null
+    return { canonical: trimmed, localId }
+  }
+  if (!trimmed.startsWith(SKILLHUB_LOCAL_PREFIX) || !validateSkillId(trimmed)) return null
+  const decoded = Buffer.from(trimmed.slice(SKILLHUB_LOCAL_PREFIX.length), 'base64url').toString('utf8')
+  if (!SKILLHUB_CANONICAL_RE.test(decoded) || skillHubLocalId(decoded) !== trimmed) return null
+  return { canonical: decoded, localId: trimmed }
+}
+
+/**
+ * 把 SkillHub 列表接口的 skills 数组收成市场技能。
+ * 中文描述优先；没有中文时用英文描述。
+ */
+export function mapSkillHubSearchItems(items: unknown): MarketSkill[] {
+  if (!Array.isArray(items)) return []
+  const results: MarketSkill[] = []
+  for (const raw of items) {
+    if (!raw || typeof raw !== 'object') continue
+    const item = raw as Record<string, unknown>
+    const namespace = item.namespace
+    const canonical = namespace && typeof namespace === 'object'
+      ? (namespace as Record<string, unknown>).canonicalName
+      : undefined
+    const id = typeof canonical === 'string' ? canonical.trim() : ''
+    if (!SKILLHUB_CANONICAL_RE.test(id)) continue
+    const slug = typeof item.slug === 'string' ? item.slug.trim() : id.slice(id.lastIndexOf('/') + 1)
+    const descriptionZh = typeof item.description_zh === 'string' ? item.description_zh.trim() : ''
+    const descriptionEn = typeof item.description === 'string' ? item.description.trim() : ''
+    let description = descriptionZh || descriptionEn
+    if (description.length > SKILLHUB_DESCRIPTION_MAX) {
+      description = description.slice(0, SKILLHUB_DESCRIPTION_MAX) + '…'
+    }
+    const name = typeof item.name === 'string' && item.name.trim() ? item.name.trim() : slug
+    const tags = Array.isArray(item.tags)
+      ? item.tags.filter((tag): tag is string => typeof tag === 'string')
+      : []
+    results.push({
+      id,
+      name,
+      description,
+      version: typeof item.version === 'string' && item.version ? item.version : '1.0.0',
+      author: typeof item.ownerName === 'string' && item.ownerName ? item.ownerName : 'community',
+      source: 'skillhub',
+      tags,
+      category: typeof item.category === 'string' ? item.category : undefined,
+      url: `${SKILLHUB_API_BASE}/api/v1/download?slug=${encodeURIComponent(id)}`,
+    })
+  }
+  return results
 }
 
 /**
@@ -280,7 +387,7 @@ export class SkillMarketService {
     }
   }
 
-  private async fetchBuffer(url: string, timeoutMs = 30000): Promise<Buffer> {
+  private async fetchBuffer(url: string, timeoutMs = 30000, maxBytes = SkillMarketService.MAX_SKILL_SIZE): Promise<Buffer> {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
@@ -288,8 +395,32 @@ export class SkillMarketService {
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
-      const arrayBuf = await response.arrayBuffer()
-      return Buffer.from(arrayBuf)
+      const declared = Number(response.headers.get('content-length'))
+      if (Number.isFinite(declared) && declared > maxBytes) {
+        throw new Error(`Skill package too large (${(declared / 1024).toFixed(0)}KB, max 1MB)`)
+      }
+      const reader = response.body?.getReader()
+      if (!reader) {
+        const arrayBuf = await response.arrayBuffer()
+        if (arrayBuf.byteLength > maxBytes) {
+          throw new Error(`Skill package too large (${(arrayBuf.byteLength / 1024).toFixed(0)}KB, max 1MB)`)
+        }
+        return Buffer.from(arrayBuf)
+      }
+      const chunks: Uint8Array[] = []
+      let received = 0
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (!value) continue
+        received += value.byteLength
+        if (received > maxBytes) {
+          await reader.cancel()
+          throw new Error(`Skill package too large (max 1MB)`)
+        }
+        chunks.push(value)
+      }
+      return Buffer.concat(chunks)
     } finally {
       clearTimeout(timer)
     }
@@ -301,18 +432,32 @@ export class SkillMarketService {
    */
   private extractClawHubZip(zipBuffer: Buffer): { files: Record<string, string>; meta?: Record<string, unknown> } {
     const zip = new AdmZip(zipBuffer)
-    const entries = zip.getEntries()
+    const entries = zip.getEntries().filter(entry => !entry.isDirectory)
+    if (entries.length > SkillMarketService.MAX_ZIP_ENTRIES) {
+      throw new Error(`Skill package has too many files (${entries.length})`)
+    }
     const files: Record<string, string> = {}
     let meta: Record<string, unknown> | undefined
+    let total = 0
 
     for (const entry of entries) {
-      if (entry.isDirectory) continue
-      const name = entry.entryName
-      if (name === '_meta.json') {
+      const name = entry.entryName.replace(/\\/g, '/')
+      const base = name.split('/').pop() || name
+      const claimed = entry.header.size
+      if (claimed > SkillMarketService.MAX_UNCOMPRESSED) {
+        throw new Error(`Skill package expands beyond ${SkillMarketService.MAX_UNCOMPRESSED / 1024 / 1024}MB`)
+      }
+      if (base === '_meta.json') {
         try { meta = JSON.parse(entry.getData().toString('utf-8')) } catch { /* ignore */ }
         continue
       }
-      files[name] = entry.getData().toString('utf-8')
+      if (base === '_skillhub_meta.json') continue
+      const data = entry.getData()
+      total += data.length
+      if (data.length > SkillMarketService.MAX_SKILL_SIZE || total > SkillMarketService.MAX_UNCOMPRESSED) {
+        throw new Error(`Skill package expands beyond ${SkillMarketService.MAX_UNCOMPRESSED / 1024 / 1024}MB`)
+      }
+      files[name] = data.toString('utf-8')
     }
 
     return { files, meta }
@@ -484,8 +629,12 @@ export class SkillMarketService {
    * 搜索 ClawHub 社区技能
    */
   async searchClawHub(query: string): Promise<MarketSkill[]> {
-    if (!oemResolved.communitySkillMarket) return []
-    if (!query.trim()) return []
+    return (await this.searchClawHubResult(query)).skills
+  }
+
+  async searchClawHubResult(query: string): Promise<CommunitySearchOutcome> {
+    if (!oemResolved.communitySkillMarket) return { skills: [], unavailable: false }
+    if (!query.trim()) return { skills: [], unavailable: false }
     const trimmedQuery = query.trim().slice(0, 200)
 
     try {
@@ -497,7 +646,7 @@ export class SkillMarketService {
         data = JSON.parse(raw)
       } catch {
         log.warn('ClawHub search returned invalid JSON')
-        return []
+        return { skills: [], unavailable: true }
       }
 
       const results: MarketSkill[] = []
@@ -520,25 +669,67 @@ export class SkillMarketService {
         })
       }
 
-      return results
+      return { skills: results, unavailable: false }
     } catch (error) {
       log.warn('ClawHub search failed:', error)
-      return []
+      return { skills: [], unavailable: true }
+    }
+  }
+
+  /**
+   * 搜索 SkillHub（skillhub.cn）上的技能
+   */
+  async searchSkillHub(query: string): Promise<MarketSkill[]> {
+    return (await this.searchSkillHubResult(query)).skills
+  }
+
+  async searchSkillHubResult(query: string): Promise<CommunitySearchOutcome> {
+    if (!oemResolved.communitySkillMarket) return { skills: [], unavailable: false }
+    if (!query.trim()) return { skills: [], unavailable: false }
+    const trimmedQuery = query.trim().slice(0, 200)
+
+    try {
+      const url = `${SKILLHUB_API_BASE}/api/skills?keyword=${encodeURIComponent(trimmedQuery)}&pageSize=${SKILLHUB_SEARCH_LIMIT}&sortBy=score&order=desc`
+      const raw = await this.fetchText(url, 10000)
+
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        log.warn('SkillHub search returned invalid JSON')
+        return { skills: [], unavailable: true }
+      }
+      if (!parsed || typeof parsed !== 'object') return { skills: [], unavailable: true }
+      const body = parsed as Record<string, unknown>
+      if (typeof body.code === 'number' && body.code !== 0) {
+        log.warn(`SkillHub search returned code ${body.code}`)
+        return { skills: [], unavailable: true }
+      }
+      const data = body.data
+      const skills = data && typeof data === 'object'
+        ? (data as Record<string, unknown>).skills
+        : undefined
+      return { skills: mapSkillHubSearchItems(skills), unavailable: false }
+    } catch (error) {
+      log.warn('SkillHub search failed:', error)
+      return { skills: [], unavailable: true }
     }
   }
 
   private static readonly MAX_SKILL_SIZE = 1024 * 1024 // 1MB
+  private static readonly MAX_ZIP_ENTRIES = 200
+  private static readonly MAX_UNCOMPRESSED = 4 * 1024 * 1024 // 解压后上限，防止小压缩包膨胀
 
   /**
    * 预览技能内容（下载但不安装），同时执行安全扫描
    */
   async previewSkill(skillId: string, source: SkillSource = 'sailfish'): Promise<SkillPreviewResult> {
     try {
-      if (source === 'clawhub') {
+      if (source === 'clawhub' || source === 'skillhub') {
         if (!oemResolved.communitySkillMarket) {
           return { success: false, error: 'Community skill market is disabled' }
         }
-        return this.previewClawHubSkill(skillId)
+        return this.previewCommunitySkill(skillId, source)
       }
 
       const registry = await this.fetchRegistry()
@@ -563,8 +754,12 @@ export class SkillMarketService {
     }
   }
 
-  private async previewClawHubSkill(skillId: string): Promise<SkillPreviewResult> {
-    const downloadUrl = `${CLAWHUB_API_BASE}/api/v1/download?slug=${encodeURIComponent(skillId)}`
+  private async previewCommunitySkill(skillId: string, source: CommunitySkillSource): Promise<SkillPreviewResult> {
+    const located = locateCommunitySkill(skillId, source)
+    if (!located) {
+      return { success: false, error: communityIdError(source, skillId) }
+    }
+    const downloadUrl = `${communityApiBase(source)}/api/v1/download?slug=${encodeURIComponent(located.downloadSlug)}`
     const zipBuffer = await this.fetchBuffer(downloadUrl)
 
     if (zipBuffer.length > SkillMarketService.MAX_SKILL_SIZE) {
@@ -586,16 +781,16 @@ export class SkillMarketService {
       : `${skillMd}\n\n---\n附属文件 (${fileList.length - 1}): ${fileList.filter(f => f !== 'SKILL.md').join(', ')}`
 
     const skill: MarketSkill = {
-      id: skillId,
-      name: skillId,
+      id: located.publicId,
+      name: located.publicId,
       description: '',
       version: (meta?.version as string) || '1.0.0',
       author: (meta?.ownerId as string) || 'community',
-      source: 'clawhub',
+      source,
       url: downloadUrl,
     }
 
-    const PREVIEW_EXCLUDED = new Set(['SKILL.md', '_meta.json'])
+    const PREVIEW_EXCLUDED = new Set(['SKILL.md', '_meta.json', '_skillhub_meta.json'])
     const extraFiles = fileList.filter(f => !PREVIEW_EXCLUDED.has(f))
 
     return { success: true, skill, content: contentPreview, scan, files: extraFiles }
@@ -605,15 +800,27 @@ export class SkillMarketService {
    * 从 ClawHub 下载 ZIP 并解压安装（包含所有附属文件）
    */
   async installClawHubSkill(skillId: string): Promise<SkillOperationResult> {
+    return this.installCommunitySkill(skillId, 'clawhub')
+  }
+
+  /**
+   * 从 SkillHub 下载 ZIP 并解压安装（包含所有附属文件）
+   */
+  async installSkillHubSkill(skillId: string): Promise<SkillOperationResult> {
+    return this.installCommunitySkill(skillId, 'skillhub')
+  }
+
+  private async installCommunitySkill(skillId: string, source: CommunitySkillSource): Promise<SkillOperationResult> {
     if (!oemResolved.communitySkillMarket) {
       return { success: false, error: 'Community skill market is disabled' }
     }
-    if (!validateSkillId(skillId)) {
-      return { success: false, error: `Invalid skill ID: "${skillId}"` }
+    const located = locateCommunitySkill(skillId, source)
+    if (!located) {
+      return { success: false, error: communityIdError(source, skillId) }
     }
 
     try {
-      const downloadUrl = `${CLAWHUB_API_BASE}/api/v1/download?slug=${encodeURIComponent(skillId)}`
+      const downloadUrl = `${communityApiBase(source)}/api/v1/download?slug=${encodeURIComponent(located.downloadSlug)}`
       const zipBuffer = await this.fetchBuffer(downloadUrl)
 
       if (zipBuffer.length > SkillMarketService.MAX_SKILL_SIZE) {
@@ -625,10 +832,10 @@ export class SkillMarketService {
         return { success: false, error: 'ZIP package does not contain SKILL.md' }
       }
 
-      logStructuralHints(skillId, Object.values(files).join('\n\n'))
+      logStructuralHints(located.localId, Object.values(files).join('\n\n'))
 
       const skillsDir = this.userSkillService.getSkillsDir()
-      const skillDir = path.join(skillsDir, skillId)
+      const skillDir = path.join(skillsDir, located.localId)
       assertInsideDir(skillsDir, skillDir)
 
       if (!fs.existsSync(skillDir)) {
@@ -647,10 +854,13 @@ export class SkillMarketService {
         fs.renameSync(tmpPath, targetPath)
       }
 
-      const metaPath = path.join(skillDir, 'clawhub.meta.json')
+      const metaPath = path.join(skillDir, communityMetaFilename(source))
+      const otherMeta = path.join(skillDir, source === 'skillhub' ? 'clawhub.meta.json' : 'skillhub.meta.json')
+      if (fs.existsSync(otherMeta)) fs.unlinkSync(otherMeta)
       fs.writeFileSync(metaPath, JSON.stringify({
-        source: 'clawhub',
-        slug: meta?.slug || skillId,
+        source,
+        slug: meta?.slug || located.downloadSlug,
+        canonical: source === 'skillhub' ? located.downloadSlug : undefined,
         version: meta?.version || '1.0.0',
         author: meta?.ownerId || 'community',
         installedAt: new Date().toISOString(),
@@ -658,11 +868,11 @@ export class SkillMarketService {
       }, null, 2), 'utf-8')
 
       this.userSkillService.refresh()
-      log.info(`Installed ClawHub skill: ${skillId} (${Object.keys(files).length} files)`)
+      log.info(`Installed ${source} skill: ${skillId} (${Object.keys(files).length} files)`)
       return { success: true }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error'
-      log.error(`Failed to install ClawHub skill ${skillId}:`, error)
+      log.error(`Failed to install ${source} skill ${skillId}:`, error)
       return { success: false, error: msg }
     }
   }
@@ -742,7 +952,7 @@ export class SkillMarketService {
 
       const scan = scanSkillContent(allContent)
 
-      const PREVIEW_EXCLUDED = new Set(['SKILL.md', '_meta.json', 'clawhub.meta.json'])
+      const PREVIEW_EXCLUDED = new Set(['SKILL.md', '_meta.json', '_skillhub_meta.json', 'clawhub.meta.json', 'skillhub.meta.json'])
       const extraFiles = Object.keys(files).filter(f => !PREVIEW_EXCLUDED.has(f))
 
       const skillId = stat.isFile()
@@ -894,10 +1104,12 @@ export class SkillMarketService {
       fs.writeFileSync(tmpPath, content, 'utf-8')
       fs.renameSync(tmpPath, targetPath)
 
-      if (meta?.source === 'clawhub') {
-        const metaPath = path.join(skillDir, 'clawhub.meta.json')
+      if (meta?.source === 'clawhub' || meta?.source === 'skillhub') {
+        const metaPath = path.join(skillDir, communityMetaFilename(meta.source))
+        const otherMeta = path.join(skillDir, meta.source === 'skillhub' ? 'clawhub.meta.json' : 'skillhub.meta.json')
+        if (fs.existsSync(otherMeta)) fs.unlinkSync(otherMeta)
         fs.writeFileSync(metaPath, JSON.stringify({
-          source: 'clawhub',
+          source: meta.source,
           author: meta.author || 'community',
           version: meta.version || '1.0.0',
           permissions: meta.permissions || [],

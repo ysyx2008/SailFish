@@ -144,12 +144,9 @@ export const skillCreatorTools: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'skill_market_search',
-      description: `搜索技能市场。同时搜索 SailFish 官方市场和 ClawHub 社区市场。
+      description: `搜索技能市场。来源有三处：SailFish 官方注册表、ClawHub 社区、SkillHub（https://skillhub.cn）。
 
-**使用场景**：
-- 用户想找某个领域的技能（如"Docker"、"MySQL"、"部署"）
-- 用户提到 ClawHub 或想安装社区技能
-- 需要扩展 Agent 能力时主动搜索`,
+默认三处一起搜。某一处暂时没有结果时，其余来源的结果仍会返回。`,
       parameters: {
         type: 'object',
         properties: {
@@ -159,8 +156,8 @@ export const skillCreatorTools: ToolDefinition[] = [
           },
           source: {
             type: 'string',
-            enum: ['all', 'sailfish', 'clawhub'],
-            description: '搜索来源。默认 "all" 同时搜索两个市场'
+            enum: ['all', 'sailfish', 'clawhub', 'skillhub'],
+            description: '搜索来源。默认 "all"。sailfish 为官方注册表，clawhub 为 ClawHub，skillhub 为 SkillHub（skillhub.cn）'
           }
         },
         required: ['query']
@@ -184,12 +181,12 @@ export const skillCreatorTools: ToolDefinition[] = [
         properties: {
           skill_id: {
             type: 'string',
-            description: '技能 ID 或本地路径。市场技能填 ID（如 "docker-operations"）。本地：已安装技能填 ID（如 "it-project-review"，不要加前导斜杠），或填 .zip / 技能目录 / 独立 .md 文件路径'
+            description: '技能 ID 或本地路径。官方和 ClawHub 填技能 ID。SkillHub 填搜索结果里的 @作者/名称。本地：已安装技能填 ID，或填 .zip / 技能目录 / 独立 .md 文件路径'
           },
           source: {
             type: 'string',
-            enum: ['sailfish', 'clawhub', 'local'],
-            description: '技能来源。SailFish 官方用 "sailfish"，ClawHub 社区用 "clawhub"，已安装技能或本地 zip/目录/独立 md 用 "local"'
+            enum: ['sailfish', 'clawhub', 'skillhub', 'local'],
+            description: '技能来源。SailFish 官方用 "sailfish"，ClawHub 用 "clawhub"，SkillHub（skillhub.cn）用 "skillhub"，已安装技能或本地 zip/目录/独立 md 用 "local"'
           }
         },
         required: ['skill_id', 'source']
@@ -206,12 +203,12 @@ export const skillCreatorTools: ToolDefinition[] = [
         properties: {
           skill_id: {
             type: 'string',
-            description: '技能 ID'
+            description: '技能 ID。SkillHub 填搜索结果里的 @作者/名称'
           },
           source: {
             type: 'string',
-            enum: ['sailfish', 'clawhub'],
-            description: '技能来源'
+            enum: ['sailfish', 'clawhub', 'skillhub'],
+            description: '技能来源。sailfish 为官方注册表，clawhub 为 ClawHub，skillhub 为 SkillHub（skillhub.cn）'
           }
         },
         required: ['skill_id', 'source']

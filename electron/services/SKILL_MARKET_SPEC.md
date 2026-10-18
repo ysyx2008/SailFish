@@ -4,9 +4,15 @@
 
 ## 职责
 
-技能市场客户端。从 SailFish 官方注册表和 ClawHub 社区获取技能列表，提供搜索、预览、安装、更新、卸载流程，并扫描技能内容安全性。支持本地 `.md` 文件的技能导入。
+技能市场客户端。从 SailFish 官方注册表、ClawHub 社区和国内 SkillHub 获取技能，提供搜索、预览、安装、更新、卸载流程，并扫描技能内容安全性。支持本地 `.md` 文件的技能导入。
 
 ## 设计目标
+
+### 技能搜索增加国内的 SkillHub（2026-10-17）
+
+助手搜技能时，除了官方技能市场和国外的 ClawHub，也搜国内的 SkillHub（skillhub.cn）。默认三处一起搜，也可以只搜其中一处。某一处暂时搜不到，不影响另外两处的结果。
+
+搜到的技能可以预览、安装。同名技能按作者区分，不会装成另一份，也不会盖掉已经装好的别的技能。装上之后能看出是从 SkillHub 来的。社区技能市场关闭时，SkillHub 与 ClawHub 一样不可用。某一处暂时连不上时，会说明是哪一处不可用，另外两处的结果照常返回。
 
 ### 本地预览认技能名，也认独立文件（2026-08-13）
 
@@ -45,7 +51,7 @@
 ## 核心类型 / 接口
 
 ```ts
-type SkillSource = "sailfish" | "clawhub"
+type SkillSource = "sailfish" | "clawhub" | "skillhub"
 interface SkillCategory { id, name, nameEn, icon }
 interface MarketSkill {
   id, name, description, version, author, source

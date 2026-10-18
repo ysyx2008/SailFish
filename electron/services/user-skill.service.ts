@@ -62,7 +62,7 @@ export interface UserSkill {
   /** 最后修改时间 */
   lastModified: number
   /** 技能来源 */
-  source?: 'sailfish' | 'clawhub'
+  source?: 'sailfish' | 'clawhub' | 'skillhub'
   /** 作者 */
   author?: string
   /** 权限声明 */
@@ -324,19 +324,14 @@ export class UserSkillService {
       // 扫描技能目录下的附属文件
       skill.files = this.listSkillFiles(baseDir, filePath)
 
-      // 检查 clawhub.meta.json 获取来源信息
-      const metaPath = path.join(baseDir, 'clawhub.meta.json')
-      if (fs.existsSync(metaPath)) {
-        try {
-          const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'))
-          skill.source = 'clawhub'
-          if (meta.author && !skill.author) skill.author = meta.author
-          if (meta.permissions && !skill.permissions) skill.permissions = meta.permissions
-        } catch {
-          // ignore meta parse errors
-        }
-      } else if (frontmatter.source === 'clawhub') {
-        skill.source = 'clawhub'
+      // 社区市场安装时会落下元数据文件，用来记住来源
+      const originMeta = this.readOriginMeta(baseDir)
+      if (originMeta) {
+        skill.source = originMeta.source
+        if (originMeta.author && !skill.author) skill.author = originMeta.author
+        if (originMeta.permissions && !skill.permissions) skill.permissions = originMeta.permissions
+      } else if (frontmatter.source === 'clawhub' || frontmatter.source === 'skillhub') {
+        skill.source = frontmatter.source
       }
 
       return skill
@@ -347,11 +342,45 @@ export class UserSkillService {
   }
 
   /**
+   * 读社区市场留下的来源记录。ClawHub 与 SkillHub 各写各的文件。
+   */
+  private readOriginMeta(baseDir: string): {
+    source: 'clawhub' | 'skillhub'
+    author?: string
+    permissions?: string[]
+  } | null {
+    const candidates: Array<{ file: string; fallback: 'clawhub' | 'skillhub' }> = [
+      { file: 'clawhub.meta.json', fallback: 'clawhub' },
+      { file: 'skillhub.meta.json', fallback: 'skillhub' },
+    ]
+    for (const candidate of candidates) {
+      const metaPath = path.join(baseDir, candidate.file)
+      if (!fs.existsSync(metaPath)) continue
+      try {
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as Record<string, unknown>
+        const source = meta.source === 'skillhub' || meta.source === 'clawhub'
+          ? meta.source
+          : candidate.fallback
+        return {
+          source,
+          author: typeof meta.author === 'string' ? meta.author : undefined,
+          permissions: Array.isArray(meta.permissions)
+            ? meta.permissions.filter((item): item is string => typeof item === 'string')
+            : undefined,
+        }
+      } catch {
+        return { source: candidate.fallback }
+      }
+    }
+    return null
+  }
+
+  /**
    * 列出技能目录下的附属文件（相对路径）
    * 排除 SKILL.md、元数据文件和隐藏文件
    */
   private listSkillFiles(baseDir: string, skillFilePath: string): string[] {
-    const EXCLUDED = new Set(['SKILL.md', 'clawhub.meta.json', '_meta.json', '.DS_Store'])
+    const EXCLUDED = new Set(['SKILL.md', 'clawhub.meta.json', 'skillhub.meta.json', '_meta.json', '_skillhub_meta.json', '.DS_Store'])
     const files: string[] = []
 
     const walk = (dir: string, prefix: string) => {
