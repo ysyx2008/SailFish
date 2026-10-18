@@ -814,10 +814,11 @@ function chipStatusLabel(view: ChipViewModel): string {
   return props.formatFileSize(view.doc.fileSize)
 }
 
-function chipTitle(view: ChipViewModel): string {
+/** 悬停胶囊时的完整说明：文件名（胶囊里可能被截断），解析中 / 出错时再带上状态 */
+function chipTip(view: ChipViewModel): string {
   if (!view) return ''
-  if (view.kind === 'parsing') return getParsePhaseLabel(view.doc)
-  return view.doc.error || view.doc.filename
+  const status = view.kind === 'parsing' ? getParsePhaseLabel(view.doc) : view.doc.error
+  return status ? `${view.doc.filename} · ${status}` : view.doc.filename
 }
 
 /** 给模型看的文件标记：夹在文字里替胶囊说「这里是哪个文件」 */
@@ -1914,7 +1915,7 @@ const handleSendClick = (event: MouseEvent) => {
             <ComposerFileChip
               :view="chipView(chipKey)"
               :status-label="chipStatusLabel(chipView(chipKey))"
-              :title="chipTitle(chipView(chipKey))"
+              :tip="chipTip(chipView(chipKey))"
               :remove-title="t('ai.removeDoc')"
               @remove="removeComposerChip(chipKey)"
             />

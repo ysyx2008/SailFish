@@ -6,6 +6,8 @@
 import { computed } from 'vue'
 import { X } from 'lucide-vue-next'
 import AttachmentFileIcon from './AttachmentFileIcon.vue'
+import HoverTipOverlay from './HoverTipOverlay.vue'
+import { BUTTON_HOVER_TIP_DELAY_MS, useHoverTip } from '../composables/useHoverTip'
 import { CHIP_ACTION_ATTR } from '../composables/composer-chip-node'
 import type { ChipDoc, ChipParsingDoc } from '../composables/useComposerAttachmentChips'
 
@@ -17,7 +19,8 @@ type ChipViewModel =
 const props = defineProps<{
   view: ChipViewModel | null
   statusLabel: string
-  title: string
+  /** 悬停时显示的完整说明（胶囊里的文件名可能被截断） */
+  tip: string
   removeTitle: string
 }>()
 
@@ -36,10 +39,26 @@ const progress = computed(() => {
 })
 
 const actionAttr = { [CHIP_ACTION_ATTR]: '' }
+
+// Electron 下原生 title 不可靠，沿用项目里的悬浮提示
+const { hoverTip, showTip, hideTip } = useHoverTip({
+  placement: 'top',
+  delayMs: BUTTON_HOVER_TIP_DELAY_MS,
+  wrap: true,
+})
+function onHover(e: MouseEvent) {
+  if (props.tip) showTip(e, props.tip)
+}
 </script>
 
 <template>
-  <span v-if="view" class="doc-chip" :class="{ 'is-parsing': isParsing, 'has-error': isFailed }" :title="title">
+  <span
+    v-if="view"
+    class="doc-chip"
+    :class="{ 'is-parsing': isParsing, 'has-error': isFailed }"
+    @mouseenter="onHover"
+    @mouseleave="hideTip"
+  >
     <AttachmentFileIcon
       class="doc-icon"
       :file-type="view.kind === 'doc' ? view.doc.fileType : undefined"
@@ -56,11 +75,12 @@ const actionAttr = { [CHIP_ACTION_ATTR]: '' }
       v-bind="actionAttr"
       :title="removeTitle"
       @mousedown.prevent
-      @click.stop="emit('remove')"
+      @click.stop="hideTip(); emit('remove')"
     >
       <X :size="10" />
     </button>
     <span v-if="progress !== null" class="doc-parse-bar" :style="{ width: progress + '%' }" />
+    <HoverTipOverlay :tip="hoverTip" />
   </span>
   <span v-else class="doc-chip is-pending" />
 </template>

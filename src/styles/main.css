@@ -1414,6 +1414,7 @@ button:focus-visible {
 
 .hover-tip-floating--wrap {
   white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* ============================= */

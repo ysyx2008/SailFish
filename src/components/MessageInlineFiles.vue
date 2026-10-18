@@ -4,6 +4,8 @@
  * 点胶囊打开文件，右键由外层处理；文件夹没有有意义的大小，不显示。
  */
 import AttachmentFileIcon from './AttachmentFileIcon.vue'
+import HoverTipOverlay from './HoverTipOverlay.vue'
+import { BUTTON_HOVER_TIP_DELAY_MS, useHoverTip } from '../composables/useHoverTip'
 import type { AttachmentInfo } from '@shared/types'
 import type { InlineSegment } from '../composables/message-attachment-inline'
 
@@ -16,6 +18,14 @@ const emit = defineEmits<{
   open: [file: AttachmentInfo]
   contextmenu: [event: MouseEvent, file: AttachmentInfo]
 }>()
+
+// 文件名在胶囊里可能被截断；Electron 下原生 title 不可靠，沿用项目里的悬浮提示。
+// 消息常贴着窗口上沿，提示往下开，不被裁掉
+const { hoverTip, showTip, hideTip } = useHoverTip({
+  placement: 'bottom',
+  delayMs: BUTTON_HOVER_TIP_DELAY_MS,
+  wrap: true,
+})
 </script>
 
 <template>
@@ -26,19 +36,21 @@ const emit = defineEmits<{
         v-else
         class="inline-file-chip"
         :class="{ clickable: !!seg.file.filePath }"
-        :title="seg.file.filePath || seg.file.filename"
         role="button"
         tabindex="0"
-        @click="emit('open', seg.file)"
+        @click="hideTip(); emit('open', seg.file)"
         @keydown.enter.prevent="emit('open', seg.file)"
         @keydown.space.prevent="emit('open', seg.file)"
-        @contextmenu="emit('contextmenu', $event, seg.file)"
+        @mouseenter="showTip($event, seg.file.filePath || seg.file.filename)"
+        @mouseleave="hideTip"
+        @contextmenu="hideTip(); emit('contextmenu', $event, seg.file)"
       >
         <AttachmentFileIcon :file-type="seg.file.fileType" :filename="seg.file.filename" :file-path="seg.file.filePath" :size="14" />
         <span class="inline-file-name">{{ seg.file.filename }}</span>
         <span v-if="seg.file.fileType !== 'folder'" class="inline-file-size">{{ formatFileSize(seg.file.fileSize) }}</span>
       </span>
     </template>
+    <HoverTipOverlay :tip="hoverTip" />
   </span>
 </template>
 
