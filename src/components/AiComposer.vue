@@ -3188,14 +3188,6 @@ const handleSendClick = (event: MouseEvent) => {
   border-radius: 16px;
   transition: box-shadow 0.2s ease;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  /* 聚焦时的强调边：1px 细边 + 一层很淡的柔光，颜色从主题的强调色和边框色推出来，
-     在每套主题里都和它的边框、底色同一个调子；不用高饱和粗框，免得在中性灰的界面里成孤岛。
-     聚焦样式与 flash-hint 脉冲的落点共用这一份，别各写一遍；改这里的层数/顺序要同步改 flash-hint 的关键帧。 */
-  --composer-focus-shadow:
-    0 0 0 1px color-mix(in srgb, var(--accent-primary) 72%, var(--border-color)),
-    0 0 0 4px color-mix(in srgb, var(--accent-primary) 12%, transparent),
-    0 4px 12px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .input-container.has-skill-chips:not(.input-container-two-row) {
@@ -3369,14 +3361,12 @@ const handleSendClick = (event: MouseEvent) => {
 }
 
 .input-container:has(.ProseMirror-focused) {
-  box-shadow: var(--composer-focus-shadow);
+  box-shadow: 0 0 0 2px var(--accent-primary), 0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 /* flash-hint：场景卡片填入 prompt 后的一次性脉冲，提醒用户"输入框已就绪，按 Enter 发送"。
    动画期间盖过 :has(.ProseMirror-focused) 的 box-shadow（因 specificity + 动画在同 selector 上覆盖），
-   1.5s 后 class 自动移除，恢复默认 / focus 态外观。
-   阴影按层数、内外（inset）逐层插值：这里的层数和顺序必须与 --composer-focus-shadow 一致
-   （外圈边 / 柔光 / 投影 / 内高光），否则内外不同的两层只能硬切，动画中途会闪一下。 */
+   1.5s 后 class 自动移除，恢复默认 / focus 态外观。 */
 .input-container.flash-hint {
   animation: composerFlashHint 1.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -3386,18 +3376,19 @@ const handleSendClick = (event: MouseEvent) => {
     box-shadow:
       0 0 0 0 rgba(var(--accent-decorative-rgb), 0.6),
       0 0 0 0 rgba(var(--accent-decorative-rgb), 0),
-      0 4px 12px rgba(0, 0, 0, 0),
       inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
   25% {
     box-shadow:
       0 0 0 4px rgba(var(--accent-decorative-rgb), 0.55),
       0 0 22px 2px rgba(var(--accent-decorative-rgb), 0.4),
-      0 4px 12px rgba(0, 0, 0, 0.1),
       inset 0 1px 0 rgba(255, 255, 255, 0.08);
   }
   100% {
-    box-shadow: var(--composer-focus-shadow);
+    box-shadow:
+      0 0 0 2px var(--accent-primary),
+      0 4px 12px rgba(0, 0, 0, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 }
 
