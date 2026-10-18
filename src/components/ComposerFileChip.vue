@@ -2,6 +2,7 @@
 /**
  * 输入框文字里的一枚文件胶囊：图标 + 文件名 + 大小（解析中显示进度）+ ×。
  * 解析中与解析好用同一个外壳，只换文字与进度条，位置和高度不跳。
+ * 单击留给编辑器（选中、退格删除）；双击打开、右键菜单交给外层。
  */
 import { computed } from 'vue'
 import { X } from 'lucide-vue-next'
@@ -24,7 +25,12 @@ const props = defineProps<{
   removeTitle: string
 }>()
 
-const emit = defineEmits<{ remove: [] }>()
+const emit = defineEmits<{
+  remove: []
+  /** 双击：打开这个文件 */
+  open: []
+  contextmenu: [event: MouseEvent]
+}>()
 
 const isParsing = computed(() => props.view?.kind === 'parsing')
 const isFailed = computed(() => {
@@ -49,6 +55,14 @@ const { hoverTip, showTip, hideTip } = useHoverTip({
 function onHover(e: MouseEvent) {
   if (props.tip) showTip(e, props.tip)
 }
+function onOpen() {
+  hideTip()
+  emit('open')
+}
+function onContextMenu(e: MouseEvent) {
+  hideTip()
+  emit('contextmenu', e)
+}
 </script>
 
 <template>
@@ -58,6 +72,8 @@ function onHover(e: MouseEvent) {
     :class="{ 'is-parsing': isParsing, 'has-error': isFailed }"
     @mouseenter="onHover"
     @mouseleave="hideTip"
+    @dblclick="onOpen"
+    @contextmenu="onContextMenu"
   >
     <AttachmentFileIcon
       class="doc-icon"

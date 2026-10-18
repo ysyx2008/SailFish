@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, useSlots, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRandomPlaceholder } from '../composables/useRandomPlaceholder'
 import { X, Plus, Square, ArrowUp, Check, Mic, MicOff, Loader2, Volume2, Pencil, CornerDownLeft, GripVertical, Sparkles, RotateCcw } from 'lucide-vue-next'
@@ -25,6 +25,8 @@ import type { ContextCompositionId, ContextCompositionNode } from '@shared/types
 import HoverTipOverlay from './HoverTipOverlay.vue'
 import ComposerEditor from './ComposerEditor.vue'
 import ComposerFileChip from './ComposerFileChip.vue'
+import AttachmentContextMenu from './AttachmentContextMenu.vue'
+import { useAttachmentActions } from '../composables/useAttachmentActions'
 import { COMPOSER_CHIP_CHAR } from '../composables/composer-editor-text'
 import { chipsToMarkers, markersToChips } from '../composables/composer-attachment-chips'
 import { isSameAttachment, useComposerAttachmentChips } from '../composables/useComposerAttachmentChips'
@@ -819,6 +821,36 @@ function chipTip(view: ChipViewModel): string {
   if (!view) return ''
   const status = view.kind === 'parsing' ? getParsePhaseLabel(view.doc) : view.doc.error
   return status ? `${view.doc.filename} · ${status}` : view.doc.filename
+}
+
+// 双击打开、右键菜单：与发出后气泡里的文件胶囊同一套动作。解析中的文件还没有路径，不能打开
+const { openAttachment } = useAttachmentActions()
+const chipMenu = reactive<{ show: boolean; x: number; y: number; filename: string | null; filePath: string | null }>({
+  show: false, x: 0, y: 0, filename: null, filePath: null,
+})
+
+function openComposerChip(chipKey: string | null) {
+  const view = chipView(chipKey)
+  if (!view || view.kind !== 'doc') return
+  void openAttachment({ filename: view.doc.filename, filePath: view.doc.filePath })
+}
+
+function openComposerChipMenu(chipKey: string | null, e: MouseEvent) {
+  const view = chipView(chipKey)
+  if (!view) return
+  e.preventDefault()
+  e.stopPropagation()
+  chipMenu.show = true
+  chipMenu.x = e.clientX
+  chipMenu.y = e.clientY
+  chipMenu.filename = view.doc.filename
+  chipMenu.filePath = view.kind === 'doc' ? (view.doc.filePath ?? null) : null
+}
+
+function closeComposerChipMenu() {
+  chipMenu.show = false
+  chipMenu.filename = null
+  chipMenu.filePath = null
 }
 
 /** 给模型看的文件标记：夹在文字里替胶囊说「这里是哪个文件」 */
@@ -1918,6 +1950,8 @@ const handleSendClick = (event: MouseEvent) => {
               :tip="chipTip(chipView(chipKey))"
               :remove-title="t('ai.removeDoc')"
               @remove="removeComposerChip(chipKey)"
+              @open="openComposerChip(chipKey)"
+              @contextmenu="openComposerChipMenu(chipKey, $event)"
             />
           </template>
         </ComposerEditor>
@@ -2230,6 +2264,14 @@ const handleSendClick = (event: MouseEvent) => {
     </div>
   </Teleport>
   <HoverTipOverlay :tip="skillChipHoverTip" />
+  <AttachmentContextMenu
+    :show="chipMenu.show"
+    :x="chipMenu.x"
+    :y="chipMenu.y"
+    :filename="chipMenu.filename"
+    :file-path="chipMenu.filePath"
+    @close="closeComposerChipMenu"
+  />
 </template>
 
 <style scoped>
