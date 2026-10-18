@@ -24,6 +24,7 @@ import type { ParsingDocument } from '../composables/useDocumentUpload'
 import type { ContextCompositionId, ContextCompositionNode } from '@shared/types'
 import AttachmentFileIcon from './AttachmentFileIcon.vue'
 import HoverTipOverlay from './HoverTipOverlay.vue'
+import ComposerEditor from './ComposerEditor.vue'
 import { useHoverTip, BUTTON_HOVER_TIP_DELAY_MS } from '../composables/useHoverTip'
 import { useOutputTokenRate } from '../composables/useOutputTokenRate'
 
@@ -590,7 +591,6 @@ const handleCancelEditClick = () => {
   props.cancelEditFollowUp?.()
   inputText.value = ''
   void pickRandomPlaceholder()
-  syncTextareaSize()
 }
 
 /** 小文件瞬间解析完时不闪进度；超过此时长才露出解析中的小条 */
@@ -655,28 +655,9 @@ const hasComposerAttachments = computed(
     followUpItems.value.length > 0
 )
 
-let textareaResizeObserver: ResizeObserver | null = null
-/** 防止 measure 改高度 → wrap ResizeObserver → 再 measure 的重入 */
-let measuringTextareaHeight = false
-
-const setupTextareaResizeObserver = () => {
-  textareaResizeObserver?.disconnect()
-  const target = textareaWrapEl.value
-  if (!target) return
-
-  textareaResizeObserver = new ResizeObserver(() => {
-    // 宽度变化（分栏/窗口）才需要重测；自身改高度触发的回调由 measuring 守卫跳过
-    if (measuringTextareaHeight) return
-    measureTextareaHeight()
-  })
-  textareaResizeObserver.observe(target)
-}
-
 onMounted(() => {
   conversationSkills.startListening()
   void conversationSkills.sync(props.currentTabId)
-  syncTextareaSize()
-  nextTick(setupTextareaResizeObserver)
 })
 
 watch(
@@ -699,8 +680,6 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  textareaResizeObserver?.disconnect()
-  textareaResizeObserver = null
   if (parsingRevealTimer) {
     clearTimeout(parsingRevealTimer)
     parsingRevealTimer = null
@@ -770,8 +749,7 @@ function formatQuotesAppendix(snippets: ComposerQuoteSnippet[]): string {
 
 const inputText = ref('')
 const isComposing = ref(false)
-const mentionInputEl = ref<HTMLTextAreaElement | null>(null)
-const textareaWrapEl = ref<HTMLDivElement | null>(null)
+const mentionInputEl = ref<InstanceType<typeof ComposerEditor> | null>(null)
 const mentionListEl = ref<HTMLDivElement | null>(null)
 const mentionMenuEl = ref<HTMLDivElement | null>(null)
 const skillMenuSearchEl = ref<HTMLInputElement | null>(null)
@@ -800,7 +778,6 @@ const {
   expandMentions
 } = useMentions(inputText, currentTabIdRef, uploadedDocsRef, onSkillPicked)
 
-const slashMirrorEl = ref<HTMLDivElement | null>(null)
 const slashSelectedIndex = ref(0)
 const isCompacting = ref(false)
 
@@ -813,35 +790,22 @@ const slashHintVisible = computed(() => {
   if (showMentionMenu.value) return false
   return shouldShowSlashHint(inputText.value)
 })
-const slashHighlight = computed(() => {
+/** 斜杠命令名在输入文字里的区间（高亮用） */
+const slashHighlightRange = computed(() => {
   if (!parsedSlash.value || slashMatches.value.length === 0) return null
   const leading = inputText.value.match(/^\s*/)?.[0] ?? ''
-  return {
-    token: `${leading}${parsedSlash.value.raw}`,
-    rest: inputText.value.slice(leading.length + parsedSlash.value.raw.length)
-  }
+  return { from: leading.length, to: leading.length + parsedSlash.value.raw.length }
 })
 
 watch(slashMatches, (matches) => {
   if (slashSelectedIndex.value >= matches.length) slashSelectedIndex.value = 0
 })
 
-const syncSlashMirror = () => {
-  const ta = mentionInputEl.value
-  const mirror = slashMirrorEl.value
-  if (!ta || !mirror) return
-  mirror.scrollTop = ta.scrollTop
-}
-
 const completeSlash = (def: SlashCommandDef) => {
   const leading = inputText.value.match(/^\s*/)?.[0] ?? ''
   const rest = parsedSlash.value?.rest ?? ''
   inputText.value = rest ? `${leading}/${primarySlashName(def)} ${rest}` : `${leading}/${primarySlashName(def)} `
-  nextTick(() => {
-    focusInput()
-    measureTextareaHeight()
-    syncSlashMirror()
-  })
+  nextTick(focusInput)
 }
 
 const applySlashResult = (result: { ok: true; freedTokens: number } | { ok: false; reason: string }) => {
@@ -874,7 +838,6 @@ const runSlashCommand = async (def: SlashCommandDef, hint?: string) => {
 const focusInput = () => {
   mentionInputEl.value?.focus()
 }
-
 const inputContainerEl = ref<HTMLElement | null>(null)
 const mentionMenuStyle = ref<Record<string, string>>({ visibility: 'hidden' })
 const mentionMenuBelow = ref(false)
@@ -951,7 +914,7 @@ function openSkillPicker() {
 function onComposerSurfaceMouseDown(event: MouseEvent) {
   const target = event.target as HTMLElement | null
   if (!target) return
-  if (target.closest('button, textarea, input, a, .composer-skill-chip')) return
+  if (target.closest('button, textarea, input, a, .composer-editor, .composer-skill-chip')) return
   focusInput()
 }
 
@@ -973,80 +936,21 @@ function handleSkillSearchKeyDown(event: KeyboardEvent) {
   handleMentionKeyDown(event)
 }
 
-/** 两行 grid 布局下测量高度。
- *
- * 增高可直接用 scrollHeight 扩。变矮则必须先 height=0 再量——textarea 偏高时
- * scrollHeight 常等于 clientHeight，单靠 `scrollHeight < current` 永远测不出「该缩」。
- * 11.2.2 防抖动优化只在确认变矮时塌缩，导致偶发撑满后缩不回去。
- *
- * 塌缩重测时先锁住 wrap 当前高度，避免 composer 瞬间变矮带动上方消息列表抖动。
- */
-const measureTextareaHeight = () => {
-  const textarea = mentionInputEl.value
-  if (!textarea || measuringTextareaHeight) return
-
-  measuringTextareaHeight = true
-  const wrap = textareaWrapEl.value
-  let frozeWrap = false
-  try {
-    // 读 CSS max-height：欢迎页会压得更矮，硬编码 360 会提前锁 overflow:hidden
-    const computedMax = parseFloat(getComputedStyle(textarea).maxHeight)
-    const maxH = Number.isFinite(computedMax) && computedMax > 0 ? computedMax : 360
-    const minH = 20
-    textarea.style.overflow = 'hidden'
-
-    const current = textarea.offsetHeight
-
-    // 内容明确撑破 → 直接扩，不经 0（无抖动）
-    if (textarea.scrollHeight > current + 1) {
-      const nextHeight = Math.min(Math.max(textarea.scrollHeight, minH), maxH)
-      if (current !== nextHeight) {
-        textarea.style.height = `${nextHeight}px`
-      }
-      textarea.style.overflow = nextHeight >= maxH ? 'auto' : 'hidden'
-      return
-    }
-
-    // 同行敲字 / 疑似变矮 / 已卡住偏高：必须塌缩重测才能得到内容真实高度。
-    // wrap 锁高期间消息区 flex 看不到瞬时塌缩。
-    if (wrap) {
-      wrap.style.height = `${wrap.offsetHeight}px`
-      frozeWrap = true
-    }
-    textarea.style.height = '0px'
-    const nextHeight = Math.min(Math.max(textarea.scrollHeight, minH), maxH)
-    textarea.style.height = `${nextHeight}px`
-    textarea.style.overflow = nextHeight >= maxH ? 'auto' : 'hidden'
-  } finally {
-    if (frozeWrap && wrap) {
-      wrap.style.height = ''
-    }
-    measuringTextareaHeight = false
-  }
-}
-
-const syncTextareaSize = () => {
-  nextTick(measureTextareaHeight)
-}
-
 const appendText = (text: string) => {
   if (!text.trim()) return
   inputText.value = inputText.value
     ? `${inputText.value} ${text}`.trim()
     : text
-  syncTextareaSize()
   nextTick(focusInput)
 }
 
 const setText = (text: string) => {
   inputText.value = text
-  syncTextareaSize()
   nextTick(focusInput)
 }
 
 const clearText = () => {
   inputText.value = ''
-  syncTextareaSize()
 }
 
 // 一次性脉冲提示：让用户从场景卡片填入 prompt 后，注意到输入框已就绪。
@@ -1073,10 +977,7 @@ const flashHint = () => {
 
 watch(() => props.visible, (isVisible) => {
   if (isVisible) {
-    nextTick(() => {
-      focusInput()
-      measureTextareaHeight()
-    })
+    nextTick(focusInput)
   }
 }, { immediate: true })
 
@@ -1084,17 +985,10 @@ watch(
   () => quoteSnippets.value.length,
   (len, prevLen) => {
     if (len > (prevLen ?? 0)) {
-      nextTick(() => {
-        focusInput()
-        measureTextareaHeight()
-      })
+      nextTick(focusInput)
     }
   }
 )
-
-watch(inputText, () => {
-  syncTextareaSize()
-})
 
 watch(mentionSelectedIndex, (newIndex) => {
   nextTick(() => {
@@ -1140,14 +1034,10 @@ const setMentionSelectedIndex = (index: number) => {
   mentionSelectedIndex.value = index
 }
 
-const handleInputChange = (event: Event) => {
-  const textarea = event.target as HTMLTextAreaElement
-  const cursorPos = textarea.selectionStart || 0
-  if (!parseLeadingSlash(textarea.value.trimStart())) {
-    detectTrigger(textarea.value, cursorPos)
+const handleInputChange = ({ text, cursor }: { text: string; cursor: number }) => {
+  if (!parseLeadingSlash(text.trimStart())) {
+    detectTrigger(text, cursor)
   }
-  measureTextareaHeight()
-  syncSlashMirror()
 }
 
 const handleInputBlur = () => {
@@ -1160,10 +1050,7 @@ const handleInputBlur = () => {
 
 const selectSuggestion = (suggestion: typeof mentionSuggestions.value[0]) => {
   doSelectSuggestion(suggestion)
-  nextTick(() => {
-    focusInput()
-    measureTextareaHeight()
-  })
+  nextTick(focusInput)
 }
 
 const handleInputKeyDown = (event: KeyboardEvent) => {
@@ -1983,26 +1870,19 @@ const handleSendClick = (event: MouseEvent) => {
         <Plus v-else :size="18" />
       </button>
 
-      <div ref="textareaWrapEl" class="input-textarea-wrap">
-        <div
-          v-if="slashHighlight"
-          ref="slashMirrorEl"
-          class="slash-mirror"
-          aria-hidden="true"
-        ><span class="slash-token">{{ slashHighlight.token }}</span><span>{{ slashHighlight.rest }}</span></div>
-        <textarea
+      <div class="input-textarea-wrap">
+        <ComposerEditor
           ref="mentionInputEl"
           v-model="inputText"
-          :class="{ 'has-slash-overlay': !!slashHighlight }"
           :placeholder="composerPlaceholder"
+          :highlight="slashHighlightRange"
           @input="handleInputChange"
-          @scroll="syncSlashMirror"
           @keydown="handleInputKeyDown"
           @paste="handlePaste"
           @compositionstart="isComposing = true"
           @compositionend="isComposing = false"
           @blur="handleInputBlur"
-        ></textarea>
+        />
       </div>
 
       <Teleport to="body">
@@ -3376,13 +3256,6 @@ const handleSendClick = (event: MouseEvent) => {
   padding-right: 0;
 }
 
-.ai-input-embedded textarea:focus,
-.ai-input-embedded textarea:focus-visible {
-  border: none;
-  outline: none;
-  box-shadow: none;
-}
-
 .input-container {
   position: relative;
   flex: 1;
@@ -3409,14 +3282,14 @@ const handleSendClick = (event: MouseEvent) => {
   grid-template-rows: auto auto auto;
 }
 
-/* 两行模式：grid 替代 flex-column，避免 textarea scrollHeight 测量失真 */
+/* 两行模式：grid 替代 flex-column */
 .input-container-two-row {
   display: grid;
   grid-template-rows: auto auto;
   align-items: stretch;
   gap: 0;
   /* 四边等距：主操作键落在右下角，右和下不等距时它到两条边的距离就对不齐。
-     文字要的额外内缩由 textarea 自己的 padding 给，不靠这里加偏心。
+     文字要的额外内缩由编辑区自己的 padding 给，不靠这里加偏心。
      数值与外框圆角联动，改动见下方按钮圆角的同心说明。 */
   padding: 8px;
 }
@@ -3429,32 +3302,6 @@ const handleSendClick = (event: MouseEvent) => {
   flex: 1;
   min-width: 0;
   position: relative;
-}
-
-.slash-mirror {
-  position: absolute;
-  inset: 0;
-  padding: 7px 4px;
-  font-size: 14px;
-  font-family: inherit;
-  line-height: 1.4286;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  overflow: hidden;
-  pointer-events: none;
-  color: var(--text-primary);
-}
-
-.slash-token {
-  color: var(--accent-primary);
-  background: rgba(var(--accent-rgb), 0.14);
-  border-radius: 4px;
-  font-weight: 600;
-}
-
-.ai-input textarea.has-slash-overlay {
-  color: transparent;
-  caret-color: var(--text-primary);
 }
 
 .slash-hint {
@@ -3505,13 +3352,6 @@ const handleSendClick = (event: MouseEvent) => {
   flex-shrink: 0;
   color: var(--text-muted);
   font-size: 11px;
-}
-
-.input-container-two-row textarea {
-  width: 100%;
-  padding: 7px 4px;
-  min-height: 0;
-  height: 20px; /* 单行初始高度，mountd 后由 measureTextareaHeight 重算 */
 }
 
 .input-bottom-bar {
@@ -3600,12 +3440,12 @@ const handleSendClick = (event: MouseEvent) => {
   flex-shrink: 0;
 }
 
-.input-container:has(textarea:focus) {
+.input-container:has(.ProseMirror-focused) {
   box-shadow: 0 0 0 2px var(--accent-primary), 0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 /* flash-hint：场景卡片填入 prompt 后的一次性脉冲，提醒用户"输入框已就绪，按 Enter 发送"。
-   动画期间盖过 :has(textarea:focus) 的 box-shadow（因 specificity + 动画在同 selector 上覆盖），
+   动画期间盖过 :has(.ProseMirror-focused) 的 box-shadow（因 specificity + 动画在同 selector 上覆盖），
    1.5s 后 class 自动移除，恢复默认 / focus 态外观。 */
 .input-container.flash-hint {
   animation: composerFlashHint 1.5s cubic-bezier(0.16, 1, 0.3, 1);
@@ -3708,37 +3548,6 @@ const handleSendClick = (event: MouseEvent) => {
 @keyframes pulse-recording {
   0%, 100% { box-shadow: 0 0 0 0 rgba(255, 100, 100, 0.4); }
   50% { box-shadow: 0 0 0 6px rgba(255, 100, 100, 0); }
-}
-
-.ai-input textarea {
-  display: block;
-  width: 100%;
-  padding: 7px 4px;
-  font-size: 14px;
-  font-family: inherit;
-  color: var(--text-primary);
-  background: transparent;
-  border: none;
-  resize: none;
-  outline: none;
-  line-height: 1.4286;
-  min-height: 20px;
-  max-height: 360px;
-  overflow-y: auto;
-  margin: 0;
-}
-
-.ai-input textarea::placeholder {
-  color: var(--text-muted);
-  opacity: 0.7;
-}
-
-/* 焦点环由外层 .input-container:has(textarea:focus) 统一提供，
-   textarea 内部不再叠加全局 textarea:focus 光晕，避免出现两层焦点。 */
-.ai-input textarea:focus {
-  border-color: transparent;
-  box-shadow: none;
-  outline: none;
 }
 
 /*

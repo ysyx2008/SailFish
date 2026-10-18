@@ -521,11 +521,11 @@ onUnmounted(() => {
   opacity: 0;
 }
 
-/* 欢迎页 textarea 最大高度比面板模式矮，避免把 logo 和卡片都撑出屏幕。
+/* 欢迎页输入区最大高度比面板模式矮，避免把 logo 和卡片都撑出屏幕。
    曾给过 56px 最小高度（当时下半屏是空的，输入框是唯一主体）；卡片恢复后
    撤掉——加高会让输入框比卡片还高，成为整屏最高的单个元素，比例就反了。
    它该是一条清瘦的横条，让卡片比它高。 */
-.welcome-chat-composer :deep(.ai-input textarea) {
+.welcome-chat-composer :deep(.composer-editor .ProseMirror) {
   max-height: 160px;
 }
 
