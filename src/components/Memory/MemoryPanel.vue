@@ -811,7 +811,7 @@ onUnmounted(() => {
                     :size="22"
                   />
                   <div class="doc-info">
-                    <div class="doc-name">{{ doc.filename }}</div>
+                    <div class="doc-name" :title="doc.filename">{{ doc.filename }}</div>
                     <div class="doc-meta">
                       <span>{{ formatSize(doc.fileSize) }}</span>
                     </div>
@@ -1046,7 +1046,9 @@ onUnmounted(() => {
 }
 
 .list-panel {
-  width: 280px;
+  /* 栏目占满主区，文件名要有地方读：随宽度伸缩，给正文留下多数 */
+  flex: 0 0 clamp(300px, 38%, 460px);
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -1149,6 +1151,8 @@ onUnmounted(() => {
   padding: 10px 12px; border-radius: 6px; cursor: pointer;
   transition: all 0.15s; border: 1px solid transparent;
 }
+.doc-item { position: relative; }
+.doc-item .btn-del-hover { position: absolute; top: 6px; right: 6px; background: var(--bg-secondary); }
 .doc-item:hover { background: var(--bg-hover); }
 .doc-item.active { background: color-mix(in srgb, var(--accent-primary) 16%, transparent); color: var(--text-primary); }
 .doc-item.selected:not(.active) { background: var(--bg-hover); border-color: var(--accent-primary); }
@@ -1158,10 +1162,15 @@ onUnmounted(() => {
 .doc-check input { width: 13px; height: 13px; cursor: pointer; }
 .doc-type-icon { flex-shrink: 0; }
 .doc-info { flex: 1; min-width: 0; }
-.doc-name { font-size: 13px; font-weight: 500; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-name {
+  font-size: 13px; font-weight: 500; line-height: 1.4;
+  overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
+  overflow: hidden;
+}
 .folder-tree {
-  width: 200px;
-  flex: 0 0 200px;
+  width: 176px;
+  flex: 0 0 176px;
   min-height: 0;
   overflow: auto;
   padding: 8px 6px;
