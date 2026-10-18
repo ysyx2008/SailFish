@@ -25,6 +25,7 @@ import type {
   AgentExecutionPhase,
   CommandRiskPolicy,
   CompactContextResult,
+  TaskReceiptText,
   TerminalType,
 } from './types'
 import { COMPANION_AGENT_KEY, type ApprovalMode, type AssignedBy, type VisibleConversationSkill } from '@shared/types'
@@ -862,14 +863,19 @@ export class AgentService {
     })
   }
 
+  /** 联络那一轮为任务欠的账被清掉了（开跑失败、回执没投出去）：叫醒它重新看一遍还要不要等 */
+  wakeCompanionWait(): void {
+    this.getAgent(COMPANION_AGENT_KEY)?.reassessHold()
+  }
+
   /**
    * 联络派出去的活回来了：把回执交给联络自己。
    * 另起一轮时过程推给宿主界面，不沿用上一轮留下的回调（可能是某个 IM 渠道的，会把过程直接发出去）；
    * 环境接着联络上一轮的（渠道、会话），从没跑过才用本机助手兜底。
    */
-  deliverCompanionReceipt(text: string): void {
+  deliverCompanionReceipt(receipt: TaskReceiptText): void {
     const companion = this.createAssistantAgent(COMPANION_AGENT_KEY)
-    companion.deliverTaskReceipt(text, {
+    companion.deliverTaskReceipt(receipt, {
       callbacks: this.uiCallbacksFor?.(COMPANION_AGENT_KEY),
       fallbackContext: {
         terminalOutput: [],

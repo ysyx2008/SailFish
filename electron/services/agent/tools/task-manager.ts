@@ -9,6 +9,7 @@ import { t } from '../i18n'
 import { createLogger } from '../../../utils/logger'
 import type { ToolExecutorConfig, ToolResult } from './types'
 import type { TaskSupervisor, SupervisedTaskInfo } from '../task-supervisor'
+import { TaskWatch, taskWatchKey } from './task-watch'
 
 const log = createLogger('tools/task-manager')
 
@@ -61,8 +62,9 @@ export async function manageTasks(
         const agentKey = created.agentKey
         log.info(`联络创建任务: 「${title}」(${agentKey}, fullAuto=${created.fullAuto})`)
         const mode = t(created.fullAuto ? 'taskmgr.mode_free' : 'taskmgr.mode_relaxed')
+        const awaiting = awaitReceipt(supervisor, executor, agentKey, title)
         return finish(
-          ok(t('taskmgr.created', { title, taskId: agentKey, mode })),
+          ok(`${t('taskmgr.created', { title, taskId: agentKey, mode })}${receiptTail(awaiting)}`),
           t('taskmgr.action.create')
         )
       }
@@ -116,7 +118,12 @@ export async function manageTasks(
         }
         log.info(`联络再交代: task=${taskId}, delivered=${result.delivered}`)
         const key = result.delivered === 'now' ? 'taskmgr.instruct_now' : 'taskmgr.instruct_next'
-        return finish(ok(t(key, { title: result.title ?? taskId })), t('taskmgr.action.instruct'))
+        const owed = supervisor.isOwed(taskId)
+        const awaiting = owed && awaitReceipt(supervisor, executor, taskId, result.title ?? taskId)
+        return finish(
+          ok(`${t(key, { title: result.title ?? taskId })}${owed ? receiptTail(awaiting) : ''}`),
+          t('taskmgr.action.instruct')
+        )
       }
 
       default:
@@ -127,6 +134,31 @@ export async function manageTasks(
     log.error('manage_tasks 执行失败:', err)
     return finish(fail(msg), t('taskmgr.step'))
   }
+}
+
+/**
+ * 联络开头的任务还欠回执：登记后这一轮闲下来不收工，等它交回来。
+ * 对同一场任务再交代，沿用原来那一份。返回这一轮是否真的会等。
+ */
+function awaitReceipt(
+  supervisor: TaskSupervisor,
+  executor: ToolExecutorConfig,
+  agentKey: string,
+  title: string
+): boolean {
+  if (!executor.trackBackgroundWatch || !supervisor.isOwed(agentKey)) return false
+  const existing = executor.findBackgroundWatch?.(taskWatchKey(agentKey))
+  if (existing instanceof TaskWatch) {
+    existing.rebind(executor)
+  } else {
+    executor.trackBackgroundWatch(new TaskWatch(supervisor, agentKey, title, executor))
+  }
+  return true
+}
+
+/** 告诉联络这一轮等不等它的回执（决定了回执是在这一轮里读到，还是另起一轮叫醒） */
+function receiptTail(awaiting: boolean): string {
+  return t(awaiting ? 'taskmgr.await_hold' : 'taskmgr.await_none')
 }
 
 function ok(output: string): ToolResult {

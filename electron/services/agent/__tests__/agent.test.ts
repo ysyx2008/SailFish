@@ -616,19 +616,33 @@ describe('Agent', () => {
       })
     })
 
-    it('正在回复时回执送进这一轮，收进对话时上墙为回执步骤', () => {
+    const receipt = { body: '任务回执：做完了', footerWhenPresent: '【在场】', footerWhenAway: '【不在场】' }
+
+    it('正在回复时回执送进这一轮，收进对话时上墙为回执步骤；用户开的头带「在场」尾巴', () => {
       const { a } = withSupervisor()
       a.injectCurrentRun({ id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [], messages: [], taskMessageLog: [], context: createMockContext() })
       ;(a as unknown as { _loopOpen: boolean })._loopOpen = true
 
-      a.deliverTaskReceipt('任务回执：做完了', { fallbackContext: createMockContext() })
+      a.deliverTaskReceipt(receipt, { fallbackContext: createMockContext() })
 
       const run = a.exposeCurrentRun()!
       expect(run.pendingUserMessages).toEqual([
-        expect.objectContaining({ message: '任务回执：做完了', silent: true, taskReceipt: true }),
+        expect.objectContaining({ message: '任务回执：做完了\n【在场】', silent: true, taskReceipt: true }),
       ])
       ;(a as unknown as { processPendingUserMessages(r: unknown): void }).processPendingUserMessages(run)
       expect(run.steps.map(s => s.type)).toEqual(['task_receipt'])
+    })
+
+    it('回执自己叫醒的那一轮里用户不在场：送进去的是「不在场」尾巴', () => {
+      const { a } = withSupervisor()
+      a.injectCurrentRun({
+        id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [], internalNotice: true, noticeKind: 'task_receipt',
+      })
+      ;(a as unknown as { _loopOpen: boolean })._loopOpen = true
+
+      a.deliverTaskReceipt(receipt, { fallbackContext: createMockContext() })
+
+      expect(a.exposeCurrentRun()!.pendingUserMessages[0].message).toBe('任务回执：做完了\n【不在场】')
     })
 
     it('闲着时另起一轮：开头是回执步骤、没有用户气泡，用调用方给的回调；用户按停过也照送', async () => {
@@ -638,24 +652,33 @@ describe('Agent', () => {
       const onComplete = vi.fn()
       const callbacks: AgentCallbacks = { onStep: (_id, step) => steps.push(step), onComplete }
 
-      a.deliverTaskReceipt('任务回执：做完了', { callbacks, fallbackContext: createMockContext({ terminalType: 'assistant' }) })
+      a.deliverTaskReceipt(receipt, { callbacks, fallbackContext: createMockContext({ terminalType: 'assistant' }) })
 
       await vi.waitFor(() => expect(onComplete).toHaveBeenCalled())
       expect(steps[0].type).toBe('task_receipt')
       expect(steps.some(s => s.type === 'user_task')).toBe(false)
     })
 
-    it('这一轮收场时没来得及收的回执，挪回去等下一轮', () => {
+    it('这一轮收场时没来得及收的回执，挪回去等下一轮；尾巴换成「不在场」那段', () => {
       const { a } = withSupervisor()
       const run = { pendingUserMessages: [
-        { message: '回执一', silent: true, backgroundNotice: true, taskReceipt: true },
+        { message: '回执一\n【在场】', silent: true, backgroundNotice: true, taskReceipt: true, awayText: '回执一\n【不在场】' },
         { message: '后台结果', silent: true, backgroundNotice: true },
       ] }
 
       ;(a as unknown as { reclaimUnreadReceipts(r: unknown): void }).reclaimUnreadReceipts(run)
 
       expect(run.pendingUserMessages.map(m => m.message)).toEqual(['后台结果'])
-      expect((a as unknown as { _deferredReceipts: string[] })._deferredReceipts).toEqual(['回执一'])
+      expect((a as unknown as { _deferredReceipts: string[] })._deferredReceipts).toEqual(['回执一\n【不在场】'])
+    })
+
+    it('运行状态带上这一轮是谁开的头', () => {
+      const { a } = withSupervisor()
+      a.injectCurrentRun({ id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [], ledBy: 'companion' })
+      expect(a.getRunStatus()?.ledBy).toBe('companion')
+
+      a.injectCurrentRun({ id: 'run-2', isRunning: true, pendingUserMessages: [], steps: [] })
+      expect(a.getRunStatus()).not.toHaveProperty('ledBy')
     })
   })
 

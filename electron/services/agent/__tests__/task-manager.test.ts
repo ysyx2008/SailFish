@@ -21,8 +21,22 @@ function makeSupervisor(overrides: Partial<TaskSupervisor> = {}): TaskSupervisor
     confirmTask: vi.fn().mockReturnValue({ ok: true, title: '部署服务' }),
     stopTask: vi.fn().mockReturnValue({ ok: true, title: '长跑任务' }),
     instructTask: vi.fn().mockResolvedValue({ ok: true, title: '查日志', delivered: 'next' }),
+    isOwed: vi.fn().mockReturnValue(false),
     ...overrides,
   } as unknown as TaskSupervisor
+}
+
+/** 带「登记后台等待」能力的执行环境：用来看联络这一轮挂不挂着等 */
+function makeWatchingExecutor(supervisor: TaskSupervisor) {
+  const watches = new Map<string, unknown>()
+  const executor = {
+    addStep: vi.fn(),
+    updateStep: vi.fn(),
+    taskSupervisor: supervisor,
+    trackBackgroundWatch: vi.fn((watch: { key: string }) => { watches.set(watch.key, watch) }),
+    findBackgroundWatch: vi.fn((key: string) => watches.get(key)),
+  } as unknown as ToolExecutorConfig
+  return { executor, watches }
 }
 
 describe('manage_tasks', () => {
@@ -154,5 +168,54 @@ describe('manage_tasks', () => {
     )
     expect(result.success).toBe(true)
     expect(supervisor.instructTask).toHaveBeenCalledWith('tab-1', '再补一段')
+  })
+
+  describe('派出任务后这一轮等不等回执', () => {
+    it('create：欠着回执就登记一份等待，并告诉联络这一轮会等', async () => {
+      const supervisor = makeSupervisor({ isOwed: vi.fn().mockReturnValue(true) })
+      const { executor, watches } = makeWatchingExecutor(supervisor)
+
+      const result = await manageTasks({ action: 'create', title: '查日志', brief: '统计错误' }, executor)
+
+      expect(result.success).toBe(true)
+      expect([...watches.keys()]).toEqual(['task:assistant-new'])
+      expect(result.output).toContain('这一轮在它交回执之前不会结束')
+    })
+
+    it('create：执行环境没有登记等待的能力时不登记，如实说这一轮不等', async () => {
+      const supervisor = makeSupervisor({ isOwed: vi.fn().mockReturnValue(true) })
+
+      const result = await manageTasks({ action: 'create', title: '查日志', brief: '统计错误' }, makeExecutor(supervisor))
+
+      expect(result.output).toContain('这一轮不会等它')
+    })
+
+    it('instruct：再交代同一场，沿用原来那份等待，不重复登记', async () => {
+      const supervisor = makeSupervisor({
+        isOwed: vi.fn().mockReturnValue(true),
+        instructTask: vi.fn().mockResolvedValue({ ok: true, title: '查日志', delivered: 'now' }),
+      })
+      const { executor, watches } = makeWatchingExecutor(supervisor)
+
+      await manageTasks({ action: 'create', title: '查日志', brief: '统计错误' }, executor)
+      const first = [...watches.values()][0]
+      await manageTasks({ action: 'instruct', task_id: 'assistant-new', message: '再补一段' }, executor)
+
+      expect(executor.trackBackgroundWatch).toHaveBeenCalledTimes(1)
+      expect([...watches.values()][0]).toBe(first)
+    })
+
+    it('instruct：那场不欠联络回执（用户开头的那一轮）时不登记，也不提等回执', async () => {
+      const supervisor = makeSupervisor({
+        isOwed: vi.fn().mockReturnValue(false),
+        instructTask: vi.fn().mockResolvedValue({ ok: true, title: '查日志', delivered: 'now' }),
+      })
+      const { executor, watches } = makeWatchingExecutor(supervisor)
+
+      const result = await manageTasks({ action: 'instruct', task_id: 'tab-1', message: '补一句' }, executor)
+
+      expect(watches.size).toBe(0)
+      expect(result.output).not.toContain('回执')
+    })
   })
 })

@@ -24,7 +24,7 @@ import { t } from './i18n'
 import { getDefaultShell, getLocalOS } from '../../utils/platform'
 import type { HistoryService } from '../history.service'
 import type { ConfigService } from '../config.service'
-import type { AgentContext, AgentConfig } from './types'
+import type { AgentContext, AgentConfig, TaskReceiptText } from './types'
 import type { SailFish } from './sailfish'
 
 const log = createLogger('TaskSupervisor')
@@ -34,6 +34,12 @@ const FINISH_DEBOUNCE_MS = 5000
 
 /** 回执里结果概要的长度上限（联络只拿摘要，任务对话不进联络上下文） */
 const RECEIPT_SUMMARY_MAX = 500
+
+/** 联络这一轮最多为一个任务等这么久（同后台命令默认的上限）；宿主可改（命令行的 --task-wait） */
+const DEFAULT_RECEIPT_WAIT_MS = 60 * 60_000
+
+/** 刚派出去的头一阵：开跑是异步的，这段时间里看不到在跑也不算没了 */
+const OWED_START_GRACE_MS = 30_000
 
 /** 谁开的这一轮：联络经任务管理开的头才有回执 */
 type LedBy = AssignedBy | undefined
@@ -146,8 +152,10 @@ export interface TaskSupervisorHost {
     context: AgentContext,
     opts: { surface: 'assistant' | 'terminal'; config?: Partial<AgentConfig>; ledBy?: AssignedBy }
   ): Promise<unknown>
-  /** 把回执交给联络：它正在回复就送进这一轮，否则另起一轮 */
-  deliverCompanionReceipt(text: string): void
+  /** 把回执交给联络：它这一轮还开着就送进这一轮，否则另起一轮 */
+  deliverCompanionReceipt(receipt: TaskReceiptText): void
+  /** 欠回执的账被清掉、却没有回执送来时，叫醒联络在等的那一轮重新看一遍还要不要等 */
+  wakeCompanionWait(): void
   getHistoryService(): HistoryService | undefined
   getConfigService(): ConfigService | undefined
   /** 创建任务实例，锁住交办标题，定下这场的审批方式，记下是谁派的 */
@@ -156,11 +164,15 @@ export interface TaskSupervisorHost {
 
 export class TaskSupervisor {
   private host: TaskSupervisorHost
-  /** 已排成回执行、还在防抖窗口里的完成事件 */
-  private finishBuffer: string[] = []
+  /** 已排成回执行、还在防抖窗口里的完成事件（带上是哪场，交出去后好销账） */
+  private finishBuffer: Array<{ agentKey: string; line: string }> = []
+  /** 联络开头的那一轮还没交回执的任务 → 派出的时刻。联络那一轮据此决定要不要继续等 */
+  private readonly owed = new Map<string, number>()
   private finishFlushTimer: NodeJS.Timeout | null = null
   /** 宿主整体全自动（命令行 --free）：交办的任务也不问 */
   private fullAutoAssigned = false
+  /** 联络这一轮为一个任务最多等多久；0 = 不等 */
+  private receiptWaitLimitMs = DEFAULT_RECEIPT_WAIT_MS
 
   constructor(host: TaskSupervisorHost) {
     this.host = host
@@ -168,6 +180,11 @@ export class TaskSupervisor {
 
   setFullAutoForAssignedTasks(on: boolean): void {
     this.fullAutoAssigned = on
+  }
+
+  /** 联络这一轮为一个任务最多等多久（毫秒）。0 = 派完就收工，回执另起一轮送来 */
+  setReceiptWaitLimit(ms: number): void {
+    this.receiptWaitLimitMs = Math.max(0, ms)
   }
 
   // ==================== 查询 ====================
@@ -306,7 +323,12 @@ export class TaskSupervisor {
     }
 
     // 只用来回报「当场听见 / 下一轮」，补话还是开新一轮由那场对话自己决定
-    const delivered = agent?.getRunStatus()?.isRunning ? 'now' : 'next'
+    const status = agent?.getRunStatus()
+    const running = !!status?.isRunning
+    const delivered = running ? 'now' : 'next'
+    // 在跑的那一轮若是用户开的头，补一句不改它的归属，也就不欠联络回执
+    const wasOwed = this.owed.has(agentKey)
+    if (!running || status?.ledBy === 'companion') this.owed.set(agentKey, Date.now())
     const sessionId = agent?.getSessionId() || record?.id
     const context: AgentContext = {
       ...this.contextWithoutWindow(terminalType),
@@ -319,6 +341,10 @@ export class TaskSupervisor {
       config: agent ? undefined : this.runConfig(),
       ledBy: 'companion',
     }).catch(err => {
+      if (!wasOwed) {
+        this.owed.delete(agentKey)
+        this.wakeCompanionWait()
+      }
       log.error(`再交代失败 (${agentKey}):`, err)
     })
     return { ok: true, title, delivered }
@@ -333,14 +359,45 @@ export class TaskSupervisor {
     const fullAuto = opts.fullAuto === true || this.fullAutoAssigned
     // 等于用户在那场里选：没说全自动就是替我审批；只管这一场，不改起步值
     this.host.prepareAssignedTask(agentId, opts.title, fullAuto ? 'free' : 'autoReview', 'companion')
+    this.owed.set(agentId, Date.now())
     this.host.say(agentId, opts.brief, this.contextWithoutWindow('assistant'), {
       surface: 'assistant',
       config: this.runConfig(),
       ledBy: 'companion',
     }).catch(err => {
+      this.owed.delete(agentId)
+      this.wakeCompanionWait()
       log.error(`任务执行失败 (${agentId}):`, err)
     })
     return { agentKey: agentId, fullAuto }
+  }
+
+  /**
+   * 联络开头的这场任务，回执还没交给联络。联络那一轮据此决定要不要继续等。
+   * 三种情形不再算欠：回执已经交出去、等了超过上限、头一阵之后既没在跑也没有排着的完成事件
+   * （比如重启过，或开跑失败）。
+   */
+  isOwed(agentKey: string): boolean {
+    const since = this.owed.get(agentKey)
+    if (since === undefined) return false
+    const age = Date.now() - since
+    if (age >= this.receiptWaitLimitMs) {
+      this.owed.delete(agentKey)
+      return false
+    }
+    if (age >= OWED_START_GRACE_MS && !this.finishBuffer.some(e => e.agentKey === agentKey)) {
+      let running = false
+      try {
+        running = !!this.host.getAgent(agentKey)?.getRunStatus()?.isRunning
+      } catch {
+        // 状态读不出来按没在跑算：宁可少等，不能卡死联络这一轮
+      }
+      if (!running) {
+        this.owed.delete(agentKey)
+        return false
+      }
+    }
+    return true
   }
 
   // ==================== 回执（Agent 基类挂钩调用） ====================
@@ -405,12 +462,15 @@ export class TaskSupervisor {
         failed: t('taskmgr.status_failed'),
         aborted: t('taskmgr.status_aborted'),
       } as const
-      this.finishBuffer.push(t('taskmgr.receipt.finish_line', {
-        title: this.resolveTaskTitle(agentKey),
-        taskId: agentKey,
-        status: statusText[event.status],
-        summary: this.truncate(event.summary.trim(), RECEIPT_SUMMARY_MAX) || t('taskmgr.receipt.no_output'),
-      }))
+      this.finishBuffer.push({
+        agentKey,
+        line: t('taskmgr.receipt.finish_line', {
+          title: this.resolveTaskTitle(agentKey),
+          taskId: agentKey,
+          status: statusText[event.status],
+          summary: this.truncate(event.summary.trim(), RECEIPT_SUMMARY_MAX) || t('taskmgr.receipt.no_output'),
+        }),
+      })
       if (this.finishFlushTimer) clearTimeout(this.finishFlushTimer)
       this.finishFlushTimer = setTimeout(() => this.flushFinishEvents(), FINISH_DEBOUNCE_MS)
       // 不拖住进程退出（CLI / 应用退出时挂起的防抖不应阻塞）
@@ -428,7 +488,7 @@ export class TaskSupervisor {
       this.finishFlushTimer = null
     }
     if (this.finishBuffer.length === 0) return
-    this.deliverReceipt(this.finishBuffer.splice(0))
+    this.deliverReceipt(this.finishBuffer.splice(0), [])
   }
 
   /** 要用户拿主意的事不等防抖；攒着的完成事件一并带上，免得联络为它们再起一轮 */
@@ -437,16 +497,35 @@ export class TaskSupervisor {
       clearTimeout(this.finishFlushTimer)
       this.finishFlushTimer = null
     }
-    this.deliverReceipt([...this.finishBuffer.splice(0), line])
+    this.deliverReceipt(this.finishBuffer.splice(0), [line])
   }
 
-  private deliverReceipt(lines: string[]): void {
+  /**
+   * 交出去之后，那几场任务就不再欠回执（提问 / 确认事件不销账：任务还没做完）。
+   * 没投出去时账照样销（回执丢了，继续等也等不来），并叫醒联络在等的那一轮，免得它空等到下一个检查点。
+   */
+  private deliverReceipt(finished: Array<{ agentKey: string; line: string }>, extra: string[]): void {
+    let delivered = false
     try {
-      this.host.deliverCompanionReceipt(
-        [t('taskmgr.receipt.header'), ...lines, t('taskmgr.receipt.footer')].join('\n')
-      )
+      this.host.deliverCompanionReceipt({
+        body: [t('taskmgr.receipt.header'), ...finished.map(e => e.line), ...extra].join('\n'),
+        footerWhenPresent: t('taskmgr.receipt.footer_present'),
+        footerWhenAway: t('taskmgr.receipt.footer_away'),
+      })
+      delivered = true
     } catch (err) {
       log.warn('任务回执投递失败:', err)
+    }
+    for (const entry of finished) this.owed.delete(entry.agentKey)
+    if (!delivered) this.wakeCompanionWait()
+  }
+
+  /** 叫醒联络在等的那一轮；宿主出错不连累清账 */
+  private wakeCompanionWait(): void {
+    try {
+      this.host.wakeCompanionWait()
+    } catch (err) {
+      log.warn('叫醒联络失败:', err)
     }
   }
 

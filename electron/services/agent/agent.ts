@@ -33,6 +33,7 @@ import type {
   PendingConfirmationInternal,
   PendingSecureInputInternal,
   PendingUserMessage,
+  TaskReceiptText,
   CommandRiskPolicy,
 } from './types'
 import { DEFAULT_AGENT_CONFIG } from './types'
@@ -1672,7 +1673,8 @@ export abstract class Agent {
       phase: this.currentRun.executionPhase,
       currentToolName: this.currentRun.currentToolName,
       stepCount: this.currentRun.steps.length,
-      hasPendingConfirmation: !!this.currentRun.pendingConfirmation
+      hasPendingConfirmation: !!this.currentRun.pendingConfirmation,
+      ...(this.currentRun.ledBy ? { ledBy: this.currentRun.ledBy } : {})
     }
   }
   
@@ -5354,16 +5356,25 @@ export abstract class Agent {
    * 与后台结果不同：用户按停过也照送（回执必须有人处理）；另起一轮时用调用方给的回调和兜底环境。
    */
   deliverTaskReceipt(
-    text: string,
+    receipt: TaskReceiptText,
     opts: { callbacks?: AgentCallbacks; fallbackContext: AgentContext }
   ): void {
-    const trimmed = text.trim()
-    if (!trimmed) return
+    const body = receipt.body.trim()
+    if (!body) return
+    const present = `${body}\n${receipt.footerWhenPresent}`.trim()
+    const away = `${body}\n${receipt.footerWhenAway}`.trim()
 
     this._receiptRunOptions = opts
     const run = this.currentRun
     if (this._loopOpen && run?.isRunning && !run.aborted) {
-      run.pendingUserMessages.push({ message: trimmed, silent: true, backgroundNotice: true, taskReceipt: true })
+      // 用户开的这一轮里用户在场；回执自己叫醒的那一轮里不在场
+      run.pendingUserMessages.push({
+        message: run.internalNotice ? away : present,
+        silent: true,
+        backgroundNotice: true,
+        taskReceipt: true,
+        awayText: away,
+      })
       if (run.executionPhase === 'thinking' && run.requestId) {
         this.services.aiService.abort(run.requestId)
       }
@@ -5371,7 +5382,7 @@ export abstract class Agent {
       return
     }
 
-    this._deferredReceipts.push(trimmed)
+    this._deferredReceipts.push(away)
     this.flushDeferredNotices()
   }
 
@@ -5380,7 +5391,7 @@ export abstract class Agent {
     const unread = run.pendingUserMessages.filter(m => m.taskReceipt)
     if (unread.length === 0) return
     run.pendingUserMessages = run.pendingUserMessages.filter(m => !m.taskReceipt)
-    this._deferredReceipts.push(...unread.map(m => m.message))
+    this._deferredReceipts.push(...unread.map(m => m.awayText ?? m.message))
   }
 
   /** 闲下来以后把排着的回执或后台结果另起一轮送回。两者共用一道门，同一时刻只起一轮 */
@@ -5439,6 +5450,11 @@ export abstract class Agent {
     if (run.executionPhase === 'thinking' && run.requestId) {
       this.services.aiService.abort(run.requestId)
     }
+    this.wakeHold()
+  }
+
+  /** 欠着的后台工作被清账、却没有结果送来时（比如开跑失败），叫醒在等的这一轮重新看一遍还要不要等 */
+  reassessHold(): void {
     this.wakeHold()
   }
 

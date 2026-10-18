@@ -1645,14 +1645,37 @@ async function promptYesNo(question: string): Promise<boolean> {
   }
 }
 
-async function promptLine(question: string): Promise<string> {
-  if (!process.stdin.isTTY) return ''
-  const readline = await import('readline')
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-  try {
-    return (await new Promise<string>((resolve) => rl.question(question, resolve))).trim()
-  } finally {
-    rl.close()
+/**
+ * 联络这一轮挂着等任务回执的时候，用户在命令行里敲的每一行都是对联络说的话（等于在对话里插话）。
+ * 没有 TTY 就不监听。联络自己要用户确认时先 pause：真把监听关掉，让 y/n 那个提问独占键盘，
+ * 免得同一行被两个读取方同时收到（双份回显、那一句被当成对联络说的话）；答完 resume 再接上。
+ */
+function listenForUserLines(onLine: (line: string) => void): { pause(): void; resume(): void; close(): void } {
+  if (!process.stdin.isTTY) return { pause() {}, resume() {}, close() {} }
+  const readline = require('readline') as typeof import('readline')
+  let rl: import('readline').Interface | undefined
+  let closed = false
+  const open = () => {
+    if (rl || closed) return
+    const opened = readline.createInterface({ input: process.stdin, output: process.stdout })
+    opened.on('line', (line: string) => {
+      const text = line.trim()
+      if (text) onLine(text)
+    })
+    rl = opened
+  }
+  const shut = () => {
+    rl?.close()
+    rl = undefined
+  }
+  open()
+  return {
+    pause: shut,
+    resume: open,
+    close() {
+      closed = true
+      shut()
+    },
   }
 }
 
@@ -1661,8 +1684,8 @@ async function promptLine(question: string): Promise<string> {
  *
  * 用途：无头回归联络专属能力（manage_tasks 任务管理只对 __companion__ 注册）。
  * 联络经 manage_tasks 建的 / 交代的任务与桌面同一条路在后端跑（没有窗口只是没人认领到侧栏）；
- * 本命令在联络回复后继续「值班」：任务的回执和桌面一样只交给联络，联络对用户说的话打印出来，
- * 用户的回答作为对联络说的话送回去（与微信上同一条秘书转述）。任务和联络都闲下来才退出。
+ * 联络派完任务后这一轮不收工，等任务的回执在同一轮里送到、由联络回复并打印（和桌面一样）。
+ * 等的时候用户敲的每一行都是对联络说的话；`--task-wait` 是等的上限，到点不再等、打印没做完的任务后退出。
  */
 async function companionChat(args: string[]): Promise<void> {
   const { positional, flags } = parseArgs(args)
@@ -1692,46 +1715,43 @@ async function companionChat(args: string[]): Promise<void> {
 
   const modeRaw = String(flags.mode || (flags.free ? 'free' : 'relaxed'))
   const mode = ['strict', 'relaxed', 'free'].includes(modeRaw) ? modeRaw : 'relaxed'
-  // 任务值班上限：防止任务长挂导致 CLI 永不退出
+  // 联络这一轮为任务等回执的上限：防止任务长挂导致 CLI 永不退出（0 = 不等，回复后即退出）
   const taskWaitSec = Math.max(0, Number(flags['task-wait'] ?? 600) || 0)
 
   const stepPrefix = (type: string) =>
     type === 'thinking' ? '💭' : type === 'tool_call' ? '🔧' :
     type === 'tool_result' ? '📋' : type === 'message' ? '💬' : '  '
 
-  // 联络这一轮是不是在处理回执、有没有对用户开口：处理完回执且开过口，才读一句用户的回答
-  let receiptTurn = false
-  let spokeToUser = false
-  let awaitingReply = false
   const spokenToolCalls = new Set<string>()
+  const awaitCards = new Set<string>()
+  let userLines: ReturnType<typeof listenForUserLines> | undefined
+  /** 联络开始为任务等回执时记下，到上限不再等 */
+  let onStartedWaiting: (() => void) | undefined
 
   const callbacks = {
-    onStart: () => {
-      receiptTurn = false
-      spokeToUser = false
-    },
     onStep: (_agentId: string, step: any) => {
       // 流式中间态不打（CLI 只看落定的步骤）；final_result 与末尾 message 重复，跳过
       if (step.isStreaming) return
       // 对用户说的话已经在 talk_to_user 那一步打印过
       if (step.type === 'final_result' || step.type === 'user_task' || step.type === 'proactive_notice') return
       if (step.type === 'task_receipt') {
-        receiptTurn = true
         console.log(`\n📨 联络收到任务回执：\n${step.content}`)
         return
       }
       if (step.type === 'tool_call' && step.toolName === 'talk_to_user' && !spokenToolCalls.has(step.id)) {
         spokenToolCalls.add(step.id)
-        spokeToUser = true
         console.log(`\n🗣  联络对你说：${step.toolArgs?.message ?? step.content}`)
         return
+      }
+      if (step.type === 'tool_call' && step.toolName === 'manage_tasks' && step.toolArgs?.action === 'await') {
+        onStartedWaiting?.()
+        // 等待卡每秒刷新一次已等多久，命令行只在它出现时打一行
+        if (awaitCards.has(step.id)) return
+        awaitCards.add(step.id)
       }
       const content = (step.content || '').substring(0, 300)
       console.log(`${stepPrefix(step.type)} [${step.type}] ${content}`)
       if (step.toolName) console.log(`   Tool: ${step.toolName}`)
-    },
-    onComplete: () => {
-      if (receiptTurn && spokeToUser) awaitingReply = true
     },
     onNeedConfirm: (confirmation: any) => {
       console.log(`\n⚠️  联络自身操作需确认: ${confirmation.toolName} (risk: ${confirmation.riskLevel})`)
@@ -1741,7 +1761,13 @@ async function companionChat(args: string[]): Promise<void> {
           agent.confirmToolCall(COMPANION_AGENT_KEY, confirmation.toolCallId, true)
           return
         }
-        const ok = await promptYesNo('   批准该操作？')
+        userLines?.pause()
+        let ok = false
+        try {
+          ok = await promptYesNo('   批准该操作？')
+        } finally {
+          userLines?.resume()
+        }
         agent.confirmToolCall(COMPANION_AGENT_KEY, confirmation.toolCallId, ok)
         console.log(ok ? '   已批准' : '   已拒绝')
       })().catch(err => console.error('   确认处理异常:', err))
@@ -1761,6 +1787,21 @@ async function companionChat(args: string[]): Promise<void> {
     terminalType: 'assistant' as const,
   })
 
+  // 联络派完任务后这一轮等着回执，最多等 --task-wait 秒（0 = 派完就收工，回复后即退出）
+  supervisor.setReceiptWaitLimit(taskWaitSec * 1000)
+  const companion = agent.createAssistantAgent(COMPANION_AGENT_KEY)
+  let deadlineTimer: NodeJS.Timeout | undefined
+  onStartedWaiting = () => {
+    if (deadlineTimer || taskWaitSec <= 0) return
+    console.log(`\n… 联络在等后台任务的回执（上限 ${taskWaitSec}s，--task-wait 可调；这时敲的话直接说给联络）`)
+    // 不 unref：等回执期间这个定时器同时是进程的保活句柄（没有 TTY 时没有别的东西占着事件循环）
+    deadlineTimer = setTimeout(() => agent.abort(COMPANION_AGENT_KEY), taskWaitSec * 1000)
+  }
+  userLines = listenForUserLines(line => {
+    agent.say(COMPANION_AGENT_KEY, line, companionContext(), { surface: 'assistant' })
+      .catch((err: any) => console.error('\n联络执行失败:', err?.message || err))
+  })
+
   console.log(`联络对话: "${message}"`)
   console.log(`执行模式: ${mode}\n`)
 
@@ -1777,44 +1818,14 @@ async function companionChat(args: string[]): Promise<void> {
     console.log(result)
   } catch (error: any) {
     console.error('\n联络执行失败:', error.message || error)
+  } finally {
+    if (deadlineTimer) clearTimeout(deadlineTimer)
+    userLines.close()
   }
 
-  // 任务值班：联络可能已通过 manage_tasks 创建或交代了任务，它们在后台跑。
-  // 回执交给联络；联络对用户开过口就读一句回答送回联络。任务和联络都闲下来（或超时）才退出。
-  const companion = agent.createAssistantAgent(COMPANION_AGENT_KEY)
-  const deadline = Date.now() + taskWaitSec * 1000
-  let announcedWait = false
-  let idleRounds = 0
-  while (Date.now() < deadline) {
-    if (awaitingReply) {
-      awaitingReply = false
-      const reply = await promptLine('\n你对联络说（直接回车跳过）：')
-      if (reply) {
-        agent.say(COMPANION_AGENT_KEY, reply, companionContext(), { surface: 'assistant' })
-          .catch((err: any) => console.error('\n联络执行失败:', err?.message || err))
-      }
-    }
-    const tasksBusy = supervisor.listLiveTasks().some((t: any) => t.isRunning || t.pendingConfirmation)
-    if (!tasksBusy && !companion.isRunning()) {
-      // 任务都停了：回执不等防抖，立刻交给联络
-      await supervisor.flushPendingEvents()
-    }
-    // 起步宽限：任务和回执那一轮都是异步开跑，连续两轮都闲才判定没事了
-    if (!tasksBusy && !companion.isRunning() && !awaitingReply) {
-      idleRounds++
-      if (idleRounds >= 2) break
-    } else {
-      idleRounds = 0
-    }
-    if (!announcedWait && tasksBusy) {
-      announcedWait = true
-      console.log(`\n… 后台任务执行中，值班等待（上限 ${taskWaitSec}s，--task-wait 可调）`)
-    }
-    await new Promise(r => setTimeout(r, 2000))
-  }
   const remaining = supervisor.listLiveTasks().filter((t: any) => t.isRunning)
   if (remaining.length > 0) {
-    console.log(`\n⚠️ 值班超时，仍有 ${remaining.length} 个任务在跑（进程退出后任务中断）：`)
+    console.log(`\n⚠️ 联络不再等了，仍有 ${remaining.length} 个任务在跑（进程退出后任务中断）：`)
     for (const t of remaining) {
       console.log(`   - 「${t.title}」(${t.agentKey}) phase=${t.phase ?? '-'} steps=${t.stepCount}`)
     }

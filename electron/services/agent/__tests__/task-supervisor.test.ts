@@ -18,6 +18,8 @@ interface MockAgentOptions {
   firstUserTask?: string
   sessionId?: string
   terminalType?: 'local' | 'ssh' | 'assistant'
+  /** 当前这一轮是谁开的头 */
+  ledBy?: 'companion'
   pendingConfirmation?: {
     toolCallId: string
     toolName: string
@@ -33,7 +35,8 @@ function makeMockAgent(opts: MockAgentOptions = {}): SailFish {
       isRunning: opts.isRunning ?? false,
       phase: opts.phase,
       currentToolName: undefined,
-      stepCount: opts.stepCount ?? 0
+      stepCount: opts.stepCount ?? 0,
+      ...(opts.ledBy ? { ledBy: opts.ledBy } : {})
     }),
     getTerminalType: vi.fn().mockReturnValue(opts.terminalType ?? 'assistant'),
     getSessionId: vi.fn().mockReturnValue(opts.sessionId),
@@ -53,6 +56,7 @@ function makeHost(entries: Array<[string, SailFish]>, overrides: Partial<TaskSup
   say: ReturnType<typeof vi.fn>
   prepareAssignedTask: ReturnType<typeof vi.fn>
   deliverCompanionReceipt: ReturnType<typeof vi.fn>
+  wakeCompanionWait: ReturnType<typeof vi.fn>
 } {
   const map = new Map(entries)
   return {
@@ -63,6 +67,7 @@ function makeHost(entries: Array<[string, SailFish]>, overrides: Partial<TaskSup
     say: vi.fn().mockResolvedValue({ outcome: 'ran', result: 'done' }),
     prepareAssignedTask: vi.fn(),
     deliverCompanionReceipt: vi.fn(),
+    wakeCompanionWait: vi.fn(),
     getHistoryService: vi.fn().mockReturnValue(undefined),
     getConfigService: vi.fn().mockReturnValue(undefined),
     ...overrides
@@ -72,7 +77,13 @@ function makeHost(entries: Array<[string, SailFish]>, overrides: Partial<TaskSup
     say: ReturnType<typeof vi.fn>
     prepareAssignedTask: ReturnType<typeof vi.fn>
     deliverCompanionReceipt: ReturnType<typeof vi.fn>
+    wakeCompanionWait: ReturnType<typeof vi.fn>
   }
+}
+
+/** 第 n 次交给联络的回执正文 */
+function receiptBody(host: { deliverCompanionReceipt: ReturnType<typeof vi.fn> }, n = 0): string {
+  return (host.deliverCompanionReceipt.mock.calls[n][0] as { body: string }).body
 }
 
 describe('TaskSupervisor', () => {
@@ -263,11 +274,23 @@ describe('TaskSupervisor', () => {
       supervisor.handleNeedsConfirmation('tab-t1', confirmEvent)
 
       expect(host.deliverCompanionReceipt).toHaveBeenCalledTimes(1)
-      const receipt = host.deliverCompanionReceipt.mock.calls[0][0] as string
+      const receipt = receiptBody(host)
       expect(receipt).toContain('call-123')
       expect(receipt).toContain('tab-t1')
       expect(receipt).toContain('部署服务')
-      expect(receipt).toContain('talk_to_user')
+    })
+
+    it('回执带两段尾巴：这一轮还开着（用户在场）/ 闲下来被叫醒（只有 talk_to_user 用户才看得到）', () => {
+      const host = makeHost([['tab-t1', makeMockAgent({ title: '部署服务' })]])
+      const supervisor = new TaskSupervisor(host)
+
+      supervisor.handleNeedsConfirmation('tab-t1', confirmEvent)
+
+      const receipt = host.deliverCompanionReceipt.mock.calls[0][0] as { footerWhenPresent: string; footerWhenAway: string }
+      expect(receipt.footerWhenPresent).toContain('用户在对话里')
+      expect(receipt.footerWhenPresent).toContain('manage_tasks')
+      expect(receipt.footerWhenAway).toContain('talk_to_user')
+      expect(receipt.footerWhenAway).toContain('manage_tasks')
     })
 
     it('用户开头的那一轮挂起确认 → 不送联络', () => {
@@ -337,7 +360,7 @@ describe('TaskSupervisor', () => {
       supervisor.handleNeedsConfirmation('tab-t2', confirmEvent)
 
       expect(host.deliverCompanionReceipt).toHaveBeenCalledTimes(1)
-      const receipt = host.deliverCompanionReceipt.mock.calls[0][0] as string
+      const receipt = receiptBody(host)
       expect(receipt).toContain('完成一')
       expect(receipt).toContain('call-123')
 
@@ -354,7 +377,7 @@ describe('TaskSupervisor', () => {
       supervisor.handleAsking('assistant-a', { question: '订哪一间？', options: ['A101', 'B202'], ledBy: 'companion' })
 
       expect(host.deliverCompanionReceipt).toHaveBeenCalledTimes(1)
-      const receipt = host.deliverCompanionReceipt.mock.calls[0][0] as string
+      const receipt = receiptBody(host)
       expect(receipt).toContain('订会议室')
       expect(receipt).toContain('assistant-a')
       expect(receipt).toContain('订哪一间？')
@@ -383,7 +406,7 @@ describe('TaskSupervisor', () => {
       vi.advanceTimersByTime(5000)
 
       expect(host.deliverCompanionReceipt).toHaveBeenCalledTimes(1)
-      const receipt = host.deliverCompanionReceipt.mock.calls[0][0] as string
+      const receipt = receiptBody(host)
       expect(receipt).toContain('整理日志')
       expect(receipt).toContain('整理完成')
       expect(receipt).toContain('tab-t1')
@@ -403,7 +426,7 @@ describe('TaskSupervisor', () => {
       vi.advanceTimersByTime(5000)
 
       expect(host.deliverCompanionReceipt).toHaveBeenCalledTimes(1)
-      const receipt = host.deliverCompanionReceipt.mock.calls[0][0] as string
+      const receipt = receiptBody(host)
       expect(receipt).toContain('任务一')
       expect(receipt).toContain('任务二')
     })
@@ -510,7 +533,7 @@ describe('TaskSupervisor', () => {
       await flush
 
       expect(host.deliverCompanionReceipt).toHaveBeenCalledTimes(1)
-      expect(host.deliverCompanionReceipt.mock.calls[0][0]).toContain('整理日志')
+      expect(receiptBody(host)).toContain('整理日志')
     })
 
     it('空缓冲冲刷不投递', async () => {
@@ -617,6 +640,166 @@ describe('TaskSupervisor', () => {
       expect(await new TaskSupervisor(host).instructTask('tab-live:sub:explore', '去做')).toEqual({ ok: false, reason: 'task_not_found' })
       expect(await new TaskSupervisor(host).instructTask('tab-live', '   ')).toEqual({ ok: false, reason: 'task_not_found' })
       expect(host.say).not.toHaveBeenCalled()
+    })
+  })
+
+  // ==================== 欠回执：联络这一轮为哪些任务等着 ====================
+
+  describe('欠回执（联络这一轮等任务）', () => {
+    it('派出去的任务欠回执；没派过的不欠', async () => {
+      const host = makeHost([])
+      const supervisor = new TaskSupervisor(host)
+      const { agentKey } = await supervisor.createTask({ title: '查日志', brief: '查' })
+
+      expect(supervisor.isOwed(agentKey)).toBe(true)
+      expect(supervisor.isOwed('assistant-other')).toBe(false)
+    })
+
+    it('头一阵（任务还没来得及开跑）不算没了', async () => {
+      vi.useFakeTimers()
+      const host = makeHost([])
+      const supervisor = new TaskSupervisor(host)
+      const { agentKey } = await supervisor.createTask({ title: '查日志', brief: '查' })
+
+      vi.advanceTimersByTime(20_000)
+
+      expect(supervisor.isOwed(agentKey)).toBe(true)
+    })
+
+    it('头一阵之后既没在跑也没有排着的完成事件：不再欠（比如重启过、开跑失败）', async () => {
+      vi.useFakeTimers()
+      const host = makeHost([])
+      const supervisor = new TaskSupervisor(host)
+      const { agentKey } = await supervisor.createTask({ title: '查日志', brief: '查' })
+
+      vi.advanceTimersByTime(31_000)
+
+      expect(supervisor.isOwed(agentKey)).toBe(false)
+    })
+
+    it('头一阵之后还在跑：接着欠；等满一小时：不再欠', async () => {
+      vi.useFakeTimers()
+      const host = makeHost([])
+      const supervisor = new TaskSupervisor(host)
+      const { agentKey } = await supervisor.createTask({ title: '查日志', brief: '查' })
+      const running = makeMockAgent({ title: '查日志', isRunning: true, ledBy: 'companion' })
+      ;(host.getAgent as ReturnType<typeof vi.fn>).mockImplementation((key: string) => key === agentKey ? running : undefined)
+
+      vi.advanceTimersByTime(10 * 60_000)
+      expect(supervisor.isOwed(agentKey)).toBe(true)
+
+      vi.advanceTimersByTime(51 * 60_000)
+      expect(supervisor.isOwed(agentKey)).toBe(false)
+    })
+
+    it('开跑失败：当场销账', async () => {
+      const host = makeHost([], { say: vi.fn().mockRejectedValue(new Error('没有可用的模型')) })
+      const supervisor = new TaskSupervisor(host)
+      const { agentKey } = await supervisor.createTask({ title: '查日志', brief: '查' })
+
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(supervisor.isOwed(agentKey)).toBe(false)
+    })
+
+    it('开跑失败销账的同时叫醒联络在等的那一轮：不让它守着一张空等的卡', async () => {
+      const host = makeHost([], { say: vi.fn().mockRejectedValue(new Error('没有可用的模型')) })
+      const supervisor = new TaskSupervisor(host)
+      await supervisor.createTask({ title: '查日志', brief: '查' })
+
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(host.wakeCompanionWait).toHaveBeenCalledTimes(1)
+    })
+
+    it('回执没投出去：照样销账并叫醒联络；投出去了就不额外叫醒', async () => {
+      vi.useFakeTimers()
+      const host = makeHost([])
+      host.deliverCompanionReceipt.mockImplementationOnce(() => { throw new Error('投递管道坏了') })
+      const supervisor = new TaskSupervisor(host)
+      const lost = await supervisor.createTask({ title: '甲', brief: '甲' })
+      const fine = await supervisor.createTask({ title: '乙', brief: '乙' })
+
+      supervisor.handleRunFinished(lost.agentKey, { status: 'success', summary: '甲好了', ledBy: 'companion' })
+      vi.advanceTimersByTime(5000)
+      expect(supervisor.isOwed(lost.agentKey)).toBe(false)
+      expect(host.wakeCompanionWait).toHaveBeenCalledTimes(1)
+
+      supervisor.handleRunFinished(fine.agentKey, { status: 'success', summary: '乙好了', ledBy: 'companion' })
+      vi.advanceTimersByTime(5000)
+      expect(supervisor.isOwed(fine.agentKey)).toBe(false)
+      expect(host.wakeCompanionWait).toHaveBeenCalledTimes(1)
+    })
+
+    it('完成事件排在防抖窗口里时仍欠；回执交出去之后销账', async () => {
+      vi.useFakeTimers()
+      const host = makeHost([])
+      const supervisor = new TaskSupervisor(host)
+      const { agentKey } = await supervisor.createTask({ title: '查日志', brief: '查' })
+
+      vi.advanceTimersByTime(60_000)
+      supervisor.handleRunFinished(agentKey, { status: 'success', summary: '好了', ledBy: 'companion' })
+      expect(supervisor.isOwed(agentKey)).toBe(true)
+
+      vi.advanceTimersByTime(5000)
+      expect(host.deliverCompanionReceipt).toHaveBeenCalledTimes(1)
+      expect(supervisor.isOwed(agentKey)).toBe(false)
+    })
+
+    it('向用户提问 / 要确认的回执交出去之后，任务还没做完，仍然欠', async () => {
+      const host = makeHost([])
+      const supervisor = new TaskSupervisor(host)
+      const { agentKey } = await supervisor.createTask({ title: '订会议室', brief: '订' })
+
+      supervisor.handleAsking(agentKey, { question: '订哪一间？', options: [], ledBy: 'companion' })
+
+      expect(host.deliverCompanionReceipt).toHaveBeenCalledTimes(1)
+      expect(supervisor.isOwed(agentKey)).toBe(true)
+    })
+
+    it('确认连同攒着的完成事件一起交出：完成的那场销账，没做完的不销', async () => {
+      vi.useFakeTimers()
+      const host = makeHost([])
+      const supervisor = new TaskSupervisor(host)
+      const done = await supervisor.createTask({ title: '甲', brief: '甲' })
+      const waiting = await supervisor.createTask({ title: '乙', brief: '乙' })
+
+      supervisor.handleRunFinished(done.agentKey, { status: 'success', summary: '甲好了', ledBy: 'companion' })
+      supervisor.handleNeedsConfirmation(waiting.agentKey, {
+        toolCallId: 'c1', toolName: 'exec', riskLevel: 'dangerous', argsPreview: '{}', ledBy: 'companion',
+      })
+
+      expect(supervisor.isOwed(done.agentKey)).toBe(false)
+      expect(supervisor.isOwed(waiting.agentKey)).toBe(true)
+    })
+
+    it('再交代一场已经停了的任务：重新欠回执', async () => {
+      const host = makeHost([['tab-idle', makeMockAgent({ title: '查日志', terminalType: 'local' })]])
+      const supervisor = new TaskSupervisor(host)
+
+      await supervisor.instructTask('tab-idle', '再跑一次')
+
+      expect(supervisor.isOwed('tab-idle')).toBe(true)
+    })
+
+    it('再交代一场联络开头、正在跑的任务：仍欠', async () => {
+      const host = makeHost([['tab-live', makeMockAgent({ title: '查日志', isRunning: true, ledBy: 'companion', terminalType: 'local' })]])
+      const supervisor = new TaskSupervisor(host)
+
+      await supervisor.instructTask('tab-live', '顺便看看今天的')
+
+      expect(supervisor.isOwed('tab-live')).toBe(true)
+    })
+
+    it('再交代一场用户开头、正在跑的任务：补一句不改归属，不欠', async () => {
+      const host = makeHost([['tab-live', makeMockAgent({ title: '查日志', isRunning: true, terminalType: 'local' })]])
+      const supervisor = new TaskSupervisor(host)
+
+      await supervisor.instructTask('tab-live', '顺便看看今天的')
+
+      expect(supervisor.isOwed('tab-live')).toBe(false)
     })
   })
 })

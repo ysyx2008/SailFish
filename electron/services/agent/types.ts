@@ -121,6 +121,16 @@ export interface AllowedToolKey {
   argsHash: string  // 关键参数的哈希值（如文件路径）
 }
 
+/**
+ * 交给联络的任务回执。正文一样，尾巴按联络当时的处境二选一：
+ * 这一轮还开着（用户在场），或联络闲着时被叫醒另起一轮（用户不在这一轮里）。
+ */
+export interface TaskReceiptText {
+  body: string
+  footerWhenPresent: string
+  footerWhenAway: string
+}
+
 // 用户补充消息（Agent 运行中追加的对话）
 export interface PendingUserMessage {
   message: string
@@ -140,6 +150,8 @@ export interface PendingUserMessage {
   backgroundNotice?: boolean
   /** 派出去的任务交回的回执：上墙为回执步骤；这一轮没来得及收，收场后另起一轮送回 */
   taskReceipt?: boolean
+  /** 回执没来得及收、挪到另起的一轮时用的全文（尾巴换成「用户不在这一轮里」那段） */
+  awayText?: string
   /** 这条已经用来结束过一次等待。消息仍要交给模型，不能再结束下一次等待。 */
   consumedAsReply?: boolean
 }
@@ -494,6 +506,8 @@ export interface RunStatus {
   currentToolName?: string
   stepCount: number
   hasPendingConfirmation: boolean
+  /** 这一轮是联络开的头；没有 = 用户开的头 */
+  ledBy?: AssignedBy
 }
 
 /**
