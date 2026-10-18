@@ -37,12 +37,62 @@ export function linuxHasGpu(
   }
 }
 
-function detectGpuAvailable(): boolean {
-  if (process.platform !== 'linux') return true
-  return linuxHasGpu(
-    path => fs.existsSync(path),
-    dir => fs.readdirSync(dir),
+/** 图形栈明确在用硬件加速 */
+const HARDWARE_GPU_STATUSES = new Set([
+  'enabled',
+  'enabled_on',
+  'enabled_force',
+  'enabled_force_on',
+  'enabled_readback',
+])
+
+/** 图形栈明确只剩软件渲染，没有能用来做嵌入的显卡 */
+const SOFTWARE_ONLY_GPU_STATUSES = new Set([
+  'disabled_software',
+  'unavailable_software',
+])
+
+/**
+ * 从图形栈状态判断有没有硬件显卡。
+ * 问不到、或只是被人关掉，返回 null，调用方不要据此停掉加速。
+ */
+export function hardwareGpuFromFeatureStatus(
+  status: Record<string, string> | null | undefined,
+): boolean | null {
+  if (!status) return null
+  const values = [status.gpu_compositing, status.webgl].filter(
+    (value): value is string => typeof value === 'string' && value.length > 0,
   )
+  if (values.length === 0) return null
+  if (values.some(value => HARDWARE_GPU_STATUSES.has(value))) return true
+  if (values.every(value => SOFTWARE_ONLY_GPU_STATUSES.has(value))) return false
+  return null
+}
+
+function readElectronGpuStatus(): Record<string, string> | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const electron = require('electron') as {
+      app?: { getGPUFeatureStatus?: () => Record<string, string> }
+    }
+    const status = electron.app?.getGPUFeatureStatus?.()
+    if (!status || typeof status !== 'object') return null
+    return status
+  } catch {
+    return null
+  }
+}
+
+function detectGpuAvailable(): boolean {
+  if (process.platform === 'linux') {
+    return linuxHasGpu(
+      path => fs.existsSync(path),
+      dir => fs.readdirSync(dir),
+    )
+  }
+  const fromElectron = hardwareGpuFromFeatureStatus(readElectronGpuStatus())
+  if (fromElectron !== null) return fromElectron
+  return true
 }
 
 /** 将用户配置解析为 pipeline 实际使用的 device（处理 auto 与平台差异） */
@@ -55,15 +105,16 @@ export function resolvePipelineDevice(
     // gpu 会走 webgpu 等可用后端，实测稳定且更快。
     switch (process.platform) {
       case 'darwin':
-        return 'gpu'
+        // 没有可用显卡时不要走 WebGPU，和 Windows / Linux 一样直接 CPU。
+        return gpuAvailable ? 'gpu' : 'cpu'
       case 'linux':
         // 无设备节点就直接 CPU。gpu 的执行器列表不含 CPU，
         // 无卡机器上先去碰 WebGPU/CUDA 会卡住或把进程打退出去。
         return process.arch === 'x64' && gpuAvailable ? 'gpu' : 'cpu'
       case 'win32':
-        // Windows 不能用 gpu：transformers.js 会同时注册 webgpu + dml，
-        // onnxruntime-node 1.24 报 "DML EP can only be used with CPU EPs"。
-        return 'dml'
+        // 没有可用显卡时不要走 DirectML。有显卡也不能用 gpu 别名：
+        // transformers.js 会同时注册 webgpu + dml。
+        return gpuAvailable ? 'dml' : 'cpu'
       default:
         return 'cpu'
     }
