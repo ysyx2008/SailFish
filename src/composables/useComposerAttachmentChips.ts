@@ -34,11 +34,14 @@ export interface ChipParsingDoc {
   fileSize: number
 }
 
-/** 解析中的文件与解析好的文件是不是同一个（用于让胶囊从进度态原地变成正式态） */
+/**
+ * 解析中的文件与解析好的文件是不是同一个（用于让胶囊从进度态原地变成正式态）。
+ * 认文件名和大小；文件夹没有有意义的大小（拖进来时系统报的是目录项自己的字节数，解析后不再带），只认名字。
+ */
 export const isSameAttachment = (
-  a: { filename: string; fileSize: number },
-  b: { filename: string; fileSize: number },
-) => a.filename === b.filename && a.fileSize === b.fileSize
+  a: { filename: string; fileSize: number; fileType?: string },
+  b: { filename: string; fileSize: number; fileType?: string },
+) => a.filename === b.filename && (a.fileType === 'folder' || b.fileType === 'folder' || a.fileSize === b.fileSize)
 
 /** 编辑器对外提供给这里用的那几个方法 */
 export interface ChipEditorHandle {

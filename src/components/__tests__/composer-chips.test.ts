@@ -355,6 +355,24 @@ describe('文件胶囊接线', () => {
     expect(h1.chipLabels()).toEqual(['big.pdf'])
   })
 
+  it('文件夹解析完：还是同一枚胶囊，不会多出第二枚（拖进来时报的大小与解析后不同）', async () => {
+    const h1 = mountHarness('ab')
+    await settle()
+    h1.editor().setCursor(1)
+    h1.parsingDocs.value = [parsing('dir', 0, 640)]
+    await settle()
+    const keyBefore = h1.editor().getChipKeys()[0]
+    // 文件夹解析好后没有大小；解析中的小条还留着，直到过了完成态停留才消失
+    h1.docs.value = [{ filename: 'dir', fileType: 'folder', fileSize: 0 }]
+    await settle()
+    expect(h1.editor().getChipKeys()).toEqual([keyBefore])
+    expect(h1.chipLabels()).toEqual(['dir'])
+    h1.parsingDocs.value = []
+    await settle()
+    expect(h1.editor().getChipKeys()).toEqual([keyBefore])
+    expect(h1.text.value).toBe(`a${CHIP}b`)
+  })
+
   it('解析失败的小条自己消失时，不会误删别的文件', async () => {
     const h1 = mountHarness('')
     await settle()
