@@ -101,6 +101,19 @@ describe('ort-native', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   })
 
+  it('要求 wasm 时不加载原生库', () => {
+    const previous = process.env.SAILFISH_ORT_BACKEND
+    process.env.SAILFISH_ORT_BACKEND = 'wasm'
+    const helper = loadHelper()
+    try {
+      expect(helper.ensureOnnxRuntimeBackend()).toBe('wasm')
+    } finally {
+      helper.resetOrtNativeForTest()
+      if (previous === undefined) delete process.env.SAILFISH_ORT_BACKEND
+      else process.env.SAILFISH_ORT_BACKEND = previous
+    }
+  })
+
   it('第二次调用不会重复探测', () => {
     const helper = loadHelper()
     const first = helper.ensureOnnxRuntimeBackend()

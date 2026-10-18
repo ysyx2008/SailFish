@@ -4,6 +4,7 @@
  * @see https://huggingface.co/docs/transformers.js/guides/device-acceleration
  */
 
+import fs from 'fs'
 import type { EmbeddingDevice } from './types'
 
 export type { EmbeddingDevice } from './types'
@@ -20,8 +21,35 @@ export function normalizeEmbeddingDevice(device?: string | null): EmbeddingDevic
   return 'auto'
 }
 
+/**
+ * Linux 上有没有能给进程用的显卡设备。
+ * 不靠报错文案判断：看设备节点在不在。容器里没挂显卡设备时也算没有。
+ */
+export function linuxHasGpu(
+  exists: (path: string) => boolean,
+  listDir: (path: string) => string[],
+): boolean {
+  if (exists('/dev/nvidia0') || exists('/dev/nvidiactl')) return true
+  try {
+    return listDir('/dev/dri').some(name => name.startsWith('renderD'))
+  } catch {
+    return false
+  }
+}
+
+function detectGpuAvailable(): boolean {
+  if (process.platform !== 'linux') return true
+  return linuxHasGpu(
+    path => fs.existsSync(path),
+    dir => fs.readdirSync(dir),
+  )
+}
+
 /** 将用户配置解析为 pipeline 实际使用的 device（处理 auto 与平台差异） */
-export function resolvePipelineDevice(device: EmbeddingDevice): EmbeddingDevice {
+export function resolvePipelineDevice(
+  device: EmbeddingDevice,
+  gpuAvailable: boolean = detectGpuAvailable(),
+): EmbeddingDevice {
   if (device === 'auto') {
     // macOS：transformers auto 会优先 CoreML，但 ORT 1.24 对外部 onnx_data 路径解析有误；
     // gpu 会走 webgpu 等可用后端，实测稳定且更快。
@@ -29,7 +57,9 @@ export function resolvePipelineDevice(device: EmbeddingDevice): EmbeddingDevice 
       case 'darwin':
         return 'gpu'
       case 'linux':
-        return process.arch === 'x64' ? 'gpu' : 'cpu'
+        // 无设备节点就直接 CPU。gpu 的执行器列表不含 CPU，
+        // 无卡机器上先去碰 WebGPU/CUDA 会卡住或把进程打退出去。
+        return process.arch === 'x64' && gpuAvailable ? 'gpu' : 'cpu'
       case 'win32':
         // Windows 不能用 gpu：transformers.js 会同时注册 webgpu + dml，
         // onnxruntime-node 1.24 报 "DML EP can only be used with CPU EPs"。
@@ -51,8 +81,11 @@ export function resolvePipelineDevice(device: EmbeddingDevice): EmbeddingDevice 
  * 模型加载时按顺序尝试的 pipeline 设备。
  * 加速 EP（DML/WebGPU/CUDA 等）在无可用 GPU 或驱动不兼容时会直接失败，ORT 不会自动回退 CPU。
  */
-export function getEmbeddingInitDeviceCandidates(device: EmbeddingDevice): EmbeddingDevice[] {
-  const primary = resolvePipelineDevice(device)
+export function getEmbeddingInitDeviceCandidates(
+  device: EmbeddingDevice,
+  gpuAvailable: boolean = detectGpuAvailable(),
+): EmbeddingDevice[] {
+  const primary = resolvePipelineDevice(device, gpuAvailable)
   if (primary === 'cpu') return ['cpu']
   return [primary, 'cpu']
 }

@@ -157,6 +157,10 @@ function getUnpackedNodeModules(): string {
 // ────────────────────────── EmbeddingService ──────────────────────────
 
 const WORKER_CALL_TIMEOUT_MS = 5 * 60 * 1000 // 单次调用 5 分钟超时（embed 大批量在弱机上可能数十秒）
+/** 加速设备初始化：无卡机器上 WebGPU/CUDA 可能一直不返回，不要干等整段 embed 超时 */
+const WORKER_ACCEL_INIT_TIMEOUT_MS = 45 * 1000
+/** CPU / WASM 首次加载含编译，给足时间 */
+const WORKER_CPU_INIT_TIMEOUT_MS = 3 * 60 * 1000
 
 export class EmbeddingService extends EventEmitter {
   private modelManager: ModelManager
@@ -188,6 +192,11 @@ export class EmbeddingService extends EventEmitter {
   private embeddingDevice: EmbeddingDevice = 'auto'
   /** 本次成功加载实际使用的 pipeline 设备（可能与配置不同，例如 DML 失败后回退 CPU） */
   private runtimePipelineDevice: EmbeddingDevice | null = null
+  /**
+   * 原生库把工人进程打退出去、或 CPU 原生也失败时，后续工人改走 WASM。
+   * 换设备设置时清掉，允许再试一次加速。
+   */
+  private ortMode: 'native' | 'wasm' = 'native'
 
   /**
    * 桌面端 worker 初始化完整失败后的闩锁。
@@ -278,6 +287,7 @@ export class EmbeddingService extends EventEmitter {
     const next = normalizeEmbeddingDevice(device)
     if (next === this.embeddingDevice) return
     this.embeddingDevice = next
+    this.ortMode = 'native'
     this.clearPermanentInitError()
     if (this.extractor || this.hasLiveWorker) {
       this.dispose()
@@ -316,7 +326,11 @@ export class EmbeddingService extends EventEmitter {
       try {
         await this.startWorker()
         const initPayload = this.buildWorkerInitPayload(modelDir, modelName, pipelineDevice)
-        const initResult = await this.callWorker('initialize', initPayload)
+        const initResult = await this.callWorker(
+          'initialize',
+          initPayload,
+          this.initTimeoutMs(pipelineDevice),
+        )
         if (initResult?.backend === 'wasm') {
           log.warn('原生 ONNX 不可用，已改用 WASM（较慢）')
         }
@@ -344,6 +358,18 @@ export class EmbeddingService extends EventEmitter {
       ? { ...pipelineOpts, device: 'cpu' as const }
       : pipelineOpts
     this.extractor = await pipeline('feature-extraction', modelName, inProcOpts)
+    try {
+      const probe = await this.extractor(['ok'], { pooling: 'mean', normalize: true })
+      const probeData = probe && probe.data
+      if (!probeData || typeof probeData.length !== 'number' || probeData.length === 0) {
+        throw new Error('嵌入模型已加载，但推理没有结果')
+      }
+    } catch (error) {
+      const extractor = this.extractor as { dispose?: () => Promise<void> } | null
+      this.extractor = null
+      await extractor?.dispose?.().catch(() => undefined)
+      throw error
+    }
     return { useWorker: false, device: inProcOpts.device }
   }
 
@@ -390,43 +416,79 @@ export class EmbeddingService extends EventEmitter {
     }
   }
 
+  /** 加速设备给短超时，卡住就换 CPU；CPU / WASM 首次编译更慢 */
+  protected initTimeoutMs(pipelineDevice: EmbeddingDevice): number {
+    if (this.ortMode === 'wasm' || pipelineDevice === 'cpu') return WORKER_CPU_INIT_TIMEOUT_MS
+    return WORKER_ACCEL_INIT_TIMEOUT_MS
+  }
+
+  private noteLoaded(
+    model: ModelInfo,
+    result: { useWorker: boolean; device: EmbeddingDevice },
+    primary: EmbeddingDevice,
+  ): void {
+    this.useWorker = result.useWorker
+    this.runtimePipelineDevice = result.device
+    this.currentModelId = model.id
+    this.clearPermanentInitError()
+
+    if (this.ortMode === 'wasm') {
+      log.warn('原生嵌入不可用，已改用 CPU')
+    } else if (result.device === 'cpu' && primary !== 'cpu') {
+      log.warn('加速设备 %s 不可用，已回退到 CPU', primary)
+    }
+
+    const modeLabel = result.useWorker ? 'worker 进程' : '主进程'
+    log.info(
+      'Embedding 模型已加载到 %s：%s（device=%s，batch=%d）',
+      modeLabel,
+      model.id,
+      result.device,
+      this.getMaxBatchSize(),
+    )
+    this.emit('loaded', model.id)
+  }
+
   private async doInitialize(model: ModelInfo): Promise<void> {
     const candidates = getEmbeddingInitDeviceCandidates(this.embeddingDevice)
     const primary = candidates[0]
     let lastError: unknown
 
-    for (const pipelineDevice of candidates) {
+    // ortMode 只在换设备设置时回到 native。已经改用 WASM 之后，再次初始化不要再去碰原生库。
+    if (this.ortMode !== 'wasm') {
+      for (const pipelineDevice of candidates) {
+        try {
+          this.killWorker()
+          this.extractor = null
+
+          const result = await this.loadWithPipelineDevice(model, pipelineDevice)
+          this.noteLoaded(model, result, primary)
+          return
+        } catch (error) {
+          lastError = error
+          this.killWorker()
+          this.extractor = null
+          if (pipelineDevice !== 'cpu') {
+            log.warn('Embedding 设备 %s 加载失败，尝试回退：', pipelineDevice, error)
+          }
+        }
+      }
+    }
+
+    // 原生 CPU 也会把进程打退出去（无显卡的 Windows Server 上常见）。
+    // 换一个不加载原生库的工人。进程内模式没有这层隔离，原生已经试过，不再重复。
+    if (this.ortMode === 'wasm' || this.isWorkerModeAvailable()) {
+      this.ortMode = 'wasm'
       try {
         this.killWorker()
         this.extractor = null
-
-        const result = await this.loadWithPipelineDevice(model, pipelineDevice)
-        this.useWorker = result.useWorker
-        this.runtimePipelineDevice = result.device
-        this.currentModelId = model.id
-        this.clearPermanentInitError()
-
-        if (result.device === 'cpu' && primary !== 'cpu') {
-          log.warn('加速设备 %s 不可用，已回退到 CPU', primary)
-        }
-
-        const modeLabel = result.useWorker ? 'worker 进程' : '主进程'
-        log.info(
-          'Embedding 模型已加载到 %s：%s（device=%s，batch=%d）',
-          modeLabel,
-          model.id,
-          result.device,
-          this.getMaxBatchSize(),
-        )
-        this.emit('loaded', model.id)
+        const result = await this.loadWithPipelineDevice(model, 'cpu')
+        this.noteLoaded(model, result, primary)
         return
       } catch (error) {
         lastError = error
         this.killWorker()
         this.extractor = null
-        if (pipelineDevice !== 'cpu') {
-          log.warn('Embedding 设备 %s 加载失败，尝试回退：', pipelineDevice, error)
-        }
       }
     }
 
@@ -475,6 +537,11 @@ export class EmbeddingService extends EventEmitter {
       ? `${unpackedNM}${path.delimiter}${workerEnv.NODE_PATH}`
       : unpackedNM
 
+    if (this.ortMode === 'wasm') {
+      const helper = loadOrtNativeHelper() as { FORCE_WASM_ENV?: string } | null
+      workerEnv[helper?.FORCE_WASM_ENV || 'SAILFISH_ORT_BACKEND'] = 'wasm'
+    }
+
     // 清掉「进程已退出但引用还在」的上一代残留，避免它的未完成请求悬着
     this.killWorker()
 
@@ -519,7 +586,7 @@ export class EmbeddingService extends EventEmitter {
     session.kill()
   }
 
-  private callWorker<T = any>(type: string, data?: any): Promise<T> {
+  private callWorker<T = any>(type: string, data?: any, timeoutMs?: number): Promise<T> {
     const session = this.session
     if (!session?.isAlive) {
       return Promise.reject(new Error('Embedding worker 未启动'))
@@ -530,7 +597,7 @@ export class EmbeddingService extends EventEmitter {
     if (this.isDisposing && type !== 'dispose') {
       return Promise.reject(new Error('Embedding service is being disposed'))
     }
-    return session.call<T>(type, data)
+    return session.call<T>(type, data, timeoutMs)
   }
 
   // ────────────────────────── embed 接口 ──────────────────────────
@@ -548,11 +615,14 @@ export class EmbeddingService extends EventEmitter {
       throw this.permanentInitError
     }
 
-    if (!this.extractor && !this.hasLiveWorker) {
+    // 已经选定过模型时，工人掉了由 embedBatch 按当前设备重启。
+    // 这里再走一遍初始化会把「已经改用 CPU」盖回原生加速，无卡机器上又崩一次。
+    const modelReady = this.currentModelId && (this.extractor || this.useWorker)
+    if (!modelReady) {
       await this.initialize()
     }
 
-    if (!this.extractor && !this.hasLiveWorker) {
+    if (!this.extractor && !this.hasLiveWorker && !this.useWorker) {
       throw new Error('Embedding 模型未加载')
     }
 
@@ -694,6 +764,7 @@ export class EmbeddingService extends EventEmitter {
       await this.callWorker(
         'initialize',
         this.buildWorkerInitPayload(modelDir, modelName, pipelineDevice),
+        this.initTimeoutMs(pipelineDevice),
       )
 
       // 等待期间可能已 dispose 或换模型，这次重启的成果就作废了：

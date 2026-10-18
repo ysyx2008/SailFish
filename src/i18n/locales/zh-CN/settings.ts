@@ -886,7 +886,7 @@ export default {
     modelInfo: '向量模型',
     modelDescription: '使用轻量级向量模型（bge-small-zh-v1.5），已随软件打包；推理设备默认自动选择（macOS 优先 CoreML）',
     embeddingDevice: '嵌入加速',
-    embeddingDeviceDesc: '本地向量化所使用的计算设备。自动模式在 macOS 上使用 WebGPU（CoreML 暂不支持外部权重路径）。',
+    embeddingDeviceDesc: '本地向量化所使用的计算设备。有显卡时自动加速；没有可用显卡时用 CPU。macOS 上自动走 WebGPU（CoreML 暂不支持外部权重路径）。',
     embeddingDeviceAuto: '自动（推荐）',
     embeddingDeviceCpu: '仅 CPU',
     embeddingDeviceCoreml: 'CoreML（Apple）',

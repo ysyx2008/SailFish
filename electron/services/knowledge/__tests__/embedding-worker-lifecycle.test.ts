@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import type { EmbeddingDevice } from '../types'
 import type { WorkerProcessLike, WorkerSessionOptions } from '../worker-session'
 import { UtilityWorkerSession } from '../worker-session'
 
@@ -29,6 +30,10 @@ class FakeWorker implements WorkerProcessLike {
   killed = false
   exited = false
   failInitialize = false
+  /** 初始化消息到达后进程直接退出，模拟原生库把工人打崩 */
+  crashOnInitialize = false
+  /** 初始化消息不予回复，模拟加速设备卡住 */
+  hangInitialize = false
   /** 让本代 worker 的推理请求一律失败，用来逼调用方要求重启 */
   failEmbed = false
 
@@ -43,9 +48,14 @@ class FakeWorker implements WorkerProcessLike {
     queueMicrotask(() => {
       if (this.killed) return
       if (message.type === 'initialize') {
+        if (this.crashOnInitialize) {
+          this.emitExit(139)
+          return
+        }
+        if (this.hangInitialize) return
         this.reply(message.id, this.failInitialize
           ? { success: false, error: '模型加载失败' }
-          : { success: true, result: { device: 'cpu' } })
+          : { success: true, result: { device: message.data?.device || 'cpu' } })
       } else if (message.type === 'embed') {
         if (this.failEmbed) {
           this.reply(message.id, { success: false, error: '推理失败' })
@@ -86,8 +96,21 @@ class FakeWorker implements WorkerProcessLike {
 /** 把 fork 换成假进程，并记录每一代，便于断言「谁还活着」 */
 class TestEmbeddingService extends EmbeddingService {
   readonly spawned: FakeWorker[] = []
+  readonly spawnedEnv: NodeJS.ProcessEnv[] = []
   /** 下一代 worker 是否让 initialize 失败 */
   nextInitializeFails = false
+  /** 非 WASM 的初始化一律把进程打退出去 */
+  crashNativeInitialize = false
+  /** 只打崩第一代原生工人，下一代原生工人正常 */
+  crashFirstNative = false
+  /** 只卡住第一代原生工人 */
+  hangFirstNative = false
+  initTimeoutOverride: number | null = null
+  private nativeSpawnCount = 0
+
+  protected initTimeoutMs(pipelineDevice: EmbeddingDevice): number {
+    return this.initTimeoutOverride ?? super.initTimeoutMs(pipelineDevice)
+  }
 
   protected isWorkerModeAvailable(): boolean {
     return true
@@ -95,8 +118,16 @@ class TestEmbeddingService extends EmbeddingService {
 
   protected spawnSession(options: WorkerSessionOptions): UtilityWorkerSession {
     const proc = new FakeWorker()
+    const wasm = options.env.SAILFISH_ORT_BACKEND === 'wasm'
     proc.failInitialize = this.nextInitializeFails
+    const firstNative = !wasm && this.nativeSpawnCount === 0
+    proc.crashOnInitialize = !wasm && (
+      this.crashNativeInitialize || (this.crashFirstNative && firstNative)
+    )
+    proc.hangInitialize = !wasm && this.hangFirstNative && firstNative
+    if (!wasm) this.nativeSpawnCount++
     this.spawned.push(proc)
+    this.spawnedEnv.push(options.env)
     return UtilityWorkerSession.spawn({
       ...options,
       scriptPath: process.cwd(),
@@ -217,6 +248,63 @@ describe('EmbeddingService worker 换代', () => {
     // 握手失败的那些 worker 必须都被回收，不许活着占内存
     expect(svc.liveWorkers).toHaveLength(0)
   })
+
+  it('仅 CPU 不会先试加速设备', async () => {
+    svc.setDevice('cpu')
+    await svc.initialize()
+
+    expect(svc.spawned).toHaveLength(1)
+    expect(svc.spawnedEnv[0]?.SAILFISH_ORT_BACKEND).not.toBe('wasm')
+  })
+
+  it('加速进程崩溃后改用 CPU，知识库仍能加载', async () => {
+    svc.setDevice('gpu')
+    svc.crashFirstNative = true
+    await svc.initialize()
+
+    expect(svc.spawned).toHaveLength(2)
+    expect(svc.spawnedEnv.every(env => env.SAILFISH_ORT_BACKEND !== 'wasm')).toBe(true)
+    expect(svc.isReady()).toBe(true)
+    expect(svc.liveWorkers).toHaveLength(1)
+  })
+
+  it('仅 CPU 且原生进程崩溃时仍能加载', async () => {
+    svc.setDevice('cpu')
+    svc.crashNativeInitialize = true
+    await svc.initialize()
+
+    expect(svc.spawned).toHaveLength(2)
+    expect(svc.spawnedEnv[0]?.SAILFISH_ORT_BACKEND).not.toBe('wasm')
+    expect(svc.spawnedEnv[1]?.SAILFISH_ORT_BACKEND).toBe('wasm')
+    expect(svc.isReady()).toBe(true)
+    expect(svc.liveWorkers).toHaveLength(1)
+  })
+
+  it('落到不依赖显卡的实现后，重启工人不再去碰原生库', async () => {
+    svc.setDevice('cpu')
+    svc.crashNativeInitialize = true
+    await svc.initialize()
+
+    const before = svc.spawned.length
+    svc.spawned[before - 1].emitExit(1)
+    await flush()
+    await svc.embed(['你好'])
+
+    expect(svc.spawned).toHaveLength(before + 1)
+    expect(svc.spawnedEnv.slice(before).every(env => env.SAILFISH_ORT_BACKEND === 'wasm')).toBe(true)
+    expect(svc.liveWorkers).toHaveLength(1)
+  })
+
+  it('加速初始化卡住时放弃并改用 CPU', async () => {
+    svc.setDevice('gpu')
+    svc.hangFirstNative = true
+    svc.initTimeoutOverride = 40
+    await svc.initialize()
+
+    expect(svc.spawned).toHaveLength(2)
+    expect(svc.spawnedEnv.every(env => env.SAILFISH_ORT_BACKEND !== 'wasm')).toBe(true)
+    expect(svc.isReady()).toBe(true)
+  }, 2000)
 
   it('dispose 后不再持有任何 worker', async () => {
     await svc.initialize()

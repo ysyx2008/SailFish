@@ -27,7 +27,7 @@ async function loadTransformers() {
   if (pipelineFn) return { pipeline: pipelineFn, env, backend: ortBackend }
   ortBackend = ensureOnnxRuntimeBackend()
   if (ortBackend === 'wasm') {
-    console.warn('[EmbeddingWorker] onnxruntime-node 加载失败，改用 WASM')
+    console.warn('[EmbeddingWorker] 嵌入使用 WASM')
   }
   const transformers = await import('@huggingface/transformers')
   pipelineFn = transformers.pipeline
@@ -65,11 +65,26 @@ async function handleInitialize(data) {
   t.env.allowRemoteModels = false
   t.env.localModelPath = modelDir
 
-  extractor = await t.pipeline('feature-extraction', modelName, {
-    local_files_only: true,
-    device: resolvedDevice,
-    dtype: resolvedDtype,
-  })
+  try {
+    extractor = await t.pipeline('feature-extraction', modelName, {
+      local_files_only: true,
+      device: resolvedDevice,
+      dtype: resolvedDtype,
+    })
+    // 虚拟显卡上会话能建出来，一算就失败。加载阶段试一次，失败就交给上一层换 CPU。
+    const probe = await extractor(['ok'], { pooling: 'mean', normalize: true })
+    const probeData = probe && probe.data
+    if (!probeData || typeof probeData.length !== 'number' || probeData.length === 0) {
+      throw new Error('嵌入模型已加载，但推理没有结果')
+    }
+  } catch (err) {
+    if (extractor) {
+      try { await extractor.dispose() } catch { /* ignore */ }
+    }
+    extractor = null
+    currentModelKey = null
+    throw err
+  }
   currentModelKey = key
 
   return { loaded: true, modelName, device: resolvedDevice, backend: t.backend }

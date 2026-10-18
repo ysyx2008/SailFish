@@ -886,7 +886,7 @@ export default {
     modelInfo: 'Vector Model',
     modelDescription: 'Uses lightweight vector model (bge-small-zh-v1.5), bundled with the app; embedding device defaults to auto (CoreML on macOS)',
     embeddingDevice: 'Embedding acceleration',
-    embeddingDeviceDesc: 'Compute device for local vectorization. Auto uses WebGPU on macOS (CoreML does not currently support external weight paths).',
+    embeddingDeviceDesc: 'Compute device for local vectorization. Auto uses the GPU when one is available, and CPU when it is not. On macOS, auto uses WebGPU (CoreML does not currently support external weight paths).',
     embeddingDeviceAuto: 'Auto (recommended)',
     embeddingDeviceCpu: 'CPU only',
     embeddingDeviceCoreml: 'CoreML (Apple)',

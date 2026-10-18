@@ -12,6 +12,9 @@ const path = require('path')
 const { pathToFileURL, fileURLToPath } = require('url')
 const Module = require('module')
 
+/** 父进程要求这一工人直接用 WASM，跳过原生库。原生库能加载但一会就把进程打退出去时用。 */
+const FORCE_WASM_ENV = 'SAILFISH_ORT_BACKEND'
+
 /** @typedef {'native' | 'wasm'} OrtBackend */
 
 /** @type {OrtBackend | null} */
@@ -59,6 +62,13 @@ function isOnnxRuntimeNodeRequest(request) {
  */
 function ensureOnnxRuntimeBackend() {
   if (resolvedBackend) return resolvedBackend
+
+  if (process.env[FORCE_WASM_ENV] === 'wasm') {
+    console.warn('[ort-native] 使用 WASM')
+    installOnnxNodeWebAlias()
+    resolvedBackend = 'wasm'
+    return resolvedBackend
+  }
 
   try {
     tryRequireNativeOrt()
@@ -194,6 +204,7 @@ function resetOrtNativeForTest() {
 }
 
 module.exports = {
+  FORCE_WASM_ENV,
   applyLocalWasmPaths,
   ensureOnnxRuntimeBackend,
   withSiblingExternalData,
