@@ -1514,6 +1514,9 @@ interface Window {
         error?: string
       }>
       listFolders: () => Promise<string[]>
+      createFolder: (folder: string) => Promise<{ success: boolean; folder?: string; error?: string }>
+      renameFolder: (from: string, to: string) => Promise<{ success: boolean; folder?: string; error?: string }>
+      deleteFolder: (folder: string) => Promise<{ success: boolean; removed?: number; error?: string }>
       getDocuments: () => Promise<Array<{
         id: string
         filename: string

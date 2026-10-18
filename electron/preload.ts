@@ -2507,6 +2507,15 @@ const electronAPI = {
     listFolders: () =>
       ipcRenderer.invoke('knowledge:listFolders') as Promise<string[]>,
 
+    createFolder: (folder: string) =>
+      ipcRenderer.invoke('knowledge:createFolder', folder) as Promise<{ success: boolean; folder?: string; error?: string }>,
+
+    renameFolder: (from: string, to: string) =>
+      ipcRenderer.invoke('knowledge:renameFolder', from, to) as Promise<{ success: boolean; folder?: string; error?: string }>,
+
+    deleteFolder: (folder: string) =>
+      ipcRenderer.invoke('knowledge:deleteFolder', folder) as Promise<{ success: boolean; removed?: number; error?: string }>,
+
     // 获取所有文档
     getDocuments: () =>
       ipcRenderer.invoke('knowledge:getDocuments') as Promise<Array<{

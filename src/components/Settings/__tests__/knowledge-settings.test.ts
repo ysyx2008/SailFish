@@ -63,6 +63,8 @@ const calls = {
   updateCard: [] as Array<{ id: string; summary: string }>,
   confirmCard: [] as string[],
   removeDocuments: [] as string[][],
+  createFolder: [] as string[],
+  deleteFolder: [] as string[],
 }
 
 function installApi() {
@@ -83,7 +85,16 @@ function installApi() {
       }),
       onReady: () => () => undefined,
       getDocuments: async () => docs.map(doc => ({ ...doc })),
-      listFolders: async () => ['公司制度/差旅', '空目录'],
+      listFolders: async () => ['公司制度/差旅', '空目录', ...calls.createFolder],
+      createFolder: async (folder: string) => {
+        calls.createFolder.push(folder)
+        return { success: true, folder }
+      },
+      renameFolder: async () => ({ success: true, folder: '' }),
+      deleteFolder: async (folder: string) => {
+        calls.deleteFolder.push(folder)
+        return { success: true, removed: 0 }
+      },
       updateSettings: async () => ({ success: true }),
       updateCard: async (id: string, summary: string) => {
         calls.updateCard.push({ id, summary })
@@ -145,6 +156,8 @@ describe('档案室管理界面', () => {
     calls.updateCard.length = 0
     calls.confirmCard.length = 0
     calls.removeDocuments.length = 0
+    calls.createFolder.length = 0
+    calls.deleteFolder.length = 0
     docs[0].cardStatus = 'pending'
     docs[0].cardSummary = undefined
     docs[2].cardStatus = 'stale'
@@ -171,23 +184,30 @@ describe('档案室管理界面', () => {
 
     expect(el.textContent).not.toContain('待写')
     expect(el.textContent).toContain('公司制度')
-    expect(el.textContent).toContain('公司制度/差旅')
+    expect(el.textContent).toContain('差旅')
     expect(el.textContent).toContain('空目录')
     expect(el.textContent).toContain('全部来源')
 
-    buttonNamed(el, '公司制度/差旅').click()
+    buttonNamed(el, '差旅').click()
     await nextTick()
     expect(el.textContent).toContain('leave.md')
     expect(el.textContent).not.toContain('style.md')
     expect(el.textContent).not.toContain('old.md')
 
-    buttonNamed(el, '全部').click()
+    buttonNamed(el, '公司制度').click()
+    await nextTick()
+    expect(el.textContent).toContain('old.md')
+    expect(el.textContent).not.toContain('leave.md')
+
+    buttonNamed(el, '样式').click()
     await nextTick()
     await chooseSource(el, '秘书添加')
     expect(el.textContent).toContain('style.md')
     expect(el.textContent).not.toContain('leave.md')
 
     await chooseSource(el, '全部来源')
+    buttonNamed(el, '公司制度').click()
+    await nextTick()
 
     const oldRow = [...el.querySelectorAll('.doc-item')].find(row => row.textContent?.includes('old.md'))
     if (!oldRow) throw new Error('找不到 old.md')
@@ -218,6 +238,50 @@ describe('档案室管理界面', () => {
     buttonNamed(el, '删除选中').click()
     await settle()
     expect(calls.removeDocuments[0]?.length).toBeGreaterThan(0)
+
+    app.unmount()
+  })
+
+  it('右键目录可以新建，根目录不能改名或删除', async () => {
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    const i18n = createI18n({
+      legacy: false,
+      locale: 'zh-CN',
+      messages: { 'zh-CN': zhCN },
+    })
+    const app = createApp(KnowledgeSettings)
+    app.use(i18n)
+    app.mount(el)
+    await settle()
+
+    buttonNamed(el, '知识库').click()
+    await nextTick()
+
+    const rootRow = el.querySelector('.folder-tree .tree-row') as HTMLElement
+    rootRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 20, clientY: 20 }))
+    await nextTick()
+    expect(el.textContent).toContain('新建子目录')
+    expect(el.textContent).not.toContain('改名')
+    buttonNamed(el, '新建子目录').click()
+    await nextTick()
+
+    const input = el.querySelector('.tree-name-input') as HTMLInputElement
+    expect(input).toBeTruthy()
+    input.value = '规章'
+    input.dispatchEvent(new Event('input'))
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+    await settle()
+    expect(calls.createFolder).toEqual(['规章'])
+    expect(el.textContent).toContain('规章')
+
+    const emptyRow = [...el.querySelectorAll('.folder-tree .tree-row')].find(row => row.textContent?.includes('空目录')) as HTMLElement
+    emptyRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 24, clientY: 80 }))
+    await nextTick()
+    expect(el.textContent).toContain('改名')
+    buttonNamed(el, '删除目录').click()
+    await settle()
+    expect(calls.deleteFolder).toEqual(['空目录'])
 
     app.unmount()
   })

@@ -6908,6 +6908,33 @@ ipcMain.handle('knowledge:listFolders', async () => {
   return getKnowledge().listFolders()
 })
 
+ipcMain.handle('knowledge:createFolder', async (_event, folder: string) => {
+  try {
+    const created = getKnowledge().createFolder(folder)
+    return { success: true, folder: created }
+  } catch (error) {
+    return { success: false, error: errMsg(error, 'error.addDocFailed') }
+  }
+})
+
+ipcMain.handle('knowledge:renameFolder', async (_event, from: string, to: string) => {
+  try {
+    const renamed = getKnowledge().renameFolder(from, to)
+    return { success: true, folder: renamed }
+  } catch (error) {
+    return { success: false, error: errMsg(error, 'error.addDocFailed') }
+  }
+})
+
+ipcMain.handle('knowledge:deleteFolder', async (_event, folder: string) => {
+  try {
+    const removed = await getKnowledge().deleteFolder(folder)
+    return { success: true, removed }
+  } catch (error) {
+    return { success: false, error: errMsg(error, 'error.addDocFailed') }
+  }
+})
+
 ipcMain.handle('knowledge:getDocuments', async () => {
   const docs = getKnowledge().getDocuments()
   // 解密主机记忆内容（用于前端显示）
