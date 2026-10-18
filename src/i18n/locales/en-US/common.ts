@@ -468,6 +468,7 @@ export default {
     notAwakened: 'Asleep',
     todos: 'Todos',
     contacts: 'Contacts',
+    memory: 'Memory',
     watch: 'Watch',
     awaken: 'Awaken',
     settings: 'Control Panel',

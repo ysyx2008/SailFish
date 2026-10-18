@@ -73,7 +73,7 @@ export function formatAgentAttentionTooltip(
 }
 
 /** 从秘书菜单打开、占主区的非会话面板 */
-export type SecretaryPanel = 'todos' | 'contacts'
+export type SecretaryPanel = 'todos' | 'contacts' | 'memory'
 
 /** 壳层当前落在哪儿——判断某条会话是否正在用户眼前所需的全部状态 */
 export interface ConversationSurfaceState {

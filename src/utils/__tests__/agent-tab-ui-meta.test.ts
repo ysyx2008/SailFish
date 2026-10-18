@@ -91,6 +91,12 @@ describe('isAssistantConversationSurfaceVisible', () => {
       hubFocusedAssistantTabId: 'hub-tab',
       secretaryPanel: 'todos',
     })).toBe(false)
+    // 记忆栏目与待办、联系人一样占主区，会话不在眼前
+    expect(isAssistantConversationSurfaceVisible('hub-tab', {
+      activeTabId: '',
+      hubFocusedAssistantTabId: 'hub-tab',
+      secretaryPanel: 'memory',
+    })).toBe(false)
   })
 
   // 空终端页与任务区一样没有活跃 tab，靠这个标志才分得开

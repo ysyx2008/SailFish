@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import {
   BookUser,
   Eye,
+  Brain,
   Heart,
   ListTodo,
   MessageSquare,
@@ -30,6 +31,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'open-todos': []
   'open-contacts': []
+  'open-memory': []
   'open-watch': []
   'open-awaken': []
   /** tab：连接面板里「去设置」指向的具体页（渠道 / MCP / 浏览器助手） */
@@ -51,6 +53,8 @@ const canShowCompanion = isWorkbenchAvailable('companion')
 const canShowTerminal = isWorkbenchAvailable('local') || isWorkbenchAvailable('ssh')
 const canShowAwaken = !isSteamBuild && isOemFeatureEnabled('awaken')
 const canShowWatch = !isSteamBuild && isOemFeatureEnabled('watch')
+/** 简化版没有知识库设置，也就没有记忆栏目 */
+const canShowMemory = !isSteamBuild
 
 /** 秘书就是这个应用本身；名字的解析口径统一在 resolveAssistantName */
 const secretaryName = computed(() => resolveAssistantName())
@@ -132,10 +136,11 @@ function goTerminal() {
   terminalStore.focusTerminalPlace()
 }
 
-function pick(action: 'open-todos' | 'open-contacts' | 'open-watch' | 'open-awaken' | 'open-settings') {
+function pick(action: 'open-todos' | 'open-contacts' | 'open-memory' | 'open-watch' | 'open-awaken' | 'open-settings') {
   closeMenu()
   if (action === 'open-todos') emit('open-todos')
   else if (action === 'open-contacts') emit('open-contacts')
+  else if (action === 'open-memory') emit('open-memory')
   else if (action === 'open-watch') emit('open-watch')
   else if (action === 'open-awaken') emit('open-awaken')
   else emit('open-settings')
@@ -217,6 +222,10 @@ function pick(action: 'open-todos' | 'open-contacts' | 'open-watch' | 'open-awak
           <ListTodo :size="14" />
           <span>{{ t('shell.todos') }}</span>
           <span v-if="overdueCount > 0" class="menu-badge">{{ overdueCount > 99 ? '99+' : overdueCount }}</span>
+        </button>
+        <button v-if="canShowMemory" type="button" class="menu-item" @click="pick('open-memory')">
+          <Brain :size="14" />
+          <span>{{ t('shell.memory') }}</span>
         </button>
         <button v-if="canShowWatch" type="button" class="menu-item" @click="pick('open-watch')">
           <Eye :size="14" />

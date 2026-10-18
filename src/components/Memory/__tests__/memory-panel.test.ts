@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { createApp, nextTick } from 'vue'
+import { createApp, h, nextTick, ref } from 'vue'
 import { createI18n } from 'vue-i18n'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import zhCN from '../../../i18n/locales/zh-CN'
@@ -282,6 +282,34 @@ describe('记忆栏目（档案室管理）', () => {
     buttonNamed(el, '删除目录').click()
     await settle()
     expect(calls.deleteFolder).toEqual(['空目录'])
+
+    app.unmount()
+  })
+
+  it('Esc 离开栏目；设置页里清空后重新取数', async () => {
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    let closed = 0
+    const signal = ref(0)
+    const app = createApp({
+      render: () => h(MemoryPanel, { refreshSignal: signal.value, onClose: () => { closed++ } }),
+    })
+    app.use(createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': zhCN } }))
+    app.mount(el)
+    await settle()
+
+    buttonNamed(el, '知识库').click()
+    await nextTick()
+    expect(el.textContent).toContain('公司制度')
+
+    const saved = docs.splice(0)
+    signal.value++
+    await settle()
+    expect(el.textContent).not.toContain('leave.md')
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    expect(closed).toBe(1)
+    docs.push(...saved)
 
     app.unmount()
   })

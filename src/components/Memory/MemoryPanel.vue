@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Loader2, X, Trash2, ChevronRight, ChevronDown, Folder } from 'lucide-vue-next'
+import { Loader2, X, Trash2, ChevronRight, ChevronDown, Folder, Brain } from 'lucide-vue-next'
 import { showConfirm, showAlert } from '../../composables/useConfirm'
 import AttachmentFileIcon from '../AttachmentFileIcon.vue'
 import {
@@ -10,6 +10,12 @@ import {
   SettingSelect,
   SettingNotice,
 } from '../Settings/kit'
+
+const props = defineProps<{
+  /** 设置页里清空、重建之后，外面递增一次，面板据此重新取数 */
+  refreshSignal?: number
+}>()
+const emit = defineEmits<{ close: [] }>()
 
 const { t } = useI18n()
 const api = window.electronAPI as any
@@ -408,6 +414,12 @@ const loadKnowledgeDocs = async () => {
   try {
     documents.value = await api.knowledge.getDocuments() || []
     storedFolders.value = await api.knowledge.listFolders() || []
+    // 文件可能在别处被删（设置页清空全库），选中项跟着清掉，免得对已删的文件继续操作
+    const alive = new Set(documents.value.map(doc => doc.id))
+    if (selectedDoc.value && !alive.has(selectedDoc.value.id)) selectedDoc.value = null
+    if ([...selectedDocIds.value].some(id => !alive.has(id))) {
+      selectedDocIds.value = new Set([...selectedDocIds.value].filter(id => alive.has(id)))
+    }
   } catch (error) {
     console.error('加载知识库失败:', error)
   }
@@ -586,7 +598,20 @@ const batchDeleteDocuments = async () => {
 
 let unsubscribeKnowledgeReady: (() => void) | null = null
 
+watch(() => props.refreshSignal, () => { void loadKnowledgeDocs(); void loadContextDocs() })
+
+/** Esc 离开栏目；改名输入框、未保存的记忆草稿、弹层都在时不抢 Esc */
+function onPanelKeydown(ev: KeyboardEvent) {
+  if (ev.key !== 'Escape') return
+  if (document.querySelector('.modal-overlay, .credential-overlay, .setup-wizard, .confirm-overlay, .app-select-menu')) return
+  if (naming.value || treeMenu.value || fileMenu.value || contextDocDirty.value) return
+  ev.preventDefault()
+  ev.stopImmediatePropagation()
+  emit('close')
+}
+
 onMounted(() => {
+  document.addEventListener('keydown', onPanelKeydown, true)
   loadAllData()
   unsubscribeKnowledgeReady = api.knowledge.onReady(() => {
     isKnowledgeInitialized.value = true
@@ -595,19 +620,35 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  document.removeEventListener('keydown', onPanelKeydown, true)
   unsubscribeKnowledgeReady?.()
 })
 </script>
 
 <template>
   <section class="memory-panel">
-    <SettingNotice v-if="loading">{{ t('common.loading') }}</SettingNotice>
-    <SettingNotice v-else-if="!isKnowledgeInitialized">
-      <Loader2 class="spinner" :size="16" />
-      <span>{{ t('knowledgeSettings.initializing') }}</span>
-    </SettingNotice>
-    <template v-else>
-      <SettingsTabs :model-value="activeTab" :tabs="libraryTabs" @update:model-value="onLibraryTab" />
+    <header class="memory-header">
+      <div class="memory-mark">
+        <Brain :size="18" :stroke-width="1.75" />
+      </div>
+      <div class="memory-header-text">
+        <h1>{{ t('memoryPanel.title') }}</h1>
+        <p>{{ t('memoryPanel.desc') }}</p>
+      </div>
+    </header>
+    <div class="memory-content">
+      <SettingNotice v-if="loading">{{ t('common.loading') }}</SettingNotice>
+      <SettingNotice v-else-if="!isKnowledgeInitialized">
+        <Loader2 class="spinner" :size="16" />
+        <span>{{ t('knowledgeSettings.initializing') }}</span>
+      </SettingNotice>
+      <template v-else>
+        <SettingsTabs
+          class="memory-tabs"
+          :model-value="activeTab"
+          :tabs="libraryTabs"
+          @update:model-value="onLibraryTab"
+        />
     <div class="manager-panel">
       <div class="manager-body">
         <div v-if="activeTab === 'knowledge'" class="folder-tree" role="tree" @click="closeMenus">
@@ -910,16 +951,67 @@ onUnmounted(() => {
           {{ t('knowledgeManager.delete') }}
         </button>
       </div>
-    </template>
+      </template>
+    </div>
   </section>
 </template>
 
 <style scoped>
+.memory-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.memory-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+}
+.memory-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 28%, transparent);
+}
+.memory-header-text { min-width: 0; flex: 1; }
+.memory-header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+.memory-header p { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); }
+
+.memory-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px 20px;
+}
+
+/* 标签条在内容区顶端，与下面的管理区隔开一段 */
+.memory-tabs { flex-shrink: 0; margin-bottom: 12px; }
+
 .spinner { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* ==================== 内嵌管理面板 ==================== */
 .manager-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--border-color);
   border-radius: 10px;
   overflow: hidden;
@@ -949,8 +1041,8 @@ onUnmounted(() => {
 
 .manager-body {
   display: flex;
-  height: calc(100vh - 220px);
-  min-height: 560px;
+  flex: 1;
+  min-height: 0;
 }
 
 .list-panel {

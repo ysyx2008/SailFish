@@ -23,6 +23,7 @@ import WelcomePage from './components/WelcomePage.vue'
 import SmartPatrolPage from './components/SmartPatrolPage.vue'
 import TodoPanel from './components/Todo/TodoPanel.vue'
 import ContactPanel from './components/Contact/ContactPanel.vue'
+import MemoryPanel from './components/Memory/MemoryPanel.vue'
 import Toast from './components/common/Toast.vue'
 import UpdateNotifyCard from './components/common/UpdateNotifyCard.vue'
 import ConfirmDialog from './components/common/ConfirmDialog.vue'
@@ -186,6 +187,9 @@ watch(recallSidebarCollapsed, () => {
 })
 
 const showSettings = ref(false)
+/** 设置页关上时让记忆栏目重新取数（设置里清空全库、重建索引会改动内容） */
+const memoryRefreshSignal = ref(0)
+watch(showSettings, (open) => { if (!open) memoryRefreshSignal.value++ })
 const showSmartPatrol = ref(false)
 const showAwaken = ref(false)
 const showWatchPanel = ref(false)
@@ -1685,6 +1689,7 @@ onUnmounted(() => {
             :awakened="isAwakened"
             @open-todos="terminalStore.openTodos()"
             @open-contacts="terminalStore.openContacts()"
+            @open-memory="terminalStore.openMemory()"
             @open-watch="openWatchesFromWelcome"
             @open-awaken="showWatchPanel = false; showAwaken = true"
             @open-connection="openConnectionSettings"
@@ -1764,6 +1769,12 @@ onUnmounted(() => {
         <ContactPanel
           v-if="terminalStore.contactsActive"
           class="main-surface"
+          @close="closeSecretaryPanel"
+        />
+        <MemoryPanel
+          v-if="terminalStore.memoryActive"
+          class="main-surface"
+          :refresh-signal="memoryRefreshSignal"
           @close="closeSecretaryPanel"
         />
         <!-- 有 tab 即挂载工作台；外层原生 div + v-show 控制显隐（component 上 v-show 的 scoped 样式不可靠） -->

@@ -146,7 +146,7 @@ SailFish/
 - **产出物面板**（`@sailfish/workbench-assistant/artifact`，物理在 `packages/workbench-assistant/src/artifact/`）：assistant 专属；Pinia `useAssistantArtifactStore`；Agent 协议仍用 `CanvasData`（`shared/types/canvas.ts`）
 - **HTML/URL 预览（2026-08-04，2026-09-05 补）**：预览用 `<webview>`（主窗 `webviewTag: true`），内容型经 `sailfish-artifact://` 协议由主进程 `artifact-preview.service` 内存缓存供给（相对资源映射根由主进程从 artifactId 推导，防目录穿越）；URL 型产出物（`browser` renderer、`CanvasData.url` 显式声明）直载真实地址、地址栏可导航，Agent 经 `manage_workbench_artifacts` 传 `url` 注册；截图反馈闭环 = webview `capturePage` → PNG 落盘 scratch/feedback + dataUrl 注入 Composer 待发送图片；HTML **文件**预览还可划选文字作为修改作用域（无右键快捷菜单，与 Word/Markdown 同一条旁路；PPT / live URL 不划选）
 - 旧路径 `src/canvas/`、`stores/canvas.ts` 保留 deprecated re-export
-- **单助手 Hub 模型**（2026-06-18）：本地 assistant Tab 默认不显示在顶栏，通过左侧「最近对话」聚焦切换（`hubFocusedAssistantTabId`）。2026-08-14 壳层：固定入口在侧栏（新对话 / 联络 / 终端），本机与远程动态 tab 收在终端页内；助手不再进顶栏。2026-08-15：会话「提升为独立 Tab」整套取消（顶栏 Tab 条已撤，提升出来的页面无标签承载），新会话一律走 Hub 焦点流。LRU 回收上限 5 个 Hub 会话，并发软上限 8 个；远程助手（`isRemote=true`）不受影响
+- **单助手 Hub 模型**（2026-06-18）：本地 assistant Tab 默认不显示在顶栏，通过左侧「最近对话」聚焦切换（`hubFocusedAssistantTabId`）。2026-08-14 壳层：固定入口在侧栏（新对话 / 联络 / 终端），本机与远程动态 tab 收在终端页内；助手不再进顶栏。秘书菜单（联系人 / 待办 / 记忆 / 关切 / 觉醒 / 控制面板）里，联系人、待办、记忆是占主区的秘书面板；记忆面板是记忆 + 档案室的内容管理，设置里「记忆与知识库」只留设置项。2026-08-15：会话「提升为独立 Tab」整套取消（顶栏 Tab 条已撤，提升出来的页面无标签承载），新会话一律走 Hub 焦点流。LRU 回收上限 5 个 Hub 会话，并发软上限 8 个；远程助手（`isRemote=true`）不受影响
 
 ### 任务 / 联络 / 关切 / 唤醒 四类会话（用户心智模型）
 

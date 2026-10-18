@@ -361,6 +361,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   const secretaryPanel = ref<SecretaryPanel | null>(null)
   const todosActive = computed(() => secretaryPanel.value === 'todos')
   const contactsActive = computed(() => secretaryPanel.value === 'contacts')
+  const memoryActive = computed(() => secretaryPanel.value === 'memory')
   // 激活真实 tab 时自动退出面板（覆盖 createTab 等未走 setActiveTab 的路径）
   watch(activeTabId, (id) => {
     if (id) secretaryPanel.value = null
@@ -1637,6 +1638,13 @@ export const useTerminalStore = defineStore('terminal', () => {
   /** 打开联系人面板（与待办同一位置）；保留 Hub 焦点，切回任务区可恢复 */
   function openContacts(): void {
     secretaryPanel.value = 'contacts'
+    activeTabId.value = ''
+    terminalPlaceActive.value = false
+  }
+
+  /** 打开记忆栏目（记忆 + 档案室的内容管理，与待办同一位置）；保留 Hub 焦点，切回任务区可恢复 */
+  function openMemory(): void {
+    secretaryPanel.value = 'memory'
     activeTabId.value = ''
     terminalPlaceActive.value = false
   }
@@ -4066,6 +4074,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     secretaryPanel,
     todosActive,
     contactsActive,
+    memoryActive,
     activeTab,
     tabCount,
     pendingFocusTabId,
@@ -4110,6 +4119,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     restoreConversationSurface,
     openTodos,
     openContacts,
+    openMemory,
     closeSecretaryPanel,
     hubFocusedAssistantTabId,
     hubFocusedTab,

@@ -876,6 +876,12 @@ export default {
   },
 
 
+  // 记忆栏目
+  memoryPanel: {
+    title: '记忆',
+    desc: '看、改、整理个人和各台主机的记忆，以及档案室里的文件',
+  },
+
   // 知识库管理器
   knowledgeManager: {
     title: '记忆管理',

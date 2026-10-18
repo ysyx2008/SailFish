@@ -875,6 +875,12 @@ export default {
   },
 
 
+  // Memory panel
+  memoryPanel: {
+    title: 'Memory',
+    desc: 'View, edit and organize personal and per-host memories, and the files in the archive',
+  },
+
   // Knowledge Manager
   knowledgeManager: {
     title: 'Memory Manager',

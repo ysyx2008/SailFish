@@ -3,7 +3,6 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Loader2, AlertTriangle } from 'lucide-vue-next'
 import { showConfirm, showAlert } from '../../composables/useConfirm'
-import MemoryPanel from '../Memory/MemoryPanel.vue'
 import {
   SettingsPage,
   SettingsGroup,
@@ -290,7 +289,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <SettingsPage class="knowledge-page" :title="t('settings.tabs.knowledge')" :desc="t('knowledgeSettings.description')">
+  <SettingsPage :title="t('settings.tabs.knowledge')" :desc="t('knowledgeSettings.description')">
     <SettingNotice v-if="loading">{{ t('common.loading') }}</SettingNotice>
     <SettingNotice v-else-if="!isKnowledgeInitialized">
       <Loader2 class="spinner" :size="16" />
@@ -298,8 +297,6 @@ onUnmounted(() => {
     </SettingNotice>
 
     <template v-else>
-      <MemoryPanel />
-
       <SettingsGroup :title="t('knowledgeSettings.memoryLengthGroup')">
         <SettingRow
           :label="t('knowledgeSettings.memoryMaxChars')"

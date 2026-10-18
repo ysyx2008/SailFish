@@ -1019,11 +1019,6 @@ const onQrImageError = (event: Event) => {
   margin-right: auto;
 }
 
-/* 档案室是左右分栏的阅读界面，沿用设置表单的窄宽时正文只剩一条 */
-.settings-content > .knowledge-page {
-  max-width: 1120px;
-}
-
 /* 关于页面 */
 .about-content {
   display: flex;
