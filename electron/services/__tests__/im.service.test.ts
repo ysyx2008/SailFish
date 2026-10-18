@@ -253,6 +253,67 @@ describe('prepareImAgentMedia', () => {
     expect(result.consumedPaths.has(localPath)).toBe(true)
   })
 
+  describe('文档页面图的去向', () => {
+    const fakeDoc = (fileType: string, images: string[]) => ({
+      filename: `scan.${fileType}`,
+      filePath: '',
+      fileSize: 8,
+      fileType,
+      content: '',
+      images,
+      pageCount: images.length,
+      totalPages: images.length,
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('扫描版 PDF 的页面图给模型，但不当作用户自己发的图', async () => {
+      const { getDocumentParserService } = await import('../document-parser.service')
+      vi.spyOn(getDocumentParserService(), 'parseDocument')
+        .mockResolvedValue(fakeDoc('pdf', ['data:image/jpeg;base64,p1', 'data:image/jpeg;base64,p2']) as any)
+      const localPath = writeTempFile('scan.pdf', Buffer.from('%PDF-1.4 fake'))
+
+      const result = await prepareImAgentMedia([{ type: 'file', localPath, fileName: 'scan.pdf' }])
+
+      expect(result.images).toEqual(['data:image/jpeg;base64,p1', 'data:image/jpeg;base64,p2'])
+      expect(result.previewImages).toEqual([])
+      expect(result.docPreviewImages).toEqual(result.images)
+    })
+
+    it('PDF 和用户自己发的图一起来：只有用户的图算气泡里的图', async () => {
+      const { getDocumentParserService } = await import('../document-parser.service')
+      vi.spyOn(getDocumentParserService(), 'parseDocument')
+        .mockResolvedValue(fakeDoc('pdf', ['data:image/jpeg;base64,p1']) as any)
+      const pdfPath = writeTempFile('scan.pdf', Buffer.from('%PDF-1.4 fake'))
+      const imgPath = writeTempFile('photo.jpg', Buffer.from([0xff, 0xd8, 0xff, 0xd9, 0x00, 0x01]))
+
+      const result = await prepareImAgentMedia([
+        { type: 'image', localPath: imgPath, fileName: 'photo.jpg' },
+        { type: 'file', localPath: pdfPath, fileName: 'scan.pdf' },
+      ])
+
+      expect(result.images).toHaveLength(2)
+      expect(result.previewImages).toHaveLength(1)
+      expect(result.previewImages[0]).toMatch(/^data:image\/jpeg;base64,/)
+      expect(result.docPreviewImages).toEqual(['data:image/jpeg;base64,p1'])
+    })
+
+    it('Word 内嵌图只给模型，两处都不进', async () => {
+      const { getDocumentParserService } = await import('../document-parser.service')
+      vi.spyOn(getDocumentParserService(), 'parseDocument')
+        .mockResolvedValue(fakeDoc('docx', ['data:image/png;base64,w1']) as any)
+      const localPath = writeTempFile('memo.docx', Buffer.from('PK fake'))
+
+      const result = await prepareImAgentMedia([{ type: 'file', localPath, fileName: 'memo.docx' }])
+
+      expect(result.images).toEqual(['data:image/png;base64,w1'])
+      expect(result.previewImages).toEqual([])
+      expect(result.docPreviewImages).toEqual([])
+    })
+  })
+
   it('does not treat legacy WPS binary as readable document text', async () => {
     const ole = Buffer.from([0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0x00, 0x00])
     const localPath = writeTempFile('旧稿.wps', ole)
@@ -554,7 +615,7 @@ describe('替我审批在 IM 里只发桌面那一行，不发确认卡', () => 
       chatId: 'feishu-chat',
       chatType: 'single',
       replyContext: { chatId: 'feishu-chat' },
-    }, { images: [], previewImages: [], attachments: [], consumedPaths: new Set() })
+    }, { images: [], previewImages: [], docPreviewImages: [], attachments: [], consumedPaths: new Set() })
     await vi.waitFor(() => expect(adapter.sendMarkdown).toHaveBeenCalled())
 
     const texts = adapter.sendText.mock.calls.map(c => String(c[1]))
@@ -587,7 +648,7 @@ describe('替我审批在 IM 里只发桌面那一行，不发确认卡', () => 
       chatId: 'feishu-chat',
       chatType: 'single',
       replyContext: { chatId: 'feishu-chat' },
-    }, { images: [], previewImages: [], attachments: [], consumedPaths: new Set() })
+    }, { images: [], previewImages: [], docPreviewImages: [], attachments: [], consumedPaths: new Set() })
     await vi.waitFor(() => expect(adapter.sendMarkdown).toHaveBeenCalledTimes(2))
 
     const bodyCall = adapter.sendMarkdown.mock.calls.findIndex(c => c[2] === '我来删掉那份草稿。')
@@ -601,7 +662,7 @@ describe('替我审批在 IM 里只发桌面那一行，不发确认卡', () => 
 })
 
 describe('提问和确认不等过程消息', () => {
-  const media = { images: [], previewImages: [], attachments: [], consumedPaths: new Set<string>() }
+  const media = { images: [], previewImages: [], docPreviewImages: [], attachments: [], consumedPaths: new Set<string>() }
 
   it('过程消息还卡着时，提问已经发给用户', async () => {
     const service = new IMService() as any

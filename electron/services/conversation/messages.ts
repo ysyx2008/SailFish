@@ -91,6 +91,7 @@ export function stepRecordToStep(s: AgentStepRecord): AgentStep {
     type: s.type as AgentStep['type'],
     content: s.content,
     images: s.images,
+    docPreviewImages: s.docPreviewImages,
     echartsOption: s.echartsOption,
     attachments: s.attachments,
     toolName: s.toolName,

@@ -54,10 +54,20 @@ export function mergeHandbackText(existing: string, handback: string): string {
 
 export interface CoalescedPendingFollowUp {
   message: string
+  /** 给模型看的全部图 */
   images?: string[]
+  /** 气泡里显示的图（用户自己贴的）；没有这几条的图都显示 images */
+  previewImages?: string[]
+  /** 扫描版 PDF 的页面图，仅调试模式下显示 */
+  docPreviewImages?: string[]
   attachments?: AttachmentInfo[]
   documentContext?: string
   workbenchContext?: WorkbenchContext
+}
+
+function pickImageUrls(list: unknown): string[] {
+  if (!Array.isArray(list)) return []
+  return list.filter((img): img is string => typeof img === 'string' && !!img)
 }
 
 function isHandoff(entry: unknown): entry is PendingUserHandoff {
@@ -69,6 +79,8 @@ export function coalescePendingHandoff(raw: unknown): CoalescedPendingFollowUp |
   if (!Array.isArray(raw) || raw.length === 0) return null
   const messages: string[] = []
   const images: string[] = []
+  const shownImages: string[] = []
+  const docPreviewImages: string[] = []
   const attachments: AttachmentInfo[] = []
   const docs: string[] = []
   let workbenchContext: WorkbenchContext | undefined
@@ -79,11 +91,11 @@ export function coalescePendingHandoff(raw: unknown): CoalescedPendingFollowUp |
     }
     if (!isHandoff(entry)) continue
     if (entry.message.trim()) messages.push(entry.message)
-    if (Array.isArray(entry.images)) {
-      for (const img of entry.images) {
-        if (typeof img === 'string' && img) images.push(img)
-      }
-    }
+    const entryImages = pickImageUrls(entry.images)
+    images.push(...entryImages)
+    // 每条自己说明了显示哪些图就按它的；没说明的，它的图全部显示
+    shownImages.push(...(Array.isArray(entry.previewImages) ? pickImageUrls(entry.previewImages) : entryImages))
+    docPreviewImages.push(...pickImageUrls(entry.docPreviewImages))
     if (Array.isArray(entry.attachments)) {
       for (const att of entry.attachments) {
         if (att && typeof att === 'object' && typeof att.filename === 'string') attachments.push(att)
@@ -99,6 +111,8 @@ export function coalescePendingHandoff(raw: unknown): CoalescedPendingFollowUp |
   return {
     message,
     ...(images.length ? { images } : {}),
+    ...(images.length ? { previewImages: shownImages } : {}),
+    ...(docPreviewImages.length ? { docPreviewImages } : {}),
     ...(attachments.length ? { attachments } : {}),
     ...(docs.length ? { documentContext: docs.join('\n\n') } : {}),
     ...(workbenchContext ? { workbenchContext } : {}),
@@ -156,6 +170,7 @@ type QueueHead = {
   message: string
   images?: string[]
   previewImages?: string[]
+  docPreviewImages?: string[]
   attachments?: AttachmentInfo[]
   documentContext?: string
   workbenchContext?: WorkbenchContext
@@ -176,7 +191,8 @@ export function mergePendingIntoQueue<T extends QueueHead>(
   return [{
     ...head,
     images: pending.images,
-    previewImages: pending.images,
+    previewImages: pending.previewImages ?? pending.images,
+    docPreviewImages: pending.docPreviewImages,
     attachments: head.attachments?.length ? head.attachments : pending.attachments,
     documentContext: head.documentContext || pending.documentContext,
     workbenchContext: head.workbenchContext || pending.workbenchContext,

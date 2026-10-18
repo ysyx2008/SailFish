@@ -9,6 +9,8 @@ export interface AgentStepRecord {
   type: string
   content: string
   images?: string[]
+  /** user_task 步骤：扫描版 PDF 的页面图（与 images 分开，仅调试模式下展示）。老记录没有 */
+  docPreviewImages?: string[]
   /**
    * 「活图」载荷的持久化形态。重新打开历史会话时，前端从这里恢复出可交互的
    * ECharts 图表。详见 `EChartsStepPayload` 注释（shared/types/agent.ts）。

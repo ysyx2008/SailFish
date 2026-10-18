@@ -1332,6 +1332,7 @@ export class Conversation {
       type: s.type,
       content: s.content || '',
       images: s.images,
+      docPreviewImages: s.docPreviewImages,
       echartsOption: s.echartsOption,
       attachments: s.attachments,
       toolName: s.toolName,

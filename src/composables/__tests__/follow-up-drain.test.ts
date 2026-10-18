@@ -165,6 +165,45 @@ describe('coalescePendingHandoff', () => {
   it('只有空白时不开下一轮', () => {
     expect(coalescePendingHandoff(['  ', { message: '' }])).toBeNull()
   })
+
+  it('用户自己的图和 PDF 页面图各归各位，给模型的图仍是全部', () => {
+    const handoff = coalescePendingHandoff([{
+      message: '看这份',
+      images: ['user-1', 'page-1', 'page-2'],
+      previewImages: ['user-1'],
+      docPreviewImages: ['page-1', 'page-2'],
+    }])
+    expect(handoff?.images).toEqual(['user-1', 'page-1', 'page-2'])
+    expect(handoff?.previewImages).toEqual(['user-1'])
+    expect(handoff?.docPreviewImages).toEqual(['page-1', 'page-2'])
+  })
+
+  it('合并多条补话时，页面图不会混进用户的图里，顺序也不乱', () => {
+    const handoff = coalescePendingHandoff([
+      { message: '第一句', images: ['u1', 'p1'], previewImages: ['u1'], docPreviewImages: ['p1'] },
+      { message: '第二句', images: ['u2', 'p2'], previewImages: ['u2'], docPreviewImages: ['p2'] },
+    ])
+    expect(handoff?.images).toEqual(['u1', 'p1', 'u2', 'p2'])
+    expect(handoff?.previewImages).toEqual(['u1', 'u2'])
+    expect(handoff?.docPreviewImages).toEqual(['p1', 'p2'])
+  })
+
+  it('用户没贴图、全是页面图：显示的图是空的，不退回去显示全部', () => {
+    const handoff = coalescePendingHandoff([{
+      message: '看这份',
+      images: ['page-1'],
+      previewImages: [],
+      docPreviewImages: ['page-1'],
+    }])
+    expect(handoff?.previewImages).toEqual([])
+    expect(handoff?.docPreviewImages).toEqual(['page-1'])
+  })
+
+  it('没说明怎么显示的老形状，图全部显示、没有页面图', () => {
+    const handoff = coalescePendingHandoff([{ message: '看图', images: ['a', 'b'] }])
+    expect(handoff?.previewImages).toEqual(['a', 'b'])
+    expect(handoff?.docPreviewImages).toBeUndefined()
+  })
 })
 
 describe('optimisticPlaceholderConfirmedBy', () => {
@@ -233,6 +272,21 @@ describe('mergePendingIntoQueue', () => {
     expect(merged).toHaveLength(1)
     expect(merged[0]?.images).toEqual(['data:image/png;base64,abc'])
     expect(merged[0]?.previewImages).toEqual(['data:image/png;base64,abc'])
+  })
+
+  it('补到队首那条上时，页面图也跟着补上，且不当成用户的图', () => {
+    const queue = [{ id: 'q1', message: '看这份' }]
+    const pending = coalescePendingHandoff([{
+      message: '看这份',
+      images: ['u1', 'p1'],
+      previewImages: ['u1'],
+      docPreviewImages: ['p1'],
+    }])!
+    const merged = mergePendingIntoQueue(queue, pending, (item) => ({ id: 'new', ...item }))
+    expect(merged).toHaveLength(1)
+    expect(merged[0]?.images).toEqual(['u1', 'p1'])
+    expect(merged[0]?.previewImages).toEqual(['u1'])
+    expect(merged[0]?.docPreviewImages).toEqual(['p1'])
   })
 
   it('不是同一句时插到队首', () => {

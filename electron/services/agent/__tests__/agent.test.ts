@@ -425,6 +425,128 @@ describe('Agent', () => {
       expect(steps.map(s => s.type)).toEqual(['message', 'tool_call', 'user_supplement'])
     })
 
+    describe('扫描版 PDF 页面图与用户自己贴的图分开存', () => {
+      const USER_IMG = 'data:image/png;base64,USER'
+      const PAGE_1 = 'data:image/jpeg;base64,PAGE1'
+      const PAGE_2 = 'data:image/jpeg;base64,PAGE2'
+
+      it('新任务：气泡图只有用户自己贴的，页面图另放，模型仍拿到全部', async () => {
+        const steps: AgentStep[] = []
+        agent.setCallbacks({ onStep: (_id, step) => steps.push({ ...step }) })
+
+        const aiService = agent.exposeServices().aiService as unknown as ReturnType<typeof createMockAiService>
+        aiService.chatWithToolsStream.mockImplementation(
+          (_messages, _tools, onChunk, _onToolCall, onDone) => {
+            onChunk('Done')
+            onDone({ content: 'Done', tool_calls: undefined })
+            return Promise.resolve()
+          }
+        )
+
+        await agent.run('看看这份扫描件', createMockContext({
+          images: [USER_IMG, PAGE_1, PAGE_2],
+          previewImages: [USER_IMG],
+          docPreviewImages: [PAGE_1, PAGE_2],
+        }))
+
+        const userTask = steps.find(s => s.type === 'user_task')!
+        expect(userTask.images).toEqual([USER_IMG])
+        expect(userTask.docPreviewImages).toEqual([PAGE_1, PAGE_2])
+      })
+
+      it('新任务：用户没贴图、只有页面图时，气泡图为空而不是退回显示全部', async () => {
+        const steps: AgentStep[] = []
+        agent.setCallbacks({ onStep: (_id, step) => steps.push({ ...step }) })
+
+        const aiService = agent.exposeServices().aiService as unknown as ReturnType<typeof createMockAiService>
+        aiService.chatWithToolsStream.mockImplementation(
+          (_messages, _tools, onChunk, _onToolCall, onDone) => {
+            onChunk('Done')
+            onDone({ content: 'Done', tool_calls: undefined })
+            return Promise.resolve()
+          }
+        )
+
+        await agent.run('看看这份扫描件', createMockContext({
+          images: [PAGE_1],
+          previewImages: [],
+          docPreviewImages: [PAGE_1],
+        }))
+
+        const userTask = steps.find(s => s.type === 'user_task')!
+        expect(userTask.images).toEqual([])
+        expect(userTask.docPreviewImages).toEqual([PAGE_1])
+      })
+
+      it('补话：同样把页面图和用户的图分开', () => {
+        agent.injectCurrentRun({
+          id: 'run-1',
+          isRunning: true,
+          executionPhase: 'executing_command',
+          pendingUserMessages: [],
+          steps: [],
+        })
+
+        agent.addUserMessage(
+          '再看这份', undefined, undefined, [USER_IMG, PAGE_1], undefined, undefined,
+          { previewImages: [USER_IMG], docPreviewImages: [PAGE_1] },
+        )
+
+        const run = agent.exposeCurrentRun()!
+        const supplement = run.steps.find(s => s.type === 'user_supplement')!
+        expect(supplement.images).toEqual([USER_IMG])
+        expect(supplement.docPreviewImages).toEqual([PAGE_1])
+        // 给模型的那份仍是全部
+        expect(run.pendingUserMessages[0].images).toEqual([USER_IMG, PAGE_1])
+      })
+
+      it('补话：用户没贴图只有页面图时，气泡不显示图；没说明怎么显示时保持原样全显示', () => {
+        agent.injectCurrentRun({
+          id: 'run-1',
+          isRunning: true,
+          executionPhase: 'executing_command',
+          pendingUserMessages: [],
+          steps: [],
+        })
+
+        agent.addUserMessage(
+          '只有页面', undefined, undefined, [PAGE_1], undefined, undefined,
+          { previewImages: [], docPreviewImages: [PAGE_1] },
+        )
+        agent.addUserMessage('普通图', undefined, undefined, [USER_IMG])
+
+        const supplements = agent.exposeCurrentRun()!.steps.filter(s => s.type === 'user_supplement')
+        expect(supplements[0].images).toBeUndefined()
+        expect(supplements[0].docPreviewImages).toEqual([PAGE_1])
+        expect(supplements[1].images).toEqual([USER_IMG])
+        expect(supplements[1].docPreviewImages).toBeUndefined()
+      })
+
+      it('run 开始前缓冲的补话，上墙时同样分开', async () => {
+        const steps: AgentStep[] = []
+        agent.setCallbacks({ onStep: (_id, step) => steps.push({ ...step }) })
+
+        agent.addUserMessage(
+          '准备阶段的补话', undefined, undefined, [USER_IMG, PAGE_1], undefined, undefined,
+          { previewImages: [USER_IMG], docPreviewImages: [PAGE_1] },
+        )
+
+        const aiService = agent.exposeServices().aiService as unknown as ReturnType<typeof createMockAiService>
+        aiService.chatWithToolsStream.mockImplementation(
+          (_messages, _tools, onChunk, _onToolCall, onDone) => {
+            onChunk('Done')
+            onDone({ content: 'Done', tool_calls: undefined })
+            return Promise.resolve()
+          }
+        )
+        await agent.run('Main task', createMockContext())
+
+        const supplement = steps.find(s => s.type === 'user_supplement')!
+        expect(supplement.images).toEqual([USER_IMG])
+        expect(supplement.docPreviewImages).toEqual([PAGE_1])
+      })
+    })
+
     it('should queue silent reply without user_supplement step', () => {
       agent.injectCurrentRun({
         id: 'run-1',

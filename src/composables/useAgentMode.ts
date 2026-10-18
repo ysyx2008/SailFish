@@ -77,6 +77,8 @@ export interface AgentTaskGroup {
   index: number
   userTask: string
   images?: string[]
+  /** 扫描版 PDF 的页面图：仅调试模式下显示（老记录没有，页面图混在 images 里） */
+  docPreviewImages?: string[]
   attachments?: AttachmentInfo[]
   steps: AgentStep[]
   /** 这场已经收场后出现的过程（如人主动压缩），画在收场后面 */
@@ -95,7 +97,10 @@ export interface FollowUpQueueItem {
   message: string
   /** 传给模型的完整图片（含文档预览页） */
   images?: string[]
+  /** 气泡里显示的图：用户自己贴的 */
   previewImages?: string[]
+  /** 扫描版 PDF 的页面图：仅调试模式下在气泡里显示 */
+  docPreviewImages?: string[]
   /** 仅输入框待发图片，编辑时填回用 */
   pendingImages?: string[]
   attachments?: AttachmentInfo[]
@@ -157,7 +162,8 @@ export function useAgentMode(
   tabId: Ref<string>,  // 每个 AiPanel 实例固定绑定的 tab ID
   imageCallbacks?: {
     getImages: () => string[]          // 全部图片（传给 AI 视觉模型）
-    getPreviewImages?: () => string[]  // UI 展示用的预览图（仅 PDF 页面渲染），默认同 getImages
+    getPreviewImages?: () => string[]  // 气泡里显示的图（用户自己贴的，不含文档页面图），默认同 getImages
+    getDocPreviewImages?: () => string[]  // 扫描版 PDF 的页面图（仅调试模式下显示），默认没有
     getPendingImages?: () => string[]  // 仅输入框待发图片（不含文档页），编辑填回用
     clearImages: () => void
   },
@@ -1362,6 +1368,7 @@ export function useAgentMode(
         const documentContext = await getDocumentContext()
         const images = imageCallbacks?.getImages() || []
         const previewImages = imageCallbacks?.getPreviewImages?.() || images
+        const docPreviewImages = imageCallbacks?.getDocPreviewImages?.() || []
         const pendingImages = imageCallbacks?.getPendingImages?.() || []
         followUpQueue.value = [
           ...followUpQueue.value,
@@ -1370,6 +1377,7 @@ export function useAgentMode(
             message,
             images: images.length > 0 ? images : undefined,
             previewImages: previewImages.length > 0 ? previewImages : undefined,
+            docPreviewImages: docPreviewImages.length > 0 ? docPreviewImages : undefined,
             pendingImages: pendingImages.length > 0 ? pendingImages : undefined,
             attachments: attachments.length > 0 ? attachments : undefined,
             parsedDocs: parsedDocs.length > 0 ? parsedDocs.map(d => ({ ...d })) : undefined,
@@ -1391,6 +1399,7 @@ export function useAgentMode(
       const supplementAttachments = attachmentCallbacks?.getAttachments() || []
       const images = imageCallbacks?.getImages() || []
       const previewImages = imageCallbacks?.getPreviewImages?.() || images
+      const docPreviewImages = imageCallbacks?.getDocPreviewImages?.() || []
       const pendingImagesSnapshot = imageCallbacks?.getPendingImages?.() || []
       const optimisticId = `__optimistic_user_supplement_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
       const parsedDocs = attachmentCallbacks?.getParsedDocs?.() || []
@@ -1401,6 +1410,7 @@ export function useAgentMode(
         type: 'user_supplement',
         content: message,
         images: previewImages.length > 0 ? previewImages : undefined,
+        docPreviewImages: docPreviewImages.length > 0 ? docPreviewImages : undefined,
         attachments: supplementAttachments.length > 0 ? supplementAttachments : undefined,
         timestamp: Date.now(),
       })
@@ -1422,6 +1432,7 @@ export function useAgentMode(
         documentContext,
         images,
         previewImages,
+        docPreviewImages,
         workbenchContext: options?.workbenchContext
       })
 
@@ -1489,6 +1500,9 @@ export function useAgentMode(
     const previewImages = queued
       ? (queued.previewImages ?? [])
       : (imageCallbacks?.getPreviewImages?.() || images)
+    const docPreviewImages = queued
+      ? (queued.docPreviewImages ?? [])
+      : (imageCallbacks?.getDocPreviewImages?.() || [])
     // 图片路径挂在待发预览上；必须先取附件再清预览，否则路径到不了模型
     const attachments = queued ? (queued.attachments ?? []) : (attachmentCallbacks?.getAttachments() || [])
     // 没送达时要把输入框原样还回去：清掉之前先留一份待发图片和完整文档的快照
@@ -1528,6 +1542,7 @@ export function useAgentMode(
       type: 'user_task',
       content: message,
       images: previewImages.length > 0 ? previewImages : undefined,
+      docPreviewImages: docPreviewImages.length > 0 ? docPreviewImages : undefined,
       attachments: attachments.length > 0 ? attachments : undefined,
       timestamp: startTime,
     })
@@ -1575,6 +1590,7 @@ export function useAgentMode(
         documentContext,
         images,
         previewImages,
+        docPreviewImages,
         attachments,
         workbenchContext: options?.workbenchContext,
       })
@@ -1813,6 +1829,7 @@ export function useAgentMode(
       documentContext?: string
       images?: string[]
       previewImages?: string[]
+      docPreviewImages?: string[]
       attachments?: AttachmentInfo[]
       workbenchContext?: WorkbenchContext
     }
@@ -1820,7 +1837,11 @@ export function useAgentMode(
     const tab = currentTab.value
     // 排队项是从响应式队列里取出来的代理对象，直接过 IPC 会整句送不出去
     const images = toIpcPlain(input.images ?? [])
-    const previewImages = input.previewImages ? toIpcPlain(input.previewImages) : images
+    const docPreviewImages = input.docPreviewImages ? toIpcPlain(input.docPreviewImages) : []
+    // 没单独给显示图时默认全部显示；但带着文档页面图时，全部图里含页面图，不能当成用户贴的都显示出来
+    const previewImages = input.previewImages
+      ? toIpcPlain(input.previewImages)
+      : (docPreviewImages.length > 0 ? [] : images)
     const attachments = toIpcPlain(input.attachments)
     const workbenchContext = toIpcPlain(input.workbenchContext)
     // workbenchPrompt 对所有工作台类型都需要注入（local/ssh/assistant 各有专属 prompt；companion 当前无）
@@ -1838,6 +1859,7 @@ export function useAgentMode(
         documentContext: input.documentContext,
         images: images.length > 0 ? images : undefined,
         previewImages: previewImages.length < images.length ? previewImages : undefined,
+        docPreviewImages: docPreviewImages.length > 0 ? docPreviewImages : undefined,
         attachments: attachments?.length ? attachments : undefined,
         sessionId: agentState.value?.sessionId,
         sessionStartTime: agentState.value?.sessionStartTime,
@@ -1863,6 +1885,7 @@ export function useAgentMode(
     documentContext?: string
     images?: string[]
     previewImages?: string[]
+    docPreviewImages?: string[]
     workbenchContext?: WorkbenchContext
   }): Promise<{ delivered: true } | { delivered: false; reason: string }> => {
     const target = resolveSayTarget(tabId)
@@ -2016,7 +2039,9 @@ export function useAgentMode(
         attachments: item.attachments,
         documentContext: item.documentContext,
         images: item.images,
-        previewImages: item.previewImages,
+        // 排队项没有显示图就是一张都不显示（与开新一轮时同一个解释），别让 say 退回去显示全部图
+        previewImages: item.previewImages ?? [],
+        docPreviewImages: item.docPreviewImages,
         workbenchContext: item.workbenchContext
       })
       // 没送达：回到原来的位置并标成没送出去，队列停在这里等用户处理
@@ -2045,6 +2070,7 @@ export function useAgentMode(
       ...item,
       images: item.images ? [...item.images] : undefined,
       previewImages: item.previewImages ? [...item.previewImages] : undefined,
+      docPreviewImages: item.docPreviewImages ? [...item.docPreviewImages] : undefined,
       pendingImages: item.pendingImages ? [...item.pendingImages] : undefined,
       attachments: item.attachments ? item.attachments.map(a => ({ ...a })) : undefined,
       parsedDocs: item.parsedDocs ? item.parsedDocs.map(d => ({ ...d })) : undefined,
@@ -2082,6 +2108,7 @@ export function useAgentMode(
     message: string
     images?: string[]
     previewImages?: string[]
+    docPreviewImages?: string[]
     pendingImages?: string[]
     attachments?: AttachmentInfo[]
     parsedDocs?: ParsedDocument[]
@@ -2095,6 +2122,7 @@ export function useAgentMode(
     const message = payload.message.trim()
     const images = payload.images?.length ? payload.images : undefined
     const previewImages = payload.previewImages?.length ? payload.previewImages : undefined
+    const docPreviewImages = payload.docPreviewImages?.length ? payload.docPreviewImages : undefined
     const pendingImages = payload.pendingImages?.length ? payload.pendingImages : undefined
     const attachments = payload.attachments?.length ? payload.attachments : undefined
     const parsedDocs = payload.parsedDocs?.length
@@ -2111,6 +2139,7 @@ export function useAgentMode(
         message,
         images,
         previewImages,
+        docPreviewImages,
         pendingImages,
         attachments,
         parsedDocs,
@@ -2441,7 +2470,8 @@ export function useAgentMode(
           id: `followup_pending_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           message: item.message,
           images: item.images,
-          previewImages: item.images,
+          previewImages: item.previewImages ?? item.images,
+          docPreviewImages: item.docPreviewImages,
           attachments: item.attachments,
           documentContext: item.documentContext,
           workbenchContext: item.workbenchContext,

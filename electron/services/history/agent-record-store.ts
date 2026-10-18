@@ -392,59 +392,77 @@ export class AgentRecordStore {
     const sessionImagesDir = path.join(this.imagesDir, dateStr, record.id)
 
     for (const step of record.steps) {
-      if (!step.images || step.images.length === 0) continue
-
-      let stepChanged = false
-      const newImages: string[] = []
-      for (let i = 0; i < step.images.length; i++) {
-        const img = step.images[i]
-
-        // 把旧的 file:// 绝对路径（上一版写入的格式）转为 sft-local:// 协议 URL
-        if (img.startsWith('file://')) {
-          const absPath = img.slice('file://'.length)
-          if (absPath.startsWith(this.imagesDir)) {
-            const relPath = path.relative(this.imagesDir, absPath).replace(/\\/g, '/')
-            newImages.push(`sft-local://history-image/${relPath}`)
-            stepChanged = true
-            continue
-          }
-          newImages.push(img)
-          continue
-        }
-
-        // 已是 sft-local:// 格式，直接保留
-        if (img.startsWith('sft-local://')) {
-          newImages.push(img)
-          continue
-        }
-
-        // 内联 base64 data URL：写出到磁盘，替换为 sft-local:// 路径
-        const match = img.match(/^data:(image\/(\w+));base64,(.+)$/)
-        if (!match) {
-          newImages.push(img)
-          continue
-        }
-        const [, , ext, base64Data] = match
-        // 确保 session 图片目录存在（懒建）
-        if (!fs.existsSync(sessionImagesDir)) {
-          fs.mkdirSync(sessionImagesDir, { recursive: true })
-        }
-        const filename = `${step.id}-${i}.${ext}`
-        const filePath = path.join(sessionImagesDir, filename)
-        if (!fs.existsSync(filePath)) {
-          fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'))
-        }
-        const relPath = path.relative(this.imagesDir, filePath).replace(/\\/g, '/')
-        newImages.push(`sft-local://history-image/${relPath}`)
-        stepChanged = true
+      // 用户自己的图与文档页面图各走各的字段，落盘文件名带前缀区分，互不覆盖
+      const images = this.externalizeImageList(step.images, sessionImagesDir, `${step.id}`)
+      if (images) {
+        step.images = images
+        anyChanged = true
       }
-      if (stepChanged) {
-        step.images = newImages
+      const docImages = this.externalizeImageList(step.docPreviewImages, sessionImagesDir, `${step.id}-doc`)
+      if (docImages) {
+        step.docPreviewImages = docImages
         anyChanged = true
       }
     }
 
     return anyChanged
+  }
+
+  /**
+   * 外化一组图片。返回新数组表示发生了替换；没有任何变化（或本来就空）返回 null。
+   * @param filePrefix 落盘文件名前缀，实际文件名为 `${filePrefix}-${下标}.${扩展名}`
+   */
+  private externalizeImageList(
+    list: string[] | undefined,
+    sessionImagesDir: string,
+    filePrefix: string,
+  ): string[] | null {
+    if (!list || list.length === 0) return null
+
+    let changed = false
+    const next: string[] = []
+    for (let i = 0; i < list.length; i++) {
+      const img = list[i]
+
+      // 把旧的 file:// 绝对路径（上一版写入的格式）转为 sft-local:// 协议 URL
+      if (img.startsWith('file://')) {
+        const absPath = img.slice('file://'.length)
+        if (absPath.startsWith(this.imagesDir)) {
+          const relPath = path.relative(this.imagesDir, absPath).replace(/\\/g, '/')
+          next.push(`sft-local://history-image/${relPath}`)
+          changed = true
+          continue
+        }
+        next.push(img)
+        continue
+      }
+
+      // 已是 sft-local:// 格式，直接保留
+      if (img.startsWith('sft-local://')) {
+        next.push(img)
+        continue
+      }
+
+      // 内联 base64 data URL：写出到磁盘，替换为 sft-local:// 路径
+      const match = img.match(/^data:(image\/(\w+));base64,(.+)$/)
+      if (!match) {
+        next.push(img)
+        continue
+      }
+      const [, , ext, base64Data] = match
+      // 确保 session 图片目录存在（懒建）
+      if (!fs.existsSync(sessionImagesDir)) {
+        fs.mkdirSync(sessionImagesDir, { recursive: true })
+      }
+      const filePath = path.join(sessionImagesDir, `${filePrefix}-${i}.${ext}`)
+      if (!fs.existsSync(filePath)) {
+        fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'))
+      }
+      const relPath = path.relative(this.imagesDir, filePath).replace(/\\/g, '/')
+      next.push(`sft-local://history-image/${relPath}`)
+      changed = true
+    }
+    return changed ? next : null
   }
 
   /**

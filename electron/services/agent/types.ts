@@ -126,7 +126,12 @@ export interface PendingUserMessage {
   message: string
   attachments?: AttachmentInfo[]
   documentContext?: string
+  /** 给模型看的全部图片 */
   images?: string[]
+  /** 气泡里显示的图：用户自己贴的（不含文档页面图）；缺省时显示 images */
+  previewImages?: string[]
+  /** 扫描版 PDF 的页面图：仅调试模式下在气泡里显示 */
+  docPreviewImages?: string[]
   /** 旁路工作台上下文（不上 user_supplement 气泡） */
   workbenchContext?: import('@shared/types').WorkbenchContext
   /** 伙计敲门：注入对话但不上墙为 user_supplement */

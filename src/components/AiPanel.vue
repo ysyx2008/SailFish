@@ -752,7 +752,9 @@ const {
   currentTabId,
   {
     getImages: () => [...getImageDataUrls(), ...getAllDocImages()],
-    getPreviewImages: () => [...getImageDataUrls(), ...getDocPreviewImages()],
+    // 气泡里显示的只有用户自己贴的图；扫描版 PDF 的页面图另走，仅调试模式下显示
+    getPreviewImages: () => getImageDataUrls(),
+    getDocPreviewImages: () => getDocPreviewImages(),
     getPendingImages: () => getImageDataUrls(),
     clearImages
   },
@@ -943,6 +945,8 @@ const cacheBarWidth = computed(() => {
 // ==================== 配置相关 ====================
 
 const hasAiConfig = computed(() => configStore.hasAiConfig)
+/** 扫描版 PDF 的页面图：用户没贴过，默认不摊在他发出去的消息里，开着助手调试模式才显示 */
+const showDocPreviewImages = computed(() => configStore.agentDebugMode)
 const oemCatalogMessage = computed(() => {
   if (hasAiConfig.value || !oemResolved.models.catalogUrl) return ''
   return configStore.oemModelNotice === 'need-login'
@@ -1295,7 +1299,7 @@ const handleComposerSubmit = async (
     await ensurePendingImagePaths()
     const pendingImagesOnly = getImageDataUrls()
     const images = [...pendingImagesOnly, ...getAllDocImages()]
-    const previewImages = [...pendingImagesOnly, ...getDocPreviewImages()]
+    const docPreviewImages = getDocPreviewImages()
     const attachments = [
       ...uploadedDocs.value.map(d => ({
         filename: d.filename,
@@ -1314,7 +1318,8 @@ const handleComposerSubmit = async (
     await saveEditFollowUp({
       message,
       images: images.length > 0 ? images : undefined,
-      previewImages: previewImages.length > 0 ? previewImages : undefined,
+      previewImages: pendingImagesOnly.length > 0 ? pendingImagesOnly : undefined,
+      docPreviewImages: docPreviewImages.length > 0 ? docPreviewImages : undefined,
       pendingImages: pendingImagesOnly.length > 0 ? pendingImagesOnly : undefined,
       attachments: attachments.length > 0 ? attachments : undefined,
       parsedDocs: uploadedDocs.value.length > 0 ? uploadedDocs.value.map(d => ({ ...d })) : undefined,
@@ -1682,12 +1687,19 @@ const allPreviewImages = computed((): PreviewItem[] => {
     if (group.images?.length) {
       for (const url of group.images) result.push({ url })
     }
+    if (showDocPreviewImages.value && group.docPreviewImages?.length) {
+      for (const url of group.docPreviewImages) result.push({ url })
+    }
     for (const step of group.steps) {
-      if (!step.images?.length) continue
-      const payload = step.echartsOption
-      result.push({ url: step.images[0], echartsPayload: payload })
-      for (let i = 1; i < step.images.length; i++) {
-        result.push({ url: step.images[i] })
+      if (step.images?.length) {
+        const payload = step.echartsOption
+        result.push({ url: step.images[0], echartsPayload: payload })
+        for (let i = 1; i < step.images.length; i++) {
+          result.push({ url: step.images[i] })
+        }
+      }
+      if (showDocPreviewImages.value && step.type === 'user_supplement' && step.docPreviewImages?.length) {
+        for (const url of step.docPreviewImages) result.push({ url })
       }
     }
   }
@@ -2926,6 +2938,20 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                         @contextmenu="openImageContextMenu($event, imgUrl)"
                       />
                     </div>
+                    <!-- 补话里的扫描版 PDF 页面图：同样只在助手调试模式下显示 -->
+                    <div
+                      v-if="showDocPreviewImages && item.step!.type === 'user_supplement' && item.step!.docPreviewImages && item.step!.docPreviewImages.length > 0"
+                      class="step-images"
+                    >
+                      <img
+                        v-for="(imgUrl, imgIdx) in item.step!.docPreviewImages"
+                        :key="`doc-${imgIdx}`"
+                        :src="imgUrl"
+                        class="step-image"
+                        @click="openImagePreview(imgUrl)"
+                        @contextmenu="openImageContextMenu($event, imgUrl)"
+                      />
+                    </div>
                     <div
                       v-if="item.step!.type !== 'message' && item.part !== 'thinking' && shouldShowTaskCompleteFooter(item)"
                       class="agent-final-footer"
@@ -3094,8 +3120,20 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                         @contextmenu="openImageContextMenu($event, imgUrl)"
                       />
                     </div>
+                    <!-- 扫描版 PDF 的页面图：用户没贴过，只在助手调试模式下显示 -->
+                    <div v-if="showDocPreviewImages && item.group!.docPreviewImages && item.group!.docPreviewImages.length > 0" class="message-images">
+                      <img
+                        v-for="(imgUrl, imgIdx) in item.group!.docPreviewImages"
+                        :key="`doc-${imgIdx}`"
+                        :src="imgUrl"
+                        class="message-image"
+                        @click="openImagePreview(imgUrl)"
+                        @contextmenu="openImageContextMenu($event, imgUrl)"
+                      />
+                    </div>
+                    <!-- 「仅预览前几页」跟页面图走：页面图不显示时它也不显示；老消息的页面图混在上面那排里，提示照旧 -->
                     <div 
-                      v-for="hint in getPreviewHints(item.group!.attachments)"
+                      v-for="hint in (showDocPreviewImages || !item.group!.docPreviewImages?.length ? getPreviewHints(item.group!.attachments) : [])"
                       :key="hint.filename"
                       class="image-preview-hint"
                     >

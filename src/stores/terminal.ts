@@ -3247,6 +3247,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       type: string
       content: string
       images?: string[]
+      docPreviewImages?: string[]
       echartsOption?: import('@shared/types').EChartsStepPayload
       attachments?: AttachmentInfo[]
       toolName?: string
@@ -3277,6 +3278,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       type: s.type as AgentStep['type'],
       content: s.content,
       images: s.images,
+      docPreviewImages: s.docPreviewImages,
       echartsOption: s.echartsOption,
       attachments: s.attachments,
       toolName: s.toolName,

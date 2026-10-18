@@ -9,6 +9,8 @@ export interface AgentTaskGroupDraft {
   index: number
   userTask: string
   images?: string[]
+  /** 扫描版 PDF 的页面图：仅调试模式下显示（老记录没有，页面图混在 images 里） */
+  docPreviewImages?: string[]
   attachments?: AttachmentInfo[]
   steps: AgentStep[]
   afterEndSteps: AgentStep[]
@@ -70,6 +72,7 @@ export function groupAgentSteps(allSteps: readonly AgentStep[]): {
         index: groups.length,
         userTask: (isProactive || isOnboarding) ? '' : step.content,
         images: step.images,
+        docPreviewImages: step.docPreviewImages,
         attachments: step.attachments,
         steps: [...leadingSupplements],
         afterEndSteps: [],

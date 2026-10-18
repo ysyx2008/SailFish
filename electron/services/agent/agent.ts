@@ -1340,7 +1340,10 @@ export abstract class Agent {
     options?: RunOptions & { config?: Partial<AgentConfig> }
   ): Promise<{ outcome: 'supplemented' } | { outcome: 'ran'; result: string }> {
     if (this.currentRun?.isRunning) {
-      this.addUserMessage(message, context.attachments, context.documentContext, context.images, context.workbenchContext)
+      this.addUserMessage(message, context.attachments, context.documentContext, context.images, context.workbenchContext, undefined, {
+        previewImages: context.previewImages,
+        docPreviewImages: context.docPreviewImages,
+      })
       return { outcome: 'supplemented' }
     }
     if (options?.config) this.updateConfig(options.config)
@@ -1358,6 +1361,20 @@ export abstract class Agent {
   }
 
   /**
+   * 补话气泡里显示哪些图：用户自己贴的（没单独给时用给模型的全部），
+   * 扫描版 PDF 的页面图另放一处，只在调试模式下展示。
+   */
+  private static supplementDisplayImages(
+    p: Pick<PendingUserMessage, 'images' | 'previewImages' | 'docPreviewImages'>
+  ): Pick<AgentStep, 'images' | 'docPreviewImages'> {
+    const shown = p.previewImages ?? p.images
+    return {
+      images: shown?.length ? shown : undefined,
+      docPreviewImages: p.docPreviewImages?.length ? p.docPreviewImages : undefined,
+    }
+  }
+
+  /**
    * 添加用户补充消息
    */
   addUserMessage(
@@ -1366,13 +1383,18 @@ export abstract class Agent {
     documentContext?: string,
     images?: string[],
     workbenchContext?: import('@shared/types').WorkbenchContext,
-    silent?: boolean
+    silent?: boolean,
+    /** 气泡里怎么显示这些图；不传就把 images 全部显示 */
+    display?: { previewImages?: string[]; docPreviewImages?: string[] }
   ): boolean {
     const pending: PendingUserMessage = {
       message,
       attachments: attachments?.length ? attachments : undefined,
       documentContext: documentContext || undefined,
       images: images?.length ? images : undefined,
+      // 空数组有意义（用户没贴图、图全是文档页面），不能折成 undefined
+      previewImages: display?.previewImages,
+      docPreviewImages: display?.docPreviewImages?.length ? display.docPreviewImages : undefined,
       workbenchContext: workbenchContext || undefined,
       silent: silent || undefined
     }
@@ -1390,7 +1412,7 @@ export abstract class Agent {
         type: 'user_supplement',
         content: message,
         attachments: attachments?.length ? attachments : undefined,
-        images: images?.length ? images : undefined
+        ...Agent.supplementDisplayImages(pending)
       })
     }
     
@@ -1723,6 +1745,7 @@ export abstract class Agent {
       ...context,
       images: undefined,
       previewImages: undefined,
+      docPreviewImages: undefined,
       attachments: undefined,
       documentContext: undefined,
       terminalOutput: [],
@@ -1804,6 +1827,7 @@ export abstract class Agent {
         type: 'user_task',
         content: message,
         images: context.previewImages || context.images,
+        docPreviewImages: context.docPreviewImages?.length ? context.docPreviewImages : undefined,
         attachments: context.attachments
       })
     } else if (run.noticeKind === 'task_receipt') {
@@ -1820,7 +1844,7 @@ export abstract class Agent {
           type: 'user_supplement',
           content: supplement.message,
           attachments: supplement.attachments,
-          images: supplement.images
+          ...Agent.supplementDisplayImages(supplement)
         })
       }
     }
@@ -2130,6 +2154,8 @@ export abstract class Agent {
     this.callbacks?.onComplete?.(run.id, result, run.pendingUserMessages.filter(m => !m.backgroundNotice).map(m => ({
       message: m.message,
       ...(m.images?.length ? { images: m.images } : {}),
+      ...(m.previewImages ? { previewImages: m.previewImages } : {}),
+      ...(m.docPreviewImages?.length ? { docPreviewImages: m.docPreviewImages } : {}),
       ...(m.attachments?.length ? { attachments: m.attachments } : {}),
       ...(m.documentContext ? { documentContext: m.documentContext } : {}),
       ...(m.workbenchContext ? { workbenchContext: m.workbenchContext } : {}),

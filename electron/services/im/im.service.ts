@@ -66,8 +66,10 @@ const PARSEABLE_DOC_EXTENSIONS = new Set([
 export interface ImAgentMediaContext {
   /** Vision data URL（含文档内嵌图），发给视觉模型 */
   images: string[]
-  /** 用户气泡预览图（纯图 + PDF 页预览；不含 Word 内嵌图） */
+  /** 用户气泡预览图（用户自己发的纯图；不含 PDF 页面图和 Word 内嵌图） */
   previewImages: string[]
+  /** 扫描版 PDF 的页面图：用户没发过这些图，气泡里默认不显示（仅调试模式下显示） */
+  docPreviewImages: string[]
   /** 附件元信息（含已内联图片的落盘路径），供 UI chip 与模型附注 */
   attachments: AttachmentInfo[]
   /** 已内联为图片或已解析为 documentContext 的本地路径，应从文案列表剔除 */
@@ -86,12 +88,13 @@ export async function prepareImAgentMedia(
 ): Promise<ImAgentMediaContext> {
   const images: string[] = []
   const previewImages: string[] = []
+  const docPreviewImages: string[] = []
   const attachmentInfos: AttachmentInfo[] = []
   const consumedPaths = new Set<string>()
   const parsedDocs: ParsedDocument[] = []
 
   if (!attachments?.length) {
-    return { images, previewImages, attachments: attachmentInfos, consumedPaths }
+    return { images, previewImages, docPreviewImages, attachments: attachmentInfos, consumedPaths }
   }
 
   const docsToParse: Array<{ attachment: IMAttachment; fileSize: number }> = []
@@ -174,9 +177,9 @@ export async function prepareImAgentMedia(
 
         if (doc.images?.length) {
           images.push(...doc.images)
-          // Word 内嵌图只进 images（给视觉模型），不进 previewImages（不宜做气泡缩略）
+          // Word 内嵌图只进 images（给视觉模型），不进气泡；PDF 页面图另放，仅调试模式下显示
           if (doc.fileType === 'pdf') {
-            previewImages.push(...doc.images)
+            docPreviewImages.push(...doc.images)
           }
         }
 
@@ -208,7 +211,7 @@ export async function prepareImAgentMedia(
     documentContext = [textCtx, imageHint].filter(Boolean).join('\n\n') || undefined
   }
 
-  return { images, previewImages, attachments: attachmentInfos, consumedPaths, documentContext }
+  return { images, previewImages, docPreviewImages, attachments: attachmentInfos, consumedPaths, documentContext }
 }
 
 /** 对齐前端 getDocImagesContext：告知模型已附上文档预览图 */
@@ -1273,6 +1276,9 @@ export class IMService {
           media.attachments.length > 0 ? media.attachments : undefined,
           media.documentContext,
           media.images.length > 0 ? media.images : undefined,
+          undefined,
+          undefined,
+          { previewImages: media.previewImages, docPreviewImages: media.docPreviewImages },
         )) {
           await adapter.sendText(replyContext, t('im.reply_received'))
         } else {
@@ -1641,7 +1647,9 @@ export class IMService {
         terminalType: 'assistant' as const,
         remoteChannel: msg.platform as RemoteChannel,
         ...(media.images.length > 0 ? { images: media.images } : {}),
-        ...(media.previewImages.length > 0 ? { previewImages: media.previewImages } : {}),
+        // 有图就明确给出气泡里显示哪些（可以是空数组：只有 PDF 页面图或 Word 内嵌图时），否则气泡会退回去显示全部图
+        ...(media.images.length > 0 ? { previewImages: media.previewImages } : {}),
+        ...(media.docPreviewImages.length > 0 ? { docPreviewImages: media.docPreviewImages } : {}),
         ...(media.attachments.length > 0 ? { attachments: media.attachments } : {}),
         ...(media.documentContext ? { documentContext: media.documentContext } : {}),
         ...(msg.isFirstContact ? {

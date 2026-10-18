@@ -34,6 +34,22 @@ describe('groupAgentSteps', () => {
     expect(groups[1].finalResult).toBe('已压缩')
   })
 
+  it('carries scanned-PDF page images on the group, apart from the user own images', () => {
+    const { groups } = groupAgentSteps([
+      step({
+        type: 'user_task',
+        content: '看这份',
+        images: ['user-img'],
+        docPreviewImages: ['page-1', 'page-2'],
+      }),
+      step({ type: 'final_result', content: '读完了' }),
+    ])
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0].images).toEqual(['user-img'])
+    expect(groups[0].docPreviewImages).toEqual(['page-1', 'page-2'])
+  })
+
   it('keeps in-task compact inside the running task', () => {
     const { groups } = groupAgentSteps([
       step({ type: 'user_task', content: '继续' }),

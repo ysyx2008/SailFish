@@ -266,6 +266,10 @@ export interface AgentPlan {
 export interface PendingUserHandoff {
   message: string
   images?: string[]
+  /** 气泡里显示的图（用户自己贴的）；缺省时显示 images */
+  previewImages?: string[]
+  /** 扫描版 PDF 的页面图（仅调试模式下显示） */
+  docPreviewImages?: string[]
   attachments?: AttachmentInfo[]
   documentContext?: string
   workbenchContext?: import('./workbench').WorkbenchContext
@@ -326,8 +330,13 @@ export interface AgentContext {
   documentContext?: string
   /** 用户上传的图片（base64 data URL），发送给 AI 用于视觉理解 */
   images?: string[]
-  /** UI 展示用的预览图片（仅 PDF 页面渲染），缺省时用 images */
+  /** UI 展示用的预览图片：用户自己贴的图（不含文档页面图），缺省时用 images */
   previewImages?: string[]
+  /**
+   * 扫描版 PDF 渲出的页面图（仅供 UI 在调试模式下展示；模型看的那份在 images 里）。
+   * 与 previewImages 分开：用户没贴过这些图，默认不该出现在他发出去的消息里。
+   */
+  docPreviewImages?: string[]
   /** 用户上传的文件元信息（用于 user_task 步骤展示） */
   attachments?: AttachmentInfo[]
   /** SSH 主机地址（用于历史记录元数据） */
@@ -450,6 +459,11 @@ export interface AgentStep {
   type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'waiting_input' | 'plan_created' | 'plan_updated' | 'plan_archived' | 'user_task' | 'final_result' | 'proactive_notice' | 'auto_review' | 'task_receipt'
   content: string
   images?: string[]
+  /**
+   * user_task 步骤：这条消息里扫描版 PDF 的页面图（与用户自己贴的 images 分开存）。
+   * 仅在助手调试模式下展示；老记录没有这个字段（页面图混在 images 里，照旧显示）。
+   */
+  docPreviewImages?: string[]
   /**
    * 「活图」载荷。chart skill 在默认 svg 模式下注入；前端用 echarts 实例化得到
    * 可交互图表（tooltip / legend toggle / dataZoom 等）。同时 `images` 仍带 SVG

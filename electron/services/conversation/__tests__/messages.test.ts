@@ -165,6 +165,20 @@ describe('messages.stepRecordToStep', () => {
     expect(step.toolName).toBe('shell')
   })
 
+  it('透传扫描版 PDF 的页面图，且不和用户自己的图混在一起', () => {
+    const rec = {
+      id: 's3',
+      type: 'user_task',
+      content: '看这份',
+      timestamp: 1,
+      images: ['user-img'],
+      docPreviewImages: ['page-1', 'page-2'],
+    } as any
+    const step = stepRecordToStep(rec)
+    expect(step.images).toEqual(['user-img'])
+    expect(step.docPreviewImages).toEqual(['page-1', 'page-2'])
+  })
+
   it('透传提问回答和替我审批留痕', () => {
     const rec = {
       id: 's2',
