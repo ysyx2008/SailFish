@@ -321,12 +321,7 @@ export class Conversation {
     const lastFinalResult = [...this._steps].reverse().find(s => s.type === 'final_result')
 
     // 会话整体状态由 taskMemory 最后一个任务的状态决定（比关键词匹配准确）
-    let status: 'completed' | 'failed' | 'aborted' = 'completed'
-    const lastTask = this._taskMemory.getSummaries(1)[0]
-    if (lastTask) {
-      if (lastTask.status === 'aborted') status = 'aborted'
-      else if (lastTask.status === 'failed') status = 'failed'
-    }
+    const status = this.outcome ?? 'completed'
 
     const serializableSteps: AgentStepRecord[] = filterPersistableSteps(this._steps)
       .map(s => Conversation.stepToStepRecord(s))
@@ -975,12 +970,14 @@ export class Conversation {
     tokenUsage?: TokenUsage
     /** 本轮触发过剥图降级：写 cache 前缀时剔除 images（与 commitRun 对称） */
     imagesStripped?: boolean
+    /** 用户按停之后才抛的错：结局记为已停止而不是失败（与正常收工的中止一致） */
+    aborted?: boolean
   }): void {
     this._taskMemory.saveTask(
       input.runId,
       input.userRequest,
       input.steps,
-      'failed',
+      input.aborted ? 'aborted' : 'failed',
       input.errorMessage,
       input.taskLog
     )
@@ -1337,6 +1334,18 @@ export class Conversation {
   get messages(): readonly AiMessage[] { return this._messages }
   get steps(): readonly AgentStep[] { return this._steps }
   get taskMemory(): TaskMemoryStore { return this._taskMemory }
+
+  /**
+   * 这场对话眼下的结局，由最后一个收工的任务决定。落盘记录的 status 和内存里查看任务用的是同一份，
+   * 免得同一场任务在眼前和在历史里说两种话。一个任务都没收过工时没有。
+   */
+  get outcome(): AgentRecord['status'] | undefined {
+    const lastTask = this._taskMemory.getSummaries(1)[0]
+    if (!lastTask) return undefined
+    if (lastTask.status === 'aborted') return 'aborted'
+    if (lastTask.status === 'failed') return 'failed'
+    return 'completed'
+  }
   get tokenUsage(): TokenUsage | undefined { return this._tokenUsage }
   get lastPromptTokens(): number | undefined { return this._lastPromptTokens }
   get lastCacheHitRate(): number | undefined { return this._lastCacheHitRate }

@@ -182,6 +182,47 @@ describe('Conversation 聚合根（领域模型）', () => {
     expect(Conversation.fromRecord(record).tokenUsage).toBeUndefined()
   })
 
+  it('结局：由最后一个收工的任务定，和落盘记录的 status 是同一份；一个任务都没收过工时没有', () => {
+    const conv = Conversation.create(
+      { agentKey: 'tab-o', terminalType: 'assistant' },
+      { id: 'sess_o', createdAt: 1000 }
+    )
+    expect(conv.outcome).toBeUndefined()
+
+    const finish = (runId: string, taskStatus: 'success' | 'aborted') => conv.commitRun({
+      runId,
+      userRequest: '写周报',
+      steps: [userStep('写周报'), finalStep('好了')],
+      taskMessageLog: [{ role: 'user', content: '写周报' }],
+      runMessages: [{ role: 'user', content: '写周报' }],
+      taskStatus,
+      result: '好了',
+    })
+
+    finish('run1', 'success')
+    expect(conv.outcome).toBe('completed')
+    expect(conv.toRecord()!.status).toBe('completed')
+
+    finish('run2', 'aborted')
+    expect(conv.outcome).toBe('aborted')
+    expect(conv.toRecord()!.status).toBe('aborted')
+
+    conv.commitFailedRun({
+      runId: 'run3', userRequest: '再来', steps: [userStep('再来')], taskLog: [],
+      cachePrefix: null, errorMessage: '模型不可用',
+    })
+    expect(conv.outcome).toBe('failed')
+    expect(conv.toRecord()!.status).toBe('failed')
+
+    // 用户按停之后才抛的错：结局算已停止，不算失败
+    conv.commitFailedRun({
+      runId: 'run4', userRequest: '又来', steps: [userStep('又来')], taskLog: [],
+      cachePrefix: null, errorMessage: '连接中断', aborted: true,
+    })
+    expect(conv.outcome).toBe('aborted')
+    expect(conv.toRecord()!.status).toBe('aborted')
+  })
+
   it('交接检查点：toRecord 带上 workingContext，fromRecord 接上 cache 前缀', () => {
     const conv = Conversation.create(
       { agentKey: 'tab-h', terminalType: 'assistant' },

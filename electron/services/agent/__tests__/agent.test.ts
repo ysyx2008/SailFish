@@ -43,7 +43,7 @@ import type {
   AgentStep
 } from '../types'
 import { TaskMemoryStore } from '../task-memory'
-import { ConversationManager, ConversationStore } from '../../conversation'
+import { Conversation, ConversationManager, ConversationStore } from '../../conversation'
 import { SUMMARY_MAX_OUTPUT_TOKENS } from '../../ai-request-budget'
 
 // ==================== Mock 实现 ====================
@@ -674,6 +674,55 @@ describe('Agent', () => {
       expect((a as unknown as { _deferredReceipts: unknown[] })._deferredReceipts).toEqual([
         { text: '回执一\n【不在场】', display: '甲做完了' },
       ])
+    })
+
+    it('查看步骤：会话里已收工的 + 正在跑这一轮已做过的；这一轮收工并进会话后不重复', () => {
+      const { a } = withSupervisor()
+      const conv = Conversation.create({ agentKey: 'tab-live', terminalType: 'assistant' }, { id: 'sess_live', createdAt: 1 })
+      ;(a as unknown as { _conversation: unknown })._conversation = conv
+      const step = (id: string, type: string): AgentStep => ({ id, type, content: id, timestamp: 1 } as AgentStep)
+      conv.commitRun({
+        runId: 'run0', userRequest: '上一轮', steps: [step('u0', 'user_task'), step('f0', 'final_result')],
+        taskMessageLog: [], runMessages: [], taskStatus: 'success', result: '好了',
+      })
+      const running = { id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [step('u1', 'user_task'), step('t1', 'tool_call')] }
+      a.injectCurrentRun(running)
+
+      expect(a.getLiveStepsSnapshot().map(s => s.id)).toEqual(['u0', 'f0', 'u1', 't1'])
+      expect(a.getSessionStepsSnapshot().map(s => s.id)).toEqual(['u0', 'f0'])
+
+      // 这一轮收工：步骤并进会话，当前这一轮的引用还在，也不能算两遍
+      conv.commitRun({
+        runId: 'run-1', userRequest: '这一轮', steps: running.steps,
+        taskMessageLog: [], runMessages: [], taskStatus: 'success', result: '好了',
+      })
+      expect(a.getLiveStepsSnapshot().map(s => s.id)).toEqual(['u0', 'f0', 'u1', 't1'])
+    })
+
+    it('结局：刚按停下的立刻算已停止，不等这一轮收工；没做过任何事的没有结局', () => {
+      const { a } = withSupervisor()
+      const conv = Conversation.create({ agentKey: 'tab-o', terminalType: 'assistant' }, { id: 'sess_o', createdAt: 1 })
+      ;(a as unknown as { _conversation: unknown })._conversation = conv
+      expect(a.getOutcome()).toBeUndefined()
+
+      a.injectCurrentRun({ id: 'run-1', isRunning: false, aborted: true, pendingUserMessages: [], steps: [] })
+      expect(a.getOutcome()).toBe('aborted')
+
+      // 又开了新的一轮：不再沿用上一轮被停的说法
+      conv.commitRun({
+        runId: 'run0', userRequest: '做完', steps: [], taskMessageLog: [], runMessages: [], taskStatus: 'success', result: '好了',
+      })
+      a.injectCurrentRun({ id: 'run-2', isRunning: true, aborted: false, pendingUserMessages: [], steps: [] })
+      expect(a.getOutcome()).toBe('completed')
+    })
+
+    it('会话重置之后，遗留的上一轮不算在眼下这场里（步骤、结局都不带出来）', () => {
+      const { a } = withSupervisor()
+      const step = (id: string, type: string): AgentStep => ({ id, type, content: id, timestamp: 1 } as AgentStep)
+      a.injectCurrentRun({ id: 'run-1', isRunning: false, aborted: true, pendingUserMessages: [], steps: [step('u1', 'user_task')] })
+      // 没有会话（刚重置 / 还没开）
+      expect(a.getLiveStepsSnapshot()).toEqual([])
+      expect(a.getOutcome()).toBeUndefined()
     })
 
     it('运行状态带上这一轮是谁开的头', () => {

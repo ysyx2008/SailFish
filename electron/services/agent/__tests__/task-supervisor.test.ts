@@ -17,6 +17,10 @@ interface MockAgentOptions {
   stepCount?: number
   title?: string
   firstUserTask?: string
+  /** 正在跑的这一轮里已经做过、还没并进会话的步骤 */
+  inFlightSteps?: Array<{ id: string; type: string; content: string; timestamp: number }>
+  /** 这场对话眼下的结局（没收过工、没被停过的不给） */
+  outcome?: 'completed' | 'failed' | 'aborted'
   sessionId?: string
   terminalType?: 'local' | 'ssh' | 'assistant'
   /** 当前这一轮是谁开的头 */
@@ -31,6 +35,9 @@ interface MockAgentOptions {
 }
 
 function makeMockAgent(opts: MockAgentOptions = {}): SailFish {
+  const committed = opts.firstUserTask
+    ? [{ id: 's1', type: 'user_task', content: opts.firstUserTask, timestamp: Date.now() }]
+    : []
   return {
     getRunStatus: vi.fn().mockReturnValue({
       isRunning: opts.isRunning ?? false,
@@ -43,11 +50,9 @@ function makeMockAgent(opts: MockAgentOptions = {}): SailFish {
     getSessionId: vi.fn().mockReturnValue(opts.sessionId),
     getPendingConfirmationInfo: vi.fn().mockReturnValue(opts.pendingConfirmation),
     getConversationTitle: vi.fn().mockReturnValue(opts.title),
-    getSessionStepsSnapshot: vi.fn().mockReturnValue(
-      opts.firstUserTask
-        ? [{ id: 's1', type: 'user_task', content: opts.firstUserTask, timestamp: Date.now() }]
-        : []
-    ),
+    getSessionStepsSnapshot: vi.fn().mockReturnValue(committed),
+    getLiveStepsSnapshot: vi.fn().mockReturnValue([...committed, ...(opts.inFlightSteps ?? [])]),
+    getOutcome: vi.fn().mockReturnValue(opts.outcome),
   } as unknown as SailFish
 }
 
@@ -128,6 +133,8 @@ describe('TaskSupervisor', () => {
         getPendingConfirmationInfo: vi.fn(),
         getConversationTitle: vi.fn(),
         getSessionStepsSnapshot: vi.fn().mockReturnValue([]),
+        getLiveStepsSnapshot: vi.fn().mockReturnValue([]),
+        getOutcome: vi.fn(),
         getTerminalType: vi.fn()
       } as unknown as SailFish
       const host = makeHost([
@@ -153,6 +160,66 @@ describe('TaskSupervisor', () => {
       const detail = supervisor.inspectTask('tab-x')
       expect(detail?.title).toBe('写周报')
       expect(detail?.recentSteps).toHaveLength(1)
+    })
+
+    it('正在跑的任务：连这一轮已经做过的步骤一起看，步数和明细是同一个数', () => {
+      const inFlight = Array.from({ length: 12 }, (_, i) => ({
+        id: `run-${i}`, type: 'tool_call', content: `第 ${i + 1} 步`, timestamp: Date.now(),
+      }))
+      const host = makeHost([['tab-x', makeMockAgent({
+        title: '长跑', isRunning: true, stepCount: 12, firstUserTask: '跑一阵', inFlightSteps: inFlight,
+      })]])
+
+      const detail = new TaskSupervisor(host).inspectTask('tab-x')
+
+      expect(detail?.stepCount).toBe(13)
+      expect(detail?.recentSteps).toHaveLength(8)
+      expect(detail?.recentSteps.at(-1)).toContain('第 12 步')
+    })
+
+    it('第一次开跑还没收工时，标题也能取到用户交代的话', () => {
+      const host = makeHost([['tab-x', makeMockAgent({
+        isRunning: true,
+        inFlightSteps: [{ id: 'u1', type: 'user_task', content: '帮我查一下日志', timestamp: Date.now() }],
+      })]])
+
+      expect(new TaskSupervisor(host).inspectTask('tab-x')?.title).toBe('帮我查一下日志')
+    })
+  })
+
+  describe('结局：眼前的和历史里的说一样的话', () => {
+    it('停下、做完、失败的任务在眼前时各报各的结局，不再统统是空闲', () => {
+      const host = makeHost([
+        ['tab-stopped', makeMockAgent({ title: '被停的', outcome: 'aborted' })],
+        ['tab-done', makeMockAgent({ title: '做完的', outcome: 'completed' })],
+        ['tab-failed', makeMockAgent({ title: '失败的', outcome: 'failed' })],
+      ])
+
+      const byKey = new Map(new TaskSupervisor(host).listLiveTasks().map(t => [t.agentKey, t.settled]))
+
+      expect(byKey.get('tab-stopped')).toBe('aborted')
+      expect(byKey.get('tab-done')).toBe('completed')
+      expect(byKey.get('tab-failed')).toBe('failed')
+    })
+
+    it('正在跑、等确认的，以及还没做过任何事的，没有结局', () => {
+      const host = makeHost([
+        ['tab-running', makeMockAgent({ title: '跑着', isRunning: true, outcome: 'aborted' })],
+        ['tab-waiting', makeMockAgent({
+          title: '等着', outcome: 'completed',
+          pendingConfirmation: { toolCallId: 'c1', toolName: 'exec', riskLevel: 'dangerous', argsPreview: '{}' },
+        })],
+        ['tab-new', makeMockAgent({ title: '新的' })],
+      ])
+
+      const list = new TaskSupervisor(host).listLiveTasks()
+
+      expect(list.map(t => t.settled)).toEqual([undefined, undefined, undefined])
+    })
+
+    it('查看近况也带结局', () => {
+      const host = makeHost([['tab-x', makeMockAgent({ title: '被停的', outcome: 'aborted' })]])
+      expect(new TaskSupervisor(host).inspectTask('tab-x')?.settled).toBe('aborted')
     })
   })
 

@@ -147,6 +147,8 @@ function makeSupervisor(
       getRunStatus: () => ({ isRunning: true, phase: 'thinking', stepCount: 1, hasPendingConfirmation: false, ledBy: 'companion' }),
       getConversationTitle: () => '整理日志',
       getSessionStepsSnapshot: () => [],
+      getLiveStepsSnapshot: () => [],
+      getOutcome: () => undefined,
       getTerminalType: () => 'assistant',
       getSessionId: () => 'session-task',
       getPendingConfirmationInfo: () => undefined,

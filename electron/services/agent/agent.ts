@@ -1642,6 +1642,31 @@ export abstract class Agent {
   }
 
   /**
+   * 连正在跑的这一轮也算上的步骤（会话快照只含已收工的轮次）。
+   * 这一轮收工后它的步骤已并进会话，按 id 去重，不会算两遍。同样只读，调用方负责截断。
+   */
+  getLiveStepsSnapshot(): readonly AgentStep[] {
+    const committed = this._sessionSteps
+    // 会话被重置之后，遗留的上一轮不属于眼下这场
+    const run = this._conversation ? this.currentRun : undefined
+    if (!run?.steps.length) return committed
+    const known = new Set(committed.map(s => s.id))
+    const inFlight = run.steps.filter(s => !known.has(s.id))
+    return inFlight.length > 0 ? [...committed, ...inFlight] : committed
+  }
+
+  /**
+   * 这场对话眼下的结局（已完成 / 失败 / 已停止）。刚按停下的那一轮还没来得及收工，也立刻算已停止；
+   * 一轮都没收过工、也没被停过的没有。
+   */
+  getOutcome(): 'completed' | 'failed' | 'aborted' | undefined {
+    if (!this._conversation) return undefined
+    const run = this.currentRun
+    if (run && !run.isRunning && run.aborted) return 'aborted'
+    return this._conversation.outcome
+  }
+
+  /**
    * 解决安全输入请求（前端弹框用户完成输入后调用）。
    * @param requestId 请求 ID
    * @param saved true=用户已保存 key，false=用户取消
@@ -2716,7 +2741,8 @@ export abstract class Agent {
       cachePrefix: hasUserMessage ? run.messages : null,
       errorMessage,
       tokenUsage: run.tokenUsage,
-      imagesStripped: run.imagesStripped
+      imagesStripped: run.imagesStripped,
+      aborted: run.aborted
     })
     if (!this._isSubAgent) {
       this.saveSessionToHistory()

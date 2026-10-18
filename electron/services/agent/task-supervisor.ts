@@ -103,7 +103,7 @@ export interface SupervisedTaskInfo {
   currentToolName?: string
   /** 只在看得到这场全部步骤时才有：列表从历史目录补进来的条目不打开正文，不报 */
   stepCount?: number
-  /** 已不在内存里、只能从历史看见时的结局。正在跑或还加载着的任务没有这个字段 */
+  /** 这场任务的结局：在眼前的和只在历史里的说一样的话。正在跑、等确认的，以及还没做过任何事的没有这个字段 */
   settled?: 'completed' | 'failed' | 'aborted'
   pendingConfirmation?: {
     toolCallId: string
@@ -270,9 +270,10 @@ export class TaskSupervisor {
     if (!isManagedTaskKey(agentKey)) return undefined
     const agent = this.host.getAgent(agentKey)
     if (agent) {
-      const steps = agent.getSessionStepsSnapshot()
+      // 连正在跑的这一轮一起看；步数和明细出自同一份，对得上
+      const steps = agent.getLiveStepsSnapshot()
       const recentSteps = steps.slice(-Math.max(1, maxSteps)).map(s => this.summarizeStep(s))
-      return { ...this.buildTaskInfo(agentKey, agent), recentSteps }
+      return { ...this.buildTaskInfo(agentKey, agent), stepCount: steps.length, recentSteps }
     }
     try {
       return this.inspectSettledTask(agentKey, maxSteps)
@@ -601,14 +602,17 @@ export class TaskSupervisor {
   private buildTaskInfo(agentKey: string, agent: SailFish): SupervisedTaskInfo & { stepCount: number } {
     const status = agent.getRunStatus()
     const pending = agent.getPendingConfirmationInfo()
+    const isRunning = status?.isRunning ?? false
+    const settled = isRunning || pending ? undefined : agent.getOutcome()
     return {
       agentKey,
       title: this.resolveTaskTitle(agentKey),
       terminalType: agent.getTerminalType() ?? 'assistant',
-      isRunning: status?.isRunning ?? false,
+      isRunning,
       phase: status?.phase,
       currentToolName: status?.currentToolName,
       stepCount: status?.stepCount ?? 0,
+      ...(settled ? { settled } : {}),
       pendingConfirmation: pending
         ? {
             toolCallId: pending.toolCallId,
@@ -626,7 +630,7 @@ export class TaskSupervisor {
     const agent = this.host.getAgent(agentKey)
     const custom = agent?.getConversationTitle()
     if (custom) return custom
-    const firstTask = agent?.getSessionStepsSnapshot().find(s => s.type === 'user_task')?.content
+    const firstTask = agent?.getLiveStepsSnapshot().find(s => s.type === 'user_task')?.content
     if (firstTask) return this.truncate(firstTask.replace(/\s+/g, ' ').trim(), 60)
     return agentKey.length > 16 ? `${agentKey.slice(0, 16)}…` : agentKey
   }
