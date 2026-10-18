@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { Loader2, X, Trash2, ChevronRight, ChevronDown, Folder, Brain } from 'lucide-vue-next'
 import { showConfirm, showAlert } from '../../composables/useConfirm'
 import AttachmentFileIcon from '../AttachmentFileIcon.vue'
+import { memoryTopics } from './memory-topics'
 import {
   SettingsTabs,
   SettingInput,
@@ -17,7 +18,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ close: [] }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const api = window.electronAPI as any
 
 // ==================== 类型 ====================
@@ -42,6 +43,7 @@ interface KnowledgeDocument {
 interface ContextKnowledgeItem {
   contextId: string
   content: string
+  updatedAt: number | null
 }
 
 // ==================== 状态 ====================
@@ -55,7 +57,11 @@ const activeTab = ref<'memory' | 'knowledge'>('memory')
 const contextDocs = ref<ContextKnowledgeItem[]>([])
 const selectedContextId = ref<string | null>(null)
 const contextDocContent = ref('')
+/** 打开这份记忆时看到的内容；保存时据此发现它之后有没有被 AI 改过 */
+const contextDocBase = ref('')
 const contextDocSaving = ref(false)
+/** 输入法正在组字：这时换掉文本框内容会打断输入 */
+const contextDocComposing = ref(false)
 const contextDocDirty = ref(false)
 const contextKnowledgeMaxChars = ref(5000)
 
@@ -407,10 +413,29 @@ const loadContextDocs = async () => {
       if (typeof result.maxDocChars === 'number' && result.maxDocChars > 0) {
         contextKnowledgeMaxChars.value = result.maxDocChars
       }
+      // 没有未保存改动时，正在看的那份跟着最新内容走；有改动就不替用户换文字
+      const open = selectedContextId.value
+        ? contextDocs.value.find(item => item.contextId === selectedContextId.value)
+        : undefined
+      if (open && !contextDocDirty.value && !contextDocSaving.value) {
+        contextDocContent.value = open.content
+        contextDocBase.value = open.content
+      } else if (selectedContextId.value && !open && !contextDocDirty.value) {
+        // 正在看的那份在别处被删了：不再对着已不存在的内容
+        selectedContextId.value = null
+        contextDocContent.value = ''
+        contextDocBase.value = ''
+      }
     }
   } catch (error) {
     console.error('加载记忆失败:', error)
   }
+}
+
+/** 后台悄悄重读：AI 每轮对话后都可能改记忆，面板开着时不该一直停在旧内容 */
+const refreshContextDocsQuietly = () => {
+  if (activeTab.value !== 'memory' || document.hidden || contextDocComposing.value) return
+  void loadContextDocs()
 }
 
 const loadKnowledgeDocs = async () => {
@@ -441,18 +466,70 @@ const selectContextDoc = async (item: ContextKnowledgeItem) => {
   }
   selectedContextId.value = item.contextId
   contextDocContent.value = item.content
+  contextDocBase.value = item.content
   contextDocDirty.value = false
+}
+
+/** 列表里第二行：有主题段就列主题，没有就退回开头几个字 */
+const memoryPreview = (item: ContextKnowledgeItem): string => {
+  if (!item.content.trim()) return t('knowledgeManager.emptyDocPreview')
+  const topics = memoryTopics(item.content)
+  return topics.length > 0 ? topics.join(' · ') : item.content.trim().substring(0, 80)
+}
+
+/** 第三行：字数/上限，以及最后一次更新 */
+const memoryStats = (item: ContextKnowledgeItem): string => {
+  const size = t('knowledgeManager.memoryCharCountShort', { current: item.content.length, max: contextKnowledgeMaxChars.value })
+  if (item.updatedAt === null) return size
+  const when = new Date(item.updatedAt).toLocaleString(locale.value, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return `${size} · ${t('knowledgeManager.memoryUpdatedAt', { time: when })}`
 }
 
 const onContextDocInput = () => { contextDocDirty.value = true }
 
 const saveContextDoc = async () => {
   if (!selectedContextId.value) return
+  const contextId = selectedContextId.value
+  // 保存的这一会儿用户还可能继续输入；以发出去的这一版为准判断「是否已保存」
+  const sent = contextDocContent.value
   try {
     contextDocSaving.value = true
-    const result = await window.electronAPI.contextKnowledge.set(selectedContextId.value, contextDocContent.value)
+    let result = await window.electronAPI.contextKnowledge.set(contextId, sent, contextDocBase.value)
+    if (!result.success && result.conflict) {
+      // 打开之后这份记忆被改过（多半是对话后的自动更新）：不静默覆盖，让用户选。
+      // 关掉弹窗（Esc、点空白处）什么都不改，仍留在编辑状态
+      const latest = result.latest ?? ''
+      let loadLatest = false
+      const overwrite = await showConfirm({
+        type: 'warning',
+        title: t('knowledgeManager.memoryChangedTitle'),
+        message: t('knowledgeManager.memoryChangedMessage'),
+        confirmText: t('knowledgeManager.memoryOverwrite'),
+        neutralText: t('knowledgeManager.memoryLoadLatest'),
+        onNeutral: () => { loadLatest = true },
+        cancelText: t('knowledgeManager.memoryKeepEditing'),
+      })
+      if (loadLatest) {
+        contextDocContent.value = latest
+        contextDocBase.value = latest
+        contextDocDirty.value = false
+        contextDocSaving.value = false
+        await loadContextDocs()
+        return
+      }
+      if (!overwrite) return
+      result = await window.electronAPI.contextKnowledge.set(contextId, sent, latest)
+      if (!result.success && result.conflict) {
+        // 确认的这一会儿又被改了：没有保存；基准不动，下次保存会再问一次
+        await showAlert(t('common.error'), t('knowledgeManager.memoryChangedAgain'))
+        return
+      }
+    }
     if (result.success) {
-      contextDocDirty.value = false
+      contextDocBase.value = sent
+      // 保存期间又输入了新内容：那部分还没存，保持「未保存」
+      if (contextDocContent.value === sent) contextDocDirty.value = false
+      contextDocSaving.value = false
       await loadContextDocs()
     } else {
       await showAlert(t('common.error'), t('knowledgeManager.saveMemoryFailed', { error: result.error || t('knowledgeManager.unknownError') }))
@@ -601,6 +678,8 @@ const batchDeleteDocuments = async () => {
 
 let unsubscribeKnowledgeReady: (() => void) | null = null
 
+watch(activeTab, (tab) => { if (tab === 'memory') refreshContextDocsQuietly() })
+
 watch(() => props.refreshSignal, () => { void loadKnowledgeDocs(); void loadContextDocs() })
 
 /** Esc 离开栏目；改名输入框、未保存的记忆草稿、弹层都在时不抢 Esc */
@@ -613,8 +692,14 @@ function onPanelKeydown(ev: KeyboardEvent) {
   emit('close')
 }
 
+let contextRefreshTimer: ReturnType<typeof setInterval> | null = null
+const CONTEXT_REFRESH_MS = 15_000
+
 onMounted(() => {
   document.addEventListener('keydown', onPanelKeydown, true)
+  window.addEventListener('focus', refreshContextDocsQuietly)
+  document.addEventListener('visibilitychange', refreshContextDocsQuietly)
+  contextRefreshTimer = setInterval(refreshContextDocsQuietly, CONTEXT_REFRESH_MS)
   loadAllData()
   unsubscribeKnowledgeReady = api.knowledge.onReady(() => {
     isKnowledgeInitialized.value = true
@@ -624,6 +709,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('keydown', onPanelKeydown, true)
+  window.removeEventListener('focus', refreshContextDocsQuietly)
+  document.removeEventListener('visibilitychange', refreshContextDocsQuietly)
+  if (contextRefreshTimer) clearInterval(contextRefreshTimer)
   unsubscribeKnowledgeReady?.()
 })
 </script>
@@ -756,7 +844,8 @@ onUnmounted(() => {
                   @click="selectContextDoc(item)"
                 >
                   <div class="memory-label">{{ getContextLabel(item.contextId) }}</div>
-                  <div class="memory-preview">{{ item.content.substring(0, 80) || t('knowledgeManager.emptyDocPreview') }}</div>
+                  <div class="memory-preview">{{ memoryPreview(item) }}</div>
+                  <div class="memory-stats">{{ memoryStats(item) }}</div>
                   <button class="btn-icon btn-del" @click.stop="deleteContextDoc(item.contextId)" :title="t('knowledgeManager.delete')">
                     <X :size="12" />
                   </button>
@@ -852,6 +941,9 @@ onUnmounted(() => {
                   <textarea
                     v-model="contextDocContent"
                     @input="onContextDocInput"
+                    @compositionstart="contextDocComposing = true"
+                    @compositionend="contextDocComposing = false"
+                    :maxlength="contextKnowledgeMaxChars"
                     class="editor-textarea"
                     :placeholder="t('knowledgeManager.contextDocPlaceholderSettings')"
                     spellcheck="false"
@@ -1143,6 +1235,7 @@ onUnmounted(() => {
 .memory-item .btn-del { position: absolute; top: 6px; right: 6px; }
 
 .memory-label { font-size: 12px; font-weight: 500; }
+.memory-stats { font-size: 10px; color: var(--text-muted); opacity: 0.8; margin-top: 1px; }
 .memory-preview { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .memory-item.active .memory-preview { color: var(--text-muted); }
 .memory-item.active .btn-del { color: var(--text-secondary); }

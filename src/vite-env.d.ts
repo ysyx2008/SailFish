@@ -2048,14 +2048,14 @@ interface Window {
     contextKnowledge: {
       list: () => Promise<{
         success: boolean
-        items: Array<{ contextId: string; content: string }>
+        items: Array<{ contextId: string; content: string; updatedAt: number | null }>
         maxDocChars: number
         minDocChars: number
         maxDocCharsLimit: number
         error?: string
       }>
       get: (contextId: string) => Promise<{ success: boolean; content: string; error?: string }>
-      set: (contextId: string, content: string) => Promise<{ success: boolean; error?: string }>
+      set: (contextId: string, content: string, base?: string) => Promise<{ success: boolean; error?: string; conflict?: boolean; latest?: string }>
       delete: (contextId: string) => Promise<{ success: boolean; error?: string }>
       setMaxDocChars: (chars: number) => Promise<{ success: boolean; maxDocChars: number; error?: string }>
     }

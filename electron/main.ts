@@ -7237,7 +7237,8 @@ ipcMain.handle('contextKnowledge:list', async () => {
     const ids = service.listContextIds()
     const items = ids.map(id => ({
       contextId: id,
-      content: service.getDocument(id)
+      content: service.getDocument(id),
+      updatedAt: service.getUpdatedAt(id),
     }))
     return {
       success: true,
@@ -7266,9 +7267,11 @@ ipcMain.handle('contextKnowledge:get', async (_event, contextId: string) => {
   }
 })
 
-ipcMain.handle('contextKnowledge:set', async (_event, contextId: string, content: string) => {
+ipcMain.handle('contextKnowledge:set', async (_event, contextId: string, content: string, base?: string) => {
   try {
-    getContextKnowledgeService().setDocument(contextId, content)
+    // base：界面打开这份记忆时看到的内容；之后被改过就不覆盖，把最新的交回界面让用户选
+    const result = getContextKnowledgeService().setDocumentIfUnchanged(contextId, content, base)
+    if (result.conflict) return { success: false, conflict: true, latest: result.latest }
     return { success: true }
   } catch (error) {
     return { success: false, error: errMsg(error, 'error.saveDocFailed') }

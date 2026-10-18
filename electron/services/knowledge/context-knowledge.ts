@@ -103,6 +103,33 @@ export class ContextKnowledgeService {
   }
 
   /**
+   * 用户在界面里编辑后保存。带着打开时看到的内容（base）：
+   * 这份记忆之后被改过（比如对话后的自动更新），就不覆盖，把最新内容交回去。
+   * 没带 base 就和 setDocument 一样。写盘失败照样抛错。
+   */
+  setDocumentIfUnchanged(
+    contextId: string,
+    content: string,
+    base?: string,
+  ): { conflict: false } | { conflict: true; latest: string } {
+    if (base !== undefined) {
+      const latest = this.getDocument(contextId)
+      if (latest !== base) return { conflict: true, latest }
+    }
+    this.setDocument(contextId, content)
+    return { conflict: false }
+  }
+
+  /** 这份记忆最后一次写入磁盘的时间（毫秒）；没有文件返回 null */
+  getUpdatedAt(contextId: string): number | null {
+    try {
+      return fs.statSync(path.join(this.storageDir, `${this.normalizeId(contextId)}.md`)).mtimeMs
+    } catch {
+      return null
+    }
+  }
+
+  /**
    * 删除知识文档
    * 文件删不掉会抛错，此时内存里的文档保持原样。
    */

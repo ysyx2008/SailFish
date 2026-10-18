@@ -70,4 +70,23 @@ describe('记忆写不进磁盘', () => {
     expect(ck.getDocument('personal')).toBe('旧内容')
     expect(ck.getDocument('root@prod')).toContain('新')
   })
+
+  it('带基准保存：基准一致就写；之后被改过就不写，把最新的交回去', () => {
+    expect(ck.setDocumentIfUnchanged('personal', '我改的', '旧内容')).toEqual({ conflict: false })
+    expect(ck.getDocument('personal')).toBe('我改的')
+
+    ck.setDocument('personal', 'AI 刚写的')
+    expect(ck.setDocumentIfUnchanged('personal', '又改了', '我改的')).toEqual({ conflict: true, latest: 'AI 刚写的' })
+    expect(ck.getDocument('personal')).toBe('AI 刚写的')
+  })
+
+  it('不带基准保存：照旧直接写', () => {
+    expect(ck.setDocumentIfUnchanged('personal', '直接写')).toEqual({ conflict: false })
+    expect(ck.getDocument('personal')).toBe('直接写')
+  })
+
+  it('能取到更新时间；没有这份记忆返回 null', () => {
+    expect(ck.getUpdatedAt('personal')).toBeGreaterThan(0)
+    expect(ck.getUpdatedAt('不存在')).toBeNull()
+  })
 })

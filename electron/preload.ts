@@ -2795,7 +2795,7 @@ const electronAPI = {
     list: () =>
       ipcRenderer.invoke('contextKnowledge:list') as Promise<{
         success: boolean
-        items: Array<{ contextId: string; content: string }>
+        items: Array<{ contextId: string; content: string; updatedAt: number | null }>
         maxDocChars: number
         minDocChars: number
         maxDocCharsLimit: number
@@ -2807,10 +2807,13 @@ const electronAPI = {
         content: string
         error?: string
       }>,
-    set: (contextId: string, content: string) =>
-      ipcRenderer.invoke('contextKnowledge:set', contextId, content) as Promise<{
+    set: (contextId: string, content: string, base?: string) =>
+      ipcRenderer.invoke('contextKnowledge:set', contextId, content, base) as Promise<{
         success: boolean
         error?: string
+        /** 带了 base 且这份记忆之后被改过：没有保存，latest 是最新内容 */
+        conflict?: boolean
+        latest?: string
       }>,
     delete: (contextId: string) =>
       ipcRenderer.invoke('contextKnowledge:delete', contextId) as Promise<{
