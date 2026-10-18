@@ -5,7 +5,7 @@ import { createApp, nextTick } from 'vue'
 import { createI18n } from 'vue-i18n'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import zhCN from '../../../i18n/locales/zh-CN'
-import KnowledgeSettings from '../KnowledgeSettings.vue'
+import MemoryPanel from '../MemoryPanel.vue'
 
 vi.mock('../../../composables/useConfirm', () => ({
   showConfirm: vi.fn(async () => true),
@@ -151,7 +151,7 @@ async function chooseSource(root: ParentNode, label: string) {
   await nextTick()
 }
 
-describe('档案室管理界面', () => {
+describe('记忆栏目（档案室管理）', () => {
   beforeEach(() => {
     calls.updateCard.length = 0
     calls.confirmCard.length = 0
@@ -174,7 +174,7 @@ describe('档案室管理界面', () => {
       locale: 'zh-CN',
       messages: { 'zh-CN': zhCN },
     })
-    const app = createApp(KnowledgeSettings)
+    const app = createApp(MemoryPanel)
     app.use(i18n)
     app.mount(el)
     await settle()
@@ -250,7 +250,7 @@ describe('档案室管理界面', () => {
       locale: 'zh-CN',
       messages: { 'zh-CN': zhCN },
     })
-    const app = createApp(KnowledgeSettings)
+    const app = createApp(MemoryPanel)
     app.use(i18n)
     app.mount(el)
     await settle()
