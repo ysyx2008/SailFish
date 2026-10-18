@@ -276,6 +276,10 @@ assert_contains "秘书列目录：看得见空的下级目录" "公司制度/�
   $CLI knowledge:catalog "公司制度"
 assert_contains "秘书列根：根上有下级目录" "公司制度/（还没有文件）" \
   $CLI knowledge:catalog
+assert_contains "秘书选列全部目录：所有层级都在" "公司制度/差旅/（还没有文件）" \
+  $CLI knowledge:catalog --all-folders
+assert_fails "秘书选列全部目录，目录不存在也报错" \
+  $CLI knowledge:catalog "不存在的目录" --all-folders
 assert_fails "秘书列不存在的目录要报错，不当成空目录" \
   $CLI knowledge:catalog "不存在的目录"
 assert_contains "knowledge:folder:rename 下级跟着走" "规章/差旅" \

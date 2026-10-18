@@ -384,10 +384,10 @@ async function knowledgeFolderList(): Promise<void> {
 
 /** 打印秘书列目录时会看到的内容（一次一层） */
 async function knowledgeCatalog(args: string[]): Promise<void> {
-  const { positional } = parseArgs(args)
+  const { positional, flags } = parseArgs(args)
   const service = await knowledgeService()
   try {
-    console.log(service.listCatalog(positional[0] || ''))
+    console.log(service.listCatalog(positional[0] || '', { allFolders: !!flags['all-folders'] }))
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
     process.exit(1)

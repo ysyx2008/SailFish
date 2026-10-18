@@ -133,6 +133,7 @@ import {
   normalizeFolder,
   normalizeFolderSafe,
   assembleLiteralSearch,
+  formatFolderTree,
   planFolderRename,
   type LiteralRow,
   renderLibraryRecall,
@@ -1973,10 +1974,11 @@ export class KnowledgeService extends EventEmitter {
   }
 
   /** 列出档案（不含主机记忆和过往对话）。只含路径、标题和一行说明。 */
-  listCatalog(folder = ''): string {
+  listCatalog(folder = '', options: { allFolders?: boolean } = {}): string {
     const prefix = folder ? normalizeFolder(folder) : ''
     const folders = this.listFolders()
     if (prefix && !folders.includes(prefix)) throw new FolderPathError(`没有这个目录：${prefix}`)
+    if (options.allFolders) return formatFolderTree(this.libraryDocs(prefix), prefix, folders)
     return formatCatalog(this.libraryDocs(prefix).map(doc => this.impressionDoc(doc)), prefix, folders)
   }
 

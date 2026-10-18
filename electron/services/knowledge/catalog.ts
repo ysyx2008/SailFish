@@ -480,6 +480,39 @@ export function formatCatalog(
   return sections.join('\n\n')
 }
 
+export const FOLDER_TREE_LIMIT = 1000
+
+/**
+ * 把 prefix 下所有层级的目录列出来，只列目录，每个写里面一共多少份文件。
+ * 目录不存在由调用方先拦住。
+ */
+export function formatFolderTree(
+  docs: { folder: string }[],
+  prefix: string,
+  folders: string[],
+  limit = FOLDER_TREE_LIMIT,
+): string {
+  const head = prefix ? `${prefix}/` : ''
+  const inside = folders
+    .filter(folder => folder.startsWith(head) && folder.length > head.length)
+    .sort((a, b) => a.localeCompare(b, 'zh'))
+  const where = prefix ? `「${prefix}」` : '档案室'
+  if (inside.length === 0) return `${where}下面没有目录。`
+
+  const counts = new Map<string, number>()
+  for (const doc of docs) {
+    for (const path of folderPrefixes(doc.folder || '')) {
+      counts.set(path, (counts.get(path) ?? 0) + 1)
+    }
+  }
+  const lines = inside.slice(0, limit).map(folder => {
+    const count = counts.get(folder) ?? 0
+    return `- ${folder}/（${count > 0 ? `一共 ${count} 份文件` : '还没有文件'}）`
+  })
+  const more = inside.length > limit ? `\n\n还有 ${inside.length - limit} 个目录没有列出。` : ''
+  return `${where}下面共 ${inside.length} 个目录：\n${lines.join('\n')}${more}`
+}
+
 export function capChunkText(text: string, max: number): string {
   if (text.length <= max) return text
   return `${text.slice(0, max)}…`

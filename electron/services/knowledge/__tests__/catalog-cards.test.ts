@@ -7,6 +7,7 @@ import {
   bestKeywordPerDoc,
   assembleLiteralSearch,
   formatCatalog,
+  formatFolderTree,
   fuseByDocument,
   folderDeleteNeedsConfirm,
   inFolder,
@@ -144,6 +145,31 @@ describe('档案目录', () => {
     expect(text).toContain('公司制度/差旅/（一共 1 份文件）')
     expect(text).toContain('公司制度/总则')
     expect(text).not.toContain('差旅管理办法')
+  })
+
+  it('选了列全部目录：所有层级都在，只列目录，不列文件', () => {
+    const text = formatFolderTree(docs, '', tree)
+    expect(text).toContain('共 3 个目录')
+    expect(text).toContain('公司制度/（一共 2 份文件）')
+    expect(text).toContain('公司制度/差旅/（一共 1 份文件）')
+    expect(text).toContain('空目录/（还没有文件）')
+    expect(text).not.toContain('doc_id')
+    expect(text).not.toContain('总则')
+  })
+
+  it('列全部目录也可以限定在某一级下面', () => {
+    const text = formatFolderTree(docs, '公司制度', tree)
+    expect(text).toContain('公司制度/差旅/')
+    expect(text).not.toContain('空目录')
+    expect(formatFolderTree(docs, '空目录', tree)).toContain('下面没有目录')
+  })
+
+  it('目录太多时只列到上限，并说明还有多少个没列', () => {
+    const many = Array.from({ length: 1005 }, (_, i) => `目录${String(i).padStart(4, '0')}`)
+    const text = formatFolderTree([], '', many)
+    expect(text).toContain('共 1005 个目录')
+    expect(text).toContain('还有 5 个目录没有列出')
+    expect(text.match(/^- /gm)?.length).toBe(1000)
   })
 
   it('空目录说明是空的', () => {

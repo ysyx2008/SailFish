@@ -682,13 +682,17 @@ ${execWaitAndUsage}`
       type: 'function',
       function: {
         name: 'list_knowledge',
-        description: '列出档案室里一个目录这一层的内容：直属的下级目录（含里面一共多少份文件），和直属的文件（路径、标题、一行说明），不返回正文。更深的层级列那个下级目录。目录不存在会报错。',
+        description: '列出档案室里一个目录这一层的内容：直属的下级目录（含里面一共多少份文件），和直属的文件（路径、标题、一行说明），不返回正文。更深的层级列那个下级目录。all_folders 为 true 时改为列出这个目录下所有层级的目录（只列目录，不列文件，最多 1000 个）。目录不存在会报错。',
         parameters: {
           type: 'object',
           properties: {
             folder: {
               type: 'string',
               description: '目录，例如「公司制度/差旅」。不填则列根目录。'
+            },
+            all_folders: {
+              type: 'boolean',
+              description: 'true：列出 folder 下所有层级的目录，只列目录，不列文件。默认 false，只列这一层。'
             }
           }
         }

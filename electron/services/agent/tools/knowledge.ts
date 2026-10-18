@@ -248,7 +248,7 @@ export async function listKnowledge(
     riskLevel: 'safe',
   })
   try {
-    const output = getKnowledgeService()!.listCatalog(folder)
+    const output = getKnowledgeService()!.listCatalog(folder, { allFolders: args.all_folders === true })
     executor.addStep({ type: 'tool_result', content: output.slice(0, 500), toolName: 'list_knowledge' })
     return { success: true, output }
   } catch (error) {
