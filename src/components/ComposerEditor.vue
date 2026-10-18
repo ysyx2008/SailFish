@@ -441,6 +441,11 @@ defineExpose({
   cursor: default;
 }
 
+/* 选中态由胶囊自己的外框变色表示（见 ComposerFileChip）；去掉编辑器默认套在外面的那圈浅蓝轮廓 */
+.composer-editor :deep(.composer-chip-host.ProseMirror-selectednode) {
+  outline: none;
+}
+
 .composer-editor :deep(.ProseMirror) {
   display: block;
   width: 100%;
