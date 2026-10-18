@@ -203,6 +203,28 @@ function clearAnchor() {
   editor.view.dispatch(editor.state.tr.setMeta(anchorKey, { pos: null }).setMeta('addToHistory', false))
 }
 
+/**
+ * 删掉某枚胶囊（点 ×）：与用户在文字里删掉它完全一样，进撤销历史，Cmd+Z 能找回。
+ * 找不到这枚胶囊返回 false。
+ */
+function removeChipByKey(key: string): boolean {
+  if (!editor) return false
+  const { state, view } = editor
+  const chipType = state.schema.nodes[COMPOSER_CHIP_NODE]
+  let at = -1
+  state.doc.descendants((node, pos) => {
+    if (at >= 0) return false
+    if (node.type === chipType && node.attrs.key === key) {
+      at = pos
+      return false
+    }
+    return true
+  })
+  if (at < 0) return false
+  view.dispatch(state.tr.delete(at, at + 1))
+  return true
+}
+
 /** 屏幕坐标是否落在编辑区内 */
 function containsPoint(x: number, y: number): boolean {
   const dom = editor?.view.dom
@@ -211,7 +233,10 @@ function containsPoint(x: number, y: number): boolean {
   return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
 }
 
-/** 外层按文件的增减，一次性调整胶囊；不进撤销历史、不当作用户输入 */
+/**
+ * 外层按文件的增减，一次性调整胶囊；不当作用户输入。
+ * 只有「放进新文件」这一种算一步撤销（Cmd+Z 能把这次放入撤掉），其余程序性调整不进撤销历史。
+ */
 function applyChipOps(ops: ChipOps) {
   if (!editor) return
   const { state, view } = editor
@@ -245,7 +270,8 @@ function applyChipOps(ops: ChipOps) {
     tr.scrollIntoView()
   }
   if (!tr.docChanged && !tr.selectionSet) return
-  tr.setMeta('addToHistory', false).setMeta(CHIP_SYNC_META, true)
+  const onlyInsert = keys.length > 0 && !(ops.bind?.length) && !(ops.remove?.length)
+  tr.setMeta('addToHistory', onlyInsert).setMeta(CHIP_SYNC_META, true)
   view.dispatch(tr)
 }
 
@@ -376,6 +402,7 @@ defineExpose({
   getDom: () => editor?.view.dom as HTMLElement | undefined,
   getChipKeys: currentChipKeys,
   applyChipOps,
+  removeChip: removeChipByKey,
   markAnchor,
   clearAnchor,
   containsPoint,

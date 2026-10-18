@@ -791,6 +791,7 @@ const {
   reconcile: reconcileChips,
   removeChip: removeComposerChip,
   markDrop: markFileDrop,
+  resetRemoved: resetRemovedChips,
   dispose: disposeChips,
 } = useComposerAttachmentChips({
   editor: mentionInputEl,
@@ -804,6 +805,9 @@ const {
     if (!active || active === document.body || composerRootEl.value?.contains(active)) focusInput()
   },
 })
+
+// 换了对话：撤销历史里的胶囊不再有文件可还，别把上一个对话的文件还进来
+watch(() => props.currentTabId, resetRemovedChips)
 
 type ChipViewModel = ReturnType<typeof chipView>
 

@@ -3,7 +3,7 @@
  *
  * - 新文件进来（拖放 / 加号 / 粘贴）→ 在落点或光标处插一枚胶囊；解析中的文件先以进度胶囊占位，
  *   解析完仍是同一枚（位置不跳）
- * - 用户在文字里删掉胶囊 → 对应文件一并撤下
+ * - 用户在文字里删掉胶囊 → 对应文件一并撤下；撤下的文件先收着，撤销（Cmd+Z）把胶囊带回来时文件跟着回来
  * - 文件列表被外部清空 / 移除 → 胶囊随之消失（不当作用户操作）
  * - 附件列表的先后始终与胶囊在文字里的先后一致，重新装回草稿文字时才能按顺序对上文件
  *
@@ -44,6 +44,8 @@ export const isSameAttachment = (
 export interface ChipEditorHandle {
   getChipKeys: () => (string | null)[]
   applyChipOps: (ops: ChipOps) => void
+  /** 按 key 删掉一枚胶囊（走用户编辑那条路，进撤销历史）；没找到返回 false */
+  removeChip: (key: string) => boolean
   markAnchor: (target: ChipAnchorTarget) => void
   clearAnchor: () => void
   containsPoint: (x: number, y: number) => boolean
@@ -55,6 +57,9 @@ export type ChipView<P extends ChipParsingDoc, D extends ChipDoc> =
 
 /** 落点记多久（够解析中的小条露出来，过期当作用户没指定位置） */
 const ANCHOR_TTL_MS = 8000
+
+/** 撤下的文件最多先收这么多份（撤销历史再长也只找得回这些） */
+const REMOVED_KEEP_MAX = 20
 
 const parsingId = (p: ChipParsingDoc) => `p:${p.requestId}:${p.fileIndex}`
 
@@ -74,6 +79,8 @@ export function useComposerAttachmentChips<D extends ChipDoc, P extends ChipPars
   let lastParsing: { id: string; filename: string; fileSize: number }[] = []
   /** 用户已撤掉胶囊、但还在解析的文件：解析完要把文件一并丢掉 */
   const dismissed = new Set<string>()
+  /** 用户撤下的文件（按胶囊 key）：撤销把胶囊带回来时，文件从这里还回去 */
+  const removedDocs = new Map<string, D>()
   /** 上次对过账的、已对上文件的胶囊 key */
   let lastBound: string[] = []
   let anchorTimer: ReturnType<typeof setTimeout> | null = null
@@ -122,9 +129,10 @@ export function useComposerAttachmentChips<D extends ChipDoc, P extends ChipPars
     const docs = options.uploadedDocs()
     const ids = docs.map(d => docId(d) as string)
 
-    // 撤掉过胶囊的解析中文件，现在解析完了：文件一并丢掉（列表变动后会再对一次账）
+    // 撤掉过胶囊的解析中文件，现在解析完了：文件不留在附件里，但先收着，撤销还能找回（列表变动后会再对一次账）
     const dead = ids.map((id, i) => (dismissed.has(id) ? i : -1)).filter(i => i >= 0)
     if (dead.length > 0) {
+      dead.forEach(i => keepRemoved(ids[i], docs[i]))
       dead.reverse().forEach(i => options.removeUploadedDoc(i))
       return
     }
@@ -148,6 +156,28 @@ export function useComposerAttachmentChips<D extends ChipDoc, P extends ChipPars
     for (const id of [...dismissed]) if (!alive.has(id)) dismissed.delete(id)
   }
 
+  function keepRemoved(key: string, doc: D) {
+    removedDocs.delete(key)
+    removedDocs.set(key, toRaw(doc) as D)
+    while (removedDocs.size > REMOVED_KEEP_MAX) {
+      const oldest = removedDocs.keys().next().value as string
+      removedDocs.delete(oldest)
+    }
+  }
+
+  /** 撤销 / 重做把某枚胶囊带回来了：能还的文件还回去 */
+  function revive(key: string) {
+    // 解析中就被撤下的：还在解析的话，接着解析即可
+    dismissed.delete(key)
+    if (options.parsingDocs().some(p => parsingId(p) === key)) return
+    if (options.uploadedDocs().some(d => docId(d) === key)) return
+    const doc = removedDocs.get(key)
+    if (!doc || !options.reorderUploadedDocs) return
+    removedDocs.delete(key)
+    // 先追加到末尾；随后对账会按胶囊在文字里的先后重新排好
+    options.reorderUploadedDocs([...options.uploadedDocs(), doc])
+  }
+
   /** 编辑器报告胶囊变了 */
   function onChips(keys: (string | null)[], source: ChipChangeSource) {
     if (source === 'sync') {
@@ -155,10 +185,14 @@ export function useComposerAttachmentChips<D extends ChipDoc, P extends ChipPars
       return
     }
     if (source === 'user') {
+      const before = new Set(lastBound)
       const removed = removedChipKeys(lastBound, keys)
       lastBound = boundKeys(keys)
       for (const key of removed) removeItem(key)
-      // 撤销把已撤下文件的胶囊又带了回来：没有文件可对，直接清掉
+      for (const key of keys) {
+        if (key != null && !before.has(key)) revive(key)
+      }
+      // 撤销把胶囊带了回来、却没有文件可还（已发送、已换掉文字等）：没有文件可对，直接清掉
       const live = new Set<string>([
         ...options.uploadedDocs().map(d => docId(d)).filter((id): id is string => !!id),
         ...options.parsingDocs().map(parsingId),
@@ -167,7 +201,8 @@ export function useComposerAttachmentChips<D extends ChipDoc, P extends ChipPars
       if (orphans.length > 0) options.editor.value?.applyChipOps({ remove: orphans })
       return
     }
-    // 外部整体换了文字：胶囊都成了「没对上」的，按先后重新认领
+    // 外部整体换了文字：撤销历史随之清空，收着的文件不会再被找回；胶囊都成了「没对上」的，按先后重新认领
+    removedDocs.clear()
     lastBound = []
     reconcile()
   }
@@ -176,6 +211,7 @@ export function useComposerAttachmentChips<D extends ChipDoc, P extends ChipPars
   function removeItem(key: string) {
     const index = options.uploadedDocs().findIndex(d => docId(d) === key)
     if (index >= 0) {
+      keepRemoved(key, options.uploadedDocs()[index])
       options.removeUploadedDoc(index)
       return
     }
@@ -185,9 +221,16 @@ export function useComposerAttachmentChips<D extends ChipDoc, P extends ChipPars
     }
   }
 
-  /** 点胶囊上的 ×：文件与胶囊一起撤下 */
+  /** 点胶囊上的 ×：文件与胶囊一起撤下；与在文字里删掉它一样可以撤销 */
   function removeChip(key: string | null) {
-    if (key) removeItem(key)
+    if (!key) return
+    if (options.editor.value?.removeChip(key)) return
+    removeItem(key)
+  }
+
+  /** 换了对话 / 换了一批文件来源：之前撤销历史里的胶囊不再有文件可还 */
+  function resetRemoved() {
+    removedDocs.clear()
   }
 
   /** 记下文件即将落进来的位置；落点在编辑区内取松手处，否则放文末 */
@@ -219,5 +262,5 @@ export function useComposerAttachmentChips<D extends ChipDoc, P extends ChipPars
     anchorTimer = null
   }
 
-  return { chipView, onChips, reconcile, removeChip, markDrop, docId, dispose }
+  return { chipView, onChips, reconcile, removeChip, markDrop, docId, resetRemoved, dispose }
 }

@@ -106,6 +106,9 @@ const settle = async () => {
   for (let i = 0; i < 4; i++) await nextTick()
 }
 
+/** 撤销历史里相隔不到半秒的改动会并成一步；测试里要当成两次操作就得隔开 */
+const pause = () => new Promise<void>(resolve => setTimeout(resolve, 550))
+
 function pressKey(el: HTMLElement, init: KeyboardEventInit) {
   el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }))
 }
@@ -174,22 +177,107 @@ describe('文件胶囊接线', () => {
     expect(h1.text.value).toBe('x')
   })
 
-  it('撤销把已删文件的胶囊带回来：没有文件可对，胶囊不留', async () => {
+  it('删掉胶囊后撤销：胶囊和文件一起回来，位置不变；重做再撤下', async () => {
     const h1 = mountHarness('x')
     await settle()
     h1.docs.value = [doc('a.pdf')]
     await settle()
+    await pause()
     h1.editor().focus()
     pressKey(h1.dom(), { key: 'Backspace' })
     pressKey(h1.dom(), { key: 'Backspace' })
     await settle()
     expect(h1.docs.value).toHaveLength(0)
     pressKey(h1.dom(), { key: 'z', ctrlKey: true })
-    pressKey(h1.dom(), { key: 'z', metaKey: true })
+    await settle()
+    expect(h1.docs.value.map(d => d.filename)).toEqual(['a.pdf'])
+    expect(h1.chipLabels()).toEqual(['a.pdf'])
+    expect(h1.text.value).toBe(`x${CHIP}`)
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true, shiftKey: true })
     await settle()
     expect(h1.docs.value).toHaveLength(0)
     expect(h1.chipLabels()).toEqual([])
-    expect(h1.text.value).toBe('x')
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true })
+    await settle()
+    expect(h1.docs.value.map(d => d.filename)).toEqual(['a.pdf'])
+  })
+
+  it('删掉中间的胶囊后撤销：文件回到原来的先后', async () => {
+    const h1 = mountHarness('')
+    await settle()
+    h1.docs.value = [doc('A'), doc('B'), doc('C')]
+    await settle()
+    await pause()
+    h1.api.removeChip(h1.editor().getChipKeys()[1])
+    await settle()
+    expect(h1.docs.value.map(d => d.filename)).toEqual(['A', 'C'])
+    h1.editor().focus()
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true })
+    await settle()
+    expect(h1.chipLabels()).toEqual(['A', 'B', 'C'])
+    expect(h1.docs.value.map(d => d.filename)).toEqual(['A', 'B', 'C'])
+  })
+
+  it('放进文件后撤销：胶囊消失、文件一并撤下；重做又回来', async () => {
+    const h1 = mountHarness('看 ')
+    await settle()
+    h1.docs.value = [doc('a.pdf')]
+    await settle()
+    expect(h1.chipLabels()).toEqual(['a.pdf'])
+    h1.editor().focus()
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true })
+    await settle()
+    expect(h1.chipLabels()).toEqual([])
+    expect(h1.docs.value).toHaveLength(0)
+    expect(h1.text.value).toBe('看 ')
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true, shiftKey: true })
+    await settle()
+    expect(h1.chipLabels()).toEqual(['a.pdf'])
+    expect(h1.docs.value.map(d => d.filename)).toEqual(['a.pdf'])
+  })
+
+  it('一次放进几个文件：一次撤销全部撤下', async () => {
+    const h1 = mountHarness('')
+    await settle()
+    h1.docs.value = [doc('a.pdf'), doc('b.pdf')]
+    await settle()
+    h1.editor().focus()
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true })
+    await settle()
+    expect(h1.chipLabels()).toEqual([])
+    expect(h1.docs.value).toHaveLength(0)
+  })
+
+  it('整段文字被外部换掉（发送 / 换对话）后，旧的撤销找不回文件', async () => {
+    const h1 = mountHarness('')
+    await settle()
+    h1.docs.value = [doc('a.pdf')]
+    await settle()
+    h1.api.removeChip(h1.editor().getChipKeys()[0])
+    await settle()
+    expect(h1.docs.value).toHaveLength(0)
+    h1.text.value = '新的一句'
+    await settle()
+    h1.editor().focus()
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true })
+    await settle()
+    expect(h1.docs.value).toHaveLength(0)
+    expect(h1.chipLabels()).toEqual([])
+  })
+
+  it('换了对话（重置）后，撤销不会把上一个对话撤下的文件还进来', async () => {
+    const h1 = mountHarness('')
+    await settle()
+    h1.docs.value = [doc('a.pdf')]
+    await settle()
+    h1.api.removeChip(h1.editor().getChipKeys()[0])
+    await settle()
+    h1.api.resetRemoved()
+    h1.editor().focus()
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true })
+    await settle()
+    expect(h1.docs.value).toHaveLength(0)
+    expect(h1.chipLabels()).toEqual([])
   })
 
   it('点 ×：胶囊与文件一起撤下', async () => {
@@ -293,6 +381,45 @@ describe('文件胶囊接线', () => {
     await settle()
     expect(h1.docs.value).toHaveLength(0)
     expect(h1.chipLabels()).toEqual([])
+  })
+
+  it('解析完之后才撤销：撤下的文件回来，是解析好的正式文件', async () => {
+    const h1 = mountHarness('')
+    await settle()
+    h1.parsingDocs.value = [parsing('big.pdf')]
+    await settle()
+    await pause()
+    h1.api.removeChip(h1.editor().getChipKeys()[0])
+    await settle()
+    h1.docs.value = [doc('big.pdf')]
+    h1.parsingDocs.value = []
+    await settle()
+    expect(h1.docs.value).toHaveLength(0)
+    h1.editor().focus()
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true })
+    await settle()
+    expect(h1.docs.value.map(d => d.filename)).toEqual(['big.pdf'])
+    expect(h1.chipLabels()).toEqual(['big.pdf'])
+  })
+
+  it('还在解析就撤销：胶囊回来接着解析，解析完文件留下', async () => {
+    const h1 = mountHarness('')
+    await settle()
+    h1.parsingDocs.value = [parsing('big.pdf')]
+    await settle()
+    await pause()
+    h1.api.removeChip(h1.editor().getChipKeys()[0])
+    await settle()
+    expect(h1.chipLabels()).toEqual([])
+    h1.editor().focus()
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true })
+    await settle()
+    expect(h1.chipLabels()).toEqual(['big.pdf'])
+    h1.docs.value = [doc('big.pdf')]
+    h1.parsingDocs.value = []
+    await settle()
+    expect(h1.docs.value.map(d => d.filename)).toEqual(['big.pdf'])
+    expect(h1.chipLabels()).toEqual(['big.pdf'])
   })
 
   it('粘贴进来的占位字符不会变成胶囊', async () => {
