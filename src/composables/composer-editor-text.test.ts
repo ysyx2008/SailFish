@@ -3,14 +3,17 @@ import { getSchema } from '@tiptap/core'
 import Document from '@tiptap/extension-document'
 import Paragraph from '@tiptap/extension-paragraph'
 import Text from '@tiptap/extension-text'
+import { AttachmentChip } from './composer-chip-node'
 import {
   plainTextToDocJSON,
   docToPlainText,
   docPosToOffset,
   offsetToDocPos,
+  docChipKeys,
+  COMPOSER_CHIP_CHAR as C,
 } from './composer-editor-text'
 
-const schema = getSchema([Document, Paragraph, Text])
+const schema = getSchema([Document, Paragraph, Text, AttachmentChip])
 const toDoc = (text: string) => schema.nodeFromJSON(plainTextToDocJSON(text))
 
 describe('composer-editor-text', () => {
@@ -54,5 +57,24 @@ describe('composer-editor-text', () => {
   it('文末位置对应文字长度', () => {
     const doc = toDoc('ab\ncd')
     expect(docPosToOffset(doc, doc.content.size)).toBe(5)
+  })
+
+  describe('文件胶囊', () => {
+    it.each([`a${C}b`, `${C}`, `${C}${C}`, `x\n${C}y\n`, `${C}\n${C}`])('带胶囊的文字往返不变：%j', (text) => {
+      expect(docToPlainText(toDoc(text))).toBe(text)
+    })
+
+    it('胶囊占 1 个位置，偏移量与位置互转仍是互逆', () => {
+      const doc = toDoc(`ab${C}cd\n${C}`)
+      for (let offset = 0; offset <= 7; offset++) {
+        expect(docPosToOffset(doc, offsetToDocPos(doc, offset))).toBe(offset)
+      }
+      // 第二个段落开头偏移 6，胶囊后偏移 7
+      expect(offsetToDocPos(doc, 3) - offsetToDocPos(doc, 2)).toBe(1)
+    })
+
+    it('按文字先后列出胶囊的 key，新装回的都是空', () => {
+      expect(docChipKeys(toDoc(`${C}x${C}\n${C}`))).toEqual([null, null, null])
+    })
   })
 })

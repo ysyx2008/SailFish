@@ -47,6 +47,7 @@ const {
   parsingDocs,
   isUploadingDocs,
   removeUploadedDoc,
+  reorderUploadedDocs,
   clearUploadedDocs,
   formatFileSize,
   handleDroppedFiles
@@ -450,6 +451,7 @@ onUnmounted(() => {
       :remove-image="removeImage"
       :select-attachment="selectAttachment"
       :remove-uploaded-doc="removeUploadedDoc"
+      :reorder-uploaded-docs="reorderUploadedDocs"
       :clear-uploaded-docs="clearUploadedDocs"
       :handle-paste="handlePaste"
       :handle-record-click="handleRecordClick"

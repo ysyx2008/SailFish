@@ -22,9 +22,13 @@ import type { ComposerQuoteSnippet } from '../stores/composer-quote'
 import type { ParsedDocument } from '../stores/terminal'
 import type { ParsingDocument } from '../composables/useDocumentUpload'
 import type { ContextCompositionId, ContextCompositionNode } from '@shared/types'
-import AttachmentFileIcon from './AttachmentFileIcon.vue'
 import HoverTipOverlay from './HoverTipOverlay.vue'
 import ComposerEditor from './ComposerEditor.vue'
+import ComposerFileChip from './ComposerFileChip.vue'
+import { COMPOSER_CHIP_CHAR } from '../composables/composer-editor-text'
+import { chipsToMarkers, markersToChips } from '../composables/composer-attachment-chips'
+import { isSameAttachment, useComposerAttachmentChips } from '../composables/useComposerAttachmentChips'
+import { SUPPORTED_IMAGE_TYPES } from '../composables/useImageUpload'
 import { useHoverTip, BUTTON_HOVER_TIP_DELAY_MS } from '../composables/useHoverTip'
 import { useOutputTokenRate } from '../composables/useOutputTokenRate'
 
@@ -82,6 +86,8 @@ const props = defineProps<{
   removeImage: (id: string) => void
   selectAttachment: () => void
   removeUploadedDoc: (index: number) => void
+  /** 按新顺序整体换掉已上传文件的先后（让文件顺序跟着胶囊在文字里的先后走） */
+  reorderUploadedDocs?: (docs: ParsedDocument[]) => void
   clearUploadedDocs: () => void
   handlePaste: (event: ClipboardEvent) => void
   handleRecordClick: () => void
@@ -634,9 +640,6 @@ const parseProgressLabel = (doc: ParsingDocument) => {
   return t('ai.parsingInProgress')
 }
 
-const isSameAttachment = (a: { filename: string; fileSize: number }, b: { filename: string; fileSize: number }) =>
-  a.filename === b.filename && a.fileSize === b.fileSize
-
 /** 已进附件排的解析中文件；解析完立刻让位给正式小条，避免叠两条 */
 const activeParsingDocs = computed(() => {
   if (!parsingChipsVisible.value) return []
@@ -648,14 +651,13 @@ const activeParsingDocs = computed(() => {
 /** embedded 模式：有附件时才显示外层统一容器，避免空态双层边框 */
 const hasComposerAttachments = computed(
   () =>
-    activeParsingDocs.value.length > 0 ||
-    props.uploadedDocs.length > 0 ||
     quoteSnippets.value.length > 0 ||
     props.pendingImages.length > 0 ||
     followUpItems.value.length > 0
 )
 
 onMounted(() => {
+  nextTick(reconcileChips)
   conversationSkills.startListening()
   void conversationSkills.sync(props.currentTabId)
 })
@@ -680,6 +682,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  disposeChips()
   if (parsingRevealTimer) {
     clearTimeout(parsingRevealTimer)
     parsingRevealTimer = null
@@ -748,6 +751,7 @@ function formatQuotesAppendix(snippets: ComposerQuoteSnippet[]): string {
 }
 
 const inputText = ref('')
+const composerRootEl = ref<HTMLElement | null>(null)
 const isComposing = ref(false)
 const mentionInputEl = ref<InstanceType<typeof ComposerEditor> | null>(null)
 const mentionListEl = ref<HTMLDivElement | null>(null)
@@ -777,6 +781,70 @@ const {
   handleKeyDown: handleMentionKeyDown,
   expandMentions
 } = useMentions(inputText, currentTabIdRef, uploadedDocsRef, onSkillPicked)
+
+// ---- 文字里的文件胶囊 ----
+const {
+  chipView,
+  onChips: onComposerChips,
+  reconcile: reconcileChips,
+  removeChip: removeComposerChip,
+  markDrop: markFileDrop,
+  dispose: disposeChips,
+} = useComposerAttachmentChips({
+  editor: mentionInputEl,
+  uploadedDocs: () => props.uploadedDocs,
+  parsingDocs: () => activeParsingDocs.value,
+  removeUploadedDoc: (index) => props.removeUploadedDoc(index),
+  reorderUploadedDocs: (docs) => props.reorderUploadedDocs?.(docs as ParsedDocument[]),
+  onInserted: () => {
+    // 文件是冲着输入框来的：焦点还在按钮 / 页面上时，把光标还给编辑区，方便接着打字；别处有焦点就不抢
+    const active = document.activeElement
+    if (!active || active === document.body || composerRootEl.value?.contains(active)) focusInput()
+  },
+})
+
+type ChipViewModel = ReturnType<typeof chipView>
+
+/** 胶囊右侧的小字：正式文件显示大小，解析中显示进度 */
+function chipStatusLabel(view: ChipViewModel): string {
+  if (!view) return ''
+  if (view.kind === 'parsing') return parseProgressLabel(view.doc)
+  return props.formatFileSize(view.doc.fileSize)
+}
+
+function chipTitle(view: ChipViewModel): string {
+  if (!view) return ''
+  if (view.kind === 'parsing') return getParsePhaseLabel(view.doc)
+  return view.doc.error || view.doc.filename
+}
+
+/** 给模型看的文件标记：夹在文字里替胶囊说「这里是哪个文件」 */
+const attachmentMarker = (doc: { filename: string }) => t('ai.attachmentMarker', { name: doc.filename })
+
+/** 发送前：把文字里的胶囊换成各自文件的标记；没有别的文字时返回空串（沿用「只发了文件」的默认提示） */
+function serializeChipText(text: string): string {
+  const withoutChips = text.split(COMPOSER_CHIP_CHAR).join('')
+  if (!withoutChips.trim()) return ''
+  const keys = mentionInputEl.value?.getChipKeys() ?? []
+  const labels = keys.map((key) => {
+    const view = chipView(key)
+    return view ? attachmentMarker(view.doc) : null
+  })
+  return chipsToMarkers(text, labels)
+}
+
+/** 取回一句发出去过的话：文字里恰好是这些文件标记的地方还原成胶囊（文件按先后对应） */
+const restoreMarkers = (text: string, docs: { filename: string }[]) =>
+  markersToChips(text, docs.map(attachmentMarker))
+
+/** 文件拖进输入框：记下松手的位置，解析好的胶囊稍后落在这里 */
+function onComposerDropCapture(event: DragEvent) {
+  const files = event.dataTransfer?.files
+  if (!files || files.length === 0) return
+  const hasDocument = Array.from(files).some(f => !SUPPORTED_IMAGE_TYPES.includes(f.type))
+  if (!hasDocument) return
+  markFileDrop({ x: event.clientX, y: event.clientY })
+}
 
 const slashSelectedIndex = ref(0)
 const isCompacting = ref(false)
@@ -944,8 +1012,8 @@ const appendText = (text: string) => {
   nextTick(focusInput)
 }
 
-const setText = (text: string) => {
-  inputText.value = text
+const setText = (text: string, docs?: { filename: string }[]) => {
+  inputText.value = docs?.length ? restoreMarkers(text, docs) : text
   nextTick(focusInput)
 }
 
@@ -1145,7 +1213,7 @@ const handleSend = async (opts?: { enqueue?: boolean }) => {
   }
   closeMentionMenu()
 
-  const rawInput = inputText.value.trim()
+  const rawInput = serializeChipText(inputText.value).trim()
   const exactSlash = !isEditingFollowUp.value ? resolveExactSlash(rawInput) : null
   if (exactSlash) {
     const commandText = formatSlashInvocation(exactSlash.def, exactSlash.hint)
@@ -1485,6 +1553,7 @@ defineExpose({
   clearText,
   flashHint,
   getText: () => inputText.value,
+  restoreMarkers,
   refreshPlaceholder: () => { void pickRandomPlaceholder() },
   submitPrepared,
 })
@@ -1497,7 +1566,9 @@ const handleSendClick = (event: MouseEvent) => {
 
 <template>
   <div
+    ref="composerRootEl"
     class="composer-root"
+    @drop.capture="onComposerDropCapture"
     :class="{
       'composer-root-embedded': embedded,
       'composer-root-embedded-filled': embedded && hasComposerAttachments,
@@ -1505,53 +1576,6 @@ const handleSendClick = (event: MouseEvent) => {
       'composer-root-overlay-filled': overlay && hasComposerAttachments
     }"
   >
-  <div v-if="uploadedDocs.length > 0 || activeParsingDocs.length > 0" class="uploaded-docs">
-    <div class="uploaded-docs-header">
-      <span class="uploaded-docs-title">📎 {{ t('ai.uploadedDocs') }} ({{ uploadedDocs.length + activeParsingDocs.length }})</span>
-      <button
-        v-if="uploadedDocs.length > 0"
-        class="btn-clear-docs"
-        @click="clearUploadedDocs"
-        :title="t('ai.clearDocs')"
-      >
-        <X :size="12" />
-      </button>
-    </div>
-    <div class="uploaded-docs-list">
-      <div
-        v-for="(doc, index) in uploadedDocs"
-        :key="`uploaded-${index}-${doc.filename}`"
-        class="uploaded-doc-item"
-        :class="{ 'has-error': doc.error }"
-      >
-        <AttachmentFileIcon class="doc-icon" :file-type="doc.fileType" :filename="doc.filename" :file-path="doc.filePath" :size="14" />
-        <span class="doc-name" :title="doc.filename">{{ doc.filename }}</span>
-        <span class="doc-size">{{ formatFileSize(doc.fileSize) }}</span>
-        <span v-if="doc.error" class="doc-error" :data-tooltip="doc.error">⚠️</span>
-        <button class="btn-remove-doc" @click="removeUploadedDoc(index)" :title="t('ai.removeDoc')">
-          <X :size="10" />
-        </button>
-      </div>
-      <div
-        v-for="doc in activeParsingDocs"
-        :key="`${doc.requestId}-${doc.fileIndex}`"
-        class="uploaded-doc-item is-parsing"
-        :class="{ 'has-error': doc.status === 'failed' }"
-        :title="getParsePhaseLabel(doc)"
-      >
-        <AttachmentFileIcon class="doc-icon" :filename="doc.filename" :size="14" />
-        <span class="doc-name">{{ doc.filename }}</span>
-        <span class="doc-size">{{ parseProgressLabel(doc) }}</span>
-        <span v-if="doc.status === 'failed'" class="doc-error" :data-tooltip="doc.error || getParsePhaseLabel(doc)">⚠️</span>
-        <div
-          v-if="doc.status !== 'failed'"
-          class="doc-parse-bar"
-          :style="{ width: Math.max(4, Math.min(100, doc.percent)) + '%' }"
-        />
-      </div>
-    </div>
-  </div>
-
   <div
     v-if="followUpItems.length > 0"
     class="follow-up-queue"
@@ -1882,7 +1906,18 @@ const handleSendClick = (event: MouseEvent) => {
           @compositionstart="isComposing = true"
           @compositionend="isComposing = false"
           @blur="handleInputBlur"
-        />
+          @chips="onComposerChips"
+        >
+          <template #chip="{ chipKey }">
+            <ComposerFileChip
+              :view="chipView(chipKey)"
+              :status-label="chipStatusLabel(chipView(chipKey))"
+              :title="chipTitle(chipView(chipKey))"
+              :remove-title="t('ai.removeDoc')"
+              @remove="removeComposerChip(chipKey)"
+            />
+          </template>
+        </ComposerEditor>
       </div>
 
       <Teleport to="body">
@@ -2362,166 +2397,6 @@ const handleSendClick = (event: MouseEvent) => {
 .ctx-usage-children {
   margin-top: 2px;
   margin-bottom: 2px;
-}
-
-.uploaded-docs {
-  padding: 8px 12px;
-  background: var(--bg-tertiary);
-  border-top: 1px solid var(--border-color);
-}
-
-.uploaded-docs-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-.uploaded-docs-title {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.btn-clear-docs {
-  padding: 2px 4px;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: 3px;
-  opacity: 0.6;
-  transition: all 0.2s;
-}
-
-.btn-clear-docs:hover {
-  opacity: 1;
-  background: rgba(var(--color-error-rgb), 0.1);
-  color: var(--color-error);
-}
-
-.uploaded-docs-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.uploaded-doc-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 11px;
-  max-width: 200px;
-}
-
-.doc-parse-bar {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  height: 2px;
-  background: var(--accent-primary);
-  border-radius: 0 0 6px 6px;
-  transition: width 0.2s ease;
-  pointer-events: none;
-}
-
-.uploaded-doc-item.has-error {
-  border-color: rgba(var(--color-error-rgb), 0.5);
-  background: rgba(var(--color-error-rgb), 0.05);
-}
-
-.doc-icon {
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-.doc-name {
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100px;
-}
-
-.doc-size {
-  color: var(--text-muted);
-  font-size: 10px;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-.doc-error {
-  flex-shrink: 0;
-  cursor: help;
-  position: relative;
-}
-
-.doc-error::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(30, 30, 30, 0.95);
-  color: #fff;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  line-height: 1.4;
-  white-space: pre-wrap;
-  max-width: 280px;
-  min-width: 120px;
-  z-index: 1000;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
-  pointer-events: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(var(--color-error-rgb), 0.3);
-}
-
-.doc-error::before {
-  content: '';
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 50%;
-  transform: translateX(-50%);
-  border: 5px solid transparent;
-  border-top-color: rgba(30, 30, 30, 0.95);
-  z-index: 1001;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
-  pointer-events: none;
-}
-
-.doc-error:hover::after,
-.doc-error:hover::before {
-  opacity: 1;
-  visibility: visible;
-}
-
-.btn-remove-doc {
-  padding: 2px;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: 3px;
-  opacity: 0.5;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.btn-remove-doc:hover {
-  opacity: 1;
-  background: rgba(var(--color-error-rgb), 0.1);
-  color: var(--color-error);
 }
 
 .composer-quote-snips {
@@ -3167,7 +3042,6 @@ const handleSendClick = (event: MouseEvent) => {
   overflow: hidden;
 }
 
-.composer-root-overlay-filled .uploaded-docs,
 .composer-root-overlay-filled .composer-quote-snips,
 .composer-root-overlay-filled .follow-up-queue,
 .composer-root-overlay-filled .follow-up-edit-banner {
@@ -3211,7 +3085,6 @@ const handleSendClick = (event: MouseEvent) => {
   overflow: hidden;
 }
 
-.composer-root-embedded-filled .uploaded-docs,
 .composer-root-embedded-filled .composer-quote-snips,
 .composer-root-embedded-filled .follow-up-queue {
   border-top: none;
@@ -3220,19 +3093,15 @@ const handleSendClick = (event: MouseEvent) => {
 }
 
 /* 附件区与下方分割线之间留足间距（文档列表不要紧贴分隔线） */
-.composer-root-embedded-filled .uploaded-docs:has(~ .ai-input-embedded),
 .composer-root-embedded-filled .composer-quote-snips:has(~ .ai-input-embedded),
 .composer-root-embedded-filled .follow-up-queue:has(~ .ai-input-embedded) {
   padding-bottom: 11px;
 }
 
-.composer-root-embedded-filled .uploaded-docs + .composer-quote-snips,
-.composer-root-embedded-filled .follow-up-queue + .composer-quote-snips,
-.composer-root-embedded-filled .uploaded-docs + .follow-up-queue {
+.composer-root-embedded-filled .follow-up-queue + .composer-quote-snips {
   padding-top: 8px;
 }
 
-.composer-root-embedded-filled .uploaded-docs ~ .ai-input-embedded,
 .composer-root-embedded-filled .composer-quote-snips ~ .ai-input-embedded,
 .composer-root-embedded-filled .follow-up-queue ~ .ai-input-embedded {
   border-top: 1px solid var(--border-color);

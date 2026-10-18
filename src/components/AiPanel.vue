@@ -552,6 +552,7 @@ const {
   isUploadingDocs,
   handleDroppedFiles,
   removeUploadedDoc,
+  reorderUploadedDocs,
   clearUploadedDocs,
   formatFileSize,
   getDocumentContext,
@@ -1340,8 +1341,8 @@ const handleBeginEditFollowUp = (id: string) => {
   }
   const item = beginEditFollowUp(id)
   if (!item) return
-  composerRef.value?.setText(item.message)
   restoreDraftMedia(item, `followup_edit_${item.id}`)
+  composerRef.value?.setText(item.message, item.parsedDocs ?? [])
   nextTick(() => composerRef.value?.focusInput())
 }
 
@@ -1377,7 +1378,8 @@ const restoreDraftMedia = (draft: HandBackDraft, idPrefix: string, append = fals
   }
   if (draft.parsedDocs?.length && currentTabId.value) {
     const docs = draft.parsedDocs.map(d => ({ ...d }))
-    terminalStore.setUploadedDocs(currentTabId.value, append ? [...uploadedDocs.value, ...docs] : docs)
+    // 追加时还回来的话排在输入框已有文字前面，文件也跟着排前面（文件先后与文字里胶囊先后一致）
+    terminalStore.setUploadedDocs(currentTabId.value, append ? [...docs, ...uploadedDocs.value] : docs)
   } else if (!append) {
     clearUploadedDocs()
   }
@@ -1385,7 +1387,9 @@ const restoreDraftMedia = (draft: HandBackDraft, idPrefix: string, append = fals
 
 /** 普通发送没送达：话还给输入框。文字接在已有文字前面，图和文档追加，不覆盖用户这期间新打的。 */
 function handBackToComposer(draft: HandBackDraft) {
-  composerRef.value?.setText(mergeHandbackText(composerRef.value?.getText() ?? '', draft.message))
+  const draftDocs = draft.parsedDocs ?? []
+  const draftMessage = composerRef.value?.restoreMarkers(draft.message, draftDocs) ?? draft.message
+  composerRef.value?.setText(mergeHandbackText(composerRef.value?.getText() ?? '', draftMessage))
   restoreDraftMedia(draft, `handback_${Date.now()}`, true)
   nextTick(() => composerRef.value?.focusInput())
 }
@@ -3247,6 +3251,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         :remove-image="removeImage"
         :select-attachment="selectAttachment"
         :remove-uploaded-doc="removeUploadedDoc"
+        :reorder-uploaded-docs="reorderUploadedDocs"
         :clear-uploaded-docs="clearUploadedDocs"
         :handle-paste="handlePaste"
         :handle-record-click="handleRecordClick"

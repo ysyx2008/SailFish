@@ -185,6 +185,12 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     terminalStore.removeUploadedDoc(currentTabId.value, index)
   }
 
+  // 按新顺序整体换掉已上传的文档（文件先后跟着输入框里胶囊的先后走）
+  const reorderUploadedDocs = (docs: ParsedDocument[]) => {
+    if (!currentTabId.value) return
+    terminalStore.setUploadedDocs(currentTabId.value, docs)
+  }
+
   // 清空所有上传的文档
   const clearUploadedDocs = () => {
     if (!currentTabId.value) return
@@ -361,6 +367,7 @@ export function useDocumentUpload(currentTabId: Ref<string | null> | ComputedRef
     selectAndUploadDocs,
     handleDroppedFiles,
     removeUploadedDoc,
+    reorderUploadedDocs,
     clearUploadedDocs,
     formatFileSize,
     getDocumentContext,

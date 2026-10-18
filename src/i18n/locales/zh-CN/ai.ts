@@ -197,6 +197,7 @@ export default {
       '说明：内容来自终端选区，行号为摘录内顺序，可能与缓冲区内真实行号不一致。',
     quoteSnippetTerminalTabFallback: '终端',
     quoteOnlyPrompt: '（用户在本消息仅附上引用摘录，见下文；请结合摘录作答。）',
+    attachmentMarker: '[附件：{name}]',
     docsOnlyPrompt: '（用户在本消息仅附上文件，请查看附件。）',
     selectionScopeOnlyPrompt: '处理选中内容',
     selectionScopeAppendixIntro:

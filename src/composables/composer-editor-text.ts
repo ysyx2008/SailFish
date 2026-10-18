@@ -6,9 +6,22 @@
  */
 import type { Node as PMNode } from '@tiptap/pm/model'
 
+/** 文件胶囊在编辑器里的节点名 */
+export const COMPOSER_CHIP_NODE = 'attachmentChip'
+
+/**
+ * 文件胶囊在纯文本里的占位字符（Unicode「对象替换符」）：占 1 个字符，
+ * 与胶囊节点在文档里占 1 个位置一一对应，字符偏移量因此始终有效。
+ */
+export const COMPOSER_CHIP_CHAR = '\uFFFC'
+
+type InlineJSON =
+  | { type: 'text'; text: string }
+  | { type: typeof COMPOSER_CHIP_NODE; attrs: { key: string | null } }
+
 interface ParagraphJSON {
   type: 'paragraph'
-  content?: { type: 'text'; text: string }[]
+  content?: InlineJSON[]
 }
 
 export interface DocJSON {
@@ -16,22 +29,49 @@ export interface DocJSON {
   content: ParagraphJSON[]
 }
 
-/** 纯文本 → 文档 JSON：每个换行符一个段落（连续换行不合并） */
+function lineToInline(line: string): InlineJSON[] {
+  const content: InlineJSON[] = []
+  line.split(COMPOSER_CHIP_CHAR).forEach((piece, index) => {
+    // 每个占位字符之前的分隔处是一枚胶囊（尚未绑定到具体文件，key 为空）
+    if (index > 0) content.push({ type: COMPOSER_CHIP_NODE, attrs: { key: null } })
+    if (piece) content.push({ type: 'text', text: piece })
+  })
+  return content
+}
+
+/** 纯文本 → 文档 JSON：每个换行符一个段落（连续换行不合并）；占位字符变成胶囊 */
 export function plainTextToDocJSON(text: string): DocJSON {
   const lines = text.replace(/\r\n?/g, '\n').split('\n')
   return {
     type: 'doc',
-    content: lines.map((line): ParagraphJSON =>
-      line ? { type: 'paragraph', content: [{ type: 'text', text: line }] } : { type: 'paragraph' }
-    ),
+    content: lines.map((line): ParagraphJSON => {
+      const content = lineToInline(line)
+      return content.length > 0 ? { type: 'paragraph', content } : { type: 'paragraph' }
+    }),
   }
 }
 
-/** 文档 → 纯文本：段落之间用 `\n` 连接 */
+/** 文档 → 纯文本：段落之间用 `\n` 连接，胶囊写成占位字符 */
 export function docToPlainText(doc: PMNode): string {
   const lines: string[] = []
-  doc.forEach((paragraph) => lines.push(paragraph.textContent))
+  doc.forEach((paragraph) => {
+    let line = ''
+    paragraph.forEach((child) => {
+      if (child.isText) line += child.text ?? ''
+      else if (child.type.name === COMPOSER_CHIP_NODE) line += COMPOSER_CHIP_CHAR
+    })
+    lines.push(line)
+  })
   return lines.join('\n')
+}
+
+/** 文档里所有胶囊的 key，按文字先后排列（未绑定的是 null） */
+export function docChipKeys(doc: PMNode): (string | null)[] {
+  const keys: (string | null)[] = []
+  doc.descendants((node) => {
+    if (node.type.name === COMPOSER_CHIP_NODE) keys.push((node.attrs.key as string | null) ?? null)
+  })
+  return keys
 }
 
 /** 文档位置 → 纯文本字符偏移 */
