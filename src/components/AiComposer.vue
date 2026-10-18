@@ -809,6 +809,8 @@ type ChipViewModel = ReturnType<typeof chipView>
 function chipStatusLabel(view: ChipViewModel): string {
   if (!view) return ''
   if (view.kind === 'parsing') return parseProgressLabel(view.doc)
+  // 文件夹没有有意义的大小（系统记的是目录项自己的字节数）
+  if (view.doc.fileType === 'folder') return ''
   return props.formatFileSize(view.doc.fileSize)
 }
 

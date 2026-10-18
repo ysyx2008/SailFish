@@ -67,6 +67,7 @@ export type DocumentType =
   | 'xml'
   | 'html'
   | 'csv'
+  | 'folder'
   | 'unknown'
 
 // 上传的文件信息
@@ -271,6 +272,15 @@ export class DocumentParserService {
       report?.({ status: 'parsing', phase: 'loading', percent: 3 })
       if (!fs.existsSync(file.path)) {
         throw new Error(t('doc.file_not_found', { path: file.path }))
+      }
+
+      // 文件夹不读内容、也没有有意义的大小（系统记的是目录项自己的字节数）
+      if ((await fs.promises.stat(file.path)).isDirectory()) {
+        result.fileType = 'folder'
+        result.fileSize = 0
+        report?.({ status: 'parsing', phase: 'formatting', percent: 98 })
+        result.parseTime = Date.now() - startTime
+        return result
       }
 
       switch (fileType) {
@@ -1201,7 +1211,11 @@ export class DocumentParserService {
       
       const pagesAttr = doc.pageCount ? ` pages="${doc.pageCount}"` : ''
       
-      if (!doc.content && doc.filePath) {
+      if (doc.fileType === 'folder' && doc.filePath) {
+        parts.push(`<sf_doc name="${doc.filename}"${pathAttr} type="folder" mode="metadata">\n`)
+        parts.push(`file_path: ${doc.filePath}\n`)
+        parts.push('</sf_doc>\n')
+      } else if (!doc.content && doc.filePath) {
         const sizeAttr = doc.fileSize ? ` size="${this.formatFileSize(doc.fileSize)}"` : ''
         parts.push(`<sf_doc name="${doc.filename}"${pathAttr}${sizeAttr} mode="metadata">\n`)
         parts.push(`file_path: ${doc.filePath}\n`)

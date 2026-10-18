@@ -781,6 +781,23 @@ describe('DocumentParserService', () => {
     })
   })
 
+  describe('parseDocument - 文件夹', () => {
+    it('文件夹不读内容、不带大小，类型为 folder', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-folder-'))
+      fs.writeFileSync(path.join(dir, 'a.txt'), 'hello')
+      const doc = await service.parseDocument({ name: 'dir', path: dir, size: 640 })
+      expect(doc.fileType).toBe('folder')
+      expect(doc.fileSize).toBe(0)
+      expect(doc.content).toBe('')
+      expect(doc.error).toBeUndefined()
+      const ctx = service.formatAsContext([doc])
+      expect(ctx).toContain('type="folder"')
+      expect(ctx).toContain(`file_path: ${dir}`)
+      expect(ctx).not.toContain('size=')
+      fs.rmSync(dir, { recursive: true, force: true })
+    })
+  })
+
   describe('formatAsContext', () => {
     it('有内容的文档应包含 path 和内容', () => {
       const result = service.formatAsContext([{

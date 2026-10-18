@@ -48,7 +48,7 @@ const actionAttr = { [CHIP_ACTION_ATTR]: '' }
       :size="14"
     />
     <span class="doc-name">{{ view.doc.filename }}</span>
-    <span class="doc-size">{{ statusLabel }}</span>
+    <span v-if="statusLabel" class="doc-size">{{ statusLabel }}</span>
     <span v-if="isFailed" class="doc-warn">⚠️</span>
     <button
       type="button"
