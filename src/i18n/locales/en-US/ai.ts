@@ -878,7 +878,7 @@ export default {
   // Memory panel
   memoryPanel: {
     title: 'Memory',
-    desc: 'View, edit and organize personal and per-host memories, and the files in the archive',
+    desc: 'View, edit and organize memories about the user and each host, and the files in the archive',
   },
 
   // Knowledge Manager
@@ -975,7 +975,7 @@ export default {
     memoryTab: 'Memory ({count})',
     knowledgeTab: 'Knowledge ({count})',
     contextLabelLocal: '💻 This Mac',
-    contextLabelPersonal: '👤 Personal',
+    contextLabelPersonal: '👤 User',
     contextLabelRemote: '🌐 {id}',
     contextDocPlaceholder:
       'Edit memory here (Markdown).\n\nThe Agent updates this document after tasks with useful system information and your preferences.\nYou can also edit manually to correct or add information.',

@@ -400,7 +400,10 @@ const loadContextDocs = async () => {
   try {
     const result = await window.electronAPI.contextKnowledge.list()
     if (result.success) {
-      contextDocs.value = result.items
+      // 关于用户本人的那份排第一，其后是本机与各台主机
+      contextDocs.value = [...result.items].sort(
+        (a, b) => Number(b.contextId === 'personal') - Number(a.contextId === 'personal'),
+      )
       if (typeof result.maxDocChars === 'number' && result.maxDocChars > 0) {
         contextKnowledgeMaxChars.value = result.maxDocChars
       }

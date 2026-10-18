@@ -879,7 +879,7 @@ export default {
   // 记忆栏目
   memoryPanel: {
     title: '记忆',
-    desc: '看、改、整理个人和各台主机的记忆，以及档案室里的文件',
+    desc: '看、改、整理关于用户和各台主机的记忆，以及档案室里的文件',
   },
 
   // 知识库管理器
@@ -976,7 +976,7 @@ export default {
     memoryTab: '记忆 ({count})',
     knowledgeTab: '知识库 ({count})',
     contextLabelLocal: '💻 本地主机',
-    contextLabelPersonal: '👤 个人',
+    contextLabelPersonal: '👤 用户',
     contextLabelRemote: '🌐 {id}',
     contextDocPlaceholder:
       '在此编辑记忆内容（Markdown 格式）\n\nAgent 会在每次任务结束后自动更新此文档，记录有用的系统信息和用户偏好。\n你也可以手动编辑来纠正或补充信息。',
