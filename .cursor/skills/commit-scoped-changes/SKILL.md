@@ -35,12 +35,7 @@ description: When committing or staging changes, only include files related to t
 
 ## 提交标题
 
-标题一律写成 `类型(范围): 描述`，格式出处是 `CONTRIBUTING.md` 的「提交规范」。
-
-- **类型**：`feat` / `fix` / `docs` / `refactor` / `perf` / `test` / `chore` 等，必填。只改文档用 `docs`，改技能或提示词文件也算 `docs`。
-- **范围**：模块名，如 `composer`、`knowledge`、`memory`、`skills`；跨得太散时可省。
-- **描述**：中文，写用户能感知的结果。
-- 不带类型前缀的标题不合规，提交前自查；已经提交且没推送的，用改写标题补上。
+按 `CONTRIBUTING.md` 的提交规范写，不带类型前缀的不合规。
 
 ## 要求
 

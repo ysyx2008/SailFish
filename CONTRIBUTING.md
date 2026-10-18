@@ -126,8 +126,10 @@ git checkout -b feature/fix-紧急问题
 使用约定式提交 (Conventional Commits) 格式：
 
 ```
-<type>: <description>
+<type>(<scope>): <description>
 ```
+
+`scope`（范围）可选，写改动所在的模块名，如 `composer`、`knowledge`、`memory`、`skills`；改动跨得太散、说不出单一模块时可省略，写成 `<type>: <description>`。
 
 ### 类型说明
 
@@ -145,10 +147,10 @@ git checkout -b feature/fix-紧急问题
 ### 示例
 
 ```
-feat: 添加 SSH 密钥认证功能
-fix: 修复终端中文乱码问题
+feat(ssh): 添加 SSH 密钥认证功能
+fix(terminal): 修复终端中文乱码问题
 docs: 更新 README 安装说明
-refactor: 重构 AI 对话模块
+refactor(ai): 重构 AI 对话模块
 ```
 
 ## Pull Request 流程
