@@ -18,7 +18,7 @@
  * 内存里已经没有的任务，从历史索引补已结束的摘要；列表分页，可按关键字 / 最后活跃日期找。
  */
 import { v4 as uuidv4 } from 'uuid'
-import { inferConversationKind, type AgentHistorySummary, type ApprovalMode, type RiskLevel, type TerminalType } from '@shared/types'
+import { inferConversationKind, type AgentHistorySummary, type ApprovalMode, type AssignedBy, type RiskLevel, type TerminalType } from '@shared/types'
 import { createLogger } from '../../utils/logger'
 import { t } from './i18n'
 import { getDefaultShell, getLocalOS } from '../../utils/platform'
@@ -36,7 +36,7 @@ const FINISH_DEBOUNCE_MS = 5000
 const RECEIPT_SUMMARY_MAX = 500
 
 /** 谁开的这一轮：联络经任务管理开的头才有回执 */
-type LedBy = 'companion' | undefined
+type LedBy = AssignedBy | undefined
 
 /** 任务列表每页条数 */
 const TASK_PAGE_SIZE = 20
@@ -144,14 +144,14 @@ export interface TaskSupervisorHost {
     agentKey: string,
     message: string,
     context: AgentContext,
-    opts: { surface: 'assistant' | 'terminal'; config?: Partial<AgentConfig>; ledBy?: 'companion' }
+    opts: { surface: 'assistant' | 'terminal'; config?: Partial<AgentConfig>; ledBy?: AssignedBy }
   ): Promise<unknown>
   /** 把回执交给联络：它正在回复就送进这一轮，否则另起一轮 */
   deliverCompanionReceipt(text: string): void
   getHistoryService(): HistoryService | undefined
   getConfigService(): ConfigService | undefined
-  /** 创建任务实例，锁住交办标题，定下这场的审批方式 */
-  prepareAssignedTask(agentId: string, title: string, approval: ApprovalMode): void
+  /** 创建任务实例，锁住交办标题，定下这场的审批方式，记下是谁派的 */
+  prepareAssignedTask(agentId: string, title: string, approval: ApprovalMode, assignedBy: AssignedBy): void
 }
 
 export class TaskSupervisor {
@@ -332,7 +332,7 @@ export class TaskSupervisor {
     const agentId = `assistant-${uuidv4()}`
     const fullAuto = opts.fullAuto === true || this.fullAutoAssigned
     // 等于用户在那场里选：没说全自动就是替我审批；只管这一场，不改起步值
-    this.host.prepareAssignedTask(agentId, opts.title, fullAuto ? 'free' : 'autoReview')
+    this.host.prepareAssignedTask(agentId, opts.title, fullAuto ? 'free' : 'autoReview', 'companion')
     this.host.say(agentId, opts.brief, this.contextWithoutWindow('assistant'), {
       surface: 'assistant',
       config: this.runConfig(),

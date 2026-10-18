@@ -62,6 +62,7 @@ const toHistorySummary = (record: AgentRecord): AgentHistorySummary => ({
   kind: record.kind,
   sshHost: record.sshHost,
   terminalId: record.terminalId,
+  assignedBy: record.assignedBy,
   status: record.status,
 })
 
@@ -161,6 +162,7 @@ const liveSessionSummaries = computed((): AgentHistorySummary[] => {
       userTask: tab.agentState!.userTask!,
       title: tab.agentState!.title,
       terminalType: tab.type,
+      assignedBy: tab.agentState!.assignedBy,
       status: 'completed' as const, // 运行状态来自 meta，status 字段不用于显示
     }))
     .sort((a, b) => b.timestamp - a.timestamp)

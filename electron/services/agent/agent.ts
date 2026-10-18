@@ -53,6 +53,7 @@ import {
   executionModeOfApproval,
   inferConversationKind,
   type ApprovalMode,
+  type AssignedBy,
   type AutoReviewTrail,
   type VisibleConversationSkill,
 } from '@shared/types'
@@ -196,6 +197,9 @@ export abstract class Agent {
 
   /** 审批方式：会话还没建好时先记在这里，建好后交给会话 */
   private _armedApproval?: ApprovalMode
+
+  /** 这场是谁派的：会话还没建好时先记在这里，新会话建好时交给它（用掉就清） */
+  private _armedAssignedBy?: AssignedBy
 
   /** 调用方给下一轮指定的执行档（IM / 网页 / 关切 / 命令行等渠道自己的设定），开跑时用掉 */
   private _runModeOverride?: ExecutionMode
@@ -1555,6 +1559,21 @@ export abstract class Agent {
   }
 
   /**
+   * 记下这场是谁派的。出身只在新会话建好时交给会话，已建好的会话不改
+   * （联络再交代别人开的任务，那场不因此变成联络派的）。
+   */
+  armAssignedBy(assignedBy: AssignedBy): void {
+    this._armedAssignedBy = assignedBy
+  }
+
+  /** 新会话建好时交出先记下的出身，交完就清，之后换新会话不再带 */
+  private applyArmedAssignedBy(): void {
+    if (!this._armedAssignedBy || !this._conversation) return
+    this._conversation.adoptAssignedBy(this._armedAssignedBy)
+    this._armedAssignedBy = undefined
+  }
+
+  /**
    * 这场对话的审批方式：会话已定的为准；会话还没建好时是先记下的那个。
    * 都没有时 undefined（界面按起步值显示）。
    */
@@ -1803,6 +1822,7 @@ export abstract class Agent {
         )
       }
       this.applyArmedTitle()
+      this.applyArmedAssignedBy()
       }
     }
 
@@ -1816,6 +1836,7 @@ export abstract class Agent {
             sessionStartTime: this._conversation.createdAt,
             terminalType: this._conversation.terminalType,
             ...(this._conversation.title ? { title: this._conversation.title } : {}),
+            ...(this._conversation.assignedBy ? { assignedBy: this._conversation.assignedBy } : {}),
           }
         : undefined
     )
@@ -1989,6 +2010,7 @@ export abstract class Agent {
     this._conversation?.restoreWorkingContext(record.workingContext as AiMessage[] | undefined)
     this._conversation?.adoptCompressedArchives(record.compressedArchives as AgentRun['compressedArchives'])
     this._conversation?.adoptApproval(record.approval)
+    this._conversation?.adoptAssignedBy(record.assignedBy)
 
     // 任务重开才按清单把技能装回来。联络关掉再开不带上次的；关切 / 唤醒自己预装。
     const kind = record.kind ?? inferConversationKind(record.agentKey ?? this._agentId)
@@ -2477,6 +2499,7 @@ export abstract class Agent {
     // 下一次 run 会以全新 session 重建会话。
     this._conversation = undefined
     this._armedApproval = undefined
+    this._armedAssignedBy = undefined
     this._lastStatsProfileId = undefined
     this._contextBar = {}
     this.resetConsumedUsage()
@@ -2507,6 +2530,7 @@ export abstract class Agent {
     // 下次 run 创建新会话时注入同一个（保留的）store，维持「跨 session 记忆」语义。
     this._conversation = undefined
     this._armedApproval = undefined
+    this._armedAssignedBy = undefined
     this._lastStatsProfileId = undefined
     this._contextBar = {}
     this.resetConsumedUsage()

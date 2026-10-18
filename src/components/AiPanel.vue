@@ -15,6 +15,7 @@ import { oemResolved } from '@shared/oem-resolve'
 import { useTerminalStore } from '../stores/terminal'
 import { useComposerQuoteStore } from '../stores/composer-quote'
 import AgentPlanView from './AgentPlanView.vue'
+import AssignedByBanner from './AssignedByBanner.vue'
 import AiComposer from './AiComposer.vue'
 import DropOverlay from './DropOverlay.vue'
 import AiProfileSelect from './AiProfileSelect.vue'
@@ -116,6 +117,11 @@ const isCompanionTab = computed(() => {
   const tab = terminalStore.tabs.find(t => t.id === props.tabId)
   return tab?.type === 'assistant' && tab?.agentId === COMPANION_AGENT_KEY
 })
+
+/** 这场任务是谁派的（没记下出身的为空）——对话顶上据此写一行说明 */
+const currentAssignedBy = computed(() =>
+  terminalStore.tabs.find(t => t.id === props.tabId)?.agentState?.assignedBy
+)
 
 // 步骤行模板：列表里平铺一份，折叠行内部再用一份，作用域不变
 const [DefineStepRow, ReuseStepRow] = createReusableTemplate<{ item: VirtualItem }>()
@@ -2559,6 +2565,9 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
           </div>
         </div>
       </div>
+
+      <!-- 联络派出的任务：对话顶上写明白是谁派的（固定，不随对话滚走） -->
+      <AssignedByBanner v-if="!peek" :assigned-by="currentAssignedBy" />
 
       <!-- 错误诊断提示（Agent 执行时隐藏） -->
       <div v-if="lastError && !isAgentRunning" class="error-alert">

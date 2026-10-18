@@ -26,9 +26,10 @@ import type {
   TokenUsage,
   TerminalType,
   ConversationKind,
-  ApprovalMode
+  ApprovalMode,
+  AssignedBy
 } from '@shared/types'
-import { inferConversationKind, filterPersistableSteps, isApprovalMode } from '@shared/types'
+import { inferConversationKind, filterPersistableSteps, isApprovalMode, isAssignedBy } from '@shared/types'
 import type { AiMessage } from '../ai.service'
 import { TaskMemoryStore, type LookupToolMeta } from '../agent/task-memory'
 import { splitMessagesIntoTasks, splitStepsIntoTasks, stepRecordToStep, chunkStepsByUserTask, chunkStepsForCompanionExtract, restoreSpokenRepliesMissingFromMessages } from './messages'
@@ -76,6 +77,8 @@ export interface ConversationCreateOptions {
   /** 会话开始时间（恢复时取历史记录的 timestamp）；省略则 Date.now() */
   createdAt?: number
   sshHost?: string
+  /** 这场任务是谁派的；省略 = 用户自己开的 */
+  assignedBy?: AssignedBy
 }
 
 /**
@@ -157,6 +160,8 @@ export class Conversation {
   private _titleLocked = false
   /** 这场对话自己的审批方式；老记录没有，开跑时按起步值补上 */
   private _approval?: ApprovalMode
+  /** 这场任务是谁派的。建时定下、不再变；没有 = 用户自己开的（或记下出身之前的老记录） */
+  private _assignedBy?: AssignedBy
 
   // ===== token 账 =====
   private _tokenUsage?: TokenUsage
@@ -208,7 +213,7 @@ export class Conversation {
     deps?: ConversationDeps
   ): Conversation {
     const kind = params.kind ?? inferConversationKind(params.agentKey)
-    return new Conversation(
+    const conv = new Conversation(
       opts?.id ?? `session_${Date.now()}`,
       kind,
       opts?.createdAt ?? Date.now(),
@@ -217,6 +222,8 @@ export class Conversation {
       params.agentKey,
       deps?.taskMemory ?? new TaskMemoryStore(deps?.lookupMeta)
     )
+    conv.adoptAssignedBy(opts?.assignedBy)
+    return conv
   }
 
   /**
@@ -275,11 +282,17 @@ export class Conversation {
     if (title) this._title = title
     if (record.titleLocked) this._titleLocked = true
     this.adoptApproval(record.approval)
+    this.adoptAssignedBy(record.assignedBy)
   }
 
   /** 从记录接回审批方式：已经定了的不覆盖 */
   adoptApproval(approval?: ApprovalMode): void {
     if (!this._approval && isApprovalMode(approval)) this._approval = approval
+  }
+
+  /** 定下这场是谁派的（新建时，或从记录接回）：已经定了的不覆盖，所以出身一经定下就不再变 */
+  adoptAssignedBy(assignedBy?: AssignedBy): void {
+    if (!this._assignedBy && isAssignedBy(assignedBy)) this._assignedBy = assignedBy
   }
 
   /**
@@ -330,6 +343,7 @@ export class Conversation {
       ...(this._title ? { title: this._title } : {}),
       ...(this._titleLocked ? { titleLocked: true } : {}),
       ...(this._approval ? { approval: this._approval } : {}),
+      ...(this._assignedBy ? { assignedBy: this._assignedBy } : {}),
       steps: serializableSteps,
       messages: this._messages.map(m => JSON.parse(JSON.stringify(m))),
       finalResult: lastFinalResult?.content,
@@ -385,6 +399,7 @@ export class Conversation {
       ...(this._title ? { title: this._title } : {}),
       ...(this._titleLocked ? { titleLocked: true } : {}),
       ...(this._approval ? { approval: this._approval } : {}),
+      ...(this._assignedBy ? { assignedBy: this._assignedBy } : {}),
       steps: mergedSteps.map(s => Conversation.stepToStepRecord(s)),
       messages: mergedMessages.map(m => JSON.parse(JSON.stringify(m))),
       duration: Date.now() - this.createdAt,
@@ -1197,6 +1212,11 @@ export class Conversation {
 
   get approval(): ApprovalMode | undefined {
     return this._approval
+  }
+
+  /** 这场任务是谁派的；没有 = 用户自己开的（或记下出身之前的老记录） */
+  get assignedBy(): AssignedBy | undefined {
+    return this._assignedBy
   }
 
   /** 改这场的审批方式。未变化时返回 false（调用方据此跳过写盘） */

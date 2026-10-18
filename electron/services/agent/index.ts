@@ -27,7 +27,7 @@ import type {
   CompactContextResult,
   TerminalType,
 } from './types'
-import { COMPANION_AGENT_KEY, type ApprovalMode, type VisibleConversationSkill } from '@shared/types'
+import { COMPANION_AGENT_KEY, type ApprovalMode, type AssignedBy, type VisibleConversationSkill } from '@shared/types'
 import { getDefaultShell, getLocalOS } from '../../utils/platform'
 import { SailFish } from './sailfish'
 import { TaskSupervisor } from './task-supervisor'
@@ -279,11 +279,12 @@ export class AgentService {
     return this.services.historyService
   }
 
-  /** 供 TaskSupervisor 在开跑前锁住交办标题、定下这场的审批方式 */
-  prepareAssignedTask(agentId: string, title: string, approval: ApprovalMode): void {
+  /** 供 TaskSupervisor 在开跑前锁住交办标题、定下这场的审批方式、记下是谁派的 */
+  prepareAssignedTask(agentId: string, title: string, approval: ApprovalMode, assignedBy: AssignedBy): void {
     const agent = this.createAssistantAgent(agentId)
     agent.armLockedTitle(title)
     agent.setApproval(approval)
+    agent.armAssignedBy(assignedBy)
   }
 
   /**
@@ -836,7 +837,7 @@ export class AgentService {
       profileId?: string
       callbacks?: AgentCallbacks
       /** 联络经任务管理开的头。只在开新一轮时记下 */
-      ledBy?: 'companion'
+      ledBy?: AssignedBy
     }
   ): Promise<{ outcome: 'supplemented' } | { outcome: 'ran'; result: string }> {
     const callbacks = opts.callbacks ?? this.uiCallbacksFor?.(agentKey)

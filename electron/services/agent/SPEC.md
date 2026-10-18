@@ -1286,5 +1286,6 @@ Watch / 任意 Agent 调用 `talk_to_user`（`tools/misc.ts::messageUser`）时�
 ## 其他组件
 
 - **Orchestrator** (`orchestrator.ts`)：多 Agent 协调器（智能巡检），Master-Worker 模式（⚠️ 用户确认 2026-08-07：基本已废弃，保留代码仅为兼容）
+>   - **联络派的任务，出身记在那场任务自己身上**（2026-10-18）：这场任务当初是联络派的，这件事跟着任务本身走，关掉、重启、重开都还认得；侧栏据此给它一个标志，打开这场对话时顶上也写明「这是联络派出的任务」（见 `src/workbench/assistant/HUB_SPEC.md`「出身标识」、`src/components/AIPANEL_SPEC.md`）。出身只看「当初是谁建的」，建的时候定下、不再变：联络之后在用户自己开的任务里再交代一句，那场仍是用户开的，不算联络派的；用户在联络派的任务里接着聊，它仍是联络派的。用户从一场任务另起的分支是用户自己的操作，不继承出身。出身与回执互不影响：回执送谁仍只看这一轮谁开的头。
 - **ProactiveStore** (`proactive-store.ts`)：主动消息上下文存储（IM → Agent）；见上文「talk_to_user 主动消息与桌面 UI 同步」
 - **i18n** (`i18n.ts`)：Agent 国际化（中/英）

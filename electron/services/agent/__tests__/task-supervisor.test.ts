@@ -462,7 +462,8 @@ describe('TaskSupervisor', () => {
       const { agentKey } = await supervisor.createTask({ title: '查日志', brief: '查一下昨天的错误日志', fullAuto: true })
 
       expect(agentKey).toMatch(/^assistant-/)
-      expect(host.prepareAssignedTask).toHaveBeenCalledWith(agentKey, '查日志', 'free')
+      // 出身（联络派的）在开跑前就记下，会话建好时交给它
+      expect(host.prepareAssignedTask).toHaveBeenCalledWith(agentKey, '查日志', 'free', 'companion')
       expect(host.say).toHaveBeenCalledTimes(1)
       const [agentId, message, context, opts] = host.say.mock.calls[0]
       expect(agentId).toBe(agentKey)
@@ -480,7 +481,7 @@ describe('TaskSupervisor', () => {
 
       await supervisor.createTask({ title: '问个问题', brief: '简述项目结构' })
 
-      expect(host.prepareAssignedTask).toHaveBeenCalledWith(expect.stringMatching(/^assistant-/), '问个问题', 'autoReview')
+      expect(host.prepareAssignedTask).toHaveBeenCalledWith(expect.stringMatching(/^assistant-/), '问个问题', 'autoReview', 'companion')
     })
 
     it('宿主整体全自动时，交办的任务也全自动', async () => {
@@ -491,7 +492,7 @@ describe('TaskSupervisor', () => {
       const created = await supervisor.createTask({ title: '问个问题', brief: '简述项目结构' })
 
       expect(created.fullAuto).toBe(true)
-      expect(host.prepareAssignedTask).toHaveBeenCalledWith(created.agentKey, '问个问题', 'free')
+      expect(host.prepareAssignedTask).toHaveBeenCalledWith(created.agentKey, '问个问题', 'free', 'companion')
     })
   })
 

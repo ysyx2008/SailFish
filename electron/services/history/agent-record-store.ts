@@ -49,6 +49,7 @@ import {
   type AgentRecord,
   type AgentHistorySummary,
   type ApprovalMode,
+  type AssignedBy,
   type TokenUsage
 } from '@shared/types'
 
@@ -82,6 +83,8 @@ export interface AgentIndexEntry {
   sshHost?: string
   /** 会话绑定的终端编号；助手会话没有，老索引也没存过（见 AgentHistorySummary.terminalId） */
   terminalId?: string
+  /** 这场任务是谁派的（目前只有联络）；缺省 = 用户自己开的，或记下出身之前的老索引 */
+  assignedBy?: AssignedBy
   status: 'completed' | 'failed' | 'aborted'
   tokenUsage?: TokenUsage
 }
@@ -139,6 +142,7 @@ function toHistorySummary(e: AgentIndexEntry): AgentHistorySummary {
     agentKey: e.agentKey,
     sshHost: e.sshHost,
     terminalId: e.terminalId,
+    assignedBy: e.assignedBy,
     status: e.status,
   }
 }
@@ -348,6 +352,7 @@ export class AgentRecordStore {
     const title = record.title?.trim()
     if (title) entry.title = title
     if (record.terminalId) entry.terminalId = record.terminalId
+    if (record.assignedBy) entry.assignedBy = record.assignedBy
     if (record.tokenUsage) {
       entry.tokenUsage = record.tokenUsage
     }

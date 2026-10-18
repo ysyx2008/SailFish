@@ -256,6 +256,9 @@ export default {
     errorDetected: 'Error Detected',
     aiDiagnose: 'AI Diagnose',
     closeError: 'Close Error',
+    assignedByBanner: {
+      companion: 'This task was sent out by Reach',
+    },
     selectedContent: 'Terminal Content Selected',
     aiAnalyze: 'AI Analyze',
     preparing: 'Preparing...',

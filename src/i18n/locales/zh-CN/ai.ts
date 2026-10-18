@@ -256,6 +256,9 @@ export default {
     errorDetected: '检测到错误',
     aiDiagnose: 'AI 诊断',
     closeError: '关闭错误提示',
+    assignedByBanner: {
+      companion: '这是联络派出的任务',
+    },
     selectedContent: '已选中终端内容',
     aiAnalyze: 'AI 分析',
     preparing: '正在准备...',

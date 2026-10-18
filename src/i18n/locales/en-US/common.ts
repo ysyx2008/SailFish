@@ -166,6 +166,7 @@ export default {
       statusClosed: 'Not open',
       statusOpen: 'Open in a tab',
       deleteBlockedTabOpen: 'This conversation is still open in a tab. Close the tab before deleting.',
+      assignedByCompanion: 'Task sent out by Reach',
     },
     tip1: 'Press Ctrl+T / Cmd+T to quickly create a new AI assistant tab',
     tip2: 'Right-click terminal to send selected content to AI for analysis',

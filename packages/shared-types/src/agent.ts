@@ -68,6 +68,16 @@ export function isApprovalMode(value: unknown): value is ApprovalMode {
   return value === 'strict' || value === 'relaxed' || value === 'autoReview' || value === 'free'
 }
 
+/**
+ * 谁把这场任务派出来的。目前只有联络；用户自己开的没有这一项。
+ * 建的时候定下、不再变，与「这一轮谁开的头」是两件事（后者只管回执送谁）。
+ */
+export type AssignedBy = 'companion'
+
+export function isAssignedBy(value: unknown): value is AssignedBy {
+  return value === 'companion'
+}
+
 /** 由执行档 + 「替我审批」开关得到审批方式（全自动下开关不起作用） */
 export function approvalFromSettings(mode: ExecutionMode, autoReview: boolean): ApprovalMode {
   if (mode === 'free') return 'free'
@@ -105,6 +115,8 @@ export interface AgentRunSessionInfo {
   sessionStartTime: number
   terminalType: TerminalType
   title?: string
+  /** 这场是谁派的；没有 = 用户自己开的 */
+  assignedBy?: AssignedBy
 }
 
 /** 某场开跑（含别处发起的）推给界面的事件；IM / Web 远程入口不带会话信息 */

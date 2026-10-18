@@ -255,6 +255,27 @@ describe('session-persistence incremental checkpoint', () => {
     expect(readSessionRecord(agentDir, dateStr, record.id)?.approval).toBe('free')
   })
 
+  it('出身（谁派的）随记录往返；老记录没有就是没有；整份重写不抹掉已记下的', () => {
+    const dateStr = '2026-07-13'
+    saveSessionRecord(agentDir, makeRecord({ id: 'old', steps: [makeStep('s0')] }))
+    expect(readSessionRecord(agentDir, dateStr, 'old')?.assignedBy).toBeUndefined()
+
+    const record = makeRecord({ steps: [makeStep('s1')], assignedBy: 'companion' })
+    saveSessionRecord(agentDir, record)
+    expect(readSessionRecord(agentDir, dateStr, record.id)?.assignedBy).toBe('companion')
+
+    // 不带出身的整份重写（比如旁路写入）不抹掉
+    saveSessionRecord(agentDir, { ...record, assignedBy: undefined })
+    expect(readSessionRecord(agentDir, dateStr, record.id)?.assignedBy).toBe('companion')
+
+    // 盘上被写成不认识的值时，读回来当没有
+    const dir = getSessionDirPath(agentDir, dateStr, record.id)
+    const metaFile = path.join(dir, 'meta.json')
+    const meta = JSON.parse(fs.readFileSync(metaFile, 'utf-8'))
+    fs.writeFileSync(metaFile, JSON.stringify({ ...meta, assignedBy: 'nobody' }))
+    expect(readSessionRecord(agentDir, dateStr, record.id)?.assignedBy).toBeUndefined()
+  })
+
   it('读旧 .json 后 save 迁入目录并删除单体文件', () => {
     const record = makeRecord({
       steps: [makeStep('legacy')],

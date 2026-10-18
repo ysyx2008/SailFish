@@ -2773,3 +2773,92 @@ describe('每场对话自己的审批方式', () => {
     expect(agent.getApproval()).toBeUndefined()
   })
 })
+
+// ==================== 每场任务的出身（谁派的） ====================
+
+describe('每场任务的出身（谁派的）', () => {
+  function setup(opts: { record?: Record<string, unknown> } = {}) {
+    const history = {
+      getAgentRecordById: vi.fn().mockReturnValue(opts.record),
+      saveAgentRecord: vi.fn(),
+      updateConversationTitle: vi.fn().mockReturnValue(true),
+      updateConversationApproval: vi.fn().mockReturnValue(true),
+      getAgentRecordStore: vi.fn(() => history),
+    }
+    const services = createMockServices({ historyService: history as any, configService: createMockConfigService() as any })
+    const ai = services.aiService as any
+    ai.chat = vi.fn().mockResolvedValue('标题')
+    ai.chatWithToolsStream.mockImplementation((_m: any, _t: any, _onChunk: any, _c: any, onDone: any) => {
+      onDone({ content: '好了', tool_calls: undefined })
+      return Promise.resolve()
+    })
+    const agent = new TestAgent(services)
+    const started: Array<Record<string, unknown> | undefined> = []
+    agent.setCallbacks({ onStart: (_id, _task, session) => { started.push(session as Record<string, unknown> | undefined) } })
+    return { agent, history, started }
+  }
+  const lastSaved = (history: ReturnType<typeof setup>['history']) => history.saveAgentRecord.mock.calls.at(-1)?.[0]
+
+  it('开跑前记下的出身，新会话建好时交给它：写进落盘记录，也告诉界面', async () => {
+    const { agent, history, started } = setup()
+    agent.armAssignedBy('companion')
+    await agent.run('做件事', createMockContext())
+
+    expect(lastSaved(history)?.assignedBy).toBe('companion')
+    expect(started[0]?.assignedBy).toBe('companion')
+  })
+
+  it('用户自己开的：记录里没有这一项，开跑事件里也没有', async () => {
+    const { agent, history, started } = setup()
+    await agent.run('做件事', createMockContext())
+
+    expect(lastSaved(history)).not.toHaveProperty('assignedBy')
+    expect(started[0]).not.toHaveProperty('assignedBy')
+  })
+
+  it('同一场里接着聊，出身不变', async () => {
+    const { agent, history } = setup()
+    agent.armAssignedBy('companion')
+    await agent.run('第一句', createMockContext())
+    await agent.run('第二句', createMockContext())
+
+    expect(lastSaved(history)?.assignedBy).toBe('companion')
+  })
+
+  it('换成全新一场（新对话 / 另起会话）时，先记下的不带过去', async () => {
+    const reset = setup()
+    reset.agent.armAssignedBy('companion')
+    reset.agent.resetSession()
+    await reset.agent.run('做件事', createMockContext())
+    expect(lastSaved(reset.history)).not.toHaveProperty('assignedBy')
+
+    // 已经交给上一场的，也不会跟到下一场
+    const next = setup()
+    next.agent.armAssignedBy('companion')
+    await next.agent.run('第一场', createMockContext())
+    next.agent.startNewSession()
+    await next.agent.run('第二场', createMockContext())
+    expect(lastSaved(next.history)).not.toHaveProperty('assignedBy')
+  })
+
+  it('重开历史里的联络派任务：出身从记录接回，接着聊仍是联络派的', async () => {
+    const record = {
+      id: 'session_assigned', timestamp: 1, terminalId: '', agentKey: 'assistant-1', terminalType: 'assistant',
+      userTask: 'x', steps: [], duration: 1, status: 'completed', assignedBy: 'companion',
+      messages: [{ role: 'user', content: 'x' }, { role: 'assistant', content: 'y' }],
+    }
+    const { agent, history } = setup({ record })
+    await agent.run('接着做', createMockContext({ sessionId: 'session_assigned', sessionStartTime: 1 }))
+
+    expect(lastSaved(history)?.assignedBy).toBe('companion')
+  })
+
+  it('用户自己的任务被联络再交代一句，不因此变成联络派的', async () => {
+    const { agent, history } = setup()
+    await agent.run('我自己开的', createMockContext())
+    // 联络再交代：只是这一轮由联络开头，不经过 armAssignedBy
+    await agent.run('联络补一句', createMockContext(), { ledBy: 'companion' })
+
+    expect(lastSaved(history)).not.toHaveProperty('assignedBy')
+  })
+})

@@ -1,6 +1,7 @@
 import { onUnmounted, ref } from 'vue'
 
-export type HoverTipPlacement = 'left' | 'top' | 'bottom'
+/** bottom-start：放在下方、左端与锚点对齐——锚点贴着窗口左缘时，居中摆放会伸出窗口 */
+export type HoverTipPlacement = 'left' | 'top' | 'bottom' | 'bottom-start'
 
 export interface HoverTipState {
   text: string
@@ -51,6 +52,9 @@ function computeTipPosition(
     y = rect.top - 8
   } else if (placement === 'bottom') {
     x = rect.left + rect.width / 2
+    y = rect.bottom + 8
+  } else if (placement === 'bottom-start') {
+    x = rect.left
     y = rect.bottom + 8
   }
 

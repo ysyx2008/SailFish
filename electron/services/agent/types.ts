@@ -26,7 +26,7 @@ export type {
 } from '@shared/types'
 
 // 本文件内部也要用（AgentRun.context），故单独 import 一份
-import type { AgentContext } from '@shared/types'
+import type { AgentContext, AssignedBy } from '@shared/types'
 import type { FailureRepeatState, RepeatNotice } from './failure-repeat'
 export type { AgentContext }
 
@@ -223,7 +223,7 @@ export interface AgentRun {
   /** 送回来的是任务回执：开头写一条回执步骤 */
   noticeKind?: 'task_receipt'
   /** 这一轮是联络开的头（经任务管理新建或再交代）。没有 = 用户开的头 */
-  ledBy?: 'companion'
+  ledBy?: AssignedBy
   /**
    * 工具执行期间记录 toolCallId → tool_call 步骤 ID 的映射。
    * 工具结束后，Agent 使用它反向把 ToolResult.success 回填到 tool_call 步骤上，
@@ -431,7 +431,7 @@ export interface RunOptions {
   /** 送回来的是任务回执 */
   noticeKind?: 'task_receipt'
   /** 这一轮是联络开的头。补进正在跑的那一轮时不起作用 */
-  ledBy?: 'companion'
+  ledBy?: AssignedBy
 }
 
 /**

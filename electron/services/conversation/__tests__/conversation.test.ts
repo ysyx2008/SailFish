@@ -118,6 +118,48 @@ describe('Conversation 聚合根（领域模型）', () => {
     expect(saved?.approval).toBe('free')
   })
 
+  it('出身（谁派的）：建时定下、不再变；随记录往返；老记录没有就是没有；分支不继承', () => {
+    const base = {
+      id: 'sess_assign', timestamp: Date.now(), terminalId: '', agentKey: 'assistant-1',
+      terminalType: 'assistant', userTask: 'hi', steps: [],
+      messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'ok' }],
+      duration: 0, status: 'completed'
+    } as AgentRecord
+    expect(Conversation.create({ agentKey: 'tab-1', terminalType: 'assistant' }).assignedBy).toBeUndefined()
+    expect(Conversation.fromRecord(base).assignedBy).toBeUndefined()
+
+    // 建时定下
+    const conv = Conversation.create(
+      { agentKey: 'assistant-1', terminalType: 'assistant' },
+      { assignedBy: 'companion' }
+    )
+    expect(conv.assignedBy).toBe('companion')
+
+    // 已经定了的不覆盖；没定的从记录接回
+    const userOwned = Conversation.create({ agentKey: 'assistant-2', terminalType: 'assistant' })
+    userOwned.adoptAssignedBy('companion')
+    expect(userOwned.assignedBy).toBe('companion')
+    userOwned.adoptAssignedBy(undefined)
+    expect(userOwned.assignedBy).toBe('companion')
+
+    // 不认识的取值不接
+    expect(Conversation.fromRecord({ ...base, assignedBy: 'nobody' as never }).assignedBy).toBeUndefined()
+
+    // 两条落盘路径都带上；用户自己开的不写这一项
+    const fromDisk = Conversation.fromRecord({ ...base, assignedBy: 'companion' })
+    expect(fromDisk.assignedBy).toBe('companion')
+    const checkpoint = fromDisk.toCheckpointRecord({ steps: [userStep('hi')], taskMessageLog: [] })
+    expect(checkpoint?.assignedBy).toBe('companion')
+    expect(Conversation.fromRecord(base).toCheckpointRecord({ steps: [userStep('hi')], taskMessageLog: [] }))
+      .not.toHaveProperty('assignedBy')
+
+    // 用户从联络派的任务另起分支，是用户自己的操作，不继承
+    const forked = Conversation.forkFromRecord({ ...base, assignedBy: 'companion' }, 'sess_fork')
+    expect(forked).not.toBeNull()
+    expect(forked!.conversation.assignedBy).toBeUndefined()
+    expect(forked!.record.assignedBy).toBeUndefined()
+  })
+
   it('fromRecord：缺 kind 的老记录按 agentKey 推断', () => {
     const record: AgentRecord = {
       id: 'sess_legacy', timestamp: Date.now(), terminalId: '', agentKey: '__companion__',

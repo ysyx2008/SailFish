@@ -5,6 +5,8 @@ import { Pin, PinOff, Loader2, CircleDot, SquareTerminal } from 'lucide-vue-next
 import type { AgentHistorySummary } from '@shared/types'
 import type { HistoryConversationTabStatus } from '../stores/terminal'
 import { resolveConversationDisplayTitle } from '../utils/conversation-title'
+import { resolveAssignedByPresentation } from '../utils/assigned-by-presentation'
+import OriginMark from './OriginMark.vue'
 
 const props = defineProps<{
   record: AgentHistorySummary
@@ -74,6 +76,14 @@ const originTooltip = computed(() => {
   }
   return t('welcome.localTerminal')
 })
+
+/**
+ * 谁派的（目前只有联络）：和终端图标同一个位置、同一种做法。
+ * 只认记录里记着的出身——这个功能之前派的任务当时没记，宁可不标，也不标错。
+ * 它回答「当初是谁建的」，与终端图标回答的「在哪台机器上跑」是两件事；
+ * 联络现在只能建无终端的任务，两者不会同时出现。
+ */
+const assignedByPresentation = computed(() => resolveAssignedByPresentation(props.record.assignedBy))
 
 /**
  * 悬停提示不放任务原文：终端会话开头常是整段粘贴进来的终端输出，鼠标一停就糊住半个窗口。
@@ -154,15 +164,16 @@ const handleRenameKeydown = (event: KeyboardEvent) => {
       @click="handleItemClick"
       @contextmenu="handleContextMenu"
     >
-      <span
+      <OriginMark
         v-if="isTerminalConversation && !isEditing"
-        class="origin-icon"
-        :title="originTooltip"
-        :aria-label="originTooltip"
-        role="img"
-      >
-        <SquareTerminal :size="11" :stroke-width="2" />
-      </span>
+        :icon="SquareTerminal"
+        :hint="originTooltip"
+      />
+      <OriginMark
+        v-if="assignedByPresentation && !isEditing"
+        :icon="assignedByPresentation.icon"
+        :hint="t(assignedByPresentation.hintKey)"
+      />
       <input
         v-if="isEditing"
         ref="editInputRef"
@@ -358,17 +369,9 @@ const handleRenameKeydown = (event: KeyboardEvent) => {
   cursor: wait;
 }
 
-/* 形态图标：压低对比度，只在需要辨认时才被注意到 */
-.origin-icon {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  color: var(--text-muted);
-  opacity: 0.75;
-}
-
-.conversation-row:hover .origin-icon,
-.conversation-row.is-active .origin-icon {
+/* 来历图标平时压低对比度；鼠标在行上、或这行是当前对话时亮起来 */
+.conversation-row:hover :deep(.origin-mark),
+.conversation-row.is-active :deep(.origin-mark) {
   color: var(--text-secondary);
   opacity: 1;
 }

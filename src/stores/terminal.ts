@@ -85,7 +85,7 @@ export type {
   PendingConfirmation,
 } from '@shared/types'
 
-import type { TerminalType, AgentStep, AgentContextBar, PendingConfirmation, RemoteChannel, AttachmentInfo, AgentRecord, AgentRunningEvent, ApprovalMode } from '@shared/types'
+import type { TerminalType, AgentStep, AgentContextBar, PendingConfirmation, RemoteChannel, AttachmentInfo, AgentRecord, AgentRunningEvent, ApprovalMode, AssignedBy } from '@shared/types'
 import { COMPANION_AGENT_KEY, deriveContextBarFromSteps, inferConversationKind } from '@shared/types'
 import { isWorkbenchAvailable } from '../workbench/registry'
 
@@ -107,6 +107,8 @@ export interface AgentState {
   title?: string
   /** 这场对话自己的审批方式；缺省时按起步值显示 */
   approval?: ApprovalMode
+  /** 这场任务是谁派的（目前只有联络）；缺省 = 用户自己开的。侧栏实时会话行据此标出身 */
+  assignedBy?: AssignedBy
   steps: AgentStep[]
   /**
    * 会话级上下文栏快照（后端 onContextBar 推送）。
@@ -2774,9 +2776,10 @@ export const useTerminalStore = defineStore('terminal', () => {
       return undefined
     }
     setAgentSession(tabId, data.sessionId, data.sessionStartTime)
-    if (data.title) {
-      const tab = tabs.value.find(t => t.id === tabId)
-      if (tab?.agentState) tab.agentState.title = data.title
+    const claimed = tabs.value.find(t => t.id === tabId)
+    if (claimed?.agentState) {
+      if (data.title) claimed.agentState.title = data.title
+      if (data.assignedBy) claimed.agentState.assignedBy = data.assignedBy
     }
     return tabId
   }
@@ -3089,6 +3092,7 @@ export const useTerminalStore = defineStore('terminal', () => {
         steps: preserveSession ? (tab.agentState?.steps || []) : [],
         contextBar: preserveSession ? tab.agentState?.contextBar : undefined,
         approval: preserveSession ? tab.agentState?.approval : undefined,
+        assignedBy: preserveSession ? tab.agentState?.assignedBy : undefined,
       }
     }
   }
@@ -3268,6 +3272,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     loadedSkills?: string[]
     userDismissedSkills?: string[]
     approval?: ApprovalMode
+    assignedBy?: AssignedBy
   }): void {
     const tab = tabs.value.find(t => t.id === tabId)
     if (!tab) return
@@ -3321,6 +3326,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       userTask: record.userTask,
       ...(record.title?.trim() ? { title: record.title.trim() } : {}),
       ...(record.approval ? { approval: record.approval } : {}),
+      ...(record.assignedBy ? { assignedBy: record.assignedBy } : {}),
       steps: steps,
       contextBar: deriveContextBarFromSteps(steps),
       loadedFromHistory: true

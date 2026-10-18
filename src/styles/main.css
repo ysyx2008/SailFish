@@ -1412,6 +1412,10 @@ button:focus-visible {
   transform: translate(-50%, 0);
 }
 
+.hover-tip-floating--bottom-start {
+  transform: none;
+}
+
 .hover-tip-floating--wrap {
   white-space: normal;
   overflow-wrap: anywhere;

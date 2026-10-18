@@ -166,6 +166,7 @@ export default {
       statusClosed: '未打开',
       statusOpen: '已在标签页中打开',
       deleteBlockedTabOpen: '该对话仍在标签页中打开，请先关闭标签页后再删除',
+      assignedByCompanion: '联络派出的任务',
     },
     tip1: '按 Ctrl+T / Cmd+T 可快速新建 AI 助手标签页',
     tip2: '右键终端可将选中内容发送给 AI 分析',

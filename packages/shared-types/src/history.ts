@@ -71,6 +71,11 @@ export interface AgentRecord {
   titleLocked?: boolean
   /** 这场对话自己的审批方式。缺省（老记录）按打开时的起步值算 */
   approval?: import('./agent').ApprovalMode
+  /**
+   * 这场任务是谁派的（目前只有联络）。建的时候定下、不再变。
+   * 缺省 = 用户自己开的，或这条记录出现在记下出身之前——两者分不出，也不去猜。
+   */
+  assignedBy?: import('./agent').AssignedBy
   steps: AgentStepRecord[]
   messages?: Array<{
     role: string
@@ -156,5 +161,7 @@ export interface AgentHistorySummary {
    * 声称是终端却给不出编号的记录，一律不当终端看待（历史上曾把助手会话误存为本地终端）。
    */
   terminalId?: string
+  /** 这场任务是谁派的（目前只有联络）；缺省 = 用户自己开的或没记过 */
+  assignedBy?: import('./agent').AssignedBy
   status: 'completed' | 'failed' | 'aborted'
 }
