@@ -257,7 +257,7 @@ export default {
     aiDiagnose: 'AI Diagnose',
     closeError: 'Close Error',
     assignedByBanner: {
-      companion: 'This task was sent out by Reach',
+      companion: 'This task was sent out by {name}',
     },
     selectedContent: 'Terminal Content Selected',
     aiAnalyze: 'AI Analyze',
