@@ -89,6 +89,15 @@ export class ContextKnowledgeService {
     return this.cache.get(this.normalizeId(contextId)) ?? ''
   }
 
+  /** 磁盘上实际存着的内容；读不到返回 null（写盘失败时与内存里的不一致） */
+  getPersistedDocument(contextId: string): string | null {
+    try {
+      return fs.readFileSync(path.join(this.storageDir, `${this.normalizeId(contextId)}.md`), 'utf-8')
+    } catch {
+      return null
+    }
+  }
+
   /**
    * 直接设置知识文档（用于用户手动编辑或初始化）
    */

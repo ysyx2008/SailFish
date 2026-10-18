@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { UserProfileConsolidator, stripOuterFence } from '../user-profile-consolidator'
 
-function setup(opts: { legacy?: string; current?: string; max?: number; replies?: Array<string | Error | { text: string; complete: false }>; outputLimit?: number; onChat?: () => void }) {
+function setup(opts: { legacy?: string; current?: string; max?: number; replies?: Array<string | Error | { text: string; complete: false }>; outputLimit?: number; onChat?: () => void; diskFails?: boolean }) {
   const docs = new Map<string, string>()
-  if (opts.current) docs.set('personal', opts.current)
+  const disk = new Map<string, string>()
+  if (opts.current) { docs.set('personal', opts.current); disk.set('personal', opts.current) }
   const backups: Array<[string, string]> = []
   const state = { archived: false, chats: 0, prompts: [] as string[], tokens: [] as number[] }
   const replies = [...(opts.replies ?? [])]
@@ -13,7 +14,8 @@ function setup(opts: { legacy?: string; current?: string; max?: number; replies?
     saveBackup: (name, content) => { backups.push([name, content]) },
     memory: {
       getDocument: id => docs.get(id) ?? '',
-      setDocument: (id, content) => { docs.set(id, content) },
+      setDocument: (id, content) => { docs.set(id, content); if (!opts.diskFails) disk.set(id, content) },
+      getPersistedDocument: id => disk.get(id) ?? null,
       getMaxDocChars: () => opts.max ?? 100,
     },
     getOutputLimit: () => opts.outputLimit ?? 100000,
@@ -114,6 +116,12 @@ describe('旧用户画像并入记忆', () => {
     docsRef = docs
     expect(await consolidator.run()).toBe('failed')
     expect(docs.get('personal')).toBe('对话后刚更新的记忆')
+    expect(state.archived).toBe(false)
+  })
+
+  it('结果没能写到磁盘：旧画像不收起来，留到下次', async () => {
+    const { consolidator, state } = setup({ legacy: 'a', current: 'b', replies: ['合成'], diskFails: true })
+    expect(await consolidator.run()).toBe('failed')
     expect(state.archived).toBe(false)
   })
 

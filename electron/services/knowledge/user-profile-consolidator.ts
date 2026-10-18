@@ -23,11 +23,13 @@ export interface UserProfileConsolidatorDeps {
   readLegacyProfile(): string
   /** 并入成功后把旧画像文件收起来（改名留底，不删） */
   archiveLegacyProfile(): void
-  /** 把整合前的两份原文存起来 */
+  /** 把整合前的两份原文存起来；已有同名留底（上次中断留下的）不覆盖 */
   saveBackup(name: string, content: string): void
   memory: {
     getDocument(contextId: string): string
     setDocument(contextId: string, content: string): void
+    /** 磁盘上实际存着的内容（写盘失败不会报错，只能回读确认）；读不到返回 null */
+    getPersistedDocument(contextId: string): string | null
     getMaxDocChars(): number
   }
   /**
@@ -86,6 +88,11 @@ export class UserProfileConsolidator {
     this.deps.saveBackup('USER.md', legacy)
     if (current) this.deps.saveBackup('personal.md', current)
     memory.setDocument(USER_MEMORY_ID, merged)
+    // 写盘失败（磁盘满、被占用）不会抛错；没落盘就收起旧文件，重启后两份都回到原样、画像也不见了
+    if (memory.getPersistedDocument(USER_MEMORY_ID)?.trim() !== merged) {
+      log.warn('整合结果没能写到磁盘，旧用户画像保留，下次启动再试')
+      return 'failed'
+    }
     try {
       this.deps.archiveLegacyProfile()
     } catch (err) {

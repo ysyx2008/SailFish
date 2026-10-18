@@ -42,7 +42,16 @@ export function createUserProfileConsolidator(ai: ChatClient): UserProfileConsol
     },
     saveBackup: (name, content) => {
       fs.mkdirSync(backupDir(), { recursive: true })
-      fs.writeFileSync(path.join(backupDir(), `${name}.before-user-merge`), content, 'utf-8')
+      // 上次整合在写入之后、收起旧文件之前被打断时，会带着已整合的结果再来一遍；
+      // 此时同名留底里是更早的原文，不能覆盖，内容不同就另起一个名字
+      for (let n = 1; ; n++) {
+        const file = path.join(backupDir(), `${name}.before-user-merge${n === 1 ? '' : `.${n}`}`)
+        if (!fs.existsSync(file)) {
+          fs.writeFileSync(file, content, 'utf-8')
+          return
+        }
+        if (fs.readFileSync(file, 'utf-8') === content) return
+      }
     },
     memory: getContextKnowledgeService(),
     chat: (messages, maxOutputTokens) => ai.chat(messages, maxOutputTokens),
