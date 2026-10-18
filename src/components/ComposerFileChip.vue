@@ -130,11 +130,7 @@ function onContextMenu(e: MouseEvent) {
   background: rgba(var(--color-error-rgb), 0.05);
 }
 
-/* 被退格键选中、再按一次就会删掉 */
-:global(.composer-chip-host.ProseMirror-selectednode) .doc-chip {
-  border-color: var(--accent-primary);
-  background: rgba(var(--accent-rgb), 0.14);
-}
+/* 被退格键选中时的样子由 ComposerEditor 负责（它拥有那层外壳） */
 
 .doc-icon {
   flex-shrink: 0;

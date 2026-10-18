@@ -447,6 +447,12 @@ defineExpose({
   outline: none;
 }
 
+/* 被退格键选中、再按一次就会删掉：胶囊自己的细外框变色 + 淡底 */
+.composer-editor :deep(.composer-chip-host.ProseMirror-selectednode .doc-chip) {
+  border-color: var(--accent-primary);
+  background: rgba(var(--accent-rgb), 0.14);
+}
+
 .composer-editor :deep(.composer-chip-host)::selection,
 .composer-editor :deep(.composer-chip-host *)::selection {
   background: transparent;
