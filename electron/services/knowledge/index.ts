@@ -1978,7 +1978,7 @@ export class KnowledgeService extends EventEmitter {
     const prefix = folder ? normalizeFolder(folder) : ''
     const folders = this.listFolders()
     if (prefix && !folders.includes(prefix)) throw new FolderPathError(`没有这个目录：${prefix}`)
-    if (options.allFolders) return formatFolderTree(this.libraryDocs(prefix), prefix, folders)
+    if (options.allFolders) return formatFolderTree(this.libraryDocs(prefix).map(doc => ({ folder: doc.folder ?? '' })), prefix, folders)
     return formatCatalog(this.libraryDocs(prefix).map(doc => this.impressionDoc(doc)), prefix, folders)
   }
 

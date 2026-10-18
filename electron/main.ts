@@ -374,7 +374,8 @@ addCommonPaths()
 
 // 异步获取 shell 完整环境变量（后台执行）
 fixShellEnvAsync()
-import { AiService } from './services/ai.service'
+import { AiService, resolveAiProfile } from './services/ai.service'
+import { resolveRequestBudget } from './services/ai-request-budget'
 import { ConfigService, McpServerConfig, setConfigServiceInstance, DEFAULT_KEYBOARD_SHORTCUTS, type KeyboardShortcuts } from './services/config.service'
 import { initLogging, setLogLevel as setBackendLogLevel, getLogDir, createLogger } from './utils/logger'
 import { serializeAgentStepForIpc } from './utils/agent-step-ipc'
@@ -473,7 +474,7 @@ import {
 import { getServerConfig } from './services/agent/skills/email/session'
 import { setEmailAccounts } from './services/agent/skills/email/executor'
 import { setCalendarAccounts } from './services/agent/skills/calendar/executor'
-import { readIdentityFile, readSoulFile, readUserFile, readHeartbeatFile } from './services/agent/prompt-builder'
+import { readIdentityFile, readSoulFile, readHeartbeatFile } from './services/agent/prompt-builder'
 import { startFeishuOAuth, revokeFeishuOAuth, getFeishuOAuthStatus } from './services/agent/skills/feishu/oauth'
 
 // 禁用 GPU 加速可能导致的问题（可选）
@@ -2031,6 +2032,23 @@ app.whenReady().then(async () => {
     }
 
     void refreshOemModels()
+
+    // 觉醒页里旧的用户画像并入记忆「用户」（只在旧文件还在时动手）
+    void import('./services/knowledge/user-profile-consolidation')
+      .then(m => m.scheduleUserProfileConsolidation({
+        chat: async (messages, maxOutputTokens) => {
+          const result = await aiService.chatWithTools(messages, [], undefined, undefined, { toolChoice: 'none', maxOutputTokens })
+          return {
+            text: result.content ?? '',
+            complete: result.finish_reason !== 'length' && !result.thinkingOnly,
+          }
+        },
+        getOutputLimit: () => {
+          const { profile } = resolveAiProfile(configService.getAiProfiles(), configService.getActiveAiProfile())
+          return resolveRequestBudget(profile).outputTokens
+        },
+      }))
+      .catch(e => log.warn('旧用户画像整合未能安排:', e))
 
     // 后端 init 才加载 Agent/终端原生模块与远程会话栈（首屏不触发）
     const { ptyService, sshService, agentService } = await rt()
@@ -3693,7 +3711,7 @@ ipcMain.handle('config:setAgentPersonalityText', async (_event, text: string) =>
   configService.setAgentPersonalityText(text)
 })
 
-// Agent 身份文件（IDENTITY.md / SOUL.md / USER.md / HEARTBEAT.md）
+// Agent 身份文件（IDENTITY.md / SOUL.md / HEARTBEAT.md）
 ipcMain.handle('workspace:savePastedImage', async (_event, dataUrl: string, suggestedName?: string, maxBytes?: number) => {
   try {
     if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
@@ -3719,7 +3737,6 @@ ipcMain.handle('agent:readIdentityFile', async (_event, filename: string) => {
   switch (filename) {
     case 'IDENTITY.md': return readIdentityFile()
     case 'SOUL.md': return readSoulFile()
-    case 'USER.md': return readUserFile()
     case 'HEARTBEAT.md': return readHeartbeatFile()
     default: return ''
   }

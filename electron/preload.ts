@@ -887,7 +887,7 @@ const electronAPI = {
     // Agent 个性描述（legacy）
     getAgentPersonalityText: () => ipcRenderer.invoke('config:getAgentPersonalityText') as Promise<string>,
     setAgentPersonalityText: (text: string) => ipcRenderer.invoke('config:setAgentPersonalityText', text),
-    // Agent 身份文件（IDENTITY.md / SOUL.md / USER.md）
+    // Agent 身份文件（IDENTITY.md / SOUL.md / HEARTBEAT.md）
     readIdentityFile: (filename: string) => ipcRenderer.invoke('agent:readIdentityFile', filename) as Promise<string>,
     writeIdentityFile: (filename: string, content: string) => ipcRenderer.invoke('agent:writeIdentityFile', filename, content) as Promise<void>,
     // AI 名字

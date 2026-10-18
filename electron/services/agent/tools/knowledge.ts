@@ -77,16 +77,9 @@ export async function searchKnowledge(
       return { success: false, output: '', error: t('error.knowledge_not_enabled') }
     }
 
-    const literal = args.match === 'keyword'
-    const results = literal
-      ? await knowledgeService.searchLiteral(query, limit)
-      : await knowledgeService.search(query, {
-        limit,
-        hostId: executor.getHostId()
-      })
-
-    if (literal) {
-      if (results.length === 0) {
+    if (args.match === 'keyword') {
+      const hits = await knowledgeService.searchLiteral(query, limit)
+      if (hits.length === 0) {
         executor.addStep({
           type: 'tool_result',
           content: t('knowledge.no_results'),
@@ -94,16 +87,21 @@ export async function searchKnowledge(
         })
         return { success: true, output: t('success.no_knowledge_found') }
       }
-      const output = formatLiteralHits(results)
+      const output = formatLiteralHits(hits)
       const displayOutput = output.length > 500 ? truncateFromEnd(output, 500) : output
       executor.addStep({
         type: 'tool_result',
-        content: t('knowledge.found_results', { count: results.length, chars: output.length }),
+        content: t('knowledge.found_results', { count: hits.length, chars: output.length }),
         toolName: 'search_knowledge',
         toolResult: displayOutput
       })
       return { success: true, output }
     }
+
+    const results = await knowledgeService.search(query, {
+      limit,
+      hostId: executor.getHostId()
+    })
 
     if (results.length === 0) {
       executor.addStep({

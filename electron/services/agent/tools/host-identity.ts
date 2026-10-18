@@ -91,7 +91,7 @@ export function collectOpenPaneHostIds(
 }
 
 function knowledgeDocHeading(contextId: string): string {
-  if (contextId === 'personal') return '个人'
+  if (contextId === 'personal') return '用户'
   if (contextId === 'local') return '本机'
   return `主机 ${contextId}`
 }

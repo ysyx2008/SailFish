@@ -2856,7 +2856,8 @@ export abstract class Agent {
         this.hostIdentityDeps()
       )
       contextKnowledgeDoc = composeKnowledgeDocuments(
-        uniqueHosts([sessionHostId, ...openHostIds]).map(contextId => ({
+        // 关于用户的那份对每场对话都带上；终端页原本只带那台主机的记忆
+        uniqueHosts(['personal', sessionHostId, ...openHostIds]).map(contextId => ({
           contextId,
           content: ckService.getDocument(contextId)
         }))

@@ -195,7 +195,8 @@ export function readSoulFile(): string {
 }
 
 /**
- * 从 agent-workspace/USER.md 读取用户画像
+ * 旧版用户画像（agent-workspace/USER.md）。
+ * 只在它还没被整合进记忆「用户」时有内容；整合成功后文件被改名，这里自然为空。
  */
 export function readUserFile(): string {
   return readWorkspaceFile('USER.md')
@@ -955,7 +956,7 @@ export class PromptBuilder {
 - scratch/ 下超期文件会在应用启动时自动清理（默认 7 天，用户可在设置里调整或关闭）。
 - 用户要长期保留的最终产物请写到桌面、文档等正式目录。
 - **文件名即用户可见名**：你创建的文件名会直接作为产出物面板标题、发送到手机的文件名展示给用户——必须用简洁可读的名字（如「全部模型榜单.xlsx」），禁止时间戳、随机 ID 等机器后缀；担心覆盖旧文件就用 v2、final 等语义化后缀区分。
-- **USER.md**：用户画像，了解用户后主动补充。${todoLine}${contactLine}
+${todoLine}${contactLine}
 - **HEARTBEAT.md**：心跳唤醒指令，系统定期读取。
 - **IDENTITY.md / SOUL.md**：个性与行为准则。
 - **templates/**：Office 模板，只读复用；新建模板也放到 \`${scratch}/\`。

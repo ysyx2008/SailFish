@@ -21,6 +21,7 @@ import {
   DEFAULT_CONTEXT_KNOWLEDGE_MAX_CHARS,
   clampContextKnowledgeMaxChars,
 } from './context-knowledge-budget'
+import { PERSONAL_MEMORY_STYLE } from './memory-style'
 import { MEMORY_SECTION_DELETE_MARK, mergeMemoryPatch, parseMemoryBlocks } from './memory-patch'
 
 const log = createLogger('ContextKnowledge')
@@ -157,7 +158,7 @@ export class ContextKnowledgeService {
     const hasHost = contextIds.some(id => id !== 'personal')
     const style = [
       hasPersonal
-        ? '关于用户本人的那份，按主题分成几段，每段一个标题，段内用连贯的第三人称陈述句写这个人：相关的事实放在同一句或同一段里，不写成「字段：值」的清单；偏好也写成陈述（如「他希望回复简短」），不写成对助手的命令。'
+        ? PERSONAL_MEMORY_STYLE
         : '',
       hasHost ? '主机的记忆按主题分段，每段一个标题，段内用条目列事实。' : '',
     ].filter(Boolean).join('')

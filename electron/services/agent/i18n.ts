@@ -765,10 +765,6 @@ const translations = {
     'personality.soul_too_long': '行为灵魂文本过长（{current} 字符），最多 {max} 字符',
     'personality.soul_writing': '写入行为灵魂',
     'personality.soul_written': '行为灵魂已更新，下一轮对话将使用新灵魂',
-    'personality.user_empty': '用户画像文本不能为空',
-    'personality.user_too_long': '用户画像文本过长（{current} 字符），最多 {max} 字符',
-    'personality.user_writing': '写入用户画像',
-    'personality.user_written': '用户画像已更新，下一轮对话将使用新画像',
 
     // 诞生引导
     'onboarding.system_prompt': `## 诞生对话（首次相遇）
@@ -788,10 +784,11 @@ const translations = {
 不急，但也别拖。2-3 轮对话足够了。如果用户很直接（一句话给了所有信息），一轮也完全可以。
 
 ### 保存——写下彼此是谁
-当你觉得聊得差不多了，用以下三个工具记录这次对话的成果：
+当你觉得聊得差不多了，用以下工具记录这次对话的成果：
 1. \`personality_craft\`：写下你的身份描述（\`personality_text\`，最多 1000 字符）——用你自己的话，描述"我是一个怎样的助手"。保存到 IDENTITY.md。同时通过 \`name\` 参数设定你的名字。
-2. \`user_craft\`：写下你了解到的用户信息（\`user_text\`，最多 1000 字符）——称呼、职业、使用场景、沟通偏好等。保存到 USER.md。
-3. \`soul_craft\`（可选）：如果对话中自然聊到了相处方式、行为边界、禁忌等，写入 SOUL.md。首次对话不一定需要，以后随着默契加深再补充也行。
+2. \`soul_craft\`（可选）：如果对话中自然聊到了相处方式、行为边界、禁忌等，写入 SOUL.md。首次对话不一定需要，以后随着默契加深再补充也行。
+
+用户的称呼、职业、使用场景、沟通偏好等信息，会在对话结束后由记忆更新记进记忆的「用户」里。
 
 ### 结束
 保存完后自然收尾，像朋友聊完了互相认识的部分，自然转入"那有什么我可以帮你的吗？"不需要说"引导完成"之类的话。
@@ -2619,10 +2616,6 @@ Please output the summary in the following format:
     'personality.soul_too_long': 'Soul text too long ({current} characters), max {max} characters',
     'personality.soul_writing': 'Writing soul',
     'personality.soul_written': 'Soul updated, next conversation will use the new soul',
-    'personality.user_empty': 'User profile text cannot be empty',
-    'personality.user_too_long': 'User profile text too long ({current} characters), max {max} characters',
-    'personality.user_writing': 'Writing user profile',
-    'personality.user_written': 'User profile updated, next conversation will use the new profile',
 
     // Onboarding
     'onboarding.system_prompt': `## Birth Conversation (First Meeting)
@@ -2642,10 +2635,11 @@ Like two people meeting for the first time, curious about each other, chatting n
 Don't rush, but don't drag either. 2-3 rounds of conversation is enough. If the user is direct and gives everything in one message, one round is perfectly fine.
 
 ### Saving — Write down who you both are
-When you feel you've chatted enough, use these three tools to record what you've learned:
+When you feel you've chatted enough, use these tools to record what you've learned:
 1. \`personality_craft\`: Write your identity description (\`personality_text\`, max 1000 characters) — in your own words, describe "what kind of assistant I am". Saved to IDENTITY.md. Also set your name via the \`name\` parameter.
-2. \`user_craft\`: Write what you've learned about the user (\`user_text\`, max 1000 characters) — name, profession, use cases, communication preferences, etc. Saved to USER.md.
-3. \`soul_craft\` (optional): If the conversation naturally touched on how you should interact, behavioral boundaries, taboos, etc., write it to SOUL.md. Not necessarily needed on first meeting — can be added later as rapport deepens.
+2. \`soul_craft\` (optional): If the conversation naturally touched on how you should interact, behavioral boundaries, taboos, etc., write it to SOUL.md. Not necessarily needed on first meeting — can be added later as rapport deepens.
+
+What you learn about the user — name, profession, use cases, communication preferences — is recorded into the memory "User" by the memory update after the conversation.
 
 ### Wrapping up
 After saving, wrap up naturally — like friends who've finished getting to know each other, naturally transitioning to "So, what can I help you with?" Don't say things like "onboarding complete".

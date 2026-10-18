@@ -94,10 +94,10 @@ export const personalityTools: ToolDefinition[] = [
 SOUL.md 定义你的价值观、行为准则和相处方式——你怎么对待用户、你们之间有什么默契。
 它会注入到"你的灵魂"段落中，每次对话都会读取。
 
-三文件分工：
+两文件分工：
 - IDENTITY.md = 你是谁（身份描述）
 - SOUL.md = 你的价值观和行为准则（行为灵魂）
-- USER.md = 用户是谁（用户画像）
+关于用户的信息记在记忆的「用户」里，由记忆更新写入。
 
 最多 1000 字符，支持 Markdown 格式。`,
       parameters: {
@@ -109,33 +109,6 @@ SOUL.md 定义你的价值观、行为准则和相处方式——你怎么对待
           }
         },
         required: ['soul_text']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'user_craft',
-      description: `写入用户画像到 USER.md 文件。
-
-USER.md 记录你对用户的了解——称呼、职业、工作内容、沟通偏好等。
-它会注入到"关于用户"段落中，每次对话都会读取，帮助你更好地为用户服务。
-
-三文件分工：
-- IDENTITY.md = 你是谁
-- SOUL.md = 你的价值观和行为准则
-- USER.md = 用户是谁
-
-最多 1000 字符，支持 Markdown 格式。`,
-      parameters: {
-        type: 'object',
-        properties: {
-          user_text: {
-            type: 'string',
-            description: '用户画像文本（Markdown 格式，最多 1000 字符），将写入 USER.md'
-          }
-        },
-        required: ['user_text']
       }
     }
   }

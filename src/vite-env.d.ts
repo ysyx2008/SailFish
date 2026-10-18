@@ -597,7 +597,7 @@ interface Window {
       // Agent 个性描述（legacy）
       getAgentPersonalityText: () => Promise<string>
       setAgentPersonalityText: (text: string) => Promise<void>
-      // Agent 身份文件（IDENTITY.md / SOUL.md / USER.md）
+      // Agent 身份文件（IDENTITY.md / SOUL.md / HEARTBEAT.md）
       readIdentityFile: (filename: string) => Promise<string>
       writeIdentityFile: (filename: string, content: string) => Promise<void>
       // AI 名字

@@ -1,12 +1,12 @@
 /**
  * 个性定义技能 - 执行器
- * 读取、预览和写入 Agent 身份文件（IDENTITY.md / SOUL.md / USER.md）
+ * 读取、预览和写入 Agent 身份文件（IDENTITY.md / SOUL.md）
  */
 
 import * as fs from 'fs'
 import * as path from 'path'
 import { getConfigService } from '../../../config.service'
-import { getMbtiStylePrompt, readIdentityFile, readSoulFile, readUserFile, readHeartbeatFile } from '../../prompt-builder'
+import { getMbtiStylePrompt, readIdentityFile, readSoulFile, readHeartbeatFile } from '../../prompt-builder'
 import { t } from '../../i18n'
 import { notifyFrontendConfigChanged } from '../config/executor'
 import { getWorkspacePath } from '../../tools/file'
@@ -17,10 +17,8 @@ import type { AgentMbtiType } from '../../../config.service'
 const log = createLogger('PersonalityExecutor')
 const IDENTITY_FILENAME = 'IDENTITY.md'
 const SOUL_FILENAME = 'SOUL.md'
-const USER_FILENAME = 'USER.md'
 const IDENTITY_MAX_LENGTH = 1000
 const SOUL_MAX_LENGTH = 1000
-const USER_MAX_LENGTH = 1000
 const VALID_MBTI_TYPES = new Set([
   'INTJ', 'INTP', 'ENTJ', 'ENTP',
   'INFJ', 'INFP', 'ENFJ', 'ENFP',
@@ -57,8 +55,6 @@ export async function executePersonalityTool(
       return previewPersonality(args, executor)
     case 'soul_craft':
       return craftSoul(args, executor)
-    case 'user_craft':
-      return craftUser(args, executor)
     default:
       return { success: false, output: '', error: t('personality.unknown_tool', { name: toolName }) }
   }
@@ -100,13 +96,6 @@ function getPersonality(executor: ToolExecutorConfig): ToolResult {
     sections.push(`### 行为灵魂（SOUL.md）\n${soulContent}`)
   } else {
     sections.push(`### 行为灵魂\n${t('personality.not_set')}`)
-  }
-
-  const userContent = readUserFile()
-  if (userContent) {
-    sections.push(`### 用户画像（USER.md）\n${userContent}`)
-  } else {
-    sections.push(`### 用户画像\n${t('personality.not_set')}`)
   }
 
   const heartbeatContent = readHeartbeatFile()
@@ -288,44 +277,4 @@ function craftSoul(
   })
 
   return { success: fileWritten, output, error: fileWritten ? undefined : 'Failed to write SOUL.md' }
-}
-
-function craftUser(
-  args: Record<string, unknown>,
-  executor: ToolExecutorConfig
-): ToolResult {
-  const userText = (args.user_text as string || '').trim()
-
-  if (!userText) {
-    return { success: false, output: '', error: t('personality.user_empty') }
-  }
-
-  if (userText.length > USER_MAX_LENGTH) {
-    return {
-      success: false, output: '',
-      error: t('personality.user_too_long', { current: userText.length, max: USER_MAX_LENGTH })
-    }
-  }
-
-  executor.addStep({
-    type: 'tool_call',
-    content: t('personality.user_writing'),
-    toolName: 'user_craft',
-    toolArgs: { user_text: userText.substring(0, 100) + (userText.length > 100 ? '...' : '') },
-    riskLevel: 'safe'
-  })
-
-  const fileWritten = writeWorkspaceFile(USER_FILENAME, userText)
-
-  const output = fileWritten
-    ? `✅ ${t('personality.user_written')}\n\n**USER.md**（${userText.length} 字符）`
-    : `⚠️ USER.md 写入失败`
-
-  executor.addStep({
-    type: 'tool_result',
-    content: fileWritten ? t('personality.user_written') : 'USER.md write failed',
-    toolName: 'user_craft'
-  })
-
-  return { success: fileWritten, output, error: fileWritten ? undefined : 'Failed to write USER.md' }
 }

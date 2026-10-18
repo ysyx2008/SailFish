@@ -184,7 +184,7 @@ describe('PromptBuilder', () => {
       expect(off).not.toContain('- **待办**')
       expect(off).not.toContain('- **联系人**')
       expect(off).not.toContain('**关切 和 本地待办的区别**')
-      expect(off).toContain('**USER.md**')
+      expect(off).not.toContain('USER.md')
       expect(off).toContain('**HEARTBEAT.md**')
     })
 

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useConfigStore, type AgentMbtiType } from '../stores/config'
 import {
   X, Trash2, Eye, RefreshCw, History, Heart,
-  Sparkles, Fingerprint, UserRound, HeartPulse, Camera,
+  Sparkles, Fingerprint, HeartPulse, Camera,
 } from 'lucide-vue-next'
 import WatchHistoryDetailView from './Awaken/WatchHistoryDetailView.vue'
 import { showConfirm } from '../composables/useConfirm'
@@ -24,11 +24,11 @@ import type { WatchRunStatus, WatchHistoryRecord } from '@shared/types'
 // ==================== Navigation ====================
 
 type NavTab =
-  | 'identity' | 'personality' | 'userProfile' | 'heartbeat'
+  | 'identity' | 'personality' | 'heartbeat'
   | 'wakeupHistory'
 
 const VALID_TABS: NavTab[] = [
-  'identity', 'personality', 'userProfile', 'heartbeat',
+  'identity', 'personality', 'heartbeat',
   'wakeupHistory',
 ]
 const LAST_TAB_STORAGE_KEY = 'sfterm-awaken-last-tab'
@@ -52,7 +52,6 @@ async function switchTab(tab: NavTab, onSwitch?: () => void) {
   const dirtyChecks: Array<{ from: NavTab; dirty: boolean; reset: () => void }> = [
     { from: 'personality', dirty: personalityDirty.value, reset: resetPersonalityText },
     { from: 'identity', dirty: identityDirty.value, reset: resetIdentityText },
-    { from: 'userProfile', dirty: userProfileDirty.value, reset: resetUserProfileText },
     { from: 'heartbeat', dirty: heartbeatDirty.value, reset: resetHeartbeatText },
   ]
   for (const check of dirtyChecks) {
@@ -101,11 +100,6 @@ const identitySaving = ref(false)
 const identityError = ref('')
 const identityDirty = computed(() => identityText.value !== identityOriginal.value)
 
-const userProfileText = ref('')
-const userProfileOriginal = ref('')
-const userProfileSaving = ref(false)
-const userProfileError = ref('')
-const userProfileDirty = computed(() => userProfileText.value !== userProfileOriginal.value)
 
 const heartbeatText = ref('')
 const heartbeatOriginal = ref('')
@@ -560,35 +554,6 @@ function resetIdentityText() {
   identityError.value = ''
 }
 
-async function loadUserProfileText() {
-  userProfileText.value = await window.electronAPI.config.readIdentityFile('USER.md') || ''
-  userProfileOriginal.value = userProfileText.value
-}
-
-async function saveUserProfileText() {
-  if (!userProfileDirty.value) return
-  userProfileSaving.value = true
-  userProfileError.value = ''
-  try {
-    const safeText = userProfileText.value.length > FILE_MAX_LENGTH
-      ? userProfileText.value.substring(0, FILE_MAX_LENGTH)
-      : userProfileText.value
-    await window.electronAPI.config.writeIdentityFile('USER.md', safeText)
-    userProfileText.value = safeText
-    userProfileOriginal.value = safeText
-  } catch (e) {
-    console.error('保存用户画像失败:', e)
-    userProfileError.value = t('awaken.personalitySaveFailed')
-  } finally {
-    userProfileSaving.value = false
-  }
-}
-
-function resetUserProfileText() {
-  userProfileText.value = userProfileOriginal.value
-  userProfileError.value = ''
-}
-
 async function loadHeartbeatText() {
   heartbeatText.value = await window.electronAPI.config.readIdentityFile('HEARTBEAT.md') || ''
   heartbeatOriginal.value = heartbeatText.value
@@ -661,7 +626,6 @@ onMounted(async () => {
   await Promise.all([loadWatchData().catch(() => {}), loadAwakenSettings()])
   loadPersonalitySettings()
   loadIdentityText()
-  loadUserProfileText()
   loadHeartbeatText().catch(e => console.error('[Awaken] loadHeartbeatText failed:', e))
   refreshTimer = setInterval(loadWatchData, 5 * 60 * 1000)
 
@@ -774,10 +738,6 @@ onUnmounted(() => {
             <button class="nav-item" :class="{ active: activeTab === 'personality' }" @click="switchTab('personality')">
               <Sparkles :size="16" />
               <span>{{ t('awaken.personalityNav') }}</span>
-            </button>
-            <button class="nav-item" :class="{ active: activeTab === 'userProfile' }" @click="switchTab('userProfile')">
-              <UserRound :size="16" />
-              <span>{{ t('awaken.userProfileNav') }}</span>
             </button>
             <button class="nav-item" :class="{ active: activeTab === 'heartbeat' }" @click="switchTab('heartbeat')">
               <HeartPulse :size="16" />
@@ -909,37 +869,6 @@ onUnmounted(() => {
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          </template>
-
-          <!-- ===================== 用户画像 (USER.md) ===================== -->
-          <template v-if="activeTab === 'userProfile'">
-            <div class="content-page personality-page">
-              <div class="personality-content">
-                <div class="personality-header">
-                  <h3>{{ t('awaken.userProfileTitle') }}</h3>
-                </div>
-                <p class="personality-hint">{{ t('awaken.userProfileHint') }}</p>
-                <textarea
-                  v-model="userProfileText"
-                  class="personality-textarea"
-                  :placeholder="t('awaken.userProfilePlaceholder')"
-                  :maxlength="FILE_MAX_LENGTH"
-                  spellcheck="false"
-                />
-                <div class="personality-footer">
-                  <span class="personality-length">{{ userProfileText.length }}/{{ FILE_MAX_LENGTH }} {{ t('awaken.personalityChars') }}</span>
-                  <div class="personality-buttons">
-                    <button class="btn btn-sm" @click="resetUserProfileText" :disabled="!userProfileDirty || userProfileSaving">
-                      {{ t('common.reset') }}
-                    </button>
-                    <button class="btn btn-primary btn-sm" @click="saveUserProfileText" :disabled="!userProfileDirty || userProfileSaving">
-                      {{ userProfileSaving ? t('common.saving') : t('common.save') }}
-                    </button>
-                  </div>
-                </div>
-                <div v-if="userProfileError" class="personality-error">{{ userProfileError }}</div>
               </div>
             </div>
           </template>

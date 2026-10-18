@@ -104,7 +104,7 @@ describe('composeKnowledgeDocuments', () => {
       { contextId: 'personal', content: '喜欢简洁' },
       { contextId: 'root@a', content: 'nginx 在 8080' },
     ])
-    expect(text).toContain('### 个人')
+    expect(text).toContain('### 用户')
     expect(text).toContain('喜欢简洁')
     expect(text).toContain('### 主机 root@a')
     expect(text).toContain('nginx 在 8080')
