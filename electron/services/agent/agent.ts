@@ -276,8 +276,8 @@ export abstract class Agent {
   /** 这一轮已经回给用户、但还没写进对话的话；接着跑之前补进去 */
   private _unrecordedReply: AiMessage | null = null
   private _deferredNotices: string[] = []
-  /** 派出去的任务交回来的回执，等这场闲下来另起一轮 */
-  private _deferredReceipts: string[] = []
+  /** 派出去的任务交回来的回执（送给模型的全文 + 界面上给用户看的），等这场闲下来另起一轮 */
+  private _deferredReceipts: Array<{ text: string; display: string }> = []
   private _receiptRunOptions?: { callbacks?: AgentCallbacks; fallbackContext: AgentContext }
   private _flushingNotices = false
   /** 上一场的运行环境，用来在闲下来之后把结果送回同一场对话。 */
@@ -1757,6 +1757,7 @@ export abstract class Agent {
       hostOperations: new Map(),
       internalNotice: options?.internalNotice === true,
       ...(options?.internalNotice && options.noticeKind ? { noticeKind: options.noticeKind } : {}),
+      ...(options?.internalNotice && options.noticeDisplay ? { noticeDisplay: options.noticeDisplay } : {}),
       ...(options?.ledBy ? { ledBy: options.ledBy } : {}),
     }
     
@@ -1854,7 +1855,7 @@ export abstract class Agent {
         attachments: context.attachments
       })
     } else if (run.noticeKind === 'task_receipt') {
-      this.addStep({ type: 'task_receipt', content: message })
+      this.addStep({ type: 'task_receipt', content: run.noticeDisplay ?? message })
     }
 
     // 准备阶段用户补充：run() IPC 往返期间缓冲的消息，紧跟 user_task 上墙
@@ -5363,6 +5364,7 @@ export abstract class Agent {
     if (!body) return
     const present = `${body}\n${receipt.footerWhenPresent}`.trim()
     const away = `${body}\n${receipt.footerWhenAway}`.trim()
+    const display = receipt.display.trim() || body
 
     this._receiptRunOptions = opts
     const run = this.currentRun
@@ -5374,6 +5376,7 @@ export abstract class Agent {
         backgroundNotice: true,
         taskReceipt: true,
         awayText: away,
+        displayText: display,
       })
       if (run.executionPhase === 'thinking' && run.requestId) {
         this.services.aiService.abort(run.requestId)
@@ -5382,7 +5385,7 @@ export abstract class Agent {
       return
     }
 
-    this._deferredReceipts.push(away)
+    this._deferredReceipts.push({ text: away, display })
     this.flushDeferredNotices()
   }
 
@@ -5391,7 +5394,10 @@ export abstract class Agent {
     const unread = run.pendingUserMessages.filter(m => m.taskReceipt)
     if (unread.length === 0) return
     run.pendingUserMessages = run.pendingUserMessages.filter(m => !m.taskReceipt)
-    this._deferredReceipts.push(...unread.map(m => m.awayText ?? m.message))
+    this._deferredReceipts.push(...unread.map(m => ({
+      text: m.awayText ?? m.message,
+      display: m.displayText ?? m.message,
+    })))
   }
 
   /** 闲下来以后把排着的回执或后台结果另起一轮送回。两者共用一道门，同一时刻只起一轮 */
@@ -5428,11 +5434,12 @@ export abstract class Agent {
       this._deferredReceipts = []
       return
     }
-    const text = this._deferredReceipts.splice(0).join('\n\n')
+    const receipts = this._deferredReceipts.splice(0)
     this._flushingNotices = true
-    void this.run(text, ctx, {
+    void this.run(receipts.map(r => r.text).join('\n\n'), ctx, {
       internalNotice: true,
       noticeKind: 'task_receipt',
+      noticeDisplay: receipts.map(r => r.display).join('\n'),
       ...(opts?.callbacks ? { callbacks: opts.callbacks } : {}),
     }).catch(err => {
       // 不重排：模型不可用时重排会一直空转。回执已随这一轮落进记录
@@ -5751,7 +5758,7 @@ export abstract class Agent {
     const visionAvailable = this.currentProfileHasVision()
 
     for (const pending of run.pendingUserMessages) {
-      if (pending.taskReceipt) this.addStep({ type: 'task_receipt', content: pending.message })
+      if (pending.taskReceipt) this.addStep({ type: 'task_receipt', content: pending.displayText ?? pending.message })
       const userBody = Agent.formatTimestamp() + Agent.formatWorkbenchTag(run.context.terminalType) + pending.message
       let imageNote = ''
       const pendingVisionPaths = collectImageAttachmentPaths(pending.attachments)

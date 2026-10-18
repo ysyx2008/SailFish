@@ -7,6 +7,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 
 import { TaskSupervisor, type TaskSupervisorHost } from '../task-supervisor'
 import type { SailFish } from '../sailfish'
+import { t } from '../i18n'
 
 const COMPANION = '__companion__'
 
@@ -291,6 +292,43 @@ describe('TaskSupervisor', () => {
       expect(receipt.footerWhenPresent).toContain('manage_tasks')
       expect(receipt.footerWhenAway).toContain('talk_to_user')
       expect(receipt.footerWhenAway).toContain('manage_tasks')
+    })
+
+    it('界面上给用户看的那段：讲任务本身，不带给联络的说明和编号', async () => {
+      vi.useFakeTimers()
+      const host = makeHost([
+        ['tab-t1', makeMockAgent({ title: '部署服务' })],
+        ['tab-t2', makeMockAgent({ title: '整理日志' })],
+      ])
+      const supervisor = new TaskSupervisor(host)
+      const done = { agentKey: 'tab-t2' }
+      supervisor.handleRunFinished(done.agentKey, { status: 'success', summary: '整理好了', ledBy: 'companion' })
+      supervisor.handleNeedsConfirmation('tab-t1', confirmEvent)
+
+      const { display, body } = host.deliverCompanionReceipt.mock.calls[0][0] as { display: string; body: string }
+      expect(display.split('\n')).toHaveLength(2)
+      expect(display).toContain('「整理日志」')
+      expect(display).toContain('整理好了')
+      expect(display).toContain('「部署服务」在等你确认：执行命令')
+      expect(display).toContain('rm -rf /tmp/x')
+      for (const hidden of [t('taskmgr.receipt.header'), done.agentKey, 'tab-t1', 'call-123', 'manage_tasks', 'talk_to_user']) {
+        expect(display).not.toContain(hidden)
+      }
+      // 联络读到的原文不变
+      expect(body).toContain('call-123')
+      expect(body).toContain(done.agentKey)
+    })
+
+    it('向用户提问：界面上写「在问」和选项', () => {
+      const host = makeHost([['tab-t1', makeMockAgent({ title: '订会议室' })]])
+      const supervisor = new TaskSupervisor(host)
+
+      supervisor.handleAsking('tab-t1', { question: '订哪一间？', options: ['A', 'B'], ledBy: 'companion' })
+
+      const { display } = host.deliverCompanionReceipt.mock.calls[0][0] as { display: string }
+      expect(display).toContain('「订会议室」在问：订哪一间？')
+      expect(display).toContain('A / B')
+      expect(display).not.toContain('tab-t1')
     })
 
     it('用户开头的那一轮挂起确认 → 不送联络', () => {

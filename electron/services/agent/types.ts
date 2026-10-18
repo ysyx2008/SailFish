@@ -124,11 +124,13 @@ export interface AllowedToolKey {
 /**
  * 交给联络的任务回执。正文一样，尾巴按联络当时的处境二选一：
  * 这一轮还开着（用户在场），或联络闲着时被叫醒另起一轮（用户不在这一轮里）。
+ * 界面上的回执步骤另用写给用户看的文字：不带给联络的说明和编号。
  */
 export interface TaskReceiptText {
   body: string
   footerWhenPresent: string
   footerWhenAway: string
+  display: string
 }
 
 // 用户补充消息（Agent 运行中追加的对话）
@@ -152,6 +154,8 @@ export interface PendingUserMessage {
   taskReceipt?: boolean
   /** 回执没来得及收、挪到另起的一轮时用的全文（尾巴换成「用户不在这一轮里」那段） */
   awayText?: string
+  /** 回执步骤给用户看的文字 */
+  displayText?: string
   /** 这条已经用来结束过一次等待。消息仍要交给模型，不能再结束下一次等待。 */
   consumedAsReply?: boolean
 }
@@ -234,6 +238,8 @@ export interface AgentRun {
   internalNotice?: boolean
   /** 送回来的是任务回执：开头写一条回执步骤 */
   noticeKind?: 'task_receipt'
+  /** 回执步骤给用户看的文字；没有就用送给模型的原文 */
+  noticeDisplay?: string
   /** 这一轮是联络开的头（经任务管理新建或再交代）。没有 = 用户开的头 */
   ledBy?: AssignedBy
   /**
@@ -442,6 +448,8 @@ export interface RunOptions {
   internalNotice?: boolean
   /** 送回来的是任务回执 */
   noticeKind?: 'task_receipt'
+  /** 回执步骤给用户看的文字；没有就用送给模型的原文 */
+  noticeDisplay?: string
   /** 这一轮是联络开的头。补进正在跑的那一轮时不起作用 */
   ledBy?: AssignedBy
 }

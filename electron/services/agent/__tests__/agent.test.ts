@@ -616,9 +616,9 @@ describe('Agent', () => {
       })
     })
 
-    const receipt = { body: '任务回执：做完了', footerWhenPresent: '【在场】', footerWhenAway: '【不在场】' }
+    const receipt = { body: '任务回执：做完了', footerWhenPresent: '【在场】', footerWhenAway: '【不在场】', display: '「整理日志」已完成：好了' }
 
-    it('正在回复时回执送进这一轮，收进对话时上墙为回执步骤；用户开的头带「在场」尾巴', () => {
+    it('正在回复时回执送进这一轮，收进对话时上墙为回执步骤；用户开的头带「在场」尾巴，界面上只显示给人看的那句', () => {
       const { a } = withSupervisor()
       a.injectCurrentRun({ id: 'run-1', isRunning: true, pendingUserMessages: [], steps: [], messages: [], taskMessageLog: [], context: createMockContext() })
       ;(a as unknown as { _loopOpen: boolean })._loopOpen = true
@@ -631,6 +631,7 @@ describe('Agent', () => {
       ])
       ;(a as unknown as { processPendingUserMessages(r: unknown): void }).processPendingUserMessages(run)
       expect(run.steps.map(s => s.type)).toEqual(['task_receipt'])
+      expect(run.steps[0].content).toBe('「整理日志」已完成：好了')
     })
 
     it('回执自己叫醒的那一轮里用户不在场：送进去的是「不在场」尾巴', () => {
@@ -656,20 +657,23 @@ describe('Agent', () => {
 
       await vi.waitFor(() => expect(onComplete).toHaveBeenCalled())
       expect(steps[0].type).toBe('task_receipt')
+      expect(steps[0].content).toBe('「整理日志」已完成：好了')
       expect(steps.some(s => s.type === 'user_task')).toBe(false)
     })
 
     it('这一轮收场时没来得及收的回执，挪回去等下一轮；尾巴换成「不在场」那段', () => {
       const { a } = withSupervisor()
       const run = { pendingUserMessages: [
-        { message: '回执一\n【在场】', silent: true, backgroundNotice: true, taskReceipt: true, awayText: '回执一\n【不在场】' },
+        { message: '回执一\n【在场】', silent: true, backgroundNotice: true, taskReceipt: true, awayText: '回执一\n【不在场】', displayText: '甲做完了' },
         { message: '后台结果', silent: true, backgroundNotice: true },
       ] }
 
       ;(a as unknown as { reclaimUnreadReceipts(r: unknown): void }).reclaimUnreadReceipts(run)
 
       expect(run.pendingUserMessages.map(m => m.message)).toEqual(['后台结果'])
-      expect((a as unknown as { _deferredReceipts: string[] })._deferredReceipts).toEqual(['回执一\n【不在场】'])
+      expect((a as unknown as { _deferredReceipts: unknown[] })._deferredReceipts).toEqual([
+        { text: '回执一\n【不在场】', display: '甲做完了' },
+      ])
     })
 
     it('运行状态带上这一轮是谁开的头', () => {

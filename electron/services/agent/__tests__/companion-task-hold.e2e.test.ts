@@ -217,8 +217,12 @@ describe('联络派完任务，这一轮等着任务回来', () => {
     const result = await runPromise
     expect(result).toContain('任务完成了')
     expect(timeline).toEqual(['dispatched', 'receipt-read'])
-    // 回执是这一轮自己读到的，不是另起一轮
-    expect(steps.some(s => s.type === 'task_receipt')).toBe(true)
+    // 回执是这一轮自己读到的，不是另起一轮；界面上那一步只讲任务本身
+    const receiptStep = steps.find(s => s.type === 'task_receipt')
+    expect(receiptStep?.content).toContain('「整理日志」')
+    expect(receiptStep?.content).toContain('整理好了')
+    expect(receiptStep?.content).not.toContain('task_id')
+    expect(receiptStep?.content).not.toContain('你这一轮还开着')
     expect(agent.isRunning()).toBe(false)
   }, 15000)
 

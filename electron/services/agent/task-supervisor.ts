@@ -41,6 +41,20 @@ const DEFAULT_RECEIPT_WAIT_MS = 60 * 60_000
 /** 刚派出去的头一阵：开跑是异步的，这段时间里看不到在跑也不算没了 */
 const OWED_START_GRACE_MS = 30_000
 
+/** 界面上回执里要确认的参数只露个头，全文在联络读到的回执里 */
+const RECEIPT_DISPLAY_ARGS_MAX = 200
+
+/** 回执里的一件事：给联络读的一行，和界面上给用户看的一句 */
+interface ReceiptLine {
+  line: string
+  display: string
+}
+
+/** 任务结束的那件事：交出去之后要给那场销账 */
+interface FinishedReceiptLine extends ReceiptLine {
+  agentKey: string
+}
+
 /** 谁开的这一轮：联络经任务管理开的头才有回执 */
 type LedBy = AssignedBy | undefined
 
@@ -165,7 +179,7 @@ export interface TaskSupervisorHost {
 export class TaskSupervisor {
   private host: TaskSupervisorHost
   /** 已排成回执行、还在防抖窗口里的完成事件（带上是哪场，交出去后好销账） */
-  private finishBuffer: Array<{ agentKey: string; line: string }> = []
+  private finishBuffer: FinishedReceiptLine[] = []
   /** 联络开头的那一轮还没交回执的任务 → 派出的时刻。联络那一轮据此决定要不要继续等 */
   private readonly owed = new Map<string, number>()
   private finishFlushTimer: NodeJS.Timeout | null = null
@@ -409,14 +423,24 @@ export class TaskSupervisor {
   handleNeedsConfirmation(agentKey: string | undefined, event: TaskNeedsConfirmationEvent): void {
     try {
       if (!isManagedTaskKey(agentKey) || event.ledBy !== 'companion') return
-      this.deliverNow(t('taskmgr.receipt.confirm_line', {
-        title: this.resolveTaskTitle(agentKey),
-        taskId: agentKey,
-        tool: `${event.toolName}${event.displayName ? `（${event.displayName}）` : ''}`,
-        risk: t(`taskmgr.risk.${event.riskLevel}`),
-        args: event.argsPreview,
-        toolCallId: event.toolCallId,
-      }))
+      const title = this.resolveTaskTitle(agentKey)
+      const risk = t(`taskmgr.risk.${event.riskLevel}`)
+      this.deliverNow({
+        line: t('taskmgr.receipt.confirm_line', {
+          title,
+          taskId: agentKey,
+          tool: `${event.toolName}${event.displayName ? `（${event.displayName}）` : ''}`,
+          risk,
+          args: event.argsPreview,
+          toolCallId: event.toolCallId,
+        }),
+        display: t('taskmgr.receipt.display.confirm', {
+          title,
+          action: event.displayName || event.toolName,
+          risk,
+          args: this.truncate(event.argsPreview, RECEIPT_DISPLAY_ARGS_MAX),
+        }),
+      })
     } catch (err) {
       log.warn('handleNeedsConfirmation 失败:', err)
     }
@@ -429,11 +453,12 @@ export class TaskSupervisor {
       const options = event.options.length > 0
         ? t('taskmgr.receipt.ask_options', { options: event.options.join(' / ') })
         : ''
-      this.deliverNow(t('taskmgr.receipt.ask_line', {
-        title: this.resolveTaskTitle(agentKey),
-        taskId: agentKey,
-        question: this.truncate(event.question.replace(/\s+/g, ' ').trim(), RECEIPT_SUMMARY_MAX),
-      }) + options)
+      const title = this.resolveTaskTitle(agentKey)
+      const question = this.truncate(event.question.replace(/\s+/g, ' ').trim(), RECEIPT_SUMMARY_MAX)
+      this.deliverNow({
+        line: t('taskmgr.receipt.ask_line', { title, taskId: agentKey, question }) + options,
+        display: t('taskmgr.receipt.display.ask', { title, question }) + options,
+      })
     } catch (err) {
       log.warn('handleAsking 失败:', err)
     }
@@ -462,14 +487,13 @@ export class TaskSupervisor {
         failed: t('taskmgr.status_failed'),
         aborted: t('taskmgr.status_aborted'),
       } as const
+      const title = this.resolveTaskTitle(agentKey)
+      const status = statusText[event.status]
+      const summary = this.truncate(event.summary.trim(), RECEIPT_SUMMARY_MAX) || t('taskmgr.receipt.no_output')
       this.finishBuffer.push({
         agentKey,
-        line: t('taskmgr.receipt.finish_line', {
-          title: this.resolveTaskTitle(agentKey),
-          taskId: agentKey,
-          status: statusText[event.status],
-          summary: this.truncate(event.summary.trim(), RECEIPT_SUMMARY_MAX) || t('taskmgr.receipt.no_output'),
-        }),
+        line: t('taskmgr.receipt.finish_line', { title, taskId: agentKey, status, summary }),
+        display: t('taskmgr.receipt.display.finish', { title, status, summary }),
       })
       if (this.finishFlushTimer) clearTimeout(this.finishFlushTimer)
       this.finishFlushTimer = setTimeout(() => this.flushFinishEvents(), FINISH_DEBOUNCE_MS)
@@ -492,25 +516,27 @@ export class TaskSupervisor {
   }
 
   /** 要用户拿主意的事不等防抖；攒着的完成事件一并带上，免得联络为它们再起一轮 */
-  private deliverNow(line: string): void {
+  private deliverNow(entry: ReceiptLine): void {
     if (this.finishFlushTimer) {
       clearTimeout(this.finishFlushTimer)
       this.finishFlushTimer = null
     }
-    this.deliverReceipt(this.finishBuffer.splice(0), [line])
+    this.deliverReceipt(this.finishBuffer.splice(0), [entry])
   }
 
   /**
    * 交出去之后，那几场任务就不再欠回执（提问 / 确认事件不销账：任务还没做完）。
    * 没投出去时账照样销（回执丢了，继续等也等不来），并叫醒联络在等的那一轮，免得它空等到下一个检查点。
    */
-  private deliverReceipt(finished: Array<{ agentKey: string; line: string }>, extra: string[]): void {
+  private deliverReceipt(finished: FinishedReceiptLine[], extra: ReceiptLine[]): void {
+    const entries = [...finished, ...extra]
     let delivered = false
     try {
       this.host.deliverCompanionReceipt({
-        body: [t('taskmgr.receipt.header'), ...finished.map(e => e.line), ...extra].join('\n'),
+        body: [t('taskmgr.receipt.header'), ...entries.map(e => e.line)].join('\n'),
         footerWhenPresent: t('taskmgr.receipt.footer_present'),
         footerWhenAway: t('taskmgr.receipt.footer_away'),
+        display: entries.map(e => e.display).join('\n'),
       })
       delivered = true
     } catch (err) {
