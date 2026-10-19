@@ -254,9 +254,11 @@ export class Conversation {
    * 保持空白、从零累积（保留当前行为；是否改为持久化累积是另一项独立决策，不在本次重构内）。
    */
   loadFromRecord(record: AgentRecord): void {
-    const restoredMessages = record.messages?.length
-      ? restoreSpokenRepliesMissingFromMessages(record.messages as AiMessage[], record.steps ?? [])
-      : record.messages
+    // 记录里的消息是磁盘上读回来的宽松形状；装载边界上统一认作 AiMessage（两个分支都要）
+    const recordMessages = record.messages as AiMessage[] | undefined
+    const restoredMessages = recordMessages?.length
+      ? restoreSpokenRepliesMissingFromMessages(recordMessages, record.steps ?? [])
+      : recordMessages
     if (restoredMessages && restoredMessages.length > 0) {
       const tasks = splitMessagesIntoTasks(
         restoredMessages,
@@ -275,7 +277,7 @@ export class Conversation {
       }
     }
 
-    this.setRestoredTranscript(restoredMessages as AiMessage[] | undefined, record.steps)
+    this.setRestoredTranscript(restoredMessages, record.steps)
     this.restoreWorkingContext(record.workingContext as AiMessage[] | undefined)
     this.adoptCompressedArchives(record.compressedArchives as typeof this._compressedArchives | undefined)
     const title = record.title?.trim()

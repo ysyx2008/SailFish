@@ -281,9 +281,8 @@ export function restoreSpokenRepliesMissingFromMessages(
     pending = ''
     if (!text) return
     const next = messages[mi]
+    // 下一条是工具结果，说明正卡在「调用—结果」中间，不往里插
     if (next?.role === 'tool') return
-    const last = result[result.length - 1]
-    if (last?.role === 'assistant' && last.tool_calls?.length && next?.role === 'tool') return
     if (next?.role === 'assistant' && !next.tool_calls?.length) {
       result.push({
         ...next,

@@ -2018,9 +2018,11 @@ export abstract class Agent {
    * 场景：前端传回旧 sessionId，恢复之前的完整会话
    */
   private restoreFromSessionRecord(record: AgentRecord): void {
-    const restoredMessages = record.messages?.length
-      ? restoreSpokenRepliesMissingFromMessages(record.messages as AiMessage[], record.steps ?? [])
-      : record.messages
+    // 记录里的消息是磁盘上读回来的宽松形状；装载边界上统一认作 AiMessage（两个分支都要）
+    const recordMessages = record.messages as AiMessage[] | undefined
+    const restoredMessages = recordMessages?.length
+      ? restoreSpokenRepliesMissingFromMessages(recordMessages, record.steps ?? [])
+      : recordMessages
     if (restoredMessages && restoredMessages.length > 0) {
       const tasks = splitMessagesIntoTasksShared(
         restoredMessages,
@@ -2063,7 +2065,7 @@ export abstract class Agent {
     // transcript 交给会话聚合根装载（含「已有则不覆盖」守卫，保留续聊旧产出物字段）。
     // taskMemory 上面已由 Agent 用自己的 split/seq 写入（与 restoreRecentTaskMemory 共享单调
     // 序号防同毫秒 task id 碰撞），故此处只补 transcript。
-    this._conversation?.setRestoredTranscript(restoredMessages as AiMessage[] | undefined, record.steps)
+    this._conversation?.setRestoredTranscript(restoredMessages, record.steps)
     this._conversation?.restoreWorkingContext(record.workingContext as AiMessage[] | undefined)
     this._conversation?.adoptCompressedArchives(record.compressedArchives as AgentRun['compressedArchives'])
     this._conversation?.adoptApproval(record.approval)
