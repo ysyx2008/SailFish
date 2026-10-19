@@ -263,6 +263,7 @@ export default {
     aiAnalyze: 'AI Analyze',
     preparing: 'Preparing...',
     executing: 'Executing...',
+    planPaused: 'Paused',
     agentRunning: 'Agent Running',
     agentHistory: 'Agent Execution History',
     steps: 'steps',

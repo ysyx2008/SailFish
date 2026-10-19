@@ -47,6 +47,12 @@ const hasFailed = computed(() =>
   props.plan.steps.some(s => s.status === 'failed')
 )
 
+// 是否处于暂停：计划被标了暂停、且还有没做完的步骤。步骤都收尾了就是做完了，暂停标记不再有意义
+const isPaused = computed(() =>
+  props.plan.paused === true
+  && props.plan.steps.some(s => s.status === 'pending' || s.status === 'in_progress')
+)
+
 // 获取步骤状态图标
 const getStepIcon = (status: PlanStepStatus): string => {
   switch (status) {
@@ -89,15 +95,16 @@ const handleToggle = () => {
     class="agent-plan" 
     :class="{ 
       'is-completed': isAllCompleted, 
-      'has-failed': hasFailed,
+      'has-failed': hasFailed && !isPaused,
+      'is-paused': isPaused,
       'is-compact': compact
     }"
   >
-    <!-- 顶部进度条 -->
+    <!-- 顶部进度条：暂停和失败同时出现时以暂停为准 -->
     <div 
       class="top-progress-bar"
       :style="{ '--progress': progressPercent + '%' }"
-      :class="{ 'failed': hasFailed }"
+      :class="{ 'failed': hasFailed && !isPaused, 'paused': isPaused }"
     ></div>
 
     <!-- 紧凑模式：宽够就一行；放不下时标题一行、进度一行 -->
@@ -107,7 +114,8 @@ const handleToggle = () => {
         <span class="plan-title-text">{{ plan.title }}</span>
       </div>
       <div class="compact-status">
-        <span v-if="currentStep" class="current-step-hint">
+        <span v-if="isPaused" class="paused-hint">⏸ {{ t('ai.planPaused') }}</span>
+        <span v-else-if="currentStep" class="current-step-hint">
           <span class="current-step-spinner"></span>
           <span class="current-step-label">{{ currentStep.title }}</span>
         </span>
@@ -127,6 +135,7 @@ const handleToggle = () => {
           <span class="plan-title-text">{{ plan.title }}</span>
         </div>
         <div class="plan-header-right">
+          <span v-if="isPaused" class="paused-badge">⏸ {{ t('ai.planPaused') }}</span>
           <span class="progress-text">{{ completedCount }}/{{ plan.steps.length }}</span>
           <span class="collapse-icon">▲</span>
         </div>
@@ -138,11 +147,12 @@ const handleToggle = () => {
           v-for="(step, index) in plan.steps" 
           :key="step.id"
           class="plan-step"
-          :class="step.status"
+          :class="[step.status, { paused: isPaused && step.status === 'in_progress' }]"
         >
-          <!-- 步骤指示器 -->
+          <!-- 步骤指示器：暂停时卡在进行中的那一步不再转圈 -->
           <div class="step-indicator">
-            <span v-if="step.status === 'in_progress'" class="step-spinner"></span>
+            <span v-if="isPaused && step.status === 'in_progress'" class="step-icon paused">⏸</span>
+            <span v-else-if="step.status === 'in_progress'" class="step-spinner"></span>
             <span v-else-if="getStepIcon(step.status)" class="step-icon" :class="step.status">
               {{ getStepIcon(step.status) }}
             </span>
@@ -163,7 +173,7 @@ const handleToggle = () => {
             </div>
             
             <!-- 步骤进度条 -->
-            <div v-if="step.progress && step.status === 'in_progress'" class="step-progress">
+            <div v-if="step.progress && step.status === 'in_progress' && !isPaused" class="step-progress">
               <div class="mini-progress-bar">
                 <div 
                   class="mini-progress-fill" 
@@ -204,6 +214,12 @@ const handleToggle = () => {
 .agent-plan.has-failed {
   border-color: rgba(var(--color-error-rgb), 0.3);
   background: linear-gradient(135deg, rgba(var(--color-error-rgb), 0.05), transparent);
+}
+
+/* 暂停（暂停和失败同时出现时，模板里已不再给卡片打失败标记） */
+.agent-plan.is-paused {
+  border-color: rgba(var(--color-warning-rgb), 0.3);
+  background: linear-gradient(135deg, rgba(var(--color-warning-rgb), 0.05), transparent);
 }
 
 /* ==================== 紧凑模式样式 ==================== */
@@ -284,6 +300,22 @@ const handleToggle = () => {
   font-size: 13px;
 }
 
+/* 折叠行和展开头部各有一处「已暂停」，同一个颜色 */
+.paused-hint,
+.paused-badge {
+  color: var(--color-warning);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.paused-hint {
+  font-size: 13px;
+}
+
+.paused-badge {
+  font-size: 12px;
+}
+
 .compact-status .progress-text,
 .compact-status .expand-icon,
 .compact-status .completed-hint,
@@ -318,6 +350,10 @@ const handleToggle = () => {
 
 .top-progress-bar.failed::after {
   background: linear-gradient(90deg, var(--color-error), var(--color-error));
+}
+
+.top-progress-bar.paused::after {
+  background: var(--color-warning);
 }
 
 
@@ -430,6 +466,11 @@ const handleToggle = () => {
   background: rgba(var(--color-info-rgb), 0.08);
 }
 
+.plan-step.in_progress.paused {
+  border-left-color: var(--color-warning);
+  background: rgba(var(--color-warning-rgb), 0.08);
+}
+
 .plan-step.completed {
   border-left-color: var(--brand-vital);
 }
@@ -474,6 +515,7 @@ const handleToggle = () => {
 .step-icon.completed { color: var(--brand-vital); }
 .step-icon.failed { color: var(--color-error); }
 .step-icon.skipped { color: var(--text-muted); }
+.step-icon.paused { color: var(--color-warning); }
 
 .step-spinner {
   width: 16px;

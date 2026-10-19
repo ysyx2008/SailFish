@@ -263,6 +263,7 @@ export default {
     aiAnalyze: 'AI 分析',
     preparing: '正在准备...',
     executing: '执行中...',
+    planPaused: '已暂停',
     agentRunning: '助手执行中',
     agentHistory: '助手执行记录',
     steps: '步',
