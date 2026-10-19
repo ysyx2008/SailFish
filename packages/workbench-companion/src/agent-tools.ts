@@ -19,18 +19,19 @@ export const COMPANION_WORKBENCH_AGENT_TOOLS = [
 - create：新开一场无终端的助手任务。需要 title（一句话标题）和 brief（目标、要求、必要上下文）。任务只看得到 brief，看不到这条对话，也没有这个工具。由你开头的这一轮，做完、失败、被停、要用户确认、向用户提问，都会以回执交给你，用户不会直接收到。派出之后你这一轮会等它们回来，最长 1 小时：不影响你继续回复用户、接收新消息，回执到了送进这一轮；用户按停你这一轮只是不再等，任务照常做。这一轮等不住时（重启、被停止、超时），回执到了才另起一轮叫你，那一轮用户看不到。没设 full_auto 时，要用户确认的操作先由独立评审员对照任务里交代过的话判断，看不准才问用户；full_auto=true 时不再询问用户，只在用户明确这样说过时使用。
 - instruct：往已有任务里再交代一句。需要 task_id 和 message。任务在跑时当场送进；已经停了或只在历史里时，仍是原来那场接着做。message 只有那场任务看得到。由你再交代而接着做的这一轮，回执同样交给你，你这一轮也同样会等；任务正在跑时这句是补进那一轮，回执和等待仍跟着那一轮原来由谁开头（用户开头的那一轮不欠你回执）。远程终端的窗口已经关掉时送不进去。
 - confirm：把用户对待确认操作的批准或拒绝传到任务。需要 task_id、tool_call_id（回执和 list 里都有）、approve。批不批由用户决定。
-- stop：停止正在执行的任务，会话保留。需要 task_id。`,
+- stop：停止正在执行的任务，会话保留。需要 task_id。
+- delete：删掉自己派出的一场任务。需要 task_id。只删当初由你派出的；用户自己开的、以及记得出身之前的老任务，删不掉。正在做的会先停掉。删掉之后这场从列表里消失，对话记录不再留着。`,
       parameters: {
         type: 'object',
         properties: {
           action: {
             type: 'string',
-            enum: ['list', 'inspect', 'create', 'instruct', 'confirm', 'stop'],
+            enum: ['list', 'inspect', 'create', 'instruct', 'confirm', 'stop', 'delete'],
             description: '要执行的操作'
           },
           task_id: {
             type: 'string',
-            description: '目标任务 ID（inspect/instruct/confirm/stop 必填，list 里有）'
+            description: '目标任务 ID（inspect/instruct/confirm/stop/delete 必填，list 里有）'
           },
           tool_call_id: {
             type: 'string',

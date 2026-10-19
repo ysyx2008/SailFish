@@ -1540,6 +1540,14 @@ const electronAPI = {
       ipcRenderer.on('history:searchMatch', handler)
       return () => { ipcRenderer.removeListener('history:searchMatch', handler) }
     },
+    onTaskDeleted: (callback: (payload: { agentKey: string; sessionIds: string[] }) => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        payload: { agentKey: string; sessionIds: string[] }
+      ) => callback(payload)
+      ipcRenderer.on('history:taskDeleted', handler)
+      return () => { ipcRenderer.removeListener('history:taskDeleted', handler) }
+    },
     abortSearchAgentRecords: () =>
       ipcRenderer.invoke('history:abortSearchAgentRecords') as Promise<void>,
 

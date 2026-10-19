@@ -221,6 +221,23 @@ export class HistoryService {
     return this.agentRecordStore.deleteAgentRecord(id)
   }
 
+  /**
+   * 删掉某个任务名下、出身是联络的全部会话。
+   * 只走索引，不扫日期目录。返回实际删掉的会话号。
+   */
+  deleteCompanionTaskRecords(agentKey: string): string[] {
+    const ids = [...new Set(
+      this.agentRecordStore.getMainIndex()
+        .filter(entry => entry.agentKey === agentKey && entry.assignedBy === 'companion')
+        .map(entry => entry.id)
+    )]
+    const deleted: string[] = []
+    for (const id of ids) {
+      if (this.deleteAgentRecord(id)) deleted.push(id)
+    }
+    return deleted
+  }
+
   /** 获取指定日期范围的 Agent 记录（委派 store）。 */
   getAgentRecords(startDate?: string, endDate?: string): AgentRecord[] {
     return this.agentRecordStore.getAgentRecords(startDate, endDate)

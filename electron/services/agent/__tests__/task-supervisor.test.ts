@@ -63,6 +63,8 @@ function makeHost(entries: Array<[string, SailFish]>, overrides: Partial<TaskSup
   prepareAssignedTask: ReturnType<typeof vi.fn>
   deliverCompanionReceipt: ReturnType<typeof vi.fn>
   wakeCompanionWait: ReturnType<typeof vi.fn>
+  assignedByOf: ReturnType<typeof vi.fn>
+  forgetAssignedTask: ReturnType<typeof vi.fn>
 } {
   const map = new Map(entries)
   return {
@@ -76,6 +78,8 @@ function makeHost(entries: Array<[string, SailFish]>, overrides: Partial<TaskSup
     wakeCompanionWait: vi.fn(),
     getHistoryService: vi.fn().mockReturnValue(undefined),
     getConfigService: vi.fn().mockReturnValue(undefined),
+    assignedByOf: vi.fn().mockReturnValue(undefined),
+    forgetAssignedTask: vi.fn().mockReturnValue([]),
     ...overrides
   } as TaskSupervisorHost & {
     confirmToolCall: ReturnType<typeof vi.fn>
@@ -84,6 +88,8 @@ function makeHost(entries: Array<[string, SailFish]>, overrides: Partial<TaskSup
     prepareAssignedTask: ReturnType<typeof vi.fn>
     deliverCompanionReceipt: ReturnType<typeof vi.fn>
     wakeCompanionWait: ReturnType<typeof vi.fn>
+    assignedByOf: ReturnType<typeof vi.fn>
+    forgetAssignedTask: ReturnType<typeof vi.fn>
   }
 }
 
@@ -905,6 +911,54 @@ describe('TaskSupervisor', () => {
       await supervisor.instructTask('tab-live', '顺便看看今天的')
 
       expect(supervisor.isOwed('tab-live')).toBe(false)
+    })
+  })
+
+  describe('deleteTask', () => {
+    it('删掉自己派出的，交给宿主把记录和窗口清掉', () => {
+      const host = makeHost([['assistant-1', makeMockAgent({ title: '查日志', isRunning: true })]], {
+        assignedByOf: vi.fn().mockReturnValue('companion'),
+      })
+      const supervisor = new TaskSupervisor(host)
+
+      expect(supervisor.deleteTask('assistant-1')).toEqual({ ok: true, title: '查日志' })
+      expect(host.forgetAssignedTask).toHaveBeenCalledWith('assistant-1')
+      expect(supervisor.isOwed('assistant-1')).toBe(false)
+    })
+
+    it('只在历史里的自己派出的也能删', () => {
+      const host = makeHost([], {
+        getHistoryService: vi.fn().mockReturnValue({
+          getLatestRecordByAgentKey: () => ({
+            id: 'session-1',
+            agentKey: 'assistant-old',
+            title: '旧测试',
+            userTask: '做点事',
+            assignedBy: 'companion',
+            terminalType: 'assistant',
+          }),
+        }),
+      })
+      const supervisor = new TaskSupervisor(host)
+
+      expect(supervisor.deleteTask('assistant-old')).toMatchObject({ ok: true, title: '旧测试' })
+      expect(host.forgetAssignedTask).toHaveBeenCalledWith('assistant-old')
+    })
+
+    it('用户自己开的删不掉', () => {
+      const host = makeHost([['tab-1', makeMockAgent({ title: '我的任务' })]])
+      const supervisor = new TaskSupervisor(host)
+
+      expect(supervisor.deleteTask('tab-1')).toMatchObject({ ok: false, reason: 'not_owned', title: '我的任务' })
+      expect(host.forgetAssignedTask).not.toHaveBeenCalled()
+    })
+
+    it('没有这场任务', () => {
+      const host = makeHost([])
+      const supervisor = new TaskSupervisor(host)
+
+      expect(supervisor.deleteTask('assistant-missing').reason).toBe('task_not_found')
+      expect(host.forgetAssignedTask).not.toHaveBeenCalled()
     })
   })
 })

@@ -3,7 +3,7 @@
  *
  * 联络（companion）作为任务 Agent 的总管（Supervisor 模式）：
  * - 查询：枚举任务列表 / 查看单个任务近况（manage_tasks 工具的 list/inspect）
- * - 操作：创建任务、停止任务、再交代、传达用户对危险确认的批准/拒绝（create/stop/instruct/confirm）
+ * - 操作：创建任务、停止任务、再交代、删掉自己派出的任务、传达用户对危险确认的批准/拒绝（create/stop/instruct/delete/confirm）
  * - 回执：联络开头的那一轮（新建或再交代）做完 / 失败 / 被停 / 要确认 / 向用户提问 → 只交给联络。
  *   用户自己开头的那一轮什么都不送。
  *
@@ -174,6 +174,13 @@ export interface TaskSupervisorHost {
   getConfigService(): ConfigService | undefined
   /** 创建任务实例，锁住交办标题，定下这场的审批方式，记下是谁派的 */
   prepareAssignedTask(agentId: string, title: string, approval: ApprovalMode, assignedBy: AssignedBy): void
+  /** 这场对话是谁派的；没有 = 用户自己开的或还没记下 */
+  assignedByOf(agentKey: string): AssignedBy | undefined
+  /**
+   * 丢掉联络派出的这场任务：不再落盘，正在跑的先停，记录从历史里删掉。
+   * 返回要让界面关掉的会话号（含还没落盘、只在内存里的那场）。
+   */
+  forgetAssignedTask(agentKey: string): string[]
 }
 
 export class TaskSupervisor {
@@ -208,7 +215,7 @@ export class TaskSupervisor {
     const rank = (t: SupervisedTaskInfo) => t.pendingConfirmation ? 0 : t.isRunning ? 1 : 2
     const tasks: SupervisedTaskInfo[] = []
     for (const { agentKey, agent } of this.host.getAllAgentEntries()) {
-      if (!isManagedTaskKey(agentKey)) continue
+      if (!isManagedTaskKey(agentKey) || agent.isSessionDiscarded?.()) continue
       try {
         tasks.push(this.buildTaskInfo(agentKey, agent))
       } catch (err) {
@@ -309,6 +316,33 @@ export class TaskSupervisor {
     const title = this.resolveTaskTitle(agentKey)
     const stopped = this.host.abort(agentKey)
     return stopped ? { ok: true, title } : { ok: false, reason: 'not_running', title }
+  }
+
+  /**
+   * 删掉联络自己派出的一场任务。用户自己开的、以及没记出身的，删不掉。
+   * 正在做的先停掉，记录从列表和历史里消失。
+   */
+  deleteTask(agentKey: string): { ok: boolean; reason?: 'task_not_found' | 'not_owned'; title?: string } {
+    if (!isManagedTaskKey(agentKey)) return { ok: false, reason: 'task_not_found' }
+    const agent = this.host.getAgent(agentKey)
+    const record = agent ? undefined : this.historyRecord(agentKey)
+    if (!agent && !record) return { ok: false, reason: 'task_not_found' }
+
+    const assignedBy = agent ? this.host.assignedByOf(agentKey) : record?.assignedBy
+    const title = agent
+      ? this.resolveTaskTitle(agentKey)
+      : this.titleFromHistory(record?.title, record?.userTask, agentKey)
+    if (assignedBy !== 'companion') return { ok: false, reason: 'not_owned', title }
+
+    this.owed.delete(agentKey)
+    this.finishBuffer = this.finishBuffer.filter(entry => entry.agentKey !== agentKey)
+    if (this.finishBuffer.length === 0 && this.finishFlushTimer) {
+      clearTimeout(this.finishFlushTimer)
+      this.finishFlushTimer = null
+    }
+    this.host.forgetAssignedTask(agentKey)
+    log.info(`联络删除自己派出的任务: ${agentKey}`)
+    return { ok: true, title }
   }
 
   /**

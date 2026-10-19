@@ -933,6 +933,7 @@ interface Window {
         requestId: string
         summary: import('@shared/types').AgentHistorySummary
       }) => void) => () => void
+      onTaskDeleted: (callback: (payload: { agentKey: string; sessionIds: string[] }) => void) => () => void
       abortSearchAgentRecords: () => Promise<void>
       exportHugeJsonlLine: (payload: { sourceFile: string; sourceLine: number }) => Promise<{
         success: boolean

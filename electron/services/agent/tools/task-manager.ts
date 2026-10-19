@@ -21,6 +21,7 @@ const ACTION_LABEL: Record<string, TranslationKey> = {
   instruct: 'taskmgr.action.instruct',
   confirm: 'taskmgr.action.confirm',
   stop: 'taskmgr.action.stop',
+  delete: 'taskmgr.action.delete',
 }
 
 function actionLabel(action: string): string {
@@ -103,6 +104,18 @@ export async function manageTasks(
           ok(t('taskmgr.confirm_done', { decision, title: result.title ?? taskId })),
           t('taskmgr.action.confirm')
         )
+      }
+
+      case 'delete': {
+        if (!taskId) return finish(fail(t('taskmgr.missing_param', { param: 'task_id' })), t('taskmgr.action.delete'))
+        const result = supervisor.deleteTask(taskId)
+        if (!result.ok) {
+          const msg = result.reason === 'not_owned'
+            ? t('taskmgr.not_owned', { title: result.title ?? taskId })
+            : t('taskmgr.task_not_found', { taskId })
+          return finish(fail(msg), t('taskmgr.action.delete'))
+        }
+        return finish(ok(t('taskmgr.deleted', { title: result.title ?? taskId })), t('taskmgr.action.delete'))
       }
 
       case 'stop': {

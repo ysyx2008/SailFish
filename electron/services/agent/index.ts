@@ -38,6 +38,7 @@ import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import type { CommandHandlingInfo } from './risk-assessor'
 import { setConfigService as setI18nConfigService } from './i18n'
 import { getTerminalStateService } from '../terminal-state.service'
+import { getKnowledgeService } from '../knowledge'
 import { createLogger } from '../../utils/logger'
 import { conversationRootId } from './skills/browser/session-key'
 import { setAttachLockRunningChecker } from './skills/browser/bridge-session'
@@ -286,6 +287,58 @@ export class AgentService {
     agent.armLockedTitle(title)
     agent.setApproval(approval)
     agent.armAssignedBy(assignedBy)
+  }
+
+  /** 这场对话是谁派的；没有 = 用户自己开的或还没记下 */
+  assignedByOf(agentKey: string): AssignedBy | undefined {
+    return this.getAgent(agentKey)?.getAssignedBy()
+  }
+
+  /**
+   * 丢掉联络派出的这场任务：不再落盘，正在跑的先停，历史记录删掉，界面上的窗口关掉。
+   * 返回要关掉的会话号。
+   */
+  forgetAssignedTask(agentKey: string): string[] {
+    const agent = this.getAgent(agentKey)
+    const liveSessionId = agent?.getSessionId()
+    const running = !!agent?.getRunStatus()?.isRunning
+    if (agent) {
+      agent.discardSession(running ? () => this.cleanupAgent(agentKey) : undefined)
+      if (running) agent.abort()
+      else this.cleanupAgent(agentKey)
+    }
+
+    const deleted = this.services.historyService?.deleteCompanionTaskRecords(agentKey) ?? []
+    const sessionIds = [...deleted]
+    if (liveSessionId && !sessionIds.includes(liveSessionId)) sessionIds.push(liveSessionId)
+    this.dropConversationKnowledge(sessionIds)
+    this.notifyTasksRemoved(agentKey, sessionIds)
+    return sessionIds
+  }
+
+  private dropConversationKnowledge(sessionIds: string[]): void {
+    const knowledge = getKnowledgeService()
+    if (!knowledge) return
+    for (const id of sessionIds) {
+      void knowledge.removeConversation(id).catch(err => {
+        log.warn(`删除任务的对话索引失败 (${id}):`, err)
+      })
+    }
+  }
+
+  /** 告诉界面这些会话已经不在了，侧栏去掉、打开的窗口关掉 */
+  private notifyTasksRemoved(agentKey: string, sessionIds: string[]): void {
+    try {
+      const { BrowserWindow } = require('electron') as typeof import('electron')
+      const windows = BrowserWindow?.getAllWindows?.() ?? []
+      for (const win of windows) {
+        if (!win.isDestroyed()) {
+          win.webContents.send('history:taskDeleted', { agentKey, sessionIds })
+        }
+      }
+    } catch (err) {
+      log.debug('通知界面任务已删除失败:', err)
+    }
   }
 
   /**

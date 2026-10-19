@@ -220,6 +220,29 @@ describe('HistoryService - deleteAgentRecord', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
+  it('只删出身是联络的那场，同一任务下的会话都删，用户自己的留下', () => {
+    const svc = new HistoryService()
+    const baseTime = new Date('2026-03-18T10:00:00').getTime()
+
+    svc.saveAgentRecord(makeRecord({
+      id: 'mine', timestamp: baseTime, duration: 100, userTask: 'mine', agentKey: 'tab-1',
+    }))
+    svc.saveAgentRecord(makeRecord({
+      id: 'theirs', timestamp: baseTime + 1000, duration: 100, userTask: 'theirs',
+      agentKey: 'assistant-1', assignedBy: 'companion',
+    }))
+    svc.saveAgentRecord(makeRecord({
+      id: 'also', timestamp: baseTime + 2000, duration: 100, userTask: 'also',
+      agentKey: 'assistant-1', assignedBy: 'companion',
+    }))
+
+    expect(svc.deleteCompanionTaskRecords('assistant-1').sort()).toEqual(['also', 'theirs'])
+    expect(svc.getAgentRecordById('theirs')).toBeUndefined()
+    expect(svc.getAgentRecordById('also')).toBeUndefined()
+    expect(svc.getAgentRecordById('mine')?.id).toBe('mine')
+    expect(svc.deleteCompanionTaskRecords('tab-1')).toEqual([])
+  })
+
   it('删除指定记录并同步更新索引', () => {
     const svc = new HistoryService()
     const baseTime = new Date('2026-03-18T10:00:00').getTime()

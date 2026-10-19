@@ -202,6 +202,10 @@ export abstract class Agent {
   /** 这场是谁派的：会话还没建好时先记在这里，新会话建好时交给它（用掉就清） */
   private _armedAssignedBy?: AssignedBy
 
+  /** 这场已被删掉：不再落盘、不再写回知识库，跑完后从内存里摘掉 */
+  private _sessionDiscarded = false
+  private _whenDiscardedSettled?: () => void
+
   /** 调用方给下一轮指定的执行档（IM / 网页 / 关切 / 命令行等渠道自己的设定），开跑时用掉 */
   private _runModeOverride?: ExecutionMode
 
@@ -1567,6 +1571,31 @@ export abstract class Agent {
     this._armedAssignedBy = assignedBy
   }
 
+  /** 这场是谁派的。会话还没建好时是先记下的那个；都没有 = 用户自己开的 */
+  getAssignedBy(): AssignedBy | undefined {
+    return this._conversation?.assignedBy ?? this._armedAssignedBy
+  }
+
+  /**
+   * 这场要被删掉。之后的保存和对话索引都跳过，避免刚删掉又写回来。
+   * 正在跑的等这一轮收尾后再调用 whenSettled（此时才从内存里摘掉）。
+   */
+  discardSession(whenSettled?: () => void): void {
+    this._sessionDiscarded = true
+    this._whenDiscardedSettled = whenSettled
+  }
+
+  isSessionDiscarded(): boolean {
+    return this._sessionDiscarded
+  }
+
+  private settleIfDiscarded(): void {
+    if (!this._sessionDiscarded || !this._whenDiscardedSettled) return
+    const hook = this._whenDiscardedSettled
+    this._whenDiscardedSettled = undefined
+    queueMicrotask(hook)
+  }
+
   /** 新会话建好时交出先记下的出身，交完就清，之后换新会话不再带 */
   private applyArmedAssignedBy(): void {
     if (!this._armedAssignedBy || !this._conversation) return
@@ -2172,7 +2201,7 @@ export abstract class Agent {
       tokenUsage: run.tokenUsage,
       imagesStripped: run.imagesStripped,
     })
-    if (!this._isSubAgent) {
+    if (!this._isSubAgent && !this._sessionDiscarded) {
       this.saveSessionToHistory()
       this.scheduleTitleRefreshIfDue()
 
@@ -2212,7 +2241,8 @@ export abstract class Agent {
     })), { aborted: run.aborted })
 
     // 任务监督回流：任务完成/被停止 → 联络线复命（防抖聚合；伙计不回流）
-    if (!this._isSubAgent) {
+    // 这场正在被删掉：不再报「已停止」，删除本身的结果就是答复
+    if (!this._isSubAgent && !this._sessionDiscarded) {
       try {
         this.services.taskSupervisor?.handleRunFinished(this._agentId, {
           status: run.aborted ? 'aborted' : 'success',
@@ -2223,6 +2253,7 @@ export abstract class Agent {
         log.warn('taskSupervisor 完成回流失败:', err)
       }
     }
+    this.settleIfDiscarded()
   }
   
   // ==================== 会话持久化 ====================
@@ -2240,6 +2271,7 @@ export abstract class Agent {
    * 全部由 Conversation.toRecord 负责；空会话（无 user_task）返回 null，与现状一致跳过。
    */
   private saveSessionToHistory(): void {
+    if (this._sessionDiscarded) return
     const historyService = this.services.historyService
     if (!historyService || !this._conversation) return
 
@@ -2643,6 +2675,7 @@ export abstract class Agent {
     status: 'success' | 'failed' | 'aborted',
     result?: string
   ): Promise<void> {
+    if (this._sessionDiscarded) return
     if (run.internalNotice) return
     if (!run.originalUserRequest?.trim()) return
 
@@ -2744,7 +2777,7 @@ export abstract class Agent {
       imagesStripped: run.imagesStripped,
       aborted: run.aborted
     })
-    if (!this._isSubAgent) {
+    if (!this._isSubAgent && !this._sessionDiscarded) {
       this.saveSessionToHistory()
       this.scheduleTitleRefreshIfDue()
 
@@ -2757,7 +2790,7 @@ export abstract class Agent {
     this.callbacks?.onError?.(run.id, errorMessage, { aborted: run.aborted })
 
     // 任务监督回流：任务失败 → 联络线复命（防抖聚合；伙计不回流）
-    if (!this._isSubAgent) {
+    if (!this._isSubAgent && !this._sessionDiscarded) {
       try {
         this.services.taskSupervisor?.handleRunFinished(this._agentId, {
           status: 'failed',
@@ -2768,6 +2801,7 @@ export abstract class Agent {
         log.warn('taskSupervisor 失败回流失败:', err)
       }
     }
+    this.settleIfDiscarded()
   }
   
   // ==================== 受保护方法：上下文构建 ====================

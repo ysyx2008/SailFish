@@ -145,6 +145,38 @@ describe('manage_tasks', () => {
     expect(result.error).toBeTruthy()
   })
 
+  it('delete 删掉自己派出的，不是自己的则失败', async () => {
+    const owned = makeSupervisor({
+      deleteTask: vi.fn().mockReturnValue({ ok: true, title: '测试任务' }),
+    })
+    const deleted = await manageTasks({ action: 'delete', task_id: 'assistant-1' }, makeExecutor(owned))
+    expect(deleted.success).toBe(true)
+    expect(deleted.output).toContain('测试任务')
+    expect(owned.deleteTask).toHaveBeenCalledWith('assistant-1')
+
+    const foreign = makeSupervisor({
+      deleteTask: vi.fn().mockReturnValue({ ok: false, reason: 'not_owned', title: '用户的任务' }),
+    })
+    const refused = await manageTasks({ action: 'delete', task_id: 'tab-1' }, makeExecutor(foreign))
+    expect(refused.success).toBe(false)
+    expect(refused.error).toContain('不是你派出的')
+
+    const missing = await manageTasks({ action: 'delete' }, makeExecutor(makeSupervisor()))
+    expect(missing.success).toBe(false)
+  })
+
+  it('步骤标题里删除也用当前语言', async () => {
+    const supervisor = makeSupervisor({
+      deleteTask: vi.fn().mockReturnValue({ ok: true, title: '测试任务' }),
+    })
+    const executor = makeExecutor(supervisor)
+    await manageTasks({ action: 'delete', task_id: 'assistant-1' }, executor)
+    expect(vi.mocked(executor.addStep).mock.calls[0][0]).toMatchObject({
+      type: 'tool_call',
+      content: '任务管理：删除任务',
+    })
+  })
+
   it('stop 缺 task_id 失败', async () => {
     const supervisor = makeSupervisor()
     const result = await manageTasks({ action: 'stop' }, makeExecutor(supervisor))

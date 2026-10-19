@@ -351,6 +351,7 @@ let cleanupAgentErrorForHistory: (() => void) | null = null
 let cleanupAgentRunningForHistory: (() => void) | null = null
 let cleanupSearchMatch: (() => void) | null = null
 let cleanupConversationTitle: (() => void) | null = null
+let cleanupTaskDeleted: (() => void) | null = null
 let silentRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
 const scheduleSilentRefresh = () => {
@@ -377,6 +378,30 @@ onMounted(() => {
     if (!isCurrentSearchRequest(sidebarSearchRequestId(fullTextRequestId.value), payload.requestId)) return
     appendFullTextHit(payload.summary)
   })
+  cleanupTaskDeleted = window.electronAPI.history.onTaskDeleted(({ agentKey, sessionIds }) => {
+    const ids = new Set(sessionIds)
+    const gone = (record: { id: string; agentKey?: string }) => ids.has(record.id) || record.agentKey === agentKey
+    summaries.value = summaries.value.filter(s => !gone(s))
+    if (fullTextSearchActive.value) {
+      const before = fullTextSummaries.value.length
+      fullTextSummaries.value = fullTextSummaries.value.filter(s => !gone(s))
+      const removed = before - fullTextSummaries.value.length
+      if (removed > 0 && fullTextTotalMatched.value > 0) {
+        fullTextTotalMatched.value = Math.max(0, fullTextTotalMatched.value - removed)
+      }
+    }
+    const tabs = terminalStore.tabs.filter(tab =>
+      tab.id === agentKey ||
+      tab.agentId === agentKey ||
+      (!!tab.agentState?.sessionId && ids.has(tab.agentState.sessionId))
+    )
+    for (const tab of tabs) {
+      void terminalStore.closeTab(tab.id, true)
+    }
+    for (const id of sessionIds) {
+      void configStore.removeConversationMetadata(id)
+    }
+  })
   cleanupConversationTitle = window.electronAPI.history.onConversationTitle(({ sessionId, title }) => {
     const idx = summaries.value.findIndex(s => s.id === sessionId)
     if (idx >= 0) {
@@ -397,6 +422,7 @@ onUnmounted(() => {
   cleanupAgentErrorForHistory?.()
   cleanupSearchMatch?.()
   cleanupConversationTitle?.()
+  cleanupTaskDeleted?.()
   void window.electronAPI.history.abortSearchAgentRecords()
 })
 
