@@ -15,7 +15,7 @@ import { oemResolved } from '@shared/oem-resolve'
 import { useTerminalStore } from '../stores/terminal'
 import { useComposerQuoteStore } from '../stores/composer-quote'
 import AgentPlanView from './AgentPlanView.vue'
-import AssignedByBanner from './AssignedByBanner.vue'
+import AssignedByHint from './AssignedByHint.vue'
 import AiComposer from './AiComposer.vue'
 import DropOverlay from './DropOverlay.vue'
 import AiProfileSelect from './AiProfileSelect.vue'
@@ -2564,10 +2564,13 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
             {{ t('ai.agentWelcome.notProbed') }}
           </div>
         </div>
+        <!-- 联络派出的任务：顶栏正中淡入一行字写明是谁派的；打开、用户滚动时出现，停一阵淡出（不占高度，不压对话） -->
+        <AssignedByHint
+          :assigned-by="currentAssignedBy"
+          :active="tabActive && visible"
+          :scroll-source="messagesRef"
+        />
       </div>
-
-      <!-- 联络派出的任务：对话顶上写明白是谁派的（固定，不随对话滚走） -->
-      <AssignedByBanner v-if="!peek" :assigned-by="currentAssignedBy" />
 
       <!-- 错误诊断提示（Agent 执行时隐藏） -->
       <div v-if="lastError && !isAgentRunning" class="error-alert">

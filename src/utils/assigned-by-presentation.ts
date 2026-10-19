@@ -3,15 +3,15 @@ import type { Component } from 'vue'
 import { isAssignedBy, type AssignedBy } from '@shared/types'
 
 /**
- * 「谁派的」在界面上怎么说：侧栏行首的小图标和对话顶上那一行字共用这一份，
+ * 「谁派的」在界面上怎么说：侧栏行首的小图标和对话顶栏里那一行字共用这一份，
  * 图标与文案各只此一处。新增一种派出方时，类型会逼着在这里补一项。
  */
 export interface AssignedByPresentation {
   icon: Component
   /** 图标旁的说明（短） */
   hintKey: string
-  /** 对话顶上那一行字 */
-  bannerKey: string
+  /** 对话顶栏正中那一行字 */
+  hintLineKey: string
 }
 
 export const ASSIGNED_BY_PRESENTATION: Record<AssignedBy, AssignedByPresentation> = {
@@ -19,7 +19,7 @@ export const ASSIGNED_BY_PRESENTATION: Record<AssignedBy, AssignedByPresentation
   companion: {
     icon: Send,
     hintKey: 'welcome.conversations.assignedByCompanion',
-    bannerKey: 'ai.assignedByBanner.companion',
+    hintLineKey: 'ai.assignedByHint.companion',
   },
 }
 

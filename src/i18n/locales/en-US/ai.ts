@@ -256,7 +256,7 @@ export default {
     errorDetected: 'Error Detected',
     aiDiagnose: 'AI Diagnose',
     closeError: 'Close Error',
-    assignedByBanner: {
+    assignedByHint: {
       companion: 'This task was sent out by {name}',
     },
     selectedContent: 'Terminal Content Selected',

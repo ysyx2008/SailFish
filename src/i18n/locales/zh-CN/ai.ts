@@ -256,7 +256,7 @@ export default {
     errorDetected: '检测到错误',
     aiDiagnose: 'AI 诊断',
     closeError: '关闭错误提示',
-    assignedByBanner: {
+    assignedByHint: {
       companion: '这是{name}派出的任务',
     },
     selectedContent: '已选中终端内容',
