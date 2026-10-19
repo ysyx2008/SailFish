@@ -49,6 +49,14 @@ export interface FileInfo {
   size?: number
 }
 
+// 技能按名字排：中文按拼音、英文按字母（与应用里其他列表同为 zh-CN 排法），另外让数字按大小比
+const skillNameCollator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
+
+/** 技能列表的顺序。名字一样（连大小写差异也算）时按 id 定，保证每次开面板顺序都一样 */
+function compareSkillsByName(a: { label: string; id: string }, b: { label: string; id: string }): number {
+  return skillNameCollator.compare(a.label, b.label) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+}
+
 export function useMentions(
   inputText: Ref<string>,
   currentTabId: Ref<string> | ComputedRef<string>,
@@ -480,6 +488,7 @@ export function useMentions(
           icon: '✨',
           description: s.description
         }))
+        .sort(compareSkillsByName)
       const userItems = userSkills
         .filter(s => s.enabled)
         .filter(s => matches(s.name, s.id, s.description))
@@ -491,7 +500,9 @@ export function useMentions(
           icon: '✨',
           description: s.description
         }))
+        .sort(compareSkillsByName)
       // 加号 / 星标打开的面板要能逛全，不设上限；@ 是边打字边挑，列太长反而难选
+      // （先排好再截，@ 里取到的是排在前面的那些）
       const all = [...userItems, ...builtinItems]
       suggestions.value = triggerPosition.value < 0 ? all : all.slice(0, AT_SKILL_LIMIT)
       selectedIndex.value = 0

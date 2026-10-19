@@ -187,3 +187,62 @@ describe('在输入框里敲 @ 选技能（保持原样）', () => {
     expect(mentions.showMenu.value).toBe(false)
   })
 })
+
+describe('技能列表的顺序（按名字拼音排）', () => {
+  const row = (id: string, name: string): SkillRow => ({ id, name, description: '', enabled: true })
+  const idsOf = (mentions: ReturnType<typeof setup>['mentions']) => mentions.suggestions.value.map(s => s.id)
+
+  it('中文名按拼音：待办、飞书、日历、邮件', async () => {
+    builtinList.mockResolvedValue([row('mail', '邮件'), row('feishu', '飞书'), row('todo', '待办'), row('cal', '日历')])
+    userList.mockResolvedValue([])
+    const { mentions } = setup()
+    mentions.openSkillMenu()
+    await flush()
+    expect(idsOf(mentions)).toEqual(['todo', 'feishu', 'cal', 'mail'])
+  })
+
+  it('中文名在前、英文名在后；英文按字母，数字按大小', async () => {
+    builtinList.mockResolvedValue([
+      row('word', 'Word'), row('j10', '技能 10'), row('excel', 'Excel'), row('j2', '技能 2'), row('todo', '待办'),
+    ])
+    userList.mockResolvedValue([])
+    const { mentions } = setup()
+    mentions.openSkillMenu()
+    await flush()
+    expect(idsOf(mentions)).toEqual(['todo', 'j2', 'j10', 'excel', 'word'])
+  })
+
+  it('「我装的」「内置」两组照旧分开，各排各的', async () => {
+    builtinList.mockResolvedValue([row('word', 'Word'), row('excel', 'Excel')])
+    userList.mockResolvedValue([row('zed', 'Zed'), row('ant', 'Ant')])
+    const { mentions } = setup()
+    mentions.openSkillMenu()
+    await flush()
+    expect(idsOf(mentions)).toEqual(['user:ant', 'user:zed', 'excel', 'word'])
+  })
+
+  it('名字一样（连大小写差异也算）时按 id 定，每次顺序都一样', async () => {
+    const rows = [row('b', 'Excel'), row('c', 'excel'), row('a', 'EXCEL')]
+    for (const input of [rows, [...rows].reverse()]) {
+      builtinList.mockResolvedValue(input)
+      userList.mockResolvedValue([])
+      const { mentions } = setup()
+      mentions.openSkillMenu()
+      await flush()
+      expect(idsOf(mentions)).toEqual(['a', 'b', 'c'])
+    }
+  })
+
+  it('@ 里也按这个顺序，先排好再取前 30 个', async () => {
+    const many = Array.from({ length: 53 }, (_, i) => row(`s${i}`, `技能 ${i}`)).reverse()
+    builtinList.mockResolvedValue(many)
+    userList.mockResolvedValue([])
+    const { mentions } = setup()
+    mentions.detectTrigger('@s', 2)
+    await flush()
+    const ids = idsOf(mentions)
+    expect(ids).toHaveLength(30)
+    expect(ids[0]).toBe('s0')
+    expect(ids[29]).toBe('s29')
+  })
+})
