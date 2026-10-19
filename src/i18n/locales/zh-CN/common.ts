@@ -433,7 +433,7 @@ export default {
   conn: {
     connected: '已连接',
     channels: '远程渠道',
-    mcpServers: 'MCP',
+    mcpServers: 'MCP 连接器',
     noChannels: '未配置渠道',
     goSetup: '去设置',
     connect: '连接',

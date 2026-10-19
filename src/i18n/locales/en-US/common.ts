@@ -434,7 +434,7 @@ export default {
   conn: {
     connected: 'connected',
     channels: 'Channels',
-    mcpServers: 'MCP',
+    mcpServers: 'MCP Connectors',
     noChannels: 'No channels configured',
     goSetup: 'Set up',
     connect: 'Connect',
