@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, useSlots, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRandomPlaceholder } from '../composables/useRandomPlaceholder'
-import { X, Plus, Square, ArrowUp, Check, Mic, MicOff, Loader2, Volume2, Pencil, CornerDownLeft, GripVertical, Sparkles, RotateCcw } from 'lucide-vue-next'
+import { X, Plus, Square, ArrowUp, Check, Mic, MicOff, Loader2, Volume2, Pencil, CornerDownLeft, GripVertical, Sparkles, RotateCcw, Search } from 'lucide-vue-next'
 import { useMentions } from '../composables/useMentions'
 import {
   formatSlashInvocation,
@@ -25,6 +25,7 @@ import type { ContextCompositionId, ContextCompositionNode } from '@shared/types
 import HoverTipOverlay from './HoverTipOverlay.vue'
 import ComposerEditor from './ComposerEditor.vue'
 import ComposerFileChip from './ComposerFileChip.vue'
+import ComposerAddMenu from './ComposerAddMenu.vue'
 import AttachmentContextMenu from './AttachmentContextMenu.vue'
 import { useAttachmentActions } from '../composables/useAttachmentActions'
 import { COMPOSER_CHIP_CHAR } from '../composables/composer-editor-text'
@@ -34,6 +35,8 @@ import { isSameAttachment, useComposerAttachmentChips } from '../composables/use
 import { SUPPORTED_IMAGE_TYPES } from '../composables/useImageUpload'
 import { useHoverTip, BUTTON_HOVER_TIP_DELAY_MS } from '../composables/useHoverTip'
 import { useOutputTokenRate } from '../composables/useOutputTokenRate'
+import { isSameSkillId, isUserSkillId } from '@sailfish/shared-types'
+import { isFlowArrowKey, moveInFlow, type TileBox } from '../composables/skill-flow-nav'
 
 interface ContextStats {
   tokenEstimate: number
@@ -338,10 +341,50 @@ const showSkillChipRow = computed(
   () => configStore.showConversationSkillChips
 )
 const hasActiveSkillChips = computed(() => showSkillChipRow.value && skillChips.value.length > 0)
-const showInlineSkillPicker = computed(() => showSkillChipRow.value && skillChips.value.length === 0)
+
+/**
+ * 技能胶囊那一排的高度，固定死：
+ * - 欢迎页里它出现时要把这么高的外边距抵消掉，才不会撑动整页；
+ * - 技能面板开在上方时，要在还没有这一排时先留出同样大小的一格。
+ * 前提：输入框按两行布局排（有左下角那块 footer-left 插槽，行距为 0），
+ * 这一排出现时输入框恰好长高这么多。去掉那块插槽或改了行距，这里要跟着改。
+ */
+const SKILL_CHIPS_ROW_H = 27
+const skillChipsRowVars = { '--skill-chips-row-h': `${SKILL_CHIPS_ROW_H}px` }
 
 function onSkillPicked(skill: { id: string; name: string; description?: string }) {
   void conversationSkills.pin(props.currentTabId, skill)
+}
+
+/** 这场对话眼下开着的那颗技能胶囊；技能列表里的勾据此打 */
+function chipForSkill(skillId: string): ConversationSkillChip | undefined {
+  return skillChips.value.find(c => isSameSkillId(c.id, skillId))
+}
+
+function isSkillOn(skillId: string): boolean {
+  return chipForSkill(skillId) !== undefined
+}
+
+const togglingSkillIds = new Set<string>()
+
+/** 在技能列表里点一个：没开就开上，开着就摘掉。上一下还没落定时先不理，免得连点打架 */
+async function onSkillToggled(skill: { id: string; name: string; description?: string }) {
+  if (togglingSkillIds.has(skill.id)) return
+  togglingSkillIds.add(skill.id)
+  try {
+    const chip = chipForSkill(skill.id)
+    if (!chip) {
+      await conversationSkills.pin(props.currentTabId, skill)
+    } else if (conversationSkills.canRemove(props.currentTabId, chip)) {
+      hideSkillChipTip()
+      await conversationSkills.unpin(props.currentTabId, chip.id)
+    }
+  } catch (err) {
+    // 调用方不 await 这里；通道出错别冒成未处理的 rejection，界面上勾保持原样即可
+    console.error('切换技能失败:', err)
+  } finally {
+    togglingSkillIds.delete(skill.id)
+  }
 }
 
 function skillChipInsertStyle(id: string): Record<string, string> | undefined {
@@ -353,7 +396,7 @@ function skillChipInsertStyle(id: string): Record<string, string> | undefined {
 function skillChipTitle(s: ConversationSkillChip): string {
   if (s.unavailable) return t('ai.conversationSkillUnavailableTip')
   if (!conversationSkills.canRemove(props.currentTabId, s)) return t('ai.conversationSkillLockedTip')
-  if (!s.id.startsWith('user:')) {
+  if (!isUserSkillId(s.id)) {
     const key = `skillSettings.builtinSkillDescs.${s.id}`
     if (te(key)) return String(t(key))
   }
@@ -783,7 +826,7 @@ const {
   goBack: mentionGoBack,
   handleKeyDown: handleMentionKeyDown,
   expandMentions
-} = useMentions(inputText, currentTabIdRef, uploadedDocsRef, onSkillPicked)
+} = useMentions(inputText, currentTabIdRef, uploadedDocsRef, onSkillPicked, onSkillToggled)
 
 // ---- 文字里的文件胶囊 ----
 const {
@@ -954,7 +997,11 @@ const mentionListCanScrollDown = ref(false)
 let mentionMenuRepositionBound = false
 
 const MENTION_MENU_GAP = 8
+/** 菜单和窗口上下边缘之间留的空，不贴着窗口底边 / 顶边 */
+const MENTION_MENU_EDGE = 20
 const MENTION_MENU_MAX_H = 320
+/** 技能多选面板要一屏尽量多看，比 @ 菜单高 */
+const SKILL_PICKER_MAX_H = 480
 
 function updateMentionListOverflow() {
   const el = mentionListEl.value
@@ -971,12 +1018,19 @@ function updateMentionMenuPosition() {
   const anchor = inputContainerEl.value
   if (!anchor) return
   const rect = anchor.getBoundingClientRect()
-  const spaceAbove = rect.top - MENTION_MENU_GAP
-  const spaceBelow = window.innerHeight - rect.bottom - MENTION_MENU_GAP
+  // 技能面板开着、胶囊那一排还没出现：开在上方时先给它留一格。
+  // 开上第一个技能时输入框往上长进这一格，面板不用往上跳。
+  const chipRowRoom =
+    skillMenuStandalone.value && showSkillChipRow.value && !props.overlay && skillChips.value.length === 0
+      ? SKILL_CHIPS_ROW_H
+      : 0
+  const spaceAbove = rect.top - MENTION_MENU_GAP - MENTION_MENU_EDGE - chipRowRoom
+  const spaceBelow = window.innerHeight - rect.bottom - MENTION_MENU_GAP - MENTION_MENU_EDGE
   const placeBelow = spaceBelow > spaceAbove
   mentionMenuBelow.value = placeBelow
   const available = placeBelow ? spaceBelow : spaceAbove
-  const maxH = Math.max(80, Math.min(MENTION_MENU_MAX_H, available))
+  const cap = skillMenuStandalone.value ? SKILL_PICKER_MAX_H : MENTION_MENU_MAX_H
+  const maxH = Math.max(80, Math.min(cap, available))
   const left = Math.max(8, Math.min(rect.left, window.innerWidth - 16))
   const width = Math.min(rect.width, window.innerWidth - left - 8)
   mentionMenuStyle.value = placeBelow
@@ -992,7 +1046,7 @@ function updateMentionMenuPosition() {
     : {
         position: 'fixed',
         top: 'auto',
-        bottom: `${window.innerHeight - rect.top + MENTION_MENU_GAP}px`,
+        bottom: `${window.innerHeight - rect.top + MENTION_MENU_GAP + chipRowRoom}px`,
         left: `${left}px`,
         width: `${width}px`,
         maxHeight: `${maxH}px`,
@@ -1019,6 +1073,48 @@ function openSkillPicker() {
   openSkillMenu()
 }
 
+// ---- 加号菜单（添加文件 / 添加技能） ----
+const addMenuOpen = ref(false)
+const addMenuByKeyboard = ref(false)
+const addBtnEl = ref<HTMLElement | null>(null)
+
+function onAddButtonClick(event: MouseEvent) {
+  if (props.isAttaching) return
+  if (addMenuOpen.value) {
+    addMenuOpen.value = false
+    return
+  }
+  // 技能列表和 @ 菜单同占输入框上方，别让两张菜单叠着
+  const hadSkillPanel = skillMenuStandalone.value
+  closeMentionMenu()
+  // 焦点原在技能搜索框里，搜索框没了就还给输入框，不落到页面上
+  if (hadSkillPanel) focusInput()
+  // 键盘触发的点击没有鼠标位置（detail 为 0）
+  addMenuByKeyboard.value = event.detail === 0
+  addMenuOpen.value = true
+}
+
+function closeAddMenu() {
+  addMenuOpen.value = false
+}
+
+function onAddMenuAttach() {
+  closeAddMenu()
+  props.selectAttachment()
+}
+
+function onAddMenuSkill() {
+  closeAddMenu()
+  openSkillPicker()
+}
+
+watch(
+  () => props.isAttaching,
+  (attaching) => {
+    if (attaching) closeAddMenu()
+  }
+)
+
 function onComposerSurfaceMouseDown(event: MouseEvent) {
   const target = event.target as HTMLElement | null
   if (!target) return
@@ -1036,13 +1132,92 @@ function onStandaloneSkillSearch(event: Event) {
 }
 
 function handleSkillSearchKeyDown(event: KeyboardEvent) {
+  // 拼音候选框开着时，方向键 / 回车 / Esc 是输入法的，不是列表的
+  if (event.isComposing || event.keyCode === 229) return
   if (event.key === 'Escape') {
     event.preventDefault()
     closeMentionMenuAndFocusInput()
     return
   }
+  // Tab 照常把焦点移走（面板随之收起），不拿来开关技能
+  if (event.key === 'Tab') return
+  // 结果还在加载：眼前看不到目标，回车不能去改技能
+  if (isMentionLoading.value && event.key === 'Enter') {
+    event.preventDefault()
+    return
+  }
+  if (isFlowArrowKey(event.key)) {
+    const horizontal = event.key === 'ArrowLeft' || event.key === 'ArrowRight'
+    // 搜索框里已经打了字时，左右留给改字
+    if (horizontal && mentionSearchQuery.value) return
+    event.preventDefault()
+    skillKeyboardNav.value = true
+    setMentionSelectedIndex(moveInFlow(mentionSelectedIndex.value, event.key, skillTileBoxes()))
+    return
+  }
   handleMentionKeyDown(event)
 }
+
+/** 每个技能标签此刻在屏幕上的位置（按序号排；上下键要找隔壁一行里最近的那个） */
+function skillTileBoxes(): Array<TileBox | undefined> {
+  const boxes: Array<TileBox | undefined> = Array.from({ length: mentionSuggestions.value.length }, () => undefined)
+  mentionListEl.value?.querySelectorAll<HTMLElement>('.mention-item[data-index]').forEach((el) => {
+    const i = Number(el.dataset.index)
+    if (!(i >= 0 && i < boxes.length)) return
+    const r = el.getBoundingClientRect()
+    boxes[i] = { left: r.left, top: r.top, width: r.width, height: r.height }
+  })
+  return boxes
+}
+
+/** 用键盘走的时候，高亮的标签加一圈描边；鼠标一动就撤掉 */
+const skillKeyboardNav = ref(false)
+let lastSkillPointer = { x: Number.NaN, y: Number.NaN }
+
+/**
+ * 鼠标在标签上移动才跟着换高亮。键盘走到看不见的地方时列表会自己滚，
+ * 滚动后浏览器会对停着不动的鼠标补发事件，那种不算（位置没变）。
+ */
+function onSkillTilePointer(event: MouseEvent, index: number) {
+  if (event.clientX === lastSkillPointer.x && event.clientY === lastSkillPointer.y) return
+  lastSkillPointer = { x: event.clientX, y: event.clientY }
+  skillKeyboardNav.value = false
+  if (mentionSelectedIndex.value !== index) setMentionSelectedIndex(index)
+}
+
+/** 面板里分「我装的」「内置」两组；每项带着它在整份列表里的序号（高亮、键盘都按这个序号） */
+const skillGroups = computed(() => {
+  if (!skillMenuStandalone.value) return []
+  type Item = { suggestion: (typeof mentionSuggestions.value)[number]; index: number }
+  const mine: Item[] = []
+  const builtin: Item[] = []
+  mentionSuggestions.value.forEach((suggestion, index) => {
+    ;(isUserSkillId(suggestion.id) ? mine : builtin).push({ suggestion, index })
+  })
+  return [
+    { key: 'mine', title: t('mentions.skillGroupMine'), items: mine },
+    { key: 'builtin', title: t('mentions.skillGroupBuiltin'), items: builtin },
+  ].filter(group => group.items.length > 0)
+})
+
+const skillOnCount = computed(() => mentionSuggestions.value.filter(s => isSkillOn(s.id)).length)
+
+/** 技能面板里高亮的那一个：底部一栏写它的全名和简介 */
+const activeSkillSuggestion = computed(() =>
+  skillMenuStandalone.value ? mentionSuggestions.value[mentionSelectedIndex.value] : undefined
+)
+
+watch(skillMenuStandalone, (open) => {
+  if (!open) skillKeyboardNav.value = false
+})
+
+/**
+ * 加载中的转圈：技能面板重新搜索时，旧的标签留在原地直到新结果到，不整块换成转圈
+ * （面板这么大，换一下整个列表会抖）；只有还没有东西可显示时才转圈。
+ */
+const showMentionSpinner = computed(
+  () => isMentionLoading.value && !(skillMenuStandalone.value && mentionSuggestions.value.length > 0)
+)
 
 const appendText = (text: string) => {
   if (!text.trim()) return
@@ -1101,8 +1276,7 @@ watch(
 watch(mentionSelectedIndex, (newIndex) => {
   nextTick(() => {
     if (!mentionListEl.value) return
-    const items = mentionListEl.value.querySelectorAll('.mention-item')
-    const selectedItem = items[newIndex] as HTMLElement | undefined
+    const selectedItem = mentionListEl.value.querySelector<HTMLElement>(`.mention-item[data-index="${newIndex}"]`)
     selectedItem?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     updateMentionListOverflow()
   })
@@ -1125,8 +1299,16 @@ watch(showMentionMenu, async (open) => {
   }
 })
 
+// @ 菜单开着时点星标：菜单没有收起再打开，只是换成了技能面板，搜索框也要接过焦点
+watch(skillMenuStandalone, async (on) => {
+  if (!on) return
+  await nextTick()
+  skillMenuSearchEl.value?.focus()
+})
+
 watch(
-  [mentionSuggestions, mentionMenuType, isMentionLoading],
+  // 技能胶囊那一排出现 / 消失会改变输入框高度，开着的列表要跟着挪
+  [mentionSuggestions, mentionMenuType, isMentionLoading, hasActiveSkillChips],
   () => {
     if (!showMentionMenu.value) return
     nextTick(() => {
@@ -1157,8 +1339,10 @@ const handleInputBlur = () => {
 }
 
 const selectSuggestion = (suggestion: typeof mentionSuggestions.value[0]) => {
+  // 技能列表是多选：点一个不收起，焦点留在搜索框，接着点下一个
+  const keepOpen = skillMenuStandalone.value
   doSelectSuggestion(suggestion)
-  nextTick(focusInput)
+  if (!keepOpen) nextTick(focusInput)
 }
 
 const handleInputKeyDown = (event: KeyboardEvent) => {
@@ -1362,6 +1546,9 @@ const handleSend = async (opts?: { enqueue?: boolean }) => {
 
 const slots = useSlots()
 const isTwoRow = computed(() => !props.overlay && !!slots['footer-left'])
+
+// 加号换了位置（单行 ↔ 两行）或整个收起（overlay）时，菜单原来挂着的那颗按钮没了，先收起来
+watch([isTwoRow, () => props.overlay], closeAddMenu)
 
 function formatLiveTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2).replace(/\.?0+$/, '')}M`
@@ -1609,9 +1796,11 @@ const handleSendClick = (event: MouseEvent) => {
   <div
     ref="composerRootEl"
     class="composer-root"
+    :style="skillChipsRowVars"
     @drop.capture="onComposerDropCapture"
     :class="{
       'composer-root-embedded': embedded,
+      'composer-root-chips-in-gap': embedded && !overlay && hasActiveSkillChips,
       'composer-root-embedded-filled': embedded && hasComposerAttachments,
       'composer-root-overlay': overlay,
       'composer-root-overlay-filled': overlay && hasComposerAttachments
@@ -1913,23 +2102,18 @@ const handleSendClick = (event: MouseEvent) => {
         </div>
       </div>
       <button
-        v-if="!overlay && !isTwoRow && showInlineSkillPicker"
-        type="button"
-        class="upload-btn composer-skill-picker-btn"
-        :class="{ 'is-open': skillMenuStandalone }"
-        :aria-label="t('ai.conversationSkillAdd')"
-        :title="t('ai.conversationSkillAdd')"
-        @mousedown.prevent
-        @click="openSkillPicker"
-      >
-        <Sparkles :size="14" :stroke-width="1.75" />
-      </button>
-      <button
         v-if="!overlay && !isTwoRow"
+        ref="addBtnEl"
+        type="button"
         class="upload-btn"
+        :class="{ 'is-open': addMenuOpen }"
         :disabled="isAttaching"
-        :title="t('ai.attach')"
-        @click="selectAttachment"
+        :title="t('ai.addMenu')"
+        :aria-label="t('ai.addMenu')"
+        aria-haspopup="menu"
+        :aria-expanded="addMenuOpen"
+        @mousedown.prevent
+        @click="onAddButtonClick"
       >
         <span v-if="isAttaching" class="upload-spinner"></span>
         <Plus v-else :size="18" />
@@ -1968,18 +2152,16 @@ const handleSendClick = (event: MouseEvent) => {
         v-if="showMentionMenu"
         ref="mentionMenuEl"
         class="mention-menu"
-        :class="{ 'place-below': mentionMenuBelow }"
+        :class="{ 'place-below': mentionMenuBelow, 'is-skill-picker': skillMenuStandalone }"
         :style="mentionMenuStyle"
       >
         <div v-if="mentionMenuType === null" class="mention-menu-header">
           {{ t('mentions.selectCommand') }}
         </div>
-        <div v-else class="mention-menu-header" :class="{ 'has-search': skillMenuStandalone }">
-          <span v-if="mentionMenuType === 'file'">📄 {{ t('mentions.file') }}</span>
-          <span v-else-if="mentionMenuType === 'docs'">📚 {{ t('mentions.docs') }}</span>
-          <span v-else-if="mentionMenuType === 'skill'">✨ {{ t('mentions.skill') }}</span>
+        <!-- 技能面板的搜索栏：没有表单式的框，前面一个放大镜，右边写开了几个 -->
+        <div v-else-if="skillMenuStandalone" class="skill-picker-search">
+          <Search :size="15" class="skill-picker-search-icon" aria-hidden="true" />
           <input
-            v-if="skillMenuStandalone"
             ref="skillMenuSearchEl"
             class="mention-skill-search"
             :value="mentionSearchQuery"
@@ -1988,10 +2170,18 @@ const handleSendClick = (event: MouseEvent) => {
             @keydown="handleSkillSearchKeyDown"
             @blur="handleInputBlur"
           />
+          <span v-if="mentionSuggestions.length > 0" class="skill-picker-count">
+            {{ t('mentions.skillOn') }} <b>{{ skillOnCount }}</b> · {{ t('mentions.skillTotal', { n: mentionSuggestions.length }) }}
+          </span>
+        </div>
+        <div v-else class="mention-menu-header">
+          <span v-if="mentionMenuType === 'file'">📄 {{ t('mentions.file') }}</span>
+          <span v-else-if="mentionMenuType === 'docs'">📚 {{ t('mentions.docs') }}</span>
+          <span v-else-if="mentionMenuType === 'skill'">✨ {{ t('mentions.skill') }}</span>
           <span v-if="mentionCurrentDir" class="mention-path" :title="mentionCurrentDir">{{ mentionCurrentDir }}</span>
         </div>
 
-        <div v-if="isMentionLoading" class="mention-loading">
+        <div v-if="showMentionSpinner" class="mention-loading">
           <span class="mention-spinner"></span>
           {{ t('common.loading') }}
         </div>
@@ -2006,12 +2196,59 @@ const handleSendClick = (event: MouseEvent) => {
             'can-scroll-down': mentionListCanScrollDown
           }"
         >
-          <div ref="mentionListEl" class="mention-list" @scroll="updateMentionListOverflow">
+          <!-- 技能面板：分组的标签，宽度随名字，名字完整；开着的是蓝色带勾的 -->
+          <div
+            v-if="skillMenuStandalone"
+            ref="mentionListEl"
+            class="mention-list skill-picker-body"
+            role="listbox"
+            aria-multiselectable="true"
+            tabindex="-1"
+            @focus="skillMenuSearchEl?.focus()"
+            @scroll="updateMentionListOverflow"
+          >
+            <section
+              v-for="group in skillGroups"
+              :key="group.key"
+              class="skill-group"
+              role="group"
+              :aria-label="group.title"
+            >
+              <div class="skill-group-head" aria-hidden="true">
+                {{ group.title }}<span class="skill-group-count">{{ group.items.length }}</span><span class="skill-group-rule"></span>
+              </div>
+              <div class="skill-cloud">
+                <div
+                  v-for="{ suggestion, index } in group.items"
+                  :key="suggestion.id"
+                  class="mention-item skill-pill"
+                  :class="{
+                    active: index === mentionSelectedIndex,
+                    'is-on': isSkillOn(suggestion.id),
+                    'is-kb': skillKeyboardNav && index === mentionSelectedIndex
+                  }"
+                  :data-index="index"
+                  role="option"
+                  :aria-selected="isSkillOn(suggestion.id)"
+                  @mousedown.prevent="$event.button === 0 && selectSuggestion(suggestion)"
+                  @mousemove="onSkillTilePointer($event, index)"
+                >
+                  <span class="mention-label">{{ suggestion.label }}</span>
+                  <!-- 勾挂在角上、不占宽度：开 / 摘时标签不变宽，不挤动同一行的其他标签 -->
+                  <span v-if="isSkillOn(suggestion.id)" class="skill-pill-badge" aria-hidden="true">
+                    <Check :size="9" :stroke-width="4" />
+                  </span>
+                </div>
+              </div>
+            </section>
+          </div>
+          <div v-else ref="mentionListEl" class="mention-list" @scroll="updateMentionListOverflow">
             <div
               v-for="(suggestion, index) in mentionSuggestions"
               :key="suggestion.id"
               class="mention-item"
               :class="{ active: index === mentionSelectedIndex }"
+              :data-index="index"
               @mousedown.prevent="selectSuggestion(suggestion)"
               @mouseenter="setMentionSelectedIndex(index)"
             >
@@ -2026,9 +2263,22 @@ const handleSendClick = (event: MouseEvent) => {
             </div>
           </div>
         </div>
-        <div class="mention-hint">
+        <!-- 技能面板底部：高亮那个的全名和简介（固定两行高），右边一行淡字的按键提示 -->
+        <div v-if="skillMenuStandalone" class="skill-picker-foot">
+          <div class="mention-skill-detail">
+            <template v-if="activeSkillSuggestion">
+              <span class="mention-skill-detail-name">{{ activeSkillSuggestion.label }}</span>
+              <span v-if="activeSkillSuggestion.description" class="mention-skill-detail-desc">{{ activeSkillSuggestion.description }}</span>
+            </template>
+          </div>
+          <div class="skill-picker-keys">
+            <span><kbd>↵</kbd>{{ t('mentions.skillHintToggle') }}</span>
+            <span><kbd>esc</kbd>{{ t('mentions.skillHintClose') }}</span>
+          </div>
+        </div>
+        <div v-else class="mention-hint">
           <span
-            v-if="mentionMenuType !== null && !skillMenuStandalone"
+            v-if="mentionMenuType !== null"
             class="mention-back-btn"
             @mousedown.prevent="mentionGoBack(); focusInput()"
           >
@@ -2043,26 +2293,30 @@ const handleSendClick = (event: MouseEvent) => {
       </div>
       </Teleport>
 
+      <ComposerAddMenu
+        :open="addMenuOpen"
+        :anchor="addBtnEl"
+        :focus-first="addMenuByKeyboard"
+        @close="closeAddMenu"
+        @attach="onAddMenuAttach"
+        @skill="onAddMenuSkill"
+      />
+
       <!-- 两行模式底栏 -->
       <div v-if="isTwoRow" class="input-bottom-bar">
         <div class="input-footer-left">
           <button
-            v-if="showInlineSkillPicker"
+            ref="addBtnEl"
             type="button"
-            class="upload-btn composer-skill-picker-btn"
-            :class="{ 'is-open': skillMenuStandalone }"
-            :aria-label="t('ai.conversationSkillAdd')"
-            :title="t('ai.conversationSkillAdd')"
-            @mousedown.prevent
-            @click="openSkillPicker"
-          >
-            <Sparkles :size="14" :stroke-width="1.75" />
-          </button>
-          <button
             class="upload-btn"
+            :class="{ 'is-open': addMenuOpen }"
             :disabled="isAttaching"
-            :title="t('ai.attach')"
-            @click="selectAttachment"
+            :title="t('ai.addMenu')"
+            :aria-label="t('ai.addMenu')"
+            aria-haspopup="menu"
+            :aria-expanded="addMenuOpen"
+            @mousedown.prevent
+            @click="onAddButtonClick"
           >
             <span v-if="isAttaching" class="upload-spinner"></span>
             <Plus v-else :size="18" />
@@ -2472,7 +2726,15 @@ const handleSendClick = (event: MouseEvent) => {
   gap: 6px;
 }
 
+/* 欢迎页：胶囊那一排长进输入框上方的空隙、不占版面——外边距把它的高度抵消掉，
+   整页不重新居中，标题、输入框底边和下面的技能面板都停在原地 */
+.composer-root-chips-in-gap {
+  margin-top: calc(-1 * var(--skill-chips-row-h));
+}
+
 .composer-skill-chips {
+  box-sizing: border-box;
+  height: var(--skill-chips-row-h);
   --skill-fx-fill-start: color-mix(in srgb, var(--accent-decorative-primary) 22%, var(--bg-hover));
   --skill-fx-fill-peak: color-mix(in srgb, var(--accent-decorative-primary) 28%, var(--bg-hover));
   --skill-fx-edge: rgba(var(--accent-decorative-rgb), 0.85);
@@ -3435,7 +3697,7 @@ const handleSendClick = (event: MouseEvent) => {
   cursor: not-allowed;
 }
 
-.upload-btn.composer-skill-picker-btn.is-open {
+.upload-btn.is-open {
   background: rgba(var(--accent-rgb), 0.12);
   color: var(--accent-primary);
 }
@@ -3620,29 +3882,63 @@ const handleSendClick = (event: MouseEvent) => {
   border-bottom: 1px solid var(--border-color);
 }
 
-.mention-menu-header.has-search {
-  flex-wrap: wrap;
+/* 技能面板：圆角、淡边框、柔和投影，和加号菜单是一家人 */
+.mention-menu.is-skill-picker {
+  background: var(--bg-secondary);
+  border-color: color-mix(in srgb, var(--text-primary) 9%, transparent);
+  border-radius: 14px;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--text-primary) 4%, transparent) inset, 0 20px 50px rgba(0, 0, 0, 0.42);
 }
 
+.mention-menu.is-skill-picker .mention-list-wrap::before {
+  background: linear-gradient(to bottom, var(--bg-secondary), transparent);
+}
+
+.mention-menu.is-skill-picker .mention-list-wrap::after {
+  background: linear-gradient(to top, var(--bg-secondary), transparent);
+}
+
+.skill-picker-search {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 38px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.skill-picker-search-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+/* 没有表单式的框：搜索栏整条就是输入区 */
 .mention-skill-search {
-  flex: 1 1 8rem;
+  flex: 1;
   min-width: 0;
-  padding: 4px 8px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
+  padding: 0;
+  border: none;
+  background: transparent;
   color: var(--text-primary);
-  font-size: var(--fs-meta);
-  font-weight: 400;
-}
-
-.mention-skill-search:focus {
+  font-size: 13.5px;
   outline: none;
-  border-color: var(--accent-primary);
 }
 
 .mention-skill-search::placeholder {
   color: var(--text-muted);
+}
+
+.skill-picker-count {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.skill-picker-count b {
+  color: var(--accent-primary);
+  font-weight: 600;
 }
 
 .mention-path {
@@ -3731,6 +4027,166 @@ const handleSendClick = (event: MouseEvent) => {
 
 .mention-item.active {
   background: rgba(var(--accent-rgb), 0.15);
+}
+
+.skill-picker-body {
+  padding: 2px 16px 10px;
+}
+
+.skill-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 0 9px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.skill-group-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.65;
+}
+
+.skill-group-rule {
+  flex: 1;
+  height: 1px;
+  margin-left: 4px;
+  background: var(--border-color);
+}
+
+/* 一行能排几个排几个，宽度随名字，名字完整不截断 */
+.skill-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 6px;
+}
+
+/* 没开着的：一枚淡底的名字，没有边框、没有图标 */
+.mention-item.skill-pill {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  box-shadow: inset 0 0 0 1px transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+  transition: background 0.14s, color 0.14s, box-shadow 0.14s;
+}
+
+.mention-item.skill-pill .mention-label {
+  min-width: 0;
+  font-size: inherit;
+  font-weight: 400;
+  color: inherit;
+}
+
+.mention-item.skill-pill.active {
+  background: color-mix(in srgb, var(--text-primary) 11%, transparent);
+  color: var(--text-primary);
+}
+
+/* 开着的：淡蓝底、蓝色细描边，角上挂勾。只换颜色，尺寸不动 */
+.mention-item.skill-pill.is-on {
+  background: rgba(var(--accent-rgb), 0.14);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.5);
+  color: var(--text-primary);
+}
+
+.mention-item.skill-pill.is-on.active {
+  background: rgba(var(--accent-rgb), 0.22);
+}
+
+.skill-pill-badge {
+  position: absolute;
+  top: -5px;
+  right: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: #fff;
+  box-shadow: 0 0 0 2px var(--bg-secondary);
+  animation: skill-badge-pop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes skill-badge-pop {
+  from { transform: scale(0.3); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skill-pill-badge { animation: none; }
+}
+
+/* 键盘走到的那个：隔一道缝的焦点环，不和「开着」的描边混；鼠标悬停不加 */
+.mention-item.skill-pill.is-kb {
+  outline: 1.5px solid rgba(var(--accent-rgb), 0.85);
+  outline-offset: 2px;
+}
+
+/* 底部：左边高亮那个的全名 + 简介（固定两行高，换标签时面板不跳），右边小键帽提示 */
+.skill-picker-foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.mention-skill-detail {
+  flex: 1;
+  min-width: 0;
+  height: 2.8em;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.mention-skill-detail-name {
+  margin-right: 8px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.skill-picker-keys {
+  flex-shrink: 0;
+  display: flex;
+  gap: 12px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.skill-picker-keys kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-right: 5px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  border-bottom-width: 2px;
+  font-family: inherit;
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--text-secondary);
 }
 
 .mention-more {

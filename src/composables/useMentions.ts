@@ -6,6 +6,7 @@ import { ref, computed, type Ref, type ComputedRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
 import type { ParsedDocument } from '../stores/terminal'
+import { toUserSkillId } from '@sailfish/shared-types'
 
 // @ 命令类型
 export type MentionType = 'file' | 'docs' | 'skill'
@@ -52,7 +53,10 @@ export function useMentions(
   inputText: Ref<string>,
   currentTabId: Ref<string> | ComputedRef<string>,
   uploadedDocs: ComputedRef<ParsedDocument[]>,
-  onSkillPicked?: (skill: { id: string; name: string; description?: string }) => void
+  /** 在输入框里敲 @ 选中技能：加上就好，选完菜单收起 */
+  onSkillPicked?: (skill: { id: string; name: string; description?: string }) => void,
+  /** 从加号 / 星标打开的技能列表里点一个：开上或摘掉由调用方按眼下状态定，列表不收起 */
+  onSkillToggle?: (skill: { id: string; name: string; description?: string }) => void
 ) {
   const { t } = useI18n()
   const terminalStore = useTerminalStore()
@@ -446,13 +450,22 @@ export function useMentions(
     }
   }
 
+  const AT_SKILL_LIMIT = 30
+
+  // 搜索一敲一发；乱序返回时只认最后发出的那一次，免得旧结果盖掉新结果（回车是会真改技能的）
+  let skillLoadSeq = 0
+
   const loadSkillSuggestions = async (query: string) => {
+    const seq = ++skillLoadSeq
     isLoading.value = true
+    hasMore.value = false
+    totalCount.value = 0
     try {
       const [builtins, userSkills] = await Promise.all([
         window.electronAPI.builtinSkill.list(),
         window.electronAPI.userSkill.list()
       ])
+      if (seq !== skillLoadSeq) return
       const q = query.toLowerCase()
       const matches = (name: string, id: string, description: string) =>
         !q || name.toLowerCase().includes(q) || id.toLowerCase().includes(q) || description.toLowerCase().includes(q)
@@ -472,20 +485,23 @@ export function useMentions(
         .filter(s => matches(s.name, s.id, s.description))
         .map(s => ({
           type: 'skill' as MentionType,
-          id: `user:${s.id}`,
+          id: toUserSkillId(s.id),
           label: s.name,
-          value: `user:${s.id}`,
+          value: toUserSkillId(s.id),
           icon: '✨',
           description: s.description
         }))
-      suggestions.value = [...userItems, ...builtinItems].slice(0, 30)
+      // 加号 / 星标打开的面板要能逛全，不设上限；@ 是边打字边挑，列太长反而难选
+      const all = [...userItems, ...builtinItems]
+      suggestions.value = triggerPosition.value < 0 ? all : all.slice(0, AT_SKILL_LIMIT)
       selectedIndex.value = 0
     } catch (err) {
       console.error('加载技能建议失败:', err)
+      if (seq !== skillLoadSeq) return
       suggestions.value = []
       selectedIndex.value = 0
     } finally {
-      isLoading.value = false
+      if (seq === skillLoadSeq) isLoading.value = false
     }
   }
 
@@ -578,7 +594,7 @@ export function useMentions(
     }
   }
 
-  /** 不经过输入框里的 @，直接弹出技能列表（输入区星标） */
+  /** 不经过输入框里的 @，直接弹出技能列表（加号菜单里的「添加技能」、输入区星标） */
   const openSkillMenu = () => {
     if (showMenu.value && menuType.value === 'skill') {
       closeMenu()
@@ -588,6 +604,8 @@ export function useMentions(
     triggerPosition.value = -1
     searchQuery.value = ''
     currentDir.value = ''
+    // 从开着的 @ 菜单切过来时，旧的那几项不能被当成技能画出来
+    suggestions.value = []
     showMenu.value = true
     selectedIndex.value = 0
     void loadSkillSuggestions('')
@@ -605,10 +623,8 @@ export function useMentions(
 
     if (triggerPosition.value < 0) {
       if (suggestion.type === 'skill') {
-        showMenu.value = false
-        menuType.value = null
-        searchQuery.value = ''
-        onSkillPicked?.({ id: suggestion.id, name: suggestion.label, description: suggestion.description })
+        // 多选：点一个不收起，列表留着让人接着点；收起靠 Esc / 点别处 / 回输入框
+        onSkillToggle?.({ id: suggestion.id, name: suggestion.label, description: suggestion.description })
       }
       return
     }

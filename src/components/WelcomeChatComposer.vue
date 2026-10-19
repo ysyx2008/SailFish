@@ -518,6 +518,9 @@ onUnmounted(() => {
 
 <style scoped>
 .welcome-chat-composer {
+  /* 技能胶囊那一排会长进标题和输入框之间的空隙（不占版面，见 AiComposer），
+     这里多留一段，挂上技能后输入框才不会贴到标题上 */
+  padding-top: 12px;
   margin-bottom: 18px;
   animation: welcomeComposerEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0.06s forwards;
   opacity: 0;
