@@ -29,6 +29,7 @@ import { resolveExactSlash } from './slash-commands'
 import { formatAccelerator } from '../utils/shortcut'
 import { toIpcPlain } from '../utils/ipc-plain'
 import { coalescePendingHandoff, decideFollowUpDrain, mergePendingIntoQueue, optimisticPlaceholderConfirmedBy, turnFailureAlreadyVisible, withFailedAtHead, withRetried } from './follow-up-drain'
+import { stepWarrantsNewMessageHint } from './new-message-hint'
 
 const log = createLogger('Agent')
 
@@ -2366,6 +2367,8 @@ export function useAgentMode(
         }
       }
 
+      // 先记下墙上是不是已经有这一步。伙计进度会反复刷新同一张卡片，正文不变。
+      const previousStep = (agentState.value?.steps ?? []).find(step => step.id === data.step.id)
       terminalStore.addAgentStep(tabId, data.step)
 
       // TTS: 流式 message / final_result 喂给语音合成（远程会话不播报）
@@ -2381,8 +2384,11 @@ export function useAgentMode(
         }
       }
       
-      // 使用智能滚动，不打断用户查看历史
-      scrollToBottomIfNeeded()
+      // 贴着底就跟着滚。没贴底时，只有真多出一句（或这句话还在长）才亮「新消息」。
+      // 伙计原地改「正在做什么」不算。
+      if (shouldFollowBottom() || stepWarrantsNewMessageHint(previousStep, data.step)) {
+        scrollToBottomIfNeeded()
+      }
     })
 
     // 监听步骤移除（后端撤销临时占位步骤，如初始"正在准备..."）
