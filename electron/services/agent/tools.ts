@@ -509,11 +509,11 @@ ${execWaitAndUsage}`
               },
               wait_seconds: {
                 type: 'number',
-                description: `先等多少秒（默认 60，最大 ${MAX_WAIT_SECONDS}），没结束就转后台`
+                description: `先等多少秒（默认 60，最大 ${MAX_WAIT_SECONDS}），没结束就转后台；填 0 表示不等，直接转后台`
               },
               max_seconds: {
                 type: 'number',
-                description: '命令最长允许运行时间（默认 3600 即 1 小时，最大 86400 即 24 小时）。到点会被 SIGKILL，防止僵尸进程'
+                description: '命令最长允许运行多少秒（最大 86400）。到点会被强制结束。不填就不设上限'
               },
               service: {
                 type: 'boolean',
@@ -542,7 +542,7 @@ ${execWaitAndUsage}`
           name: 'await_exec',
           description: `对 exec 转后台的命令：等结束、等某句输出、看最新进度，或停掉。
 - 等日志：await_exec(task_id, pattern: "Listening on")，命中即返回
-- 看进度：await_exec(task_id, wait_seconds: 1)
+- 看进度：await_exec(task_id, wait_seconds: 0)
 - 停掉：await_exec(task_id, stop: true)，连子进程一起；只能停这场对话自己起的
 - 忘了标常驻：await_exec(task_id, service: true)
 返回：已结束给全量输出和 exit_code；仍在跑给最近 8KB 输出。task_id 不对或结束超过 5 分钟会报错`,
@@ -555,7 +555,7 @@ ${execWaitAndUsage}`
               },
               wait_seconds: {
                 type: 'number',
-                description: `最长等多少秒（默认 30，最大 ${MAX_WAIT_SECONDS}），结束或命中 pattern 提前返回`
+                description: `最长等多少秒（默认 30，最大 ${MAX_WAIT_SECONDS}），结束或命中 pattern 提前返回；填 0 表示不等，只看现在的状态`
               },
               pattern: {
                 type: 'string',

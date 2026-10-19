@@ -184,6 +184,14 @@ describe('BackgroundExecManager', () => {
       expect(reason).toBe('done')
       expect(mgr.snapshot(task).status).toBe('killed')
     })
+
+    itPosix('不给 maxSeconds 就不布强杀的保险：命令想跑多久跑多久', async () => {
+      const task = mgr.spawn({ command: 'sleep 30' })
+      expect(task.killTimer).toBeUndefined()
+      const reason = await mgr.wait({ task, waitSeconds: 1 })
+      expect(reason).toBe('timeout')
+      expect(mgr.snapshot(task).status).toBe('running')
+    })
   })
 
   describe('ring buffer', () => {

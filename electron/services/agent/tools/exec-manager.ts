@@ -9,7 +9,7 @@
  * - 仅供 exec 工具使用（无 PTY 会话），不支持交互式命令
  * - 单个任务输出 ring buffer 上限 1MB（超过截断旧数据）
  * - 任务完成 5 分钟后自动清理（给 Agent 充分时间 await）
- * - max_seconds 到达后 SIGKILL，防止 Agent 启了死循环忘了它
+ * - 默认没有运行时限；调用方明说 max_seconds 才在到点时 SIGKILL
  * - 停一条命令要连它带出来的子进程一起停：POSIX 下每条命令自成进程组，信号发给整组
  */
 import { spawn, ChildProcess } from 'child_process'
@@ -129,8 +129,8 @@ export type WaitReason = 'done' | 'pattern' | 'timeout' | 'aborted' | 'user_mess
 export interface SpawnOptions {
   command: string
   cwd?: string
-  /** 最长允许运行时间（秒），到点 SIGKILL */
-  maxSeconds: number
+  /** 最长允许运行时间（秒），到点 SIGKILL；不给就没有上限 */
+  maxSeconds?: number
   /** 额外注入的环境变量（合并到 process.env，用于技能 API Key 等敏感配置） */
   env?: Record<string, string>
   /** 哪个 Agent 起的 */
@@ -221,7 +221,7 @@ class BackgroundExecManager {
     command: string
     child: ChildProcess
     cwd?: string
-    maxSeconds: number
+    maxSeconds?: number
     owner?: string
     description?: string
   }): InternalTask {
@@ -274,17 +274,24 @@ class BackgroundExecManager {
         task.status = 'failed'
         task.finishedAt = Date.now()
       }
+      if (task.killTimer) {
+        clearTimeout(task.killTimer)
+        task.killTimer = undefined
+      }
       this.notifyWaiters(task)
       this.scheduleCleanup(task)
       this.scheduleFinishReport(task)
     })
 
-    task.killTimer = setTimeout(() => {
-      if (task.status === 'running') {
-        log.info(`exec ${taskId} hit max_seconds (${maxSeconds}s), sending SIGKILL`)
-        signalTree(child, 'SIGKILL')
-      }
-    }, maxSeconds * 1000)
+    // 只有调用方明说要设上限才布这道保险；默认让命令想跑多久跑多久
+    if (maxSeconds !== undefined) {
+      task.killTimer = setTimeout(() => {
+        if (task.status === 'running') {
+          log.info(`exec ${taskId} hit max_seconds (${maxSeconds}s), sending SIGKILL`)
+          signalTree(child, 'SIGKILL')
+        }
+      }, maxSeconds * 1000)
+    }
 
     this.tasks.set(taskId, task)
     log.info(`exec ${taskId} started, pid=${child.pid}, cmd=${command.slice(0, 80)}`)

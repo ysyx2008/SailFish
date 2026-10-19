@@ -250,6 +250,110 @@ describe('等命令不卡人：插话先回答、有终点的盯到底、常驻�
     expect(userBubbles.some(c => c.includes('bg-done'))).toBe(false)
   }, 15000)
 
+  // 模型偶尔把数字写成字符串，「0」同样算明说不等
+  for (const zero of [0, '0']) {
+    itPosix(`明说不等（wait_seconds 填 ${JSON.stringify(zero)}）：一启动就转后台，不被悄悄当成默认等待；有终点的照样盯到底`, async () => {
+      const timeline: string[] = []
+      const callAt: number[] = []
+      let secondRequest = ''
+      const services = makeServices(({ index, messages }) => {
+        callAt.push(Date.now())
+        if (index === 0) {
+          return { tool_calls: [tc('exec', { command: 'sleep 3; echo zero-done', wait_seconds: zero })] }
+        }
+        if (index === 1) secondRequest = allText(messages)
+        if (lastUserText(messages).includes('zero-done')) {
+          timeline.push('reported')
+          return { content: '那条跑完了：zero-done' }
+        }
+        timeline.push('wrapped-up')
+        return { content: '先放后台，我去干别的' }
+      })
+      const agent = newAgent(services, 'e2e-exec-zero-wait')
+      const result = await agent.run('跑个 sleep', ctx())
+
+      expect(result).toContain('zero-done')
+      expect(timeline).toEqual(['wrapped-up', 'reported'])
+      expect(secondRequest).toContain('已转后台')
+      // 没设运行上限，就不提什么「最长允许」
+      expect(secondRequest).not.toContain('最长允许')
+      // 命令一启动就转后台：拿到工具结果后的下一次请求远早于命令跑完（0 若被当成默认等待，这里会 >= 3s）
+      expect(callAt[1] - callAt[0]).toBeLessThan(2000)
+    }, 15000)
+  }
+
+  itPosix('看进度也可以不等（await_exec 的 wait_seconds 填 0）：马上拿到当下状态，不被悄悄当成默认等待', async () => {
+    const callAt: number[] = []
+    const timeline: string[] = []
+    let thirdRequest = ''
+    const services = makeServices(({ index, messages }) => {
+      callAt.push(Date.now())
+      if (index === 0) {
+        return { tool_calls: [tc('exec', { command: 'sleep 4; echo look-done', wait_seconds: 0 })] }
+      }
+      if (index === 1) {
+        const taskId = allText(messages).match(/task_id=(exec-\d+)/)?.[1]
+        return { tool_calls: [tc('await_exec', { task_id: taskId, wait_seconds: 0 })] }
+      }
+      if (index === 2) thirdRequest = allText(messages)
+      if (lastUserText(messages).includes('look-done')) {
+        timeline.push('reported')
+        return { content: '跑完了：look-done' }
+      }
+      timeline.push('looked')
+      return { content: '看过了，还在跑' }
+    })
+    const agent = newAgent(services, 'e2e-await-zero-wait')
+    const result = await agent.run('跑个 sleep，先看一眼进度', ctx())
+
+    expect(result).toContain('look-done')
+    expect(timeline).toEqual(['looked', 'reported'])
+    expect(thirdRequest).toContain('仍在跑')
+    // 看一眼立刻回来（0 若被当成默认等待，这里会等到命令跑完 >= 4s）
+    expect(callAt[2] - callAt[1]).toBeLessThan(2000)
+  }, 15000)
+
+  itPosix('Agent 明说了运行上限：提示里带上限，到点强制结束并回报', async () => {
+    let secondRequest = ''
+    const services = makeServices(({ index, messages }) => {
+      if (index === 0) {
+        return { tool_calls: [tc('exec', { command: 'sleep 20', wait_seconds: 0, max_seconds: '1' })] }
+      }
+      if (index === 1) secondRequest = allText(messages)
+      if (lastUserText(messages).includes('status=killed')) {
+        return { content: '到上限被结束了' }
+      }
+      return { content: '放着，我去干别的' }
+    })
+    const agent = newAgent(services, 'e2e-exec-run-cap')
+    const started = Date.now()
+    const result = await agent.run('跑个 sleep，最多一秒', ctx())
+
+    expect(result).toContain('到上限被结束了')
+    expect(secondRequest).toContain('最长允许 1s')
+    expect(Date.now() - started).toBeLessThan(10000)
+  }, 15000)
+
+  itPosix('上限比等待时长还短：到点直接拿到「被强制结束」的结果，不先说已转后台', async () => {
+    let secondRequest = ''
+    const services = makeServices(({ index, messages }) => {
+      if (index === 0) {
+        // 等待用默认时长，上限只有 1 秒
+        return { tool_calls: [tc('exec', { command: 'sleep 20', max_seconds: 1 })] }
+      }
+      if (index === 1) secondRequest = allText(messages)
+      return { content: '它被上限结束了' }
+    })
+    const agent = newAgent(services, 'e2e-exec-cap-shorter-than-wait')
+    const started = Date.now()
+    const result = await agent.run('跑个 sleep，最多一秒', ctx())
+
+    expect(result).toContain('它被上限结束了')
+    expect(secondRequest).toContain('SIGKILL')
+    expect(secondRequest).not.toContain('已转后台')
+    expect(Date.now() - started).toBeLessThan(10000)
+  }, 15000)
+
   itPosix('启动时标成常驻的：不挂住这一轮，结束也不回头找人', async () => {
     let calls = 0
     const services = makeServices(({ index }) => {

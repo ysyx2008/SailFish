@@ -8,7 +8,9 @@
  *
  * 同步 vs 后台：
  * - wait_seconds 内结束 → 返回完整结果（同传统 exec 行为）
- * - 仍在跑且 wait_seconds < max_seconds → 转后台，返回 task_id，Agent 可以先做别的
+ * - 仍在跑 → 转后台，返回 task_id，Agent 可以先做别的
+ * - wait_seconds 填 0 → 不等，一启动就转后台（有终点的命令照样盯到底，放手仍要标 service）
+ * - 命令默认没有运行时限；Agent 明说 max_seconds 才设一道强杀的保险
  * - 等待途中用户插话 → 立刻结束这次等待，命令继续跑
  * - 转后台或让路之后，有终点的命令这一轮盯到底，结束时结果送回这场对话；常驻命令（service）不盯
  * - 用户按停 → 正在等 / 正在盯的那条一起停掉（先喊停，再强制），并给下一轮留交代
@@ -303,8 +305,9 @@ async function waitWatched(watch: CommandWatch, wait: () => Promise<WaitReason>)
 }
 
 const DEFAULT_WAIT_SECONDS = 60
-const DEFAULT_MAX_SECONDS = 3600    // 后台最长允许运行 1 小时（防僵尸进程）
-const MAX_MAX_SECONDS = 24 * 3600   // 最长 24 小时（极端长任务硬上限）
+const DEFAULT_AWAIT_SECONDS = 30
+/** Agent 明说要给命令设运行上限时的最大值；不说就没有上限（定时器也不能超过约 24.8 天） */
+const MAX_RUN_CAP_SECONDS = 24 * 3600
 
 const OUTPUT_TRUNCATE = 16_384      // 返回给 Agent 的输出截断上限（16KB），动态预算收紧时取 min
 
@@ -341,6 +344,34 @@ export async function formatTaskOutput(raw: string, executor: ToolExecutorConfig
 function clampNumber(raw: unknown, fallback: number, min: number, max: number): number {
   if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return fallback
   return Math.min(Math.max(raw, min), max)
+}
+
+/** 模型偶尔把数字写成字符串（"600"）：能干净解析成有限数就当数字，否则当没填 */
+function asFiniteNumber(raw: unknown): number | undefined {
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : undefined
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : undefined
+  }
+  return undefined
+}
+
+/**
+ * exec / await_exec 的 wait_seconds：显式填 0 表示不等（exec 直接转后台，await_exec 只看当下状态）；
+ * 没填或解析不出数字取默认值。
+ * （clampNumber 把 <=0 当作无效回默认，这里单独放过 0，否则「不等」会被悄悄变成等默认时长）
+ */
+function resolveWaitSeconds(raw: unknown, fallback: number): number {
+  const n = asFiniteNumber(raw)
+  if (n === 0) return 0
+  return clampNumber(n, fallback, 1, MAX_WAIT_SECONDS)
+}
+
+/** exec 的 max_seconds：Agent 明说才设运行上限；没说就是 undefined，命令想跑多久跑多久 */
+function resolveRunCapSeconds(raw: unknown): number | undefined {
+  const n = asFiniteNumber(raw)
+  if (n === undefined || n <= 0) return undefined
+  return Math.min(Math.max(n, 1), MAX_RUN_CAP_SECONDS)
 }
 
 /** 模型偶尔把布尔写成字符串 */
@@ -440,11 +471,8 @@ export async function executeCommandDirect(
     ? resolveLocalFilePath(rawCwd || '.', null, undefined, workingDirectory)
     : rawCwd ? expandTilde(rawCwd) : (announcedLocalCwd(executor.getAgentContext?.()) ?? os.homedir())
   const skillId = (args.skill_id as string) || undefined
-  const waitSeconds = clampNumber(args.wait_seconds, DEFAULT_WAIT_SECONDS, 1, MAX_WAIT_SECONDS)
-  const maxSeconds = clampNumber(args.max_seconds, DEFAULT_MAX_SECONDS, 1, MAX_MAX_SECONDS)
-
-  // 转后台时实际等待时间是 min(wait, max)——max 已经是硬上限，wait > max 没意义
-  const effectiveWait = Math.min(waitSeconds, maxSeconds)
+  const waitSeconds = resolveWaitSeconds(args.wait_seconds, DEFAULT_WAIT_SECONDS)
+  const maxSeconds = resolveRunCapSeconds(args.max_seconds)
 
   // 如果指定了 skill_id，注入该技能的 env（API Key 等）到子进程。
   // credential 层统一大写存储，这里按 SKILL.md 声明的原始大小写映射后再注入，
@@ -465,7 +493,7 @@ export async function executeCommandDirect(
 
   const reason = await waitWatched(watch, () => manager.wait({
     task,
-    waitSeconds: effectiveWait,
+    waitSeconds,
     isAborted: () => executor.isAborted(),
     shouldYield: () => userSpoke(executor),
   }))
@@ -524,7 +552,9 @@ export async function executeCommandDirect(
   const pid = String(snap.pid ?? 'unknown')
   const status = reason === 'user_message'
     ? t('exec.yielded', { taskId: snap.taskId, pid, elapsed: runningSeconds(task) })
-    : t('exec.backgrounded', { taskId: snap.taskId, pid, waited: effectiveWait, max: maxSeconds })
+    : maxSeconds === undefined
+      ? t('exec.backgrounded', { taskId: snap.taskId, pid, waited: waitSeconds })
+      : t('exec.backgrounded_capped', { taskId: snap.taskId, pid, waited: waitSeconds, max: maxSeconds })
   const header = `${status}\n${followUpHint(task)}`
   const short = reason === 'user_message' ? t('exec.yielded_short') : t('exec.backgrounded_short')
   executor.addStep({
@@ -552,7 +582,7 @@ export async function awaitExec(
     return { success: false, output: '', error: t('exec.task_id_required') }
   }
 
-  const waitSeconds = clampNumber(args.wait_seconds, 30, 1, MAX_WAIT_SECONDS)
+  const waitSeconds = resolveWaitSeconds(args.wait_seconds, DEFAULT_AWAIT_SECONDS)
 
   let pattern: RegExp | undefined
   if (typeof args.pattern === 'string' && args.pattern) {

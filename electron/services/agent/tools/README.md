@@ -34,7 +34,7 @@ tools/
 ### 轻量命令执行 (exec.ts + exec-manager.ts，仅 assistant 模式)
 - `exec` - 基于 child_process.spawn 的命令执行；wait_seconds 内未结束自动转后台返回 task_id
 - `await_exec` - 等待已转后台的任务结束、命中 pattern、返回最新进度，或叫停自己起的命令
-- `BackgroundExecManager` - 后台任务管理器（exec-manager.ts）：进程托管、ring buffer、5 分钟自动清理、max_seconds 安全网
+- `BackgroundExecManager` - 后台任务管理器（exec-manager.ts）：进程托管、ring buffer、5 分钟自动清理、可选的 max_seconds 保险（默认没有运行时限）
 
 ### 网页抓取 (web-fetch.ts → ../../web-fetch.service)
 - `web_fetch` - 按 URL 抓取并提取正文。降级链：用户配 Jina key → Jina Reader（SPA 也能读）；无 key → Mozilla Readability（静态页面）；失败 → 简单文本提取兜底
