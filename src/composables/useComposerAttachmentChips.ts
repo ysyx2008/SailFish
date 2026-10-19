@@ -168,17 +168,28 @@ export function useComposerAttachmentChips<D extends ChipDoc, P extends ChipPars
     }
   }
 
-  /** 撤销 / 重做把某枚胶囊带回来了：能还的文件还回去 */
-  function revive(key: string) {
-    // 解析中就被撤下的：还在解析的话，接着解析即可
-    dismissed.delete(key)
-    if (options.parsingDocs().some(p => parsingId(p) === key)) return
-    if (options.uploadedDocs().some(d => docId(d) === key)) return
-    const doc = removedDocs.get(key)
-    if (!doc || !options.reorderUploadedDocs) return
-    removedDocs.delete(key)
+  /**
+   * 撤销 / 重做把这几枚胶囊一起带回来了：能还的文件一次还回去，返回还回去的文件 id。
+   * 必须整批一起还：附件列表由外层传进来，刚还回去的文件要等界面刷新才读得到，
+   * 逐枚各自「在当前列表后追加」会让后一枚把前一枚盖掉。
+   */
+  function reviveAll(keys: string[]): string[] {
+    const present = new Set(options.uploadedDocs().map(d => docId(d)))
+    const parsingNow = new Set(options.parsingDocs().map(parsingId))
+    const back: { id: string; doc: D }[] = []
+    for (const key of keys) {
+      // 解析中就被撤下的：还在解析的话，接着解析即可
+      dismissed.delete(key)
+      if (parsingNow.has(key) || present.has(key) || !options.reorderUploadedDocs) continue
+      const doc = removedDocs.get(key)
+      if (!doc) continue
+      removedDocs.delete(key)
+      back.push({ id: key, doc })
+    }
+    if (back.length === 0 || !options.reorderUploadedDocs) return []
     // 先追加到末尾；随后对账会按胶囊在文字里的先后重新排好
-    options.reorderUploadedDocs([...options.uploadedDocs(), doc])
+    options.reorderUploadedDocs([...options.uploadedDocs(), ...back.map(b => b.doc)])
+    return back.map(b => b.id)
   }
 
   /** 编辑器报告胶囊变了 */
@@ -191,13 +202,12 @@ export function useComposerAttachmentChips<D extends ChipDoc, P extends ChipPars
       const before = new Set(lastBound)
       const removed = removedChipKeys(lastBound, keys)
       lastBound = boundKeys(keys)
-      for (const key of removed) removeItem(key)
-      for (const key of keys) {
-        if (key != null && !before.has(key)) revive(key)
-      }
+      removeItems(removed)
+      const revived = reviveAll(keys.filter((key): key is string => key != null && !before.has(key)))
       // 撤销把胶囊带了回来、却没有文件可还（已发送、已换掉文字等）：没有文件可对，直接清掉
       const live = new Set<string>([
         ...options.uploadedDocs().map(d => docId(d)).filter((id): id is string => !!id),
+        ...revived,
         ...options.parsingDocs().map(parsingId),
       ])
       const orphans = keys.flatMap((key, index) => (key != null && !live.has(key) ? [index] : []))
@@ -210,25 +220,35 @@ export function useComposerAttachmentChips<D extends ChipDoc, P extends ChipPars
     reconcile()
   }
 
-  /** 撤掉某个文件（用户删了它的胶囊 / 点了 ×） */
-  function removeItem(key: string) {
-    const index = options.uploadedDocs().findIndex(d => docId(d) === key)
-    if (index >= 0) {
-      keepRemoved(key, options.uploadedDocs()[index])
-      options.removeUploadedDoc(index)
-      return
+  /**
+   * 撤掉一批文件（用户删了它们的胶囊 / 点了 ×）。
+   * 下标都取自同一份快照、从后往前删，不依赖外层的列表什么时候刷新。
+   */
+  function removeItems(keys: string[]) {
+    if (keys.length === 0) return
+    const docs = options.uploadedDocs()
+    const parsingNow = new Set(options.parsingDocs().map(parsingId))
+    const indexes: number[] = []
+    let dismissedParsing = false
+    for (const key of keys) {
+      const index = docs.findIndex(d => docId(d) === key)
+      if (index >= 0) {
+        keepRemoved(key, docs[index])
+        indexes.push(index)
+      } else if (parsingNow.has(key)) {
+        dismissed.add(key)
+        dismissedParsing = true
+      }
     }
-    if (options.parsingDocs().some(p => parsingId(p) === key)) {
-      dismissed.add(key)
-      reconcile()
-    }
+    indexes.sort((a, b) => b - a).forEach(index => options.removeUploadedDoc(index))
+    if (dismissedParsing) reconcile()
   }
 
   /** 点胶囊上的 ×：文件与胶囊一起撤下；与在文字里删掉它一样可以撤销 */
   function removeChip(key: string | null) {
     if (!key) return
     if (options.editor.value?.removeChip(key)) return
-    removeItem(key)
+    removeItems([key])
   }
 
   /** 换了对话 / 换了一批文件来源：之前撤销历史里的胶囊不再有文件可还 */

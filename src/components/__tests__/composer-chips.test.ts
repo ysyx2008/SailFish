@@ -3,7 +3,7 @@
  *
  * 输入框里的文件胶囊：编辑器 + 对账接线放在一起跑（真编辑器，jsdom）。
  */
-import { createApp, defineComponent, h, nextTick, ref, type Ref } from 'vue'
+import { createApp, defineComponent, h, nextTick, ref, type PropType, type Ref } from 'vue'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import ComposerEditor from '../ComposerEditor.vue'
 import {
@@ -52,40 +52,45 @@ function mountHarness(initialText = '', initialDocs: ChipDoc[] = []): Harness {
   const host = document.createElement('div')
   document.body.appendChild(host)
   let api!: Harness['api']
-  const app = createApp(
-    defineComponent({
-      setup() {
-        api = useComposerAttachmentChips<ChipDoc, ChipParsingDoc>({
-          editor: editorRef as Ref<ChipEditorHandle | null>,
-          uploadedDocs: () => docs.value,
-          parsingDocs: () => parsingDocs.value,
-          removeUploadedDoc: (index) => {
-            removed.push(index)
-            docs.value = docs.value.filter((_, i) => i !== index)
+  // 与真机同一个接法：输入框组件（AiComposer）拿到的附件列表是父组件传下来的 props，
+  // 父组件重新渲染之前读到的是旧的；移除是在原数组上删，重排是整份换
+  const Composer = defineComponent({
+    props: {
+      docs: { type: Array as PropType<ChipDoc[]>, required: true },
+      parsing: { type: Array as PropType<ChipParsingDoc[]>, required: true },
+    },
+    setup(props) {
+      api = useComposerAttachmentChips<ChipDoc, ChipParsingDoc>({
+        editor: editorRef as Ref<ChipEditorHandle | null>,
+        uploadedDocs: () => props.docs,
+        parsingDocs: () => props.parsing,
+        removeUploadedDoc: (index) => {
+          removed.push(index)
+          docs.value.splice(index, 1)
+        },
+        reorderUploadedDocs: (next) => {
+          docs.value = next
+        },
+      })
+      return () =>
+        h(
+          ComposerEditor,
+          {
+            ref: editorRef,
+            modelValue: text.value,
+            'onUpdate:modelValue': (v: string) => { text.value = v },
+            onChips: api.onChips,
           },
-          reorderUploadedDocs: (next) => {
-            docs.value = next
-          },
-        })
-        return () =>
-          h(
-            ComposerEditor,
-            {
-              ref: editorRef,
-              modelValue: text.value,
-              'onUpdate:modelValue': (v: string) => { text.value = v },
-              onChips: api.onChips,
+          {
+            chip: ({ chipKey }: { chipKey: string | null }) => {
+              const view = api.chipView(chipKey)
+              return h('span', { class: 't-chip' }, view ? view.doc.filename : '')
             },
-            {
-              chip: ({ chipKey }: { chipKey: string | null }) => {
-                const view = api.chipView(chipKey)
-                return h('span', { class: 't-chip' }, view ? view.doc.filename : '')
-              },
-            }
-          )
-      },
-    })
-  )
+          }
+        )
+    },
+  })
+  const app = createApp(defineComponent({ setup: () => () => h(Composer, { docs: docs.value, parsing: parsingDocs.value }) }))
   app.mount(host)
   const harness: Harness = {
     text,
@@ -216,6 +221,86 @@ describe('文件胶囊接线', () => {
     await settle()
     expect(h1.chipLabels()).toEqual(['A', 'B', 'C'])
     expect(h1.docs.value.map(d => d.filename)).toEqual(['A', 'B', 'C'])
+  })
+
+  it('多枚胶囊全选删除后撤销：胶囊和文件全部回来', async () => {
+    const h1 = mountHarness('')
+    await settle()
+    h1.docs.value = [doc('A'), doc('B'), doc('C')]
+    await settle()
+    await pause()
+    h1.editor().focus()
+    pressKey(h1.dom(), { key: 'a', ctrlKey: true })
+    pressKey(h1.dom(), { key: 'Backspace' })
+    await settle()
+    expect(h1.chipLabels()).toEqual([])
+    expect(h1.docs.value).toHaveLength(0)
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true })
+    await settle()
+    expect(h1.chipLabels()).toEqual(['A', 'B', 'C'])
+    expect(h1.docs.value.map(d => d.filename)).toEqual(['A', 'B', 'C'])
+  })
+
+  it('多枚胶囊全选删除：撤销、重做、再撤销都是整批进出', async () => {
+    const h1 = mountHarness('')
+    await settle()
+    h1.docs.value = [doc('A'), doc('B'), doc('C')]
+    await settle()
+    await pause()
+    h1.editor().focus()
+    pressKey(h1.dom(), { key: 'a', ctrlKey: true })
+    pressKey(h1.dom(), { key: 'Backspace' })
+    await settle()
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true })
+    await settle()
+    expect(h1.chipLabels()).toEqual(['A', 'B', 'C'])
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true, shiftKey: true })
+    await settle()
+    expect(h1.chipLabels()).toEqual([])
+    expect(h1.docs.value).toHaveLength(0)
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true })
+    await settle()
+    expect(h1.chipLabels()).toEqual(['A', 'B', 'C'])
+    expect(h1.docs.value.map(d => d.filename)).toEqual(['A', 'B', 'C'])
+  })
+
+  it('系统菜单的撤销 / 重做（Mac 上 Cmd+Z 走这条路）：多枚胶囊同样整批进出', async () => {
+    const h1 = mountHarness('')
+    await settle()
+    h1.docs.value = [doc('A'), doc('B'), doc('C')]
+    await settle()
+    await pause()
+    h1.editor().focus()
+    pressKey(h1.dom(), { key: 'a', ctrlKey: true })
+    pressKey(h1.dom(), { key: 'Backspace' })
+    await settle()
+    expect(h1.chipLabels()).toEqual([])
+    h1.dom().dispatchEvent(new InputEvent('beforeinput', { inputType: 'historyUndo', bubbles: true, cancelable: true }))
+    await settle()
+    expect(h1.chipLabels()).toEqual(['A', 'B', 'C'])
+    expect(h1.docs.value.map(d => d.filename)).toEqual(['A', 'B', 'C'])
+    h1.dom().dispatchEvent(new InputEvent('beforeinput', { inputType: 'historyRedo', bubbles: true, cancelable: true }))
+    await settle()
+    expect(h1.chipLabels()).toEqual([])
+    expect(h1.docs.value).toHaveLength(0)
+  })
+
+  it('胶囊夹在文字中间、全选删除后撤销：文字、胶囊位置和文件先后都回原样', async () => {
+    const h1 = mountHarness(`前${CHIP}中${CHIP}后`, [doc('A'), doc('B')])
+    await settle()
+    await pause()
+    expect(h1.chipLabels()).toEqual(['A', 'B'])
+    h1.editor().focus()
+    pressKey(h1.dom(), { key: 'a', ctrlKey: true })
+    pressKey(h1.dom(), { key: 'Backspace' })
+    await settle()
+    expect(h1.text.value).toBe('')
+    expect(h1.docs.value).toHaveLength(0)
+    pressKey(h1.dom(), { key: 'z', ctrlKey: true })
+    await settle()
+    expect(h1.text.value).toBe(`前${CHIP}中${CHIP}后`)
+    expect(h1.chipLabels()).toEqual(['A', 'B'])
+    expect(h1.docs.value.map(d => d.filename)).toEqual(['A', 'B'])
   })
 
   it('放进文件后撤销：胶囊消失、文件一并撤下；重做又回来', async () => {
