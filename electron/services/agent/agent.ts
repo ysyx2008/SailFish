@@ -3274,6 +3274,8 @@ export abstract class Agent {
     let noToolCallRetryCount = 0
     let truncationRetryCount = 0
     let contextOverflowRetryCount = 0
+    // 计划没完成时的追问次数：期间没有工具调用、也没有用户插话才累计
+    let planNudgeCount = 0
     const MAX_NO_TOOL_RETRIES = 2
     const MAX_TRUNCATION_RETRIES = 3
     const MAX_CONTEXT_OVERFLOW_RETRIES = 1
@@ -3295,6 +3297,7 @@ export abstract class Agent {
           stepCount++
           
           // 处理待处理的用户消息
+          if (this.hasPendingUserSpeech(run)) planNudgeCount = 0
           this.processPendingUserMessages(run)
           
           // 执行单步
@@ -3319,6 +3322,7 @@ export abstract class Agent {
             hasExecutedAnyTool = true
             noToolCallRetryCount = 0
             truncationRetryCount = 0
+            planNudgeCount = 0
             // 每完成一轮工具调用后保存检查点，防止程序意外退出丢失对话记录
             this.saveCheckpoint(run)
           }
@@ -3327,7 +3331,11 @@ export abstract class Agent {
           if (!stepResult.hasToolCalls) {
             // 只有思考、没有正文也没动手：不算它说过的话，界面上那段思考外壳不当回复交出去
             if (lastResponse?.thinkingOnly && run.pendingUserMessages.length === 0) {
-              if (hasExecutedAnyTool && this.checkPlanProgress(run) === 'continue') continue
+              if (hasExecutedAnyTool && this.checkPlanProgress(run, lastResponse, planNudgeCount) === 'continue') {
+                planNudgeCount++
+                lastResponse = null // 这一轮的回复已留进对话，步数用尽收尾时不再当最终回复补记第二遍
+                continue
+              }
               if (this._userAwaitsReply && !run.aborted) {
                 this._userAwaitsReply = false
                 log.warn('Reply had thinking only (no body, no tool call) while the user was waiting')
@@ -3339,7 +3347,8 @@ export abstract class Agent {
             if (!hasExecutedAnyTool) {
               // 从未执行过工具
               if (run.pendingUserMessages.length > 0) {
-                this.retainInterruptedReply(run, lastResponse)
+                this.retainReplyForNextRound(run, lastResponse)
+                lastResponse = null
                 continue
               }
               
@@ -3361,13 +3370,16 @@ export abstract class Agent {
             
             // 已执行过工具，检查是否有待处理的消息
             if (run.pendingUserMessages.length > 0) {
-              this.retainInterruptedReply(run, lastResponse)
+              this.retainReplyForNextRound(run, lastResponse)
+              lastResponse = null
               continue
             }
             
             // 检查计划进度
-            const planAction = this.checkPlanProgress(run)
+            const planAction = this.checkPlanProgress(run, lastResponse, planNudgeCount)
             if (planAction === 'continue') {
+              planNudgeCount++
+              lastResponse = null
               continue
             }
             
@@ -5604,7 +5616,7 @@ export abstract class Agent {
         hostId: run.context.hostId,
       }),
       hasPendingUserMessage: () => run.pendingUserMessages.length > 0,
-      hasPendingUserSpeech: () => run.pendingUserMessages.some(p => !p.silent && !p.backgroundNotice),
+      hasPendingUserSpeech: () => this.hasPendingUserSpeech(run),
       deliverBackgroundNotice: (text) => this.deliverBackgroundNotice(text),
       trackBackgroundWatch: (watch) => this._backgroundWatches.add(watch),
       findBackgroundWatch: (key) => this._backgroundWatches.get(key),
@@ -5777,14 +5789,17 @@ export abstract class Agent {
   }
   
   /**
-   * 插话要接着说时，先把这一轮已经生成、还没写进对话的回复留下。
+   * 这一轮不收工、要接着再跑一轮（插话要接着说、计划还有没完成的步骤）时，
+   * 先把这一轮已经生成、还没写进对话的回复留下，让下一轮看得见自己说过什么。
    * 按停止收尾不走这里：那次回复由收尾补进记录，这里再写就会存两遍。
+   * 返回有没有留下东西（只思考、没有正文的回合没有可留的）。
    */
-  private retainInterruptedReply(run: AgentRun, response: ChatWithToolsResult | null): void {
+  private retainReplyForNextRound(run: AgentRun, response: ChatWithToolsResult | null): boolean {
     const assistantMsg = this.spokenReply(response)
-    if (!assistantMsg) return
+    if (!assistantMsg) return false
     run.messages.push(assistantMsg)
     run.taskMessageLog.push({ ...assistantMsg })
+    return true
   }
 
   /**
@@ -5876,32 +5891,47 @@ export abstract class Agent {
     run.pendingUserMessages = []
   }
   
+  /** 队列里有没有用户开口说的话（后台回执、静默消息不算） */
+  private hasPendingUserSpeech(run: AgentRun): boolean {
+    return run.pendingUserMessages.some(p => !p.silent && !p.backgroundNotice)
+  }
+
+  /** 计划没完成时，没有工具调用、没有用户插话的情况下最多追问几次 */
+  private static readonly MAX_PLAN_NUDGES = 1
+
   /**
-   * 检查计划进度
+   * 这一轮没动工具、计划里却还有没完成的步骤：追问一次再跑一轮，还是就此收工。
+   * 追问是一次提问，不是循环——已经追问过 nudgesWithoutProgress 次、期间没有任何
+   * 工具调用（含更新计划）也没有用户插话，模型仍只回文字，就当它已经答复「没有要推进的」，收工。
+   * 追问前先把这一轮的回复留在对话里，否则下一轮看不到自己答过，会把同一份回复再写一遍。
    */
-  protected checkPlanProgress(run: AgentRun): 'continue' | 'complete' {
-    if (!this.currentPlan) {
-      return 'complete'
-    }
-    
-    if (this.currentPlan.paused) {
+  protected checkPlanProgress(
+    run: AgentRun,
+    response: ChatWithToolsResult | null,
+    nudgesWithoutProgress: number
+  ): 'continue' | 'complete' {
+    if (!this.currentPlan || this.currentPlan.paused) {
       return 'complete'
     }
     
     const pendingSteps = this.currentPlan.steps.filter(s => 
       s.status === 'pending' || s.status === 'in_progress'
     )
-    
-    if (pendingSteps.length > 0) {
-      const stepTitles = pendingSteps.map((s, i) => `${i + 1}. ${s.title}`).join('\n')
-      const hint = t('agent.plan_incomplete', { count: pendingSteps.length, steps: stepTitles })
-      const planMsg: AiMessage = { role: 'user', content: hint, _systemInjected: true }
-      run.messages.push(planMsg)
-      run.taskMessageLog.push({ ...planMsg })
-      return 'continue'
+    if (pendingSteps.length === 0 || nudgesWithoutProgress >= Agent.MAX_PLAN_NUDGES) {
+      return 'complete'
     }
     
-    return 'complete'
+    const replyKept = this.retainReplyForNextRound(run, response)
+    const stepTitles = pendingSteps.map((s, i) => `${i + 1}. ${s.title}`).join('\n')
+    const hint = t('agent.plan_incomplete', {
+      count: pendingSteps.length,
+      steps: stepTitles,
+      kept: replyKept ? t('agent.plan_incomplete_kept') : ''
+    })
+    const planMsg: AiMessage = { role: 'user', content: hint, _systemInjected: true }
+    run.messages.push(planMsg)
+    run.taskMessageLog.push({ ...planMsg })
+    return 'continue'
   }
   
   /**
