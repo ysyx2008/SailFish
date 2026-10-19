@@ -97,14 +97,15 @@ watch(
     el.addEventListener('touchmove', onUserInput, { passive: true })
     el.addEventListener('mousedown', onMouseDown, { passive: true })
     el.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('mouseup', endGrip)
+    // 捕获阶段监听：松手时指针落在会拦住事件的子元素上，冒泡阶段就收不到了
+    window.addEventListener('mouseup', endGrip, true)
     window.addEventListener('blur', endGrip)
     onCleanup(() => {
       el.removeEventListener('wheel', onUserInput)
       el.removeEventListener('touchmove', onUserInput)
       el.removeEventListener('mousedown', onMouseDown)
       el.removeEventListener('scroll', onScroll)
-      window.removeEventListener('mouseup', endGrip)
+      window.removeEventListener('mouseup', endGrip, true)
       window.removeEventListener('blur', endGrip)
     })
   },
@@ -131,12 +132,11 @@ onBeforeUnmount(clearHideTimer)
 .assigned-by-hint {
   /* 放在父级顶栏（一条横向排布的栏）里：顶栏上其它内容（如主机信息）排完后剩下的空位都归它，
      字在这段空位里居中——顶栏上没有别的内容时就正好在整条顶栏的正中；
-     有别的内容也不会压到它们。只占剩下的空位，不撑高顶栏 */
+     有别的内容也不会压到它们。只占剩下的空位，不撑高顶栏。
+     钉在窗口角上的按钮（侧栏开关、对话栏开关、Windows 窗口按钮）的位置，壳层已经通过顶栏自己的
+     左右内边距让出来了，这里不再另留；顶栏很窄时放不下就省略 */
   flex: 1 1 0;
   min-width: 0;
-  /* 两侧各让出一段（连同顶栏自己的内边距约 100px）给钉在窗口角上的按钮
-     （侧栏开关、对话栏开关、Windows 窗口按钮）；顶栏很窄时放不下就省略 */
-  margin: 0 88px;
   align-self: stretch;
   display: flex;
   align-items: center;

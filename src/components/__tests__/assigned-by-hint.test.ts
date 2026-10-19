@@ -209,6 +209,31 @@ describe('AssignedByHint 淡入、淡出的时机', () => {
     expect(isShown(host)).toBe(false)
   })
 
+  it('松手时指针落在会拦住事件的元素上，也算松手：之后对话自己滚不会被当成用户在拖', async () => {
+    const scroller = makeScroller()
+    const blocker = document.createElement('div')
+    blocker.addEventListener('mouseup', e => e.stopPropagation())
+    document.body.appendChild(blocker)
+    mounted.push(() => blocker.remove())
+    const { host } = renderHint('companion', { scrollSource: scroller })
+    await nextTick()
+    vi.advanceTimersByTime(HOLD_MS + 100)
+    await nextTick()
+
+    scroller.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    await nextTick()
+    expect(isShown(host)).toBe(true)
+
+    blocker.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    vi.advanceTimersByTime(HOLD_MS + 100)
+    await nextTick()
+    expect(isShown(host)).toBe(false)
+
+    scroller.dispatchEvent(new Event('scroll'))
+    await nextTick()
+    expect(isShown(host)).toBe(false)
+  })
+
   it('按住滚动条后切走窗口、收不到松手：之后对话自己滚也不会被当成用户在拖', async () => {
     const scroller = makeScroller()
     const { host } = renderHint('companion', { scrollSource: scroller })
