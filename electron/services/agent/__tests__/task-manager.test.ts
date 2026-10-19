@@ -158,6 +158,37 @@ describe('manage_tasks', () => {
     expect(result.success).toBe(false)
   })
 
+  it('步骤标题用当前语言的动作名', async () => {
+    const supervisor = makeSupervisor()
+    const listExec = makeExecutor(supervisor)
+    await manageTasks({ action: 'list' }, listExec)
+    expect(vi.mocked(listExec.addStep).mock.calls[0][0]).toMatchObject({
+      type: 'tool_call',
+      content: '任务管理：查看任务列表',
+    })
+
+    const inspectExec = makeExecutor(supervisor)
+    await manageTasks({ action: 'inspect', task_id: 'tab-1' }, inspectExec)
+    expect(vi.mocked(inspectExec.addStep).mock.calls[0][0]).toMatchObject({
+      type: 'tool_call',
+      content: '任务管理：查看任务近况',
+    })
+
+    const createExec = makeExecutor(supervisor)
+    await manageTasks({ action: 'create', title: '查日志', brief: '统计错误' }, createExec)
+    expect(vi.mocked(createExec.addStep).mock.calls[0][0]).toMatchObject({
+      type: 'tool_call',
+      content: '任务管理：创建任务「查日志」',
+    })
+
+    const unknownExec = makeExecutor(supervisor)
+    await manageTasks({ action: 'explode' }, unknownExec)
+    expect(vi.mocked(unknownExec.addStep).mock.calls[0][0]).toMatchObject({
+      type: 'tool_call',
+      content: '任务管理：explode',
+    })
+  })
+
   it('instruct 把这一句交给监督器', async () => {
     const supervisor = makeSupervisor()
     const missing = await manageTasks({ action: 'instruct', task_id: 'tab-1' }, makeExecutor(supervisor))

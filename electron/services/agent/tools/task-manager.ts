@@ -5,13 +5,28 @@
  * 仅 __companion__ 注册（见 sailfish.getAvailableTools）；本文件只含执行逻辑。
  * 信任模型（转述制）：confirm 只把用户的明确决定传达给任务 Agent。
  */
-import { t } from '../i18n'
+import { t, type TranslationKey } from '../i18n'
 import { createLogger } from '../../../utils/logger'
 import type { ToolExecutorConfig, ToolResult } from './types'
 import type { TaskSupervisor, SupervisedTaskInfo } from '../task-supervisor'
 import { TaskWatch, taskWatchKey } from './task-watch'
 
 const log = createLogger('tools/task-manager')
+
+/** 协议里的动作名 → 给用户看的说法。未知动作仍显示原词，便于对照报错。 */
+const ACTION_LABEL: Record<string, TranslationKey> = {
+  list: 'taskmgr.action.list',
+  inspect: 'taskmgr.action.inspect',
+  create: 'taskmgr.action.create',
+  instruct: 'taskmgr.action.instruct',
+  confirm: 'taskmgr.action.confirm',
+  stop: 'taskmgr.action.stop',
+}
+
+function actionLabel(action: string): string {
+  const key = ACTION_LABEL[action]
+  return key ? t(key) : action
+}
 
 export async function manageTasks(
   args: Record<string, unknown>,
@@ -31,7 +46,7 @@ export async function manageTasks(
 
   executor.addStep({
     type: 'tool_call',
-    content: `${t('taskmgr.step')}：${action}${title ? `「${title}」` : ''}`,
+    content: `${t('taskmgr.step')}：${actionLabel(action)}${title ? `「${title}」` : ''}`,
     toolName: 'manage_tasks',
     toolArgs: { ...args },
     riskLevel: 'safe',
