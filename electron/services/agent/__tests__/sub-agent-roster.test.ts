@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { runUntilIdle } from '../run-until-idle'
-import { SubAgentRoster, allocateChildName, type ChildAgentHandle } from '../sub-agent-roster'
-import type { AgentContext } from '../types'
+import { SubAgentRoster, allocateChildName, summarizeArgs, type ChildAgentHandle } from '../sub-agent-roster'
+import type { AgentContext, AgentStep } from '../types'
 import type { AiMessage } from '../../ai.service'
 
 const context: AgentContext = {
@@ -300,6 +300,62 @@ describe('开局带多少对话', () => {
     expect(child.seeded).toEqual([
       { role: 'user', content: '第二轮：回头再列 test 脚本' },
       { role: 'assistant', content: '我先派人' },
+    ])
+  })
+})
+
+describe('summarizeArgs', () => {
+  it('技能调用记下技能名，命令和搜索词仍优先', () => {
+    expect(summarizeArgs({ action: 'load', skill_id: 'browser' })).toBe('browser')
+    expect(summarizeArgs({ command: 'ls', skill_id: 'browser' })).toBe('ls')
+    expect(summarizeArgs({ query: '第九条' })).toBe('第九条')
+    expect(summarizeArgs({ selector: '@e1', text: '登录' })).toBe('@e1 登录')
+    expect(summarizeArgs({ selector: '@e1' })).toBe('@e1')
+  })
+})
+
+describe('recordStep', () => {
+  it('同一条调用中途改名仍是一行，并带上调用对象', () => {
+    const roster = new SubAgentRoster()
+    const child = stubChild({ delayMs: 30, result: 'ok' })
+    roster.spawn(
+      [{ name: '查规章', description: '查规章', prompt: '去查' }],
+      {
+        createChild: () => child,
+        getParentMessages: () => [],
+        getParentContext: () => context,
+        knock: () => {},
+        onProgress: () => {},
+        isParentAborted: () => false,
+        sanitize: (messages) => messages,
+        formatKnock: () => 'knock',
+      }
+    )
+    const step = (patch: Partial<AgentStep>): AgentStep => ({
+      id: 's1',
+      type: 'tool_call',
+      content: '',
+      timestamp: 1,
+      toolName: 'skill',
+      ...patch,
+    })
+    roster.recordStep('查规章', step({
+      toolArgs: { action: 'load', skill_id: 'browser' },
+    }), () => {})
+    roster.recordStep('查规章', step({
+      toolName: 'load_skill',
+      toolArgs: { action: 'load', skill_id: 'browser' },
+      success: true,
+    }), () => {})
+
+    const steps = roster.list().find(c => c.name === '查规章')?.steps
+    expect(steps).toEqual([
+      expect.objectContaining({
+        id: 's1',
+        tool: 'load_skill',
+        args: 'browser',
+        status: 'completed',
+      }),
     ])
   })
 })

@@ -291,16 +291,23 @@ export class SubAgentRoster {
     const slot = this.children.get(name)
     if (!slot) return
     if (step.type !== 'tool_call' || !step.toolName) return
-    const existing = slot.steps.find(s => s.tool === step.toolName && s.status === 'running')
     const args = summarizeArgs(step.toolArgs)
-    if (existing && step.success === undefined) {
-      existing.args = args ?? existing.args
-    } else if (existing && step.success !== undefined) {
-      existing.status = step.success === false ? 'failed' : 'completed'
-      existing.result = step.toolResult
-      existing.args = args ?? existing.args
+    // 有 id 就认同一条，避免 skill 执行时改名成 load_skill 后又多出一行空的。
+    // 没有 id 的旧步骤仍按「同名且还在跑」并到一行。
+    const existing = step.id
+      ? slot.steps.find(s => s.id === step.id)
+      : slot.steps.find(s => s.tool === step.toolName && s.status === 'running')
+    if (existing) {
+      existing.tool = step.toolName
+      if (step.id) existing.id = step.id
+      if (args) existing.args = args
+      if (step.success !== undefined) {
+        existing.status = step.success === false ? 'failed' : 'completed'
+        existing.result = step.toolResult
+      }
     } else {
       slot.steps.push({
+        id: step.id,
         tool: step.toolName,
         args,
         status: step.success === false ? 'failed' : step.success === true ? 'completed' : 'running',
@@ -377,11 +384,23 @@ function snapshotOf(slot: ChildSlot): ChildSnapshot {
   }
 }
 
-function summarizeArgs(args?: Record<string, unknown>): string | undefined {
+/** 这一下动手的对象。先看路径、命令、搜索词这类主字段，再看技能、选择器。 */
+const SUMMARY_ARG_FIELDS = ['path', 'command', 'query', 'url', 'file_path', 'skill_id', 'pattern'] as const
+
+function stringArg(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed || undefined
+}
+
+export function summarizeArgs(args?: Record<string, unknown>): string | undefined {
   if (!args) return undefined
-  for (const key of ['path', 'command', 'query', 'url', 'file_path']) {
-    const value = args[key]
-    if (typeof value === 'string' && value) return value
+  for (const key of SUMMARY_ARG_FIELDS) {
+    const value = stringArg(args[key])
+    if (value) return value
   }
-  return undefined
+  const selector = stringArg(args.selector)
+  const text = stringArg(args.text)
+  if (selector && text) return `${selector} ${text}`
+  return selector || text
 }

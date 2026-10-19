@@ -404,6 +404,8 @@ export interface SubAgentTask {
 
 /** 子 Agent 单步工具调用记录 */
 export interface SubAgentToolStep {
+  /** 对应那条步骤的 id。同一条调用中途改名时用来认回原行 */
+  id?: string
   tool: string
   args?: string
   status: 'running' | 'completed' | 'failed'

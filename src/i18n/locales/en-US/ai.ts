@@ -723,6 +723,8 @@ export default {
       manage_pane: 'Manage Panes',
       list_ssh_sessions: 'List Remote Sessions',
       skill: 'Load Skill',
+      load_skill: 'Load Skill',
+      unload_skill: 'Unload Skill',
       load_user_skill: 'Load User Skill',
       // Excel skill
       excel_open: 'Open Excel',

@@ -541,7 +541,7 @@ const getSubAgentActivity = (sa: import('@shared/types').SubAgentResult): string
   if (!sa.steps || sa.steps.length === 0) return null
   const running = [...sa.steps].reverse().find(s => s.status === 'running')
   const step = running || sa.steps[sa.steps.length - 1]
-  const parts = [step.tool]
+  const parts = [getToolDisplayName(step.tool)]
   if (step.args) parts.push(step.args)
   return parts.join(' ')
 }
@@ -2867,7 +2867,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                                 <span v-else-if="step.status === 'completed'" class="sa-step-done">✓</span>
                                 <span v-else class="sa-step-fail">✗</span>
                               </span>
-                              <span class="sa-step-tool">{{ step.tool }}</span>
+                              <span class="sa-step-tool">{{ getToolDisplayName(step.tool) }}</span>
                               <span v-if="step.args" class="sa-step-args" :title="step.args">{{ step.args }}</span>
                             </div>
                           </div>

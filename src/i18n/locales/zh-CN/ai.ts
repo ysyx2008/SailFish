@@ -724,6 +724,8 @@ export default {
       manage_pane: '管理窗格',
       list_ssh_sessions: '查看远程会话',
       skill: '加载技能',
+      load_skill: '加载技能',
+      unload_skill: '卸载技能',
       load_user_skill: '加载用户技能',
       // Excel 技能
       excel_open: '打开 Excel',
