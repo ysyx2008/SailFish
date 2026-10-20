@@ -277,7 +277,7 @@ export class OrchestratorService {
                 '任务未能执行：AI 模型未调用任何工具。\n\n' +
                 '可能的原因：\n' +
                 '• 当前模型可能不支持 Function Calling（工具调用）\n' +
-                '• 请尝试使用支持 Function Calling 的模型，如 GPT-4、Claude 或 DeepSeek-Chat 最新版\n' +
+                '• 请尝试使用支持 Function Calling 的模型，如 GPT、Claude 或 DeepSeek 的最新版本\n' +
                 '• 或者换一种方式描述你的任务'
               )
               break

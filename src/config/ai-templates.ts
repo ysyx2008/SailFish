@@ -46,7 +46,7 @@ export const AI_TEMPLATES: AiTemplate[] = [
   {
     name: 'DeepSeek',
     apiUrl: 'https://api.deepseek.com/chat/completions',
-    model: 'deepseek-v4-flash-vision-exp',
+    model: 'deepseek-flash',
     descKey: 'aiSettings.templates.deepseek',
     keyUrl: 'https://platform.deepseek.com/api_keys',
     contextLength: 1_000_000,
@@ -127,7 +127,7 @@ export const AI_TEMPLATES: AiTemplate[] = [
   {
     name: 'Gemini',
     apiUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-    model: 'gemini-3.7-flash',
+    model: 'gemini-3.8-flash',
     descKey: 'aiSettings.templates.gemini',
     keyUrl: 'https://aistudio.google.com/apikey',
     contextLength: 1_000_000,
