@@ -1270,6 +1270,8 @@ export class AgentService {
     sshHost?: string
     context?: AgentContext
     profileId?: string
+    /** 这一轮的过程推给谁。不传就沿用这个实例上一轮留下的；重启后点开的历史会话没有「上一轮」 */
+    callbacks?: AgentCallbacks
   }): Promise<{ ok: true; goal: GoalSnapshot } | { ok: false; error: string }> {
     const agent = this.resolveGoalAgent(input)
     const goal = agent?.getGoal()
@@ -1285,6 +1287,7 @@ export class AgentService {
     try {
       const result = await this.goalRuntime.resumeAndContinue(input.agentKey, agent, resumeContext, {
         profileId: input.profileId,
+        ...(input.callbacks ? { callbacks: input.callbacks } : {}),
       })
       if (!result.ok) return { ok: false, error: result.error ?? 'resume_failed' }
       return { ok: true, goal: agent.getGoal()?.snapshot() ?? goal.snapshot() }

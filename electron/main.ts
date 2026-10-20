@@ -4375,6 +4375,20 @@ function createRendererAgentCallbacks(
   }
 }
 
+/** 界面发起的一轮：过程推回发起它的窗口；远程 Web 会话那场同时镜像给 Web 端 */
+async function rendererRunCallbacks(
+  sender: Electron.WebContents,
+  agentKey: string,
+  surface: 'assistant' | 'terminal'
+): Promise<{ callbacks: AgentCallbacks; mirror?: RemoteRunMirror }> {
+  let mirror: RemoteRunMirror | undefined
+  if (surface === 'assistant') {
+    const { webChat } = await ensureRemoteSessionStack()
+    if (agentKey === webChat.getAgentId()) mirror = webChat
+  }
+  return { callbacks: createRendererAgentCallbacks(sender, agentKey, mirror), mirror }
+}
+
 // 往一场对话里说一句：正在跑就补进这一轮，否则开新一轮——由那场对话自己决定，界面按返回结果显示
 ipcMain.handle('agent:say', async (event, { agentKey, surface, message, context, config, profileId }: {
   /** 终端形态 = tabId；助手形态 = 前端的 agentId */
@@ -4388,12 +4402,7 @@ ipcMain.handle('agent:say', async (event, { agentKey, surface, message, context,
   await ensureSkillsChangedBridge()
   const fullConfig = { ...config, debugMode: configService.getAgentDebugMode() }
   const { agentService } = await rt()
-  let mirror: RemoteRunMirror | undefined
-  if (surface === 'assistant') {
-    const { webChat } = await ensureRemoteSessionStack()
-    if (agentKey === webChat.getAgentId()) mirror = webChat
-  }
-  const callbacks = createRendererAgentCallbacks(event.sender, agentKey, mirror)
+  const { callbacks, mirror } = await rendererRunCallbacks(event.sender, agentKey, surface)
 
   try {
     const said = await agentService.say(agentKey, message, context, { surface, config: fullConfig, profileId, callbacks })
@@ -4620,7 +4629,7 @@ ipcMain.handle('goal:pause', async (_event, input: { agentKey: string; sessionId
   return agentService.pauseGoal(input)
 })
 
-ipcMain.handle('goal:resume', async (_event, input: {
+ipcMain.handle('goal:resume', async (event, input: {
   agentKey: string
   sessionId?: string
   terminalType?: TerminalType
@@ -4630,7 +4639,13 @@ ipcMain.handle('goal:resume', async (_event, input: {
 }) => {
   await wireGoalUpdates()
   const { agentService } = await rt()
-  return agentService.resumeGoal(input)
+  // 重新推进的那一轮和用户亲手发的一轮一样，过程要推回界面；重启后点开的历史会话没有上一轮留下的回调
+  const { callbacks } = await rendererRunCallbacks(
+    event.sender,
+    input.agentKey,
+    input.terminalType === 'assistant' ? 'assistant' : 'terminal'
+  )
+  return agentService.resumeGoal({ ...input, callbacks })
 })
 
 ipcMain.handle('goal:clear', async (_event, input: { agentKey: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }) => {

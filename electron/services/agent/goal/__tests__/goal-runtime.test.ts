@@ -191,6 +191,35 @@ describe('GoalRuntime 重新打开已达成的目标', () => {
     expect(goal.tokensUsed).toBe(4_000)
   })
 
+  it('点继续时带的界面回调，每一轮续跑都原样用上（重启后点开的历史会话没有上一轮留下的回调）', async () => {
+    const goal = startGoal()
+    goal.markAchieved()
+    const seen: Array<unknown> = []
+    const agent = {
+      getGoal: () => goal,
+      getConversationKind: () => 'task',
+      getLastRunOutcome: () => ({ aborted: false, failed: false, usageLimited: false, unretryable: false, tokenDelta: 0, durationSeconds: 0 }),
+      appendGoalNotice: () => {},
+      hasQueuedUserInput: () => false,
+      isRunning: () => false,
+    } as unknown as Agent
+    let rounds = 0
+    const runtime = new GoalRuntime({
+      persist: () => {},
+      notify: () => {},
+      runAgent: async (_agent, _message, _context, options) => {
+        seen.push(options.callbacks)
+        if (++rounds >= 2) goal.markAchieved()
+        return ''
+      },
+    })
+    const callbacks = { onStep: () => {} }
+
+    await runtime.resumeAndContinue('tab-1', agent, {} as AgentContext, { callbacks })
+
+    expect(seen).toEqual([callbacks, callbacks])
+  })
+
   it('只有紧接着那一轮提重新打开，之后的续跑回到平常的说法', async () => {
     const goal = startGoal()
     goal.markAchieved()
