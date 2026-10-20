@@ -2296,7 +2296,7 @@ export abstract class Agent {
       })
     }
 
-    const pendingHandoff = run.pendingUserMessages.filter(m => !m.backgroundNotice).map(m => ({
+    const pendingHandoff = run.pendingUserMessages.filter(m => !m.backgroundNotice && !m.subAgentKnock).map(m => ({
       message: m.message,
       ...(m.images?.length ? { images: m.images } : {}),
       ...(m.previewImages ? { previewImages: m.previewImages } : {}),

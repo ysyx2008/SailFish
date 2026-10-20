@@ -1539,6 +1539,26 @@ describe('Agent run method', () => {
       expect(onComplete).toHaveBeenCalled()
     })
 
+    it('收场时还没领的伙计敲门不交回界面当成用户要说的话', async () => {
+      const onComplete = vi.fn()
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          const run = (agent as any).currentRun
+          run.pendingUserMessages.push({ message: '[伙计 a 完成]', silent: true, subAgentKnock: true })
+          run.pendingUserMessages.push({ message: '用户排队的话' })
+          run.aborted = true
+          onChunk('x')
+          onDone({ content: 'x', tool_calls: undefined })
+          return Promise.resolve()
+        }
+      )
+      agent.setCallbacks({ onComplete })
+      await agent.run('Test task', createMockContext())
+      expect(onComplete).toHaveBeenCalled()
+      const handed = onComplete.mock.calls[0][2] as Array<{ message: string }>
+      expect(handed.map(m => m.message)).toEqual(['用户排队的话'])
+    })
+
     it('should call onError callback on failure', async () => {
       const onError = vi.fn()
       const errorMessage = 'Test error'
