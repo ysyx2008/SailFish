@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // npm run review           列出每一路走到哪一步
 // npm run review <名字>    在那一路的工作树里起开发进程（名字是分支名或工作树目录名的一部分）
+// npm run review:cli <名字> [一句话]   在那一路的工作树里跑命令行，后面的话原样交给命令行
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
@@ -102,7 +103,7 @@ function printList() {
     console.log(`  ${facts(l).join('；')}`)
     if (l.subject) console.log(`  最近一次提交：${l.when}，${l.subject}`)
     console.log(`  位置：${l.path}`)
-    console.log(`  起来看：npm run review ${l.branch}`)
+    console.log(`  起来看：npm run review ${l.branch}　　命令行：npm run review:cli ${l.branch}`)
   }
   console.log('')
 }
@@ -163,20 +164,41 @@ function prepareDeps(lane) {
   fs.writeFileSync(stamp, `${current}\n`)
 }
 
-async function start(query) {
-  const lane = pick(query)
-  await refuseIfDevRunning()
-  prepareDeps(lane)
-  await refuseIfDevRunning()
-  if (lane.dirty > 0) console.log(`注意：这一路有 ${lane.dirty} 处改动还没提交，起来的版本包含它们。`)
-  console.log(`起这一路：${lane.branch}（Ctrl+C 退出）`)
-  const child = spawn(npm, ['run', 'dev'], { cwd: lane.path, stdio: 'inherit', shell: process.platform === 'win32' })
+function follow(child) {
   const forward = (sig) => child.kill(sig)
   process.on('SIGINT', forward)
   process.on('SIGTERM', forward)
   child.on('exit', (code) => process.exit(code ?? 0))
 }
 
-const names = process.argv.slice(2).filter((a) => !a.startsWith('--'))
-if (names.length === 0) printList()
-else await start(names[0])
+function warnDirty(lane) {
+  if (lane.dirty > 0) console.log(`注意：这一路有 ${lane.dirty} 处改动还没提交，起来的版本包含它们。`)
+}
+
+async function startApp(query) {
+  const lane = pick(query)
+  await refuseIfDevRunning()
+  prepareDeps(lane)
+  await refuseIfDevRunning()
+  warnDirty(lane)
+  console.log(`起这一路：${lane.branch}（Ctrl+C 退出）`)
+  follow(spawn(npm, ['run', 'dev'], { cwd: lane.path, stdio: 'inherit', shell: process.platform === 'win32' }))
+}
+
+// 命令行不占开发端口，和开着的开发版并存；从仓库跑默认进沙箱，不写桌面那份历史
+function startCli(query, args) {
+  const lane = pick(query)
+  prepareDeps(lane)
+  warnDirty(lane)
+  console.log(`这一路的命令行：${lane.branch}\n`)
+  follow(spawn(process.execPath, [path.join(lane.path, 'electron/cli/main.js'), ...args], { cwd: lane.path, stdio: 'inherit' }))
+}
+
+const argv = process.argv.slice(2)
+const cliMode = argv[0] === '--cli'
+const [name, ...rest] = cliMode ? argv.slice(1) : argv
+if (!name) {
+  if (cliMode) fail('要说验哪一路：npm run review:cli <名字> [一句话]')
+  printList()
+} else if (cliMode) startCli(name, rest)
+else await startApp(name)
