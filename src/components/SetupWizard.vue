@@ -350,16 +350,13 @@ const stepLabels = computed(() => isSteamBuild
   ? [t('setup.steps.welcome'), t('setup.steps.ready')]
   : [t('setup.steps.welcome'), t('setup.steps.model'), t('setup.steps.ready')])
 
-// 欢迎页的四个卖点：图标 + 一句话 + 色相（纯装饰）
+// 欢迎页的四个卖点：图标 + 一句话 + 图标底板的颜色（沿用首页快速入口的品牌色，纯装饰）
 const welcomeFeatures = computed(() => [
-  { key: 'aiChat', icon: MessageSquare, hue: 212, title: t('setup.welcome.features.aiChat.title'), short: t('setup.welcome.features.aiChat.short') },
-  { key: 'agent', icon: Zap, hue: 38, title: t('setup.welcome.features.agent.title'), short: t('setup.welcome.features.agent.short') },
-  { key: 'ssh', icon: Server, hue: 160, title: t('setup.welcome.features.ssh.title'), short: t('setup.welcome.features.ssh.short') },
-  { key: 'knowledge', icon: BookOpen, hue: 276, title: t('setup.welcome.features.knowledge.title'), short: t('setup.welcome.features.knowledge.short') },
+  { key: 'aiChat', icon: MessageSquare, tone: 'var(--brand-assistant)', title: t('setup.welcome.features.aiChat.title'), short: t('setup.welcome.features.aiChat.short') },
+  { key: 'agent', icon: Zap, tone: 'var(--brand-local)', title: t('setup.welcome.features.agent.title'), short: t('setup.welcome.features.agent.short') },
+  { key: 'ssh', icon: Server, tone: 'var(--brand-ssh)', title: t('setup.welcome.features.ssh.title'), short: t('setup.welcome.features.ssh.short') },
+  { key: 'knowledge', icon: BookOpen, tone: '#f59e0b', title: t('setup.welcome.features.knowledge.title'), short: t('setup.welcome.features.knowledge.short') },
 ])
-
-// 服务头像的底色：按顺序错开色相，纯装饰
-const providerHue = (index: number) => (index * 47 + 200) % 360
 
 const skipWizard = async () => {
   // 直接完成向导
@@ -420,9 +417,7 @@ onMounted(async () => {
               </div>
               <span class="step-label">{{ label }}</span>
             </div>
-            <div v-if="i < stepLabels.length - 1" class="step-line" aria-hidden="true" :class="{ filled: i + 1 < currentStep }">
-              <span></span>
-            </div>
+            <div v-if="i < stepLabels.length - 1" class="step-line" aria-hidden="true" :class="{ filled: i + 1 < currentStep }"></div>
           </template>
         </div>
 
@@ -443,7 +438,7 @@ onMounted(async () => {
                 v-for="feature in welcomeFeatures"
                 :key="feature.key"
                 class="feature-card"
-                :style="{ '--hue': feature.hue }"
+                :style="{ '--tone': feature.tone }"
               >
                 <div class="feature-icon">
                   <component :is="feature.icon" :size="20" />
@@ -484,12 +479,9 @@ onMounted(async () => {
                   }"
                 >
                   <div class="ai-template-header" @click="selectTemplate(template.index)">
-                    <div class="provider-avatar" :style="{ '--hue': providerHue(template.index) }">
-                      <Plus v-if="template.isCustom" :size="18" />
-                      <span v-else>{{ template.name.charAt(0).toUpperCase() }}</span>
-                    </div>
                     <div class="ai-template-info">
                       <div class="ai-template-name">
+                        <Plus v-if="template.isCustom" :size="14" />
                         {{ template.name }}
                         <span v-if="isTemplateConfigured(template)" class="configured-tag">
                           {{ t('setup.aiConfig.configured') }}
@@ -497,12 +489,9 @@ onMounted(async () => {
                       </div>
                       <div class="ai-template-desc">{{ template.desc }}</div>
                     </div>
-                    <span v-if="isTemplateConfigured(template)" class="configured-check">
-                      <Check :size="13" :stroke-width="3" />
-                    </span>
                     <ChevronDown
-                      v-else
-                      :size="18"
+                      v-if="!isTemplateConfigured(template)"
+                      :size="16"
                       class="expand-arrow"
                       :class="{ rotated: selectedTemplateIndex === template.index }"
                     />
@@ -597,7 +586,7 @@ onMounted(async () => {
                 <p class="optional-hint">{{ t('setup.complete.optionalHint') }}</p>
 
                 <!-- 导入 SSH 主机 -->
-                <div class="config-card" :class="{ expanded: expandedSection === 'import' }" :style="{ '--hue': 212 }">
+                <div class="config-card" :class="{ expanded: expandedSection === 'import' }" :style="{ '--tone': 'var(--brand-ssh)' }">
                   <div class="config-card-header" @click="toggleSection('import')">
                     <span class="card-icon"><FolderInput :size="18" /></span>
                     <div class="card-info">
@@ -643,7 +632,7 @@ onMounted(async () => {
                 </div>
 
                 <!-- 知识库（Steam 版隐藏） -->
-                <div v-if="!isSteamBuild" class="config-card" :class="{ expanded: expandedSection === 'knowledge' }" :style="{ '--hue': 160 }">
+                <div v-if="!isSteamBuild" class="config-card" :class="{ expanded: expandedSection === 'knowledge' }" :style="{ '--tone': '#f59e0b' }">
                   <div class="config-card-header" @click="toggleSection('knowledge')">
                     <span class="card-icon"><Database :size="18" /></span>
                     <div class="card-info">
@@ -670,7 +659,7 @@ onMounted(async () => {
                 </div>
 
                 <!-- MCP 服务（Steam 版隐藏） -->
-                <div v-if="!isSteamBuild" class="config-card" :class="{ expanded: expandedSection === 'mcp' }" :style="{ '--hue': 276 }">
+                <div v-if="!isSteamBuild" class="config-card" :class="{ expanded: expandedSection === 'mcp' }" :style="{ '--tone': 'var(--brand-assistant)' }">
                   <div class="config-card-header" @click="toggleSection('mcp'); loadMcpServers()">
                     <span class="card-icon"><Plug :size="18" /></span>
                     <div class="card-info">
@@ -739,8 +728,8 @@ onMounted(async () => {
 
 <style scoped>
 /*
- * 首次引导。颜色全部取主题变量（强调色、背景、边框），换主题自动跟着变；
- * 带「--hue」的元素只是装饰用的点缀色，不承载含义。
+ * 首次引导。版式、间距、圆角、按钮都和设置里的弹窗保持一致：纯色平面、细边框、不用渐变和光晕。
+ * 颜色全部取主题变量；图标底板沿用首页快速入口的做法（线稿 + 极淡的同色底板，带一圈发丝边）。
  */
 .setup-wizard {
   position: fixed;
@@ -749,39 +738,24 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background:
-    radial-gradient(60% 50% at 50% 0%, color-mix(in srgb, var(--accent-primary) 24%, transparent), transparent 70%),
-    radial-gradient(45% 40% at 92% 100%, color-mix(in srgb, var(--accent-primary) 12%, transparent), transparent 70%),
-    rgba(0, 0, 0, 0.74);
-  backdrop-filter: blur(14px);
-  animation: backdropIn 0.35s ease both;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease both;
 }
 
 .wizard-container {
-  position: relative;
   display: flex;
-  width: min(720px, 92vw);
-  height: min(92vh, 680px);
+  width: min(640px, 92vw);
+  height: min(86vh, 620px);
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
-  border-radius: 20px;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
   overflow: hidden;
-  animation: containerIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-
-/* 顶部一团柔光，给整张卡一点层次 */
-.wizard-container::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 240px;
-  pointer-events: none;
-  background: radial-gradient(70% 100% at 50% 0%, color-mix(in srgb, var(--accent-primary) 15%, transparent), transparent 75%);
+  animation: modalIn 0.2s ease both;
 }
 
 .wizard-main {
-  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -789,38 +763,38 @@ onMounted(async () => {
   min-height: 0;
 }
 
-/* ───────── 步骤条 ───────── */
+/* ───────── 步骤条（顶栏，与弹窗标题栏同一套底色与分隔线） ───────── */
 .steps-progress {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 22px 24px 14px;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .step-indicator {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   color: var(--text-muted);
-  transition: color 0.3s ease;
 }
 
 .step-number {
-  width: 26px;
-  height: 26px;
+  width: 20px;
+  height: 20px;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  background: var(--bg-tertiary);
+  background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  transition: all 0.3s ease;
 }
 
 .step-label {
-  font-size: 13px;
+  font-size: var(--fs-desc);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -830,10 +804,9 @@ onMounted(async () => {
 }
 
 .step-indicator.active .step-number {
-  background: var(--accent-primary);
-  border-color: transparent;
   color: var(--accent-contrast, #fff);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-primary) 22%, transparent);
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
 }
 
 .step-indicator.completed {
@@ -841,39 +814,28 @@ onMounted(async () => {
 }
 
 .step-indicator.completed .step-number {
-  background: var(--color-success);
-  border-color: transparent;
-  color: var(--bg-primary);
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  border-color: color-mix(in srgb, var(--color-success) 35%, transparent);
 }
 
 .step-line {
-  width: 56px;
-  height: 2px;
-  border-radius: 2px;
+  width: 32px;
+  height: 1px;
   background: var(--border-color);
-  overflow: hidden;
 }
 
-.step-line > span {
-  display: block;
-  width: 0;
-  height: 100%;
-  background: var(--color-success);
-  transition: width 0.4s ease;
-}
-
-.step-line.filled > span {
-  width: 100%;
+.step-line.filled {
+  background: color-mix(in srgb, var(--color-success) 50%, var(--border-color));
 }
 
 /* ───────── 内容区 ───────── */
 .step-content {
-  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 10px 40px 28px;
+  padding: 24px 32px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--border-color) transparent;
@@ -883,7 +845,7 @@ onMounted(async () => {
 .step-panel {
   width: 100%;
   margin: auto 0;
-  animation: panelIn 0.35s ease both;
+  animation: fadeIn 0.2s ease both;
 }
 
 .step-header {
@@ -891,20 +853,19 @@ onMounted(async () => {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  margin-bottom: 22px;
+  margin-bottom: 20px;
 }
 
 .step-header h2 {
-  margin: 0 0 6px;
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
 .step-intro {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--fs-body);
   line-height: 1.6;
   color: var(--text-secondary);
 }
@@ -915,80 +876,78 @@ onMounted(async () => {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .hero-logo {
-  width: 68px;
-  height: 68px;
-  display: grid;
-  place-items: center;
-  margin-bottom: 14px;
-  border-radius: 20px;
-  background: linear-gradient(150deg, color-mix(in srgb, var(--accent-primary) 26%, var(--bg-surface)), var(--bg-surface));
-  border: 1px solid color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
-  box-shadow: 0 12px 32px color-mix(in srgb, var(--accent-primary) 28%, transparent);
-  animation: float 5s ease-in-out infinite;
+  display: flex;
+  margin-bottom: 12px;
 }
 
+/* 与首页同一个吉祥物、同样的轮廓光，不再套底板 */
 .hero-logo img {
-  width: 42px;
-  height: 42px;
+  width: 72px;
+  height: 72px;
   object-fit: contain;
+  filter: drop-shadow(0 4px 16px rgba(var(--accent-decorative-rgb), 0.4));
 }
 
 .hero-title {
-  margin: 0 0 6px;
-  font-size: 28px;
+  margin: 0 0 4px;
+  font-size: 26px;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: -0.4px;
   color: var(--text-primary);
-  background: linear-gradient(135deg, var(--text-primary) 35%, var(--accent-primary));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
 }
 
 .hero-subtitle {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--fs-body);
+  letter-spacing: 0.3px;
   color: var(--text-secondary);
 }
 
 .intro-text {
-  max-width: 520px;
-  margin: 0 auto 22px;
+  max-width: 480px;
+  margin: 0 auto 20px;
   text-align: center;
-  font-size: 13px;
-  line-height: 1.8;
+  font-size: var(--fs-body);
+  line-height: 1.7;
   color: var(--text-secondary);
 }
 
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: 10px;
 }
 
 .feature-card {
+  --tone: var(--accent-primary);
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  background: var(--bg-secondary);
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
+}
+
+/* 图标底板：与首页快速入口同一做法 */
+.feature-icon,
+.config-card-header .card-icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 24%, transparent);
 }
 
 .feature-icon {
-  flex-shrink: 0;
   width: 40px;
   height: 40px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  color: color-mix(in srgb, hsl(var(--hue) 80% 55%) 72%, var(--text-primary));
-  background: hsl(var(--hue) 75% 58% / 0.14);
+  border-radius: 11px;
 }
 
 .feature-text {
@@ -1004,82 +963,59 @@ onMounted(async () => {
 
 .feature-text p {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-desc);
   line-height: 1.4;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 /* ───────── 配置大模型 ───────── */
 .configured-hint {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: fit-content;
-  margin: 0 auto 18px;
-  padding: 7px 14px;
-  font-size: 13px;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  font-size: var(--fs-desc);
   color: var(--color-success);
-  background: color-mix(in srgb, var(--color-success) 11%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent);
-  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-success) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success) 25%, transparent);
+  border-radius: 8px;
 }
 
 .configured-icon {
   flex-shrink: 0;
 }
 
+/* 一行一个服务，版式与设置里的模型列表同源 */
 .ai-template-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .ai-template-card {
-  background: var(--bg-secondary);
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
-  border-radius: 14px;
+  border-radius: 8px;
   overflow: hidden;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  transition: border-color 0.2s ease;
 }
 
-.ai-template-card:not(.configured):hover {
-  border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-color));
-}
-
+.ai-template-card:not(.configured):hover,
 .ai-template-card.selected {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-primary) 16%, transparent);
-}
-
-.ai-template-card.configured {
-  background: color-mix(in srgb, var(--color-success) 6%, var(--bg-secondary));
-  border-color: color-mix(in srgb, var(--color-success) 38%, var(--border-color));
 }
 
 .ai-template-header {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: 12px;
+  padding: 12px;
   cursor: pointer;
 }
 
 .ai-template-card.configured .ai-template-header {
   cursor: default;
-}
-
-.provider-avatar {
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  font-size: 16px;
-  font-weight: 700;
-  border-radius: 12px;
-  color: color-mix(in srgb, hsl(var(--hue) 80% 55%) 72%, var(--text-primary));
-  background: hsl(var(--hue) 75% 58% / 0.14);
-  border: 1px solid hsl(var(--hue) 75% 58% / 0.22);
 }
 
 .ai-template-info {
@@ -1090,37 +1026,30 @@ onMounted(async () => {
 .ai-template-name {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 3px;
-  font-size: 15px;
-  font-weight: 600;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--text-primary);
 }
 
-.configured-tag {
-  padding: 1px 8px;
-  font-size: 11px;
+.configured-tag,
+.card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  font-size: 10px;
   font-weight: 500;
   color: var(--color-success);
-  background: color-mix(in srgb, var(--color-success) 14%, transparent);
-  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  border-radius: 8px;
 }
 
 .ai-template-desc {
-  font-size: 12px;
+  margin-top: 2px;
+  font-size: var(--fs-desc);
   line-height: 1.5;
   color: var(--text-muted);
-}
-
-.configured-check {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  color: var(--bg-primary);
-  background: var(--color-success);
-  border-radius: 50%;
 }
 
 .expand-arrow {
@@ -1136,17 +1065,16 @@ onMounted(async () => {
 .ai-template-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px 16px;
-  background: var(--bg-primary);
+  gap: 10px;
+  padding: 12px;
   border-top: 1px solid var(--border-color);
-  animation: bodyIn 0.22s ease both;
+  animation: fadeIn 0.2s ease both;
 }
 
 .api-key-input-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .api-key-input-row .input {
@@ -1157,39 +1085,37 @@ onMounted(async () => {
 .get-key-link {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 9px 14px;
-  font-size: 12px;
+  gap: 4px;
+  padding: 6px 10px;
+  font-size: var(--fs-desc);
   white-space: nowrap;
-  color: var(--accent-primary);
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--accent-primary) 50%, transparent);
-  border-radius: 10px;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease;
 }
 
 .get-key-link:hover {
-  color: var(--accent-contrast, #fff);
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
+  background: var(--bg-hover);
 }
 
 .local-hint {
-  padding: 9px 12px;
-  font-size: 13px;
+  padding: 8px 12px;
+  font-size: var(--fs-desc);
   color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  border-radius: 10px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
 }
 
 .context-small-note {
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: var(--fs-desc);
   line-height: 1.5;
   color: var(--color-warning);
   background: color-mix(in srgb, var(--color-warning) 8%, transparent);
-  border-left: 3px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 25%, transparent);
   border-radius: 6px;
 }
 
@@ -1200,151 +1126,126 @@ onMounted(async () => {
 .custom-form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
 .form-label {
-  font-size: 12px;
+  font-size: var(--fs-desc);
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .input {
-  padding: 10px 14px;
-  font-size: 13px;
-  color: var(--text-primary);
+  padding: 8px 12px;
+  font-size: var(--fs-body);
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.input:focus {
-  outline: none;
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-primary) 16%, transparent);
+  border-radius: 6px;
 }
 
 .ai-config-hint {
-  margin: 18px 0 0;
+  margin: 14px 0 0;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--fs-desc);
   color: var(--text-muted);
 }
 
 /* ───────── 完成页 ───────── */
 .success-mark {
-  position: relative;
-  width: 64px;
-  height: 64px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
-  margin: 16px 0;
-  color: var(--bg-primary);
-  background: linear-gradient(150deg, color-mix(in srgb, var(--color-success) 80%, #fff), var(--color-success));
-  border-radius: 50%;
-  box-shadow: 0 12px 32px color-mix(in srgb, var(--color-success) 35%, transparent);
-}
-
-.success-mark::after {
-  content: '';
-  position: absolute;
-  inset: -8px;
-  border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--color-success) 40%, transparent);
-  animation: ring 2.4s ease-out infinite;
+  margin: 0 0 12px;
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success) 24%, transparent);
+  border-radius: 12px;
 }
 
 .ready-banner {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 26px;
-  padding: 16px 18px;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--color-success) 12%, transparent), color-mix(in srgb, var(--color-success) 4%, transparent));
-  border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent);
-  border-radius: 14px;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--color-success) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success) 25%, transparent);
+  border-radius: 8px;
 }
 
 .ready-icon {
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   color: var(--color-success);
-  background: color-mix(in srgb, var(--color-success) 16%, transparent);
-  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  border-radius: 8px;
 }
 
 .ready-text h3 {
-  margin: 0 0 3px;
-  font-size: 15px;
+  margin: 0 0 2px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--color-success);
 }
 
 .ready-text p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-desc);
   line-height: 1.5;
   color: var(--text-secondary);
 }
 
+/* 分组标题与首页、设置里的分组标签同一套排版 */
 .optional-title {
   margin: 0 0 4px;
-  font-size: 14px;
+  font-size: var(--fs-desc);
   font-weight: 600;
-  color: var(--text-primary);
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
 }
 
 .optional-hint {
-  margin: 0 0 14px;
-  font-size: 12px;
+  margin: 0 0 10px;
+  font-size: var(--fs-desc);
   color: var(--text-muted);
 }
 
 .config-card {
-  margin-bottom: 10px;
-  background: var(--bg-secondary);
+  --tone: var(--accent-primary);
+  margin-bottom: 8px;
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
-  border-radius: 14px;
+  border-radius: 8px;
   overflow: hidden;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease;
 }
 
-.config-card:hover {
-  border-color: color-mix(in srgb, var(--accent-primary) 40%, var(--border-color));
-}
-
+.config-card:hover,
 .config-card.expanded {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-primary) 14%, transparent);
 }
 
 .config-card-header {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 13px 16px;
+  gap: 12px;
+  padding: 12px;
   cursor: pointer;
 }
 
 .config-card-header .card-icon {
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  color: color-mix(in srgb, hsl(var(--hue) 80% 55%) 72%, var(--text-primary));
-  background: hsl(var(--hue) 75% 58% / 0.14);
-  border-radius: 11px;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
 }
 
 .config-card-header .card-info {
@@ -1355,26 +1256,15 @@ onMounted(async () => {
 .config-card-header .card-title {
   display: block;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
 }
 
 .config-card-header .card-desc {
   display: block;
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--fs-desc);
   color: var(--text-muted);
-}
-
-.config-card-header .card-status {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 10px;
-  font-size: 12px;
-  color: var(--color-success);
-  background: color-mix(in srgb, var(--color-success) 12%, transparent);
-  border-radius: 999px;
 }
 
 .config-card-header .expand-icon {
@@ -1383,30 +1273,28 @@ onMounted(async () => {
 }
 
 .config-card-body {
-  padding: 14px 16px 16px;
-  background: var(--bg-primary);
+  padding: 12px;
   border-top: 1px solid var(--border-color);
-  animation: bodyIn 0.22s ease both;
+  animation: fadeIn 0.2s ease both;
 }
 
 .scan-prompt {
   text-align: center;
-  padding: 4px 0;
 }
 
 .scanning {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 12px;
-  font-size: 13px;
+  gap: 10px;
+  padding: 8px;
+  font-size: var(--fs-desc);
   color: var(--text-secondary);
 }
 
 .spinner {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border: 2px solid var(--border-color);
   border-top-color: var(--accent-primary);
   border-radius: 50%;
@@ -1416,12 +1304,12 @@ onMounted(async () => {
 .scan-result-compact {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .scan-result-compact .result-text {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-desc);
   color: var(--color-success);
 }
 
@@ -1439,12 +1327,8 @@ onMounted(async () => {
 
 .no-result p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-desc);
   color: var(--text-muted);
-}
-
-.knowledge-toggle {
-  margin: 2px 0;
 }
 
 .switch-label {
@@ -1452,8 +1336,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--fs-body);
   color: var(--text-primary);
 }
 
@@ -1461,8 +1344,8 @@ onMounted(async () => {
   position: relative;
   display: inline-block;
   flex-shrink: 0;
-  width: 44px;
-  height: 24px;
+  width: 36px;
+  height: 20px;
 }
 
 .switch input {
@@ -1476,21 +1359,20 @@ onMounted(async () => {
   inset: 0;
   cursor: pointer;
   background-color: var(--bg-hover);
-  border-radius: 24px;
-  transition: background-color 0.25s ease;
+  border-radius: 20px;
+  transition: background-color 0.2s ease;
 }
 
 .slider::before {
   content: '';
   position: absolute;
   left: 3px;
-  bottom: 3px;
-  width: 18px;
-  height: 18px;
+  top: 3px;
+  width: 14px;
+  height: 14px;
   background-color: #fff;
   border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  transition: transform 0.25s ease;
+  transition: transform 0.2s ease;
 }
 
 .switch input:checked + .slider {
@@ -1498,62 +1380,61 @@ onMounted(async () => {
 }
 
 .switch input:checked + .slider::before {
-  transform: translateX(20px);
+  transform: translateX(16px);
 }
 
 .loading-compact {
   display: flex;
   justify-content: center;
-  padding: 8px 0;
 }
 
 .mcp-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .mcp-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 9px 12px;
+  padding: 8px 12px;
   background: var(--bg-secondary);
-  border-radius: 10px;
+  border-radius: 6px;
 }
 
 .mcp-name {
-  font-size: 13px;
+  font-size: var(--fs-body);
   color: var(--text-primary);
 }
 
 .mcp-status {
-  padding: 2px 8px;
-  font-size: 11px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
   color: var(--text-muted);
   background: var(--bg-tertiary);
-  border-radius: 999px;
+  border-radius: 8px;
 }
 
 .mcp-status.enabled {
   color: var(--color-success);
-  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
 }
 
 .no-mcp-compact p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-desc);
   color: var(--text-muted);
 }
 
-/* ───────── 底部导航 ───────── */
+/* ───────── 底部导航（与弹窗页脚同一套） ───────── */
 .wizard-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 16px 28px;
-  background: color-mix(in srgb, var(--bg-secondary) 75%, transparent);
+  gap: 8px;
+  padding: 12px 16px;
   border-top: 1px solid var(--border-color);
 }
 
@@ -1565,27 +1446,44 @@ onMounted(async () => {
 
 .footer-right {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
 }
 
+/* 与设置里的按钮同一套：细边框、不带阴影与位移；全局按钮自带的扫光在这里不用 */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 10px 18px;
-  font-size: 14px;
+  padding: 6px 14px;
+  font-size: var(--fs-body);
   font-weight: 500;
+  font-family: inherit;
+  line-height: 1.4;
   color: var(--text-primary);
-  background: var(--bg-tertiary);
+  background: transparent;
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  box-shadow: none;
+  transform: none;
+  overflow: visible;
+  transition: background-color 0.2s ease, border-color 0.2s ease, filter 0.2s ease;
+}
+
+.btn::before {
+  display: none;
 }
 
 .btn:hover:not(:disabled) {
   background: var(--bg-hover);
+  box-shadow: none;
+  transform: none;
+}
+
+.btn:active:not(:disabled) {
+  transform: none;
 }
 
 .btn:disabled {
@@ -1593,33 +1491,20 @@ onMounted(async () => {
   cursor: not-allowed;
 }
 
+/* 主按钮：平的强调色，和首页的主行动同一个蓝 */
 .btn-primary {
   color: var(--accent-contrast, #fff);
-  background: linear-gradient(135deg, var(--accent-primary), color-mix(in srgb, var(--accent-primary) 70%, var(--accent-secondary)));
-  border-color: transparent;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent-primary) 30%, transparent);
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--accent-primary), color-mix(in srgb, var(--accent-primary) 70%, var(--accent-secondary)));
-  filter: brightness(1.08);
-  transform: translateY(-1px);
-}
-
-.btn-outline {
-  background: transparent;
+  background: var(--accent-primary);
+  filter: brightness(1.1);
 }
 
 .btn-ghost {
   color: var(--text-secondary);
-  background: transparent;
-  border-color: transparent;
-}
-
-/* 全局按钮自带一道斜向扫光，静止时在透明按钮上会露出一条淡淡的亮带 */
-.btn-ghost::before,
-.btn-outline::before {
-  content: none;
 }
 
 .btn.hidden {
@@ -1627,66 +1512,38 @@ onMounted(async () => {
 }
 
 .btn-sm {
-  padding: 6px 12px;
-  font-size: 12px;
+  padding: 4px 10px;
+  font-size: var(--fs-desc);
 }
 
 .btn-link {
-  padding: 6px 12px;
-  font-size: 13px;
+  padding: 4px 10px;
+  font-size: var(--fs-desc);
   color: var(--text-muted);
   background: none;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: color 0.2s ease, background 0.2s ease;
+  transition: color 0.2s ease;
 }
 
 .btn-link:hover {
   color: var(--text-primary);
-  background: var(--bg-tertiary);
 }
 
-/* ───────── 动画 ───────── */
-@keyframes backdropIn {
+/* ───────── 动画（弹窗出入场与设置里的弹窗一致，其余只做淡入） ───────── */
+@keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-@keyframes containerIn {
-  from { opacity: 0; transform: translateY(14px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes panelIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes bodyIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
-}
-
-@keyframes ring {
-  0% { opacity: 0.9; transform: scale(0.9); }
-  100% { opacity: 0; transform: scale(1.35); }
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-@media (forced-colors: active) {
-  .hero-title {
-    background: none;
-    -webkit-text-fill-color: currentColor;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1694,18 +1551,15 @@ onMounted(async () => {
   .wizard-container,
   .step-panel,
   .ai-template-body,
-  .config-card-body,
-  .hero-logo,
-  .success-mark::after {
+  .config-card-body {
     animation: none;
   }
 }
 
 /* 窗口窄了：欢迎页卖点改单列，步骤条收紧 */
 @media (max-width: 560px) {
-  .step-content { padding: 8px 20px 20px; }
+  .step-content { padding: 16px; }
   .feature-grid { grid-template-columns: 1fr; }
-  .step-line { width: 28px; }
-  .wizard-footer { padding: 14px 20px; }
+  .step-line { width: 16px; }
 }
 </style>
