@@ -28,7 +28,11 @@ describe('maskSecret', () => {
     expect(out).not.toContain('3456789ab')
   })
 
-  it('不去掉首尾空白，显示的就是用户填的那一串', () => {
-    expect(maskSecret(' '.repeat(3))).toBe(MASK_CHAR.repeat(8))
+  it('首尾空白不算密钥的一部分：复制时多带的空格、换行不会顶掉真正的末尾 4 位', () => {
+    expect(maskSecret('  sk-abcdefghijklmnop1234 \n')).toBe(`sk-${MASK_CHAR.repeat(8)}1234`)
+  })
+
+  it('全是空白等于没填', () => {
+    expect(maskSecret('   \n ')).toBe('')
   })
 })

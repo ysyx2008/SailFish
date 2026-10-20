@@ -3,6 +3,7 @@
  *
  * 圆点个数固定，不随密钥长短变，旁人看不出密钥有多长。
  * 太短的密钥露头尾就露掉了大半，一位都不露，只给 8 个圆点。
+ * 首尾的空白（复制时常多带的空格、换行）不算密钥的一部分，按去掉后的样子遮盖。
  */
 export const MASK_CHAR = '•'
 const HEAD = 3
@@ -12,7 +13,8 @@ const MIDDLE = 8
 const MIN_REVEAL_LENGTH = 16
 
 export function maskSecret(secret: string): string {
-  if (!secret) return ''
-  if (secret.length < MIN_REVEAL_LENGTH) return MASK_CHAR.repeat(MIDDLE)
-  return `${secret.slice(0, HEAD)}${MASK_CHAR.repeat(MIDDLE)}${secret.slice(-TAIL)}`
+  const value = secret.trim()
+  if (!value) return ''
+  if (value.length < MIN_REVEAL_LENGTH) return MASK_CHAR.repeat(MIDDLE)
+  return `${value.slice(0, HEAD)}${MASK_CHAR.repeat(MIDDLE)}${value.slice(-TAIL)}`
 }

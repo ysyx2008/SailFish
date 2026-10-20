@@ -70,6 +70,11 @@ describe('describeSecretField', () => {
       expect(v.placeholder).not.toContain('abcdefghijklmnop')
     })
 
+    it('只填了空白，等于没填：框是空的，沿用的那一把照常显示', () => {
+      const v = describeSecretField({ ...base, value: '   ', reusedValue: KEY, placeholder: 'API Key' })
+      expect(v).toMatchObject({ shown: '', showsReused: true, placeholder: MASKED })
+    })
+
     it('用户自己填了，就不再显示沿用的那一把', () => {
       const v = describeSecretField({ ...base, value: 'my-own-key-abcdefgh9999', reusedValue: KEY })
       expect(v.showsReused).toBe(false)

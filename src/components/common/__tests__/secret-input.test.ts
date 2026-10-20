@@ -58,13 +58,19 @@ function mountField(opts: { value?: string; reusedValue?: string; placeholder?: 
 }
 
 const focus = async (el: HTMLElement) => {
-  el.dispatchEvent(new FocusEvent('focus'))
+  el.focus()
   await nextTick()
 }
 const blur = async (el: HTMLElement) => {
-  el.dispatchEvent(new FocusEvent('blur'))
+  el.blur()
   await nextTick()
 }
+/** 等「晚一拍」的全选落定 */
+const settle = async () => {
+  await nextTick()
+  await new Promise((resolve) => setTimeout(resolve, 5))
+}
+const selectedLength = (el: HTMLInputElement) => (el.selectionEnd ?? 0) - (el.selectionStart ?? 0)
 const click = async (el: HTMLElement) => {
   el.click()
   await nextTick()
@@ -94,6 +100,42 @@ describe('SecretInput', () => {
     expect(input().readOnly).toBe(true)
     expect(input().type).toBe('text')
     expect(input().value).toBe(MASKED)
+  })
+
+  it('点进去把内容全选：直接粘贴就是替换，不会插进看不见的中间', async () => {
+    const { input } = mountField({ value: KEY })
+    await focus(input())
+    await settle()
+    expect(input().selectionStart).toBe(0)
+    expect(selectedLength(input())).toBe(KEY.length)
+  })
+
+  it('点开了眼睛再点进去，不全选：光标落在哪儿就是哪儿', async () => {
+    const { input, toggle } = mountField({ value: KEY })
+    await click(toggle())
+    await focus(input())
+    await settle()
+    expect(selectedLength(input())).toBe(0)
+  })
+
+  it('焦点刚进来、全选落定之前用户已经输入了，就不再全选，免得盖掉刚输的字', async () => {
+    const { input, model } = mountField({ value: KEY })
+    await focus(input())
+    input().value = `${KEY}9`
+    input().dispatchEvent(new Event('input'))
+    await settle()
+    expect(model.value).toBe(`${KEY}9`)
+    expect(selectedLength(input())).toBe(0)
+  })
+
+  it('空框点进去：没有东西可选，也不影响输入', async () => {
+    const { input, model } = mountField({ placeholder: 'API Key' })
+    await focus(input())
+    await settle()
+    input().value = 'abc'
+    input().dispatchEvent(new Event('input'))
+    await settle()
+    expect(model.value).toBe('abc')
   })
 
   it('编辑时输入的内容回写给调用方', async () => {

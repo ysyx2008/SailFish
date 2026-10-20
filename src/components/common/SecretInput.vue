@@ -9,7 +9,7 @@
  *
  * 眼睛的状态记在组件里；换了所编辑的对象（切服务商、换一条配置）时，调用方用 :key 让它重新开始。
  */
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Eye, EyeOff } from 'lucide-vue-next'
 import { describeSecretField } from './secret-field'
@@ -46,12 +46,34 @@ const toggleLabel = computed(() => (revealed.value ? t('common.secretInput.hide'
 function onInput(event: Event) {
   emit('update:modelValue', (event.target as HTMLInputElement).value)
 }
+
+/**
+ * 点进框的那一下，框里的文字从遮盖文本换成真实内容，两者长短不同，
+ * 浏览器按点击位置落下的光标和眼前的字对不上（满屏圆点里插错位置也看不出来）。
+ * 所以把内容全选：直接粘贴就是替换，要改其中几位再点一下定位。
+ * 浏览器放光标在焦点事件之后，晚一拍再选才不被盖掉；这一拍里用户已经输入了就不再选。
+ * 点开了眼睛时框里本来就是真实内容，光标落在哪儿就是哪儿，不全选。
+ */
+const inputEl = ref<HTMLInputElement | null>(null)
+
+function onFocus() {
+  focused.value = true
+  const el = inputEl.value
+  const expected = props.modelValue ?? ''
+  if (!el || revealed.value || !expected.trim()) return
+  void nextTick().then(() =>
+    setTimeout(() => {
+      if (document.activeElement === el && el.value === expected) el.select()
+    }, 0),
+  )
+}
 </script>
 
 <template>
   <div class="secret-input">
     <input
       v-bind="$attrs"
+      ref="inputEl"
       :value="view.shown"
       :type="view.inputType"
       :readonly="view.readonly"
@@ -61,7 +83,7 @@ function onInput(event: Event) {
       autocomplete="off"
       autocapitalize="off"
       :placeholder="view.placeholder"
-      @focus="focused = true"
+      @focus="onFocus"
       @blur="focused = false"
       @input="onInput"
     />

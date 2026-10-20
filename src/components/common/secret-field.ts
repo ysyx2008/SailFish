@@ -33,7 +33,8 @@ export interface SecretFieldView {
 export function describeSecretField(state: SecretFieldState): SecretFieldView {
   const { value, reusedValue = '', focused, revealed, placeholder = '' } = state
 
-  if (value) {
+  // 全是空白的算没填，和保存、使用时的口径一致
+  if (value.trim()) {
     if (revealed) return { inputType: 'text', shown: value, readonly: false, placeholder, showsReused: false }
     if (focused) return { inputType: 'password', shown: value, readonly: false, placeholder, showsReused: false }
     return { inputType: 'text', shown: maskSecret(value), readonly: true, placeholder, showsReused: false }

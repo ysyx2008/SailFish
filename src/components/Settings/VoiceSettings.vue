@@ -604,7 +604,11 @@ function openWebSearchKeyUrl() {
                 <span>{{ t('settings.tts.getKey') }}</span>
               </button>
             </div>
-            <input v-model="ttsApiKey" type="password" class="input" :placeholder="ttsSelectedPreset.keyPlaceholder || 'API Key'" />
+            <SecretInput
+              :key="ttsPresetId"
+              v-model="ttsApiKey"
+              :placeholder="ttsSelectedPreset.keyPlaceholder || 'API Key'"
+            />
           </div>
 
           <div class="form-row">
