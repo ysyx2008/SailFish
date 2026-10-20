@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
 import type { ParsedDocument } from '../stores/terminal'
 import { toUserSkillId } from '@sailfish/shared-types'
+import { useBuiltinSkillText } from './useBuiltinSkillText'
 
 // @ 命令类型
 export type MentionType = 'file' | 'docs' | 'skill'
@@ -67,6 +68,7 @@ export function useMentions(
   onSkillToggle?: (skill: { id: string; name: string; description?: string }) => void
 ) {
   const { t } = useI18n()
+  const { builtinSkillName, builtinSkillDescription } = useBuiltinSkillText()
   const terminalStore = useTerminalStore()
 
   // ==================== 状态 ====================
@@ -477,8 +479,10 @@ export function useMentions(
       const q = query.toLowerCase()
       const matches = (name: string, id: string, description: string) =>
         !q || name.toLowerCase().includes(q) || id.toLowerCase().includes(q) || description.toLowerCase().includes(q)
+      // 内置技能显示界面语言下的名字和简介（和设置页一致）；搜索也按眼前看到的
       const builtinItems = builtins
         .filter(s => s.enabled)
+        .map(s => ({ id: s.id, name: builtinSkillName(s), description: builtinSkillDescription(s) }))
         .filter(s => matches(s.name, s.id, s.description))
         .map(s => ({
           type: 'skill' as MentionType,

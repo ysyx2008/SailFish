@@ -6,7 +6,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref } from 'vue'
 
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+// 界面语言包里的译文，用例按需往里放（空着就等于没有译名）
+const messages: Record<string, string> = {}
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({ t: (key: string) => messages[key] ?? key, te: (key: string) => key in messages }),
+}))
 vi.mock('../stores/terminal', () => ({ useTerminalStore: () => ({}) }))
 
 import { useMentions } from './useMentions'
@@ -35,6 +39,7 @@ function setup() {
 }
 
 beforeEach(() => {
+  for (const key of Object.keys(messages)) delete messages[key]
   builtinList.mockReset().mockResolvedValue([EXCEL])
   userList.mockReset().mockResolvedValue([FOO])
   ;(window as unknown as { electronAPI: unknown }).electronAPI = {
@@ -244,5 +249,57 @@ describe('技能列表的顺序（按名字拼音排）', () => {
     expect(ids).toHaveLength(30)
     expect(ids[0]).toBe('s0')
     expect(ids[29]).toBe('s29')
+  })
+})
+
+describe('内置技能显示界面语言下的名字（和设置页一致）', () => {
+  const englishUi = () => {
+    messages['skillSettings.builtinSkillNames.excel'] = 'Excel'
+    messages['skillSettings.builtinSkillDescs.excel'] = 'Read and write spreadsheets'
+  }
+
+  it('有译名：内置技能显示译名和译文简介，自己装的技能照旧', async () => {
+    englishUi()
+    const { mentions } = setup()
+    mentions.openSkillMenu()
+    await flush()
+    const byId = Object.fromEntries(mentions.suggestions.value.map(s => [s.id, s]))
+    expect(byId['excel'].label).toBe('Excel')
+    expect(byId['excel'].description).toBe('Read and write spreadsheets')
+    expect(byId['user:foo'].label).toBe('Foo 技能')
+    expect(byId['user:foo'].description).toBe('自己写的')
+  })
+
+  it('没有译名的内置技能用后端给的原文', async () => {
+    const { mentions } = setup()
+    mentions.openSkillMenu()
+    await flush()
+    const excel = mentions.suggestions.value.find(s => s.id === 'excel')
+    expect(excel?.label).toBe('Excel 处理')
+    expect(excel?.description).toBe('表格读写')
+  })
+
+  it('搜索按眼前看到的：能搜到译名和译文简介', async () => {
+    englishUi()
+    const { mentions } = setup()
+    mentions.openSkillMenu()
+    await flush()
+    mentions.setSkillSearch('spreadsheet')
+    await flush()
+    expect(mentions.suggestions.value.map(s => s.id)).toEqual(['excel'])
+  })
+
+  it('排序按译名排，不按中文原名', async () => {
+    messages['skillSettings.builtinSkillNames.word'] = 'Apple Notes'
+    messages['skillSettings.builtinSkillNames.excel'] = 'Zebra Sheets'
+    builtinList.mockResolvedValue([
+      { id: 'excel', name: 'Excel 处理', description: '', enabled: true },
+      { id: 'word', name: 'Word 文档', description: '', enabled: true },
+    ])
+    userList.mockResolvedValue([])
+    const { mentions } = setup()
+    mentions.openSkillMenu()
+    await flush()
+    expect(mentions.suggestions.value.map(s => s.id)).toEqual(['word', 'excel'])
   })
 })
