@@ -43,6 +43,8 @@ import {
   bodyFromItemList,
 } from './wechat/messaging/inbound'
 import { resolveStateDir } from './wechat/storage/state-dir'
+import { InstanceLease } from './wechat/instance-lease'
+import { t } from '../../i18n/main-i18n'
 import { downloadAndDecryptBuffer, downloadPlainCdnBuffer } from './wechat/cdn/pic-decrypt'
 import type { WeixinMessage, MessageItem } from './wechat/api/types'
 import { MessageItemType } from './wechat/api/types'
@@ -126,6 +128,14 @@ interface QRStatusResp {
   redirect_host?: string
 }
 
+/** 同一个微信账号已经在本机另一个旗鱼实例里连着；message 是给用户看的话。 */
+export class WeChatHeldByOtherInstanceError extends Error {
+  constructor() {
+    super(t('error.wechatHeldByOtherInstance'))
+    this.name = 'WeChatHeldByOtherInstanceError'
+  }
+}
+
 export class WeChatAdapter implements IMAdapter, IMProgressOutboundCapable {
   readonly platform: IMPlatform = 'wechat'
 
@@ -148,6 +158,13 @@ export class WeChatAdapter implements IMAdapter, IMProgressOutboundCapable {
   private baseUrl: string = FIXED_BASE_URL
   private connected = false
   private polling = false
+  /**
+   * 本机「先到先得」租约：同一个微信账号，本机同一时间只让一个实例拉消息。
+   * 微信官方接口不拦多端同时拉取，两个实例各拉各的会同时收到、同时回复。
+   */
+  private lease: InstanceLease | null = null
+  /** 本实例是否是这个账号当前在线的那一个（过了租约这一关）。没上过线的实例，退出时不动共享状态。 */
+  private online = false
   private getUpdatesBuf: string = ''
   private abortController: AbortController | null = null
   private reconnectDelay = RECONNECT_DELAY_MS
@@ -501,7 +518,13 @@ export class WeChatAdapter implements IMAdapter, IMProgressOutboundCapable {
             log.error('onCredentials callback failed:', err)
           }
           this.emitLoginStatus({ phase: 'confirmed' })
-          await this.startPolling()
+          try {
+            await this.startPolling()
+          } catch (err: any) {
+            log.warn(`Login confirmed but polling could not start: ${String(err)}`)
+            this.emitLoginStatus({ phase: 'error', error: err?.message || 'Failed to connect' })
+            this.onConnectionChange?.(false)
+          }
           return
         }
         case 'expired': {
@@ -547,33 +570,45 @@ export class WeChatAdapter implements IMAdapter, IMProgressOutboundCapable {
   }
 
   async stop(): Promise<void> {
-    this.cancelLogin()
-    await this.stopPolling()
-    this.onCredentials = null
-    this.onLoginStatus = null
-    this.connected = false
-    this.onConnectionChange?.(false)
-    // 清理 context tokens（内存 + 磁盘），避免 stop/重新登录 后旧 token 污染新会话。
-    if (this.token) {
-      try {
-        clearContextTokensForAccount(this.accountKey)
-      } catch (err) {
-        log.warn(`clearContextTokensForAccount failed (ignored): ${String(err)}`)
-      }
-    }
-    this.contextTokensRestored = false
-    this.lastConfigContextToken.clear()
-    this.configManager = null
-    // 与上游 channel.ts 的 stopAccount 对齐：通知服务端"客户端下线"，失败仅 warn。
-    if (this.token) {
-      try {
-        const resp = await vendoredNotifyStop(this.apiOpts)
-        if (resp.ret !== undefined && resp.ret !== 0) {
-          log.warn(`notifyStop: ret=${resp.ret} errmsg=${resp.errmsg ?? ''}`)
+    // 租约和上线状态在任何 await 之前取走：收尾期间并发进来的 start() 拿到的新租约不会被这次误交还。
+    // 没上过线的实例（连接被另一个旗鱼占着）、或心跳之间已被别人接走的实例：下面这些收尾动作会动到
+    // 共享的回信凭据，并告诉微信「客户端下线」，把正在用这个账号的那个实例也搞坏，所以只有仍在线的才做。
+    const lease = this.lease
+    this.lease = null
+    const wasOnline = this.online && (lease === null || lease.stillOwns())
+    this.online = false
+    try {
+      this.cancelLogin()
+      await this.stopPolling()
+      this.onCredentials = null
+      this.onLoginStatus = null
+      this.connected = false
+      this.onConnectionChange?.(false)
+      // 清理 context tokens（内存 + 磁盘），避免 stop/重新登录 后旧 token 污染新会话。
+      if (this.token && wasOnline) {
+        try {
+          clearContextTokensForAccount(this.accountKey)
+        } catch (err) {
+          log.warn(`clearContextTokensForAccount failed (ignored): ${String(err)}`)
         }
-      } catch (err) {
-        log.warn(`notifyStop failed during shutdown (ignored): ${String(err)}`)
       }
+      this.contextTokensRestored = false
+      this.lastConfigContextToken.clear()
+      this.configManager = null
+      // 与上游 channel.ts 的 stopAccount 对齐：通知服务端"客户端下线"，失败仅 warn。
+      if (this.token && wasOnline) {
+        try {
+          const resp = await vendoredNotifyStop(this.apiOpts)
+          if (resp.ret !== undefined && resp.ret !== 0) {
+            log.warn(`notifyStop: ret=${resp.ret} errmsg=${resp.errmsg ?? ''}`)
+          }
+        } catch (err) {
+          log.warn(`notifyStop failed during shutdown (ignored): ${String(err)}`)
+        }
+      }
+    } finally {
+      // 租约最后交还：先把「下线」说完，别的实例才能接着上线，免得它的上线被我们的下线盖掉。
+      lease?.release()
     }
     log.info('Stopped')
   }
@@ -740,8 +775,42 @@ export class WeChatAdapter implements IMAdapter, IMProgressOutboundCapable {
 
   // ---------------------------------------------------------------------------
 
+  /** 先到先得：本机上同一个账号已经有别的实例连着就不连，抛出带人话说明的错误。 */
+  private acquireLeaseOrThrow(): void {
+    this.lease?.release()
+    const lease = new InstanceLease({
+      filePath: path.join(resolveStateDir(), 'openclaw-weixin', 'accounts', `${this.accountKey}.lock`),
+      onLost: () => this.handleLeaseLost(),
+    })
+    let result: ReturnType<InstanceLease['tryAcquire']>
+    try {
+      result = lease.tryAcquire()
+    } catch (err) {
+      // 租约文件读写不了（目录没权限等）：不能因此连不上微信，放行，只是失去互斥保护
+      log.warn(`Instance lease unavailable, connecting without it: ${String(err)}`)
+      this.lease = null
+      this.online = true
+      return
+    }
+    if (!result.acquired) {
+      log.warn(`WeChat account is already connected by another instance (pid=${result.holderPid ?? 'unknown'}), not connecting`)
+      throw new WeChatHeldByOtherInstanceError()
+    }
+    this.lease = lease
+    this.online = true
+  }
+
+  /** 持有期间被别的实例接走（本机睡眠太久、心跳断档）：本实例收手，不再拉消息。 */
+  private handleLeaseLost(): void {
+    log.warn('WeChat connection was taken over by another instance, stopping polling here')
+    this.lease = null
+    this.online = false
+    void this.stopPolling().then(() => this.setConnected(false))
+  }
+
   private async startPolling(): Promise<void> {
     if (this.polling) return
+    this.acquireLeaseOrThrow()
     this.polling = true
     this.abortController = new AbortController()
     this.reconnectDelay = RECONNECT_DELAY_MS
