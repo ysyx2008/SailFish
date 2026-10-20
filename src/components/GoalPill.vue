@@ -130,7 +130,8 @@ watch(objectiveEl, (el, _prev, onCleanup) => {
   onCleanup(() => observer?.disconnect())
   measureOverflow()
 })
-watch(() => [liveGoal.value?.goalId, liveGoal.value?.objective], () => {
+// 多源写法：只有 id 或正文真的变了才触发。用「返回数组的函数」当源，每次重算（用时每秒在跳）都算变，展开会被秒收回去。
+watch([() => goal.value?.goalId, () => goal.value?.objective], () => {
   expanded.value = false
   void nextTick(measureOverflow)
 })
@@ -323,7 +324,19 @@ const clear = async () => {
   overflow: hidden;
   transition: border-color 0.3s ease, background-color 0.3s ease, height 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.goal-card.is-expanded { height: auto; }
+/* 展开：状态、用时、按钮留在第一行，正文挪到下面独占整行（缩进到徽章右边），窗口再窄也不被一小段信息挤成窄条 */
+.goal-card.is-expanded {
+  height: auto;
+  flex-wrap: wrap;
+  row-gap: 1px;
+}
+.goal-card.is-expanded .goal-meta { order: 1; flex: 1 1 0; min-width: 0; }
+.goal-card.is-expanded .goal-actions { order: 2; }
+.goal-card.is-expanded .goal-objective {
+  order: 3;
+  flex: 0 0 calc(100% - 29px);
+  margin-left: 29px;
+}
 .goal-card[data-status='paused'] { --goal-tint: var(--text-secondary); }
 .goal-card[data-status='achieved'] { --goal-tint: var(--color-success); }
 .goal-card[data-status='blocked'],
@@ -398,6 +411,7 @@ const clear = async () => {
 
 /* 展开：换行显示全文；再长的在卡片里滚动 */
 .goal-card.is-expanded .goal-objective-text {
+  flex: 1 1 auto;
   max-height: min(40vh, 220px);
   overflow-y: auto;
   overflow-wrap: anywhere;
