@@ -9,7 +9,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import SecretInput from '../SecretInput.vue'
 
 const KEY = 'sk-abcdefghijklmnop1234'
-const MASKED = 'sk-••••••••1234'
+// KEY 共 23 位：头 3 + 中间 16 个圆点 + 尾 4
+const MASKED = 'sk-••••••••••••••••1234'
 
 interface Harness {
   model: Ref<string>
@@ -196,7 +197,7 @@ describe('SecretInput', () => {
 
   it('沿用时用户另填一把，就显示自己填的，不再显示沿用的', async () => {
     const { input } = mountField({ reusedValue: KEY, value: 'own-key-abcdefghij9999' })
-    expect(input().value).toBe('own••••••••9999')
+    expect(input().value).toBe('own•••••••••••••••9999')
     expect(input().classList.contains('secret-reused')).toBe(false)
   })
 })

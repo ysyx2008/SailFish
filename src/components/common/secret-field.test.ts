@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { describeSecretField } from './secret-field'
 
 const KEY = 'sk-abcdefghijklmnop1234'
-const MASKED = 'sk-••••••••1234'
+// KEY 共 23 位：头 3 + 中间 16 个圆点 + 尾 4
+const MASKED = 'sk-••••••••••••••••1234'
 
 const base = { value: '', focused: false, revealed: false }
 
@@ -35,8 +36,8 @@ describe('describeSecretField', () => {
       expect(v).toMatchObject({ inputType: 'text', shown: KEY })
     })
 
-    it('太短的密钥平时只给 8 个圆点', () => {
-      expect(describeSecretField({ ...base, value: 'short' }).shown).toBe('••••••••')
+    it('太短的密钥平时一位都不露，全是圆点，长度和原来一样', () => {
+      expect(describeSecretField({ ...base, value: 'short' }).shown).toBe('•••••')
     })
   })
 
@@ -78,7 +79,7 @@ describe('describeSecretField', () => {
     it('用户自己填了，就不再显示沿用的那一把', () => {
       const v = describeSecretField({ ...base, value: 'my-own-key-abcdefgh9999', reusedValue: KEY })
       expect(v.showsReused).toBe(false)
-      expect(v.shown).toBe('my-••••••••9999')
+      expect(v.shown).toBe('my-••••••••••••••••9999')
     })
   })
 })
