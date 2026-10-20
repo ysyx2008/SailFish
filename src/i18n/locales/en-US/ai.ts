@@ -830,6 +830,16 @@ export default {
     subAgentCompleted: 'Completed',
     subAgentFailed: 'Failed',
     subAgentInterrupted: 'Interrupted',
+    subAgentWaitingModel: 'Waiting for model',
+    subAgentSummary: '{count} colleagues: {parts}',
+    subAgentCount: {
+      completed: '{count} done',
+      running: '{count} working',
+      waiting: '{count} waiting for model',
+      failed: '{count} failed',
+      interrupted: '{count} interrupted',
+    },
+    subAgentShowMore: 'Show {count} more ({rest} left)',
     subAgentShowResult: 'Show result',
     subAgentHideResult: 'Hide result',
     // Thinking block (reasoning model thinking shown as single line)

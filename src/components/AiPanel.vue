@@ -29,6 +29,7 @@ import ProcessTurnFold from './ProcessTurnFold.vue'
 import { createReusableTemplate } from '../utils/reusable-template'
 import { buildPeekProcessView, countPeekNeedsYou, lastSpokenBody, resolveFocusPeek, resolvePeekOverlay } from '../utils/focus-peek'
 import { describeLiveProcess, type ProcessFoldView } from '../utils/process-fold'
+import { SUB_AGENT_FOLD_THRESHOLD, SUB_AGENT_PAGE_SIZE, SUB_AGENT_SUMMARY_ORDER, countSubAgents, sortSubAgentsByBucket } from '../utils/sub-agent-summary'
 import { chatTimeParts } from '../utils/chat-time-marker'
 import { formatProcessFoldCaption, type ProcessFoldSay } from '../utils/process-fold-label'
 import ToolCallContent from './ToolCallContent.vue'
@@ -71,7 +72,7 @@ import { pickTaskCompleteLabel } from '../composables/useTaskCompleteLabel'
 import { loadBondTrustLevel } from '../composables/useRandomPlaceholder'
 import { isOemFeatureEnabled } from '@shared/oem-features'
 import type { BondTrustLevel } from '@shared/types/bond'
-import type { AgentRecord, AgentHistorySummary, AttachmentInfo, AskingStatus } from '@shared/types'
+import type { AgentRecord, AgentHistorySummary, AttachmentInfo, AskingStatus, SubAgentResult } from '@shared/types'
 import { resolveConversationDisplayTitle } from '../utils/conversation-title'
 import { COMPANION_AGENT_KEY, isAskingSettled, clampAskUserTimeout } from '@shared/types'
 
@@ -549,8 +550,39 @@ const toggleSubAgentExpand = (key: string) => {
   subAgentExpandState.set(key, !isSubAgentExpanded(key))
 }
 
+// 伙计多了折叠成一行计数；点开按状态分组，一次显示一页
+const subAgentListOpen = reactive(new Map<string, boolean>())
+const subAgentPages = reactive(new Map<string, number>())
+const isSubAgentListOpen = (stepId: string): boolean => subAgentListOpen.get(stepId) === true
+const toggleSubAgentList = (stepId: string) => {
+  subAgentListOpen.set(stepId, !isSubAgentListOpen(stepId))
+}
+const showMoreSubAgents = (stepId: string) => {
+  subAgentPages.set(stepId, (subAgentPages.get(stepId) ?? 1) + 1)
+}
+const subAgentShownLimit = (stepId: string, list: readonly SubAgentResult[]): number => {
+  if (list.length <= SUB_AGENT_FOLD_THRESHOLD) return list.length
+  if (!isSubAgentListOpen(stepId)) return 0
+  return (subAgentPages.get(stepId) ?? 1) * SUB_AGENT_PAGE_SIZE
+}
+const visibleSubAgents = (stepId: string, list: readonly SubAgentResult[]): SubAgentResult[] => {
+  if (list.length <= SUB_AGENT_FOLD_THRESHOLD) return [...list]
+  return sortSubAgentsByBucket(list).slice(0, subAgentShownLimit(stepId, list))
+}
+const hiddenSubAgentCount = (stepId: string, list: readonly SubAgentResult[]): number => {
+  if (list.length <= SUB_AGENT_FOLD_THRESHOLD || !isSubAgentListOpen(stepId)) return 0
+  return Math.max(0, list.length - subAgentShownLimit(stepId, list))
+}
+const formatSubAgentSummary = (list: readonly SubAgentResult[]): string => {
+  const counts = countSubAgents(list)
+  const parts = SUB_AGENT_SUMMARY_ORDER
+    .filter(bucket => counts[bucket] > 0)
+    .map(bucket => t(`ai.subAgentCount.${bucket}`, { count: counts[bucket] }))
+  return t('ai.subAgentSummary', { count: list.length, parts: parts.join(' / ') })
+}
+
 /** 获取子 Agent 当前活动摘要（最新的 running 或最后一个已完成步骤的 tool+args） */
-const getSubAgentActivity = (sa: import('@shared/types').SubAgentResult): string | null => {
+const getSubAgentActivity = (sa: SubAgentResult): string | null => {
   if (!sa.steps || sa.steps.length === 0) return null
   const running = [...sa.steps].reverse().find(s => s.status === 'running')
   const step = running || sa.steps[sa.steps.length - 1]
@@ -2888,14 +2920,22 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                     <!-- 并行子 Agent 卡片组 -->
                     <div v-if="item.step!.subAgents && item.step!.subAgents.length > 0" class="sub-agents-group">
                       <div
-                        v-for="sa in item.step!.subAgents"
+                        v-if="item.step!.subAgents.length > SUB_AGENT_FOLD_THRESHOLD"
+                        class="sub-agent-summary"
+                        @click="toggleSubAgentList(item.step!.id)"
+                      >
+                        <span class="sub-agent-expand-icon" :class="{ expanded: isSubAgentListOpen(item.step!.id) }">▶</span>
+                        <span>{{ formatSubAgentSummary(item.step!.subAgents) }}</span>
+                      </div>
+                      <div
+                        v-for="sa in visibleSubAgents(item.step!.id, item.step!.subAgents)"
                         :key="sa.id"
                         class="sub-agent-card"
-                        :class="sa.status"
+                        :class="[sa.status, { waiting: sa.status === 'running' && sa.waitingForModel }]"
                       >
                         <div class="sub-agent-header" @click="toggleSubAgentExpand(item.step!.id + ':' + sa.id)">
                           <span class="sub-agent-status-icon">
-                            <span v-if="sa.status === 'pending'" class="sa-icon-pending">○</span>
+                            <span v-if="sa.status === 'pending' || (sa.status === 'running' && sa.waitingForModel)" class="sa-icon-pending">○</span>
                             <span v-else-if="sa.status === 'running'" class="sa-icon-running">◌</span>
                             <span v-else-if="sa.status === 'completed'" class="sa-icon-completed">✓</span>
                             <span v-else-if="sa.status === 'interrupted'" class="sa-icon-failed">⏹</span>
@@ -2907,7 +2947,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                             <span v-if="sa.blockedReason" class="sub-agent-activity">{{ sa.blockedReason }}</span>
                           </span>
                           <span class="sub-agent-status-text">
-                            {{ t(`ai.subAgent${sa.status.charAt(0).toUpperCase() + sa.status.slice(1)}`) }}
+                            {{ sa.status === 'running' && sa.waitingForModel ? t('ai.subAgentWaitingModel') : t(`ai.subAgent${sa.status.charAt(0).toUpperCase() + sa.status.slice(1)}`) }}
                           </span>
                           <span v-if="sa.prompt || sa.result || sa.error || (sa.steps && sa.steps.length > 0)" class="sub-agent-expand-icon" :class="{ expanded: isSubAgentExpanded(item.step!.id + ':' + sa.id) }">▶</span>
                         </div>
@@ -2932,6 +2972,14 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                           </div>
                         </div>
                       </div>
+                      <button
+                        v-if="hiddenSubAgentCount(item.step!.id, item.step!.subAgents) > 0"
+                        type="button"
+                        class="sub-agent-more"
+                        @click="showMoreSubAgents(item.step!.id)"
+                      >
+                        {{ t('ai.subAgentShowMore', { count: Math.min(SUB_AGENT_PAGE_SIZE, hiddenSubAgentCount(item.step!.id, item.step!.subAgents)), rest: hiddenSubAgentCount(item.step!.id, item.step!.subAgents) }) }}
+                      </button>
                     </div>
                     <div v-if="item.step!.type === 'user_supplement' && splitSentMessage(item.step!.content, item.step!.attachments).rest.length > 0" class="message-attachments">
                       <span
@@ -5682,6 +5730,41 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
   border-color: rgba(var(--color-error-rgb), 0.3);
 }
 
+.sub-agent-card.running.waiting {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.sub-agent-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  border-radius: 6px;
+}
+
+.sub-agent-summary:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sub-agent-more {
+  align-self: flex-start;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.sub-agent-more:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .sub-agent-header {
   display: flex;
   align-items: flex-start;
@@ -5765,6 +5848,10 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
 
 .sub-agent-card.running .sub-agent-status-text {
   color: var(--color-info);
+}
+
+.sub-agent-card.running.waiting .sub-agent-status-text {
+  color: var(--text-muted);
 }
 
 .sub-agent-card.completed .sub-agent-status-text {

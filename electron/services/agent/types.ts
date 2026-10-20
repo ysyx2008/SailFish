@@ -314,6 +314,8 @@ export interface AgentCallbacks {
   onTextChunk?: (agentId: string, chunk: string) => void
   /** 当前对话因模型不可用已换到下一个（不改默认模型） */
   onModelFailover?: (agentId: string, notice: import('../ai.service').AiModelFailoverNotice) => void
+  /** 模型请求在缓冲池里排队：开始等 true，拿到名额或放弃 false。当面等的请求不排队，不会触发 */
+  onModelWait?: (agentId: string, waiting: boolean) => void
 }
 
 // 默认配置

@@ -468,6 +468,8 @@ export interface SubAgentResult {
   tokensUsed?: TokenUsage
   /** 子 Agent 工具调用步骤（实时更新，提供执行过程透明度） */
   steps?: SubAgentToolStep[]
+  /** 这会儿在排队等模型空位 */
+  waitingForModel?: boolean
 }
 
 /**

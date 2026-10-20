@@ -4966,6 +4966,7 @@ export abstract class Agent {
         },
         {
           bufferPriority: this.takeModelRequestPriority(),
+          onBufferWait: (waiting) => this.callbacks?.onModelWait?.(this._agentId || run.id, waiting),
           rateLimitMaxRetries: this._isSubAgent ? SUB_AGENT_RATE_LIMIT_RETRIES : undefined,
         },
       )

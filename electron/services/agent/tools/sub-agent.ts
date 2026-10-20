@@ -6,6 +6,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import type { ToolDefinition } from '../../ai.service'
+import type { SubAgentResult } from '@shared/types'
 import type { AgentContext } from '../types'
 import { getDefaultShell, getLocalOS } from '../../../utils/platform'
 import { getMetaByName } from '../tool-metadata'
@@ -23,6 +24,8 @@ const log = createLogger('SubAgent')
 const INLINE_RESULT_BUDGET = 40000
 const INLINE_RESULT_MAX = 8000
 const INLINE_RESULT_MIN = 1000
+/** 伙计进度推给界面最多约每秒 4 次 */
+const PROGRESS_INTERVAL_MS = 250
 
 function buildArtifactDir(): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
@@ -176,6 +179,56 @@ function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubA
   ].join('\n')
 }
 
+/**
+ * 推给界面、随会话落盘的那份：步骤只留工具名、对象、状态，不带工具输出；
+ * 结果只带直接带回的那段（超长时里面有文件位置）。
+ */
+function toSubAgentView(c: ChildSnapshot): SubAgentResult {
+  return {
+    id: c.name,
+    name: c.name,
+    description: c.description,
+    prompt: c.shownPrompt ?? c.prompt,
+    status: c.status,
+    result: c.result,
+    error: c.error,
+    steps: c.steps.map(({ id, tool, args, status }) => ({ id, tool, args, status })),
+    blockedReason: c.blockedReason,
+    waitingForModel: c.waitingForModel,
+  }
+}
+
+/** 伙计变化攒一下再推：最多每 PROGRESS_INTERVAL_MS 一次，最后一次变化一定会推出去 */
+class ProgressThrottle {
+  private timer?: ReturnType<typeof setTimeout>
+  private lastPushAt = 0
+  private dirty = false
+
+  constructor(private readonly push: () => void, private readonly intervalMs = PROGRESS_INTERVAL_MS) {}
+
+  schedule(): void {
+    this.dirty = true
+    if (this.timer) return
+    const wait = this.lastPushAt + this.intervalMs - Date.now()
+    if (wait <= 0) {
+      this.flush()
+      return
+    }
+    this.timer = setTimeout(() => this.flush(), wait)
+  }
+
+  flush(): void {
+    if (this.timer) {
+      clearTimeout(this.timer)
+      this.timer = undefined
+    }
+    if (!this.dirty) return
+    this.dirty = false
+    this.lastPushAt = Date.now()
+    this.push()
+  }
+}
+
 function spawnDeps(
   executor: ToolExecutorConfig,
   progressStepId: string,
@@ -184,6 +237,11 @@ function spawnDeps(
   const roster = executor.getSubAgentRoster?.()
   if (!roster) return { error: 'dispatch_agents 需要主人花名册（内部错误）' }
   const workspace = workspaceOf(roster)
+  const progress = new ProgressThrottle(() => {
+    const children = roster.list()
+    const visible = ownedNames ? children.filter(c => ownedNames.has(c.name)) : children
+    executor.updateStep(progressStepId, { subAgents: visible.map(toSubAgentView) })
+  })
   const createChild = executor.createChildAgent
   if (!createChild) return { error: 'dispatch_agents 需要能创建伙计（内部错误）' }
   const agentContext = executor.getAgentContext?.()
@@ -194,27 +252,11 @@ function spawnDeps(
     getParentMessages: () => executor.getParentMessages?.() ?? [],
     getParentContext: () => toSubAgentContext(executor.getAgentContext?.() ?? agentContext),
     knock: (message) => {
+      progress.flush()
       workspace.writeOverview(roster.list())
       executor.knockParent?.(message)
     },
-    onProgress: (children) => {
-      const visible = ownedNames
-        ? children.filter(c => ownedNames.has(c.name))
-        : children
-      executor.updateStep(progressStepId, {
-        subAgents: visible.map(c => ({
-          id: c.name,
-          name: c.name,
-          description: c.description,
-          prompt: c.prompt,
-          status: c.status,
-          result: c.result,
-          error: c.error,
-          steps: c.steps,
-          blockedReason: c.blockedReason,
-        }))
-      })
-    },
+    onProgress: () => progress.schedule(),
     ownedNames,
     isParentAborted: () => executor.isAborted(),
     sanitize: sanitizeParentMessages,
@@ -276,6 +318,7 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
         name,
         description: typeof item.description === 'string' && item.description ? item.description : (name ?? `${i + 1}`),
         prompt: `${batch.instruction}\n${item.input}`,
+        shownPrompt: item.input,
         forkTurns,
       })
     }
@@ -337,13 +380,7 @@ export async function dispatchSubAgents(
   const snapshots = roster.list().filter(c => names.includes(c.name))
   executor.updateStep(progressStep.id, {
     content: t('dispatch.running', { count: names.length }),
-    subAgents: snapshots.map(c => ({
-      id: c.name,
-      name: c.name,
-      description: c.description,
-      prompt: c.prompt,
-      status: c.status,
-    }))
+    subAgents: snapshots.map(toSubAgentView),
   })
 
   log.info(`Dispatched ${names.length} sub-agents: ${names.join(', ')}`)
@@ -369,7 +406,7 @@ export async function followupAgent(args: Record<string, unknown>, executor: Too
     success: true,
   })
 
-  const deps = spawnDeps(executor, progressStep.id)
+  const deps = spawnDeps(executor, progressStep.id, new Set([name]))
   if ('error' in deps) return { success: false, output: '', error: deps.error }
 
   const result = roster.followup(name, message, deps)

@@ -18,6 +18,10 @@ export interface ChildSnapshot {
   steps: SubAgentToolStep[]
   tokensUsed?: TokenUsage
   blockedReason?: string
+  /** 这会儿在缓冲池里排队等模型 */
+  waitingForModel?: boolean
+  /** 界面上显示的那份指令；批量写法只显示条目部分，共同指令在派出的工具参数里 */
+  shownPrompt?: string
 }
 
 export interface ChildAgentHandle {
@@ -34,6 +38,7 @@ export interface SpawnTask {
   prompt: string
   /** 默认全带。none 不带对话，last N 只带最近几轮。 */
   forkTurns?: ForkTurns
+  shownPrompt?: string
 }
 
 export interface RosterSpawnDeps {
@@ -41,7 +46,8 @@ export interface RosterSpawnDeps {
   getParentMessages: () => AiMessage[]
   getParentContext: () => AgentContext
   knock: (message: string) => void
-  onProgress: (children: ChildSnapshot[]) => void
+  /** 有人变了；要看现状自己读 list()，调用很频繁，别在这里做重活 */
+  onProgress: () => void
   isParentAborted: () => boolean
   sanitize: (messages: AiMessage[]) => AiMessage[]
   formatKnock: (child: ChildSnapshot) => string
@@ -276,6 +282,7 @@ export class SubAgentRoster {
         name,
         description: task.description || name,
         prompt: task.prompt,
+        shownPrompt: task.shownPrompt,
         status: 'pending',
         steps: [],
         forkTurns: task.forkTurns ?? { kind: 'all' },
@@ -285,7 +292,7 @@ export class SubAgentRoster {
     if (deps.ownedNames) {
       for (const name of names) deps.ownedNames.add(name)
     }
-    deps.onProgress(this.list())
+    deps.onProgress()
 
     if (!deps.isParentAborted()) {
       for (const name of names) this.startChild(name, deps)
@@ -302,13 +309,13 @@ export class SubAgentRoster {
     if (slot.handle.isRunning()) {
       slot.handle.addUserMessage(message)
       slot.status = 'running'
-      deps.onProgress(this.list())
+      deps.onProgress()
       return { ok: true }
     }
 
     slot.status = 'running'
     slot.error = undefined
-    deps.onProgress(this.list())
+    deps.onProgress()
     slot.runPromise = this.runExisting(slot, message, deps)
     return { ok: true }
   }
@@ -337,7 +344,7 @@ export class SubAgentRoster {
     this.wake()
   }
 
-  recordStep(name: string, step: AgentStep, onProgress: (children: ChildSnapshot[]) => void): void {
+  recordStep(name: string, step: AgentStep, onProgress: () => void): void {
     const slot = this.children.get(name)
     if (!slot) return
     if (step.type !== 'tool_call' || !step.toolName) return
@@ -367,7 +374,14 @@ export class SubAgentRoster {
     if (step.success === false && step.toolResult) {
       slot.blockedReason = step.toolResult
     }
-    onProgress(this.list())
+    onProgress()
+  }
+
+  private markWaiting(name: string, waiting: boolean, onProgress: () => void): void {
+    const slot = this.children.get(name)
+    if (!slot || !!slot.waitingForModel === waiting) return
+    slot.waitingForModel = waiting || undefined
+    onProgress()
   }
 
   private startChild(name: string, deps: RosterSpawnDeps): void {
@@ -378,7 +392,7 @@ export class SubAgentRoster {
     slot.status = 'running'
     const seed = applyForkTurns(deps.sanitize(deps.getParentMessages()), slot.forkTurns)
     handle.seedOpeningMessages?.(seed)
-    deps.onProgress(this.list())
+    deps.onProgress()
     slot.runPromise = this.runExisting(slot, slot.prompt, deps)
   }
 
@@ -393,6 +407,7 @@ export class SubAgentRoster {
       const raw = await handle.run(message, deps.getParentContext(), {
         callbacks: {
           onStep: (_id, step) => this.recordStep(slot.name, step, deps.onProgress),
+          onModelWait: (_id, waiting) => this.markWaiting(slot.name, waiting, deps.onProgress),
         }
       })
       if (slot.status === 'interrupted' || deps.isParentAborted()) {
@@ -412,7 +427,8 @@ export class SubAgentRoster {
         slot.error = msg
       }
     }
-    deps.onProgress(this.list())
+    slot.waitingForModel = undefined
+    deps.onProgress()
     deps.knock(deps.formatKnock(snapshotOf(slot)))
     this.enqueueNews(slot.name)
     this.wake()
@@ -430,6 +446,8 @@ function snapshotOf(slot: ChildSlot): ChildSnapshot {
     steps: slot.steps.map(s => ({ ...s })),
     tokensUsed: slot.tokensUsed,
     blockedReason: slot.blockedReason,
+    waitingForModel: slot.waitingForModel,
+    shownPrompt: slot.shownPrompt,
   }
 }
 

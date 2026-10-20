@@ -468,3 +468,67 @@ describe('结果落文件与总览', () => {
     }
   })
 })
+
+describe('进度推给界面', () => {
+  function chattyChild(opts: { steps: number; waitFirst?: boolean }): ChildAgentHandle {
+    let running = false
+    return {
+      isRunning: () => running,
+      abort: () => { running = false; return true },
+      addUserMessage: () => true,
+      async run(_message, _context, options) {
+        running = true
+        const cb = options?.callbacks
+        if (opts.waitFirst) {
+          cb?.onModelWait?.('child', true)
+          await new Promise(r => setTimeout(r, 60))
+          cb?.onModelWait?.('child', false)
+        }
+        for (let i = 0; i < opts.steps; i++) {
+          cb?.onStep?.('child', { id: `t${i}`, type: 'tool_call', toolName: 'read_file', toolArgs: { path: `/f${i}` }, content: '', timestamp: 0 } as AgentStep)
+          cb?.onStep?.('child', { id: `t${i}`, type: 'tool_call', toolName: 'read_file', toolArgs: { path: `/f${i}` }, success: true, toolResult: 'x'.repeat(10_000), content: '', timestamp: 0 } as AgentStep)
+        }
+        await new Promise(r => setTimeout(r, 20))
+        running = false
+        return 'ok'
+      },
+    }
+  }
+
+  it('一批伙计的变化攒在一起推，最后的样子一定推出去，且不带工具输出', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, () => chattyChild({ steps: 20 }))
+    let pushes = 0
+    const update = executor.updateStep
+    executor.updateStep = (id, updates) => {
+      if (updates.subAgents) pushes++
+      update(id, updates)
+    }
+    await dispatchSubAgents({
+      batch: { instruction: '很长的共同指令'.repeat(50), items: Array.from({ length: 30 }, (_, i) => ({ name: `w${i}`, description: `w${i}`, input: `条目 ${i}` })) }
+    }, defaultConfig, executor)
+    await roster.waitUntil(undefined, new AbortController().signal)
+    await new Promise(r => setTimeout(r, 300))
+
+    // 30 人 × 40 次变化，不节流会推上千次
+    expect(pushes).toBeLessThan(80)
+    const step = (executor as any)._steps.find((s: AgentStep) => s.toolName === 'dispatch_agents') as AgentStep
+    expect(step.subAgents).toHaveLength(30)
+    expect(step.subAgents!.every(sa => sa.status === 'completed')).toBe(true)
+    expect(step.subAgents![0].steps).toHaveLength(20)
+    expect(step.subAgents![0].steps!.every(st => st.result === undefined)).toBe(true)
+    expect(step.subAgents![3].prompt).toBe('条目 3')
+  })
+
+  it('伙计在排队等模型时卡片上看得出来，拿到名额后恢复', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, () => chattyChild({ steps: 1, waitFirst: true }))
+    await dispatchSubAgents({ tasks: [{ name: 'a', description: 'a', prompt: 'a' }] }, defaultConfig, executor)
+    await new Promise(r => setTimeout(r, 30))
+    const step = () => (executor as any)._steps.find((s: AgentStep) => s.toolName === 'dispatch_agents') as AgentStep
+    expect(step().subAgents![0].waitingForModel).toBe(true)
+    await roster.waitUntil(undefined, new AbortController().signal)
+    await new Promise(r => setTimeout(r, 300))
+    expect(step().subAgents![0].waitingForModel).toBeUndefined()
+  })
+})
