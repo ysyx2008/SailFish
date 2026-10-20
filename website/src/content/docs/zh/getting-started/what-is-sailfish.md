@@ -91,7 +91,7 @@ description: '了解旗鱼是什么，它能帮你做什么，以及它和其他
 常见的 AI 服务商：
 
 - **DeepSeek** — 国产模型，性价比极高，推荐新手使用
-- **OpenAI (GPT-4o)** — 全球最知名的 AI
+- **OpenAI (GPT-5.6)** — 全球最知名的 AI
 - **Anthropic (Claude)** — 擅长长文本和复杂推理
 - **Ollama** — 本地部署，完全免费，无需 API Key
 

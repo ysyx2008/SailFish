@@ -13,11 +13,11 @@ description: '管理多个 AI 模型配置，了解关联视觉模型和高级�
 
 | 服务商 | 说明 | 推荐模型 |
 |--------|------|---------|
-| DeepSeek | 国产推理模型，性价比极高，默认能看图 | deepseek-v4-flash-vision-exp / deepseek-v4-pro |
+| DeepSeek | 国产推理模型，性价比极高，默认能看图 | deepseek-flash / deepseek-v4-pro |
 | 通义千问 (Qwen) | 阿里云大模型 | qwen3.7-plus / qwen3.8-max |
 | OpenAI | GPT 系列，全球领先 | gpt-5.6 / gpt-5.6-terra / gpt-5.6-luna |
 | Claude | Anthropic 出品，擅长长文本和复杂任务 | claude-sonnet-5 / claude-opus-5 |
-| Gemini | Google 出品，多模态能力强 | gemini-3.7-flash |
+| Gemini | Google 出品，多模态能力强 | gemini-3.8-flash |
 | Ollama | 本地部署，完全免费离线 | qwen3.5:9b 等 |
 
 还支持豆包、智谱、Kimi、Grok、Mistral 等更多兼容 OpenAI 接口的服务商。
@@ -36,7 +36,7 @@ description: '管理多个 AI 模型配置，了解关联视觉模型和高级�
 | 名称 | ✅ | 自定义名称，方便区分（如「日常 DeepSeek」「复杂任务 Claude」） |
 | API 地址 | ✅ | 服务商的 API 端点，选模板后自动填充 |
 | API Key | ⚠️ | 服务商提供的密钥（Ollama 等本地部署可留空） |
-| 模型 | ✅ | 要使用的模型名称（如 `gpt-5.6`、`deepseek-v4-flash`） |
+| 模型 | ✅ | 要使用的模型名称（如 `gpt-5.6`、`deepseek-flash`） |
 | 模型类型 | ✅ | 通用 或 视觉，影响多模态路由 |
 | 关联视觉模型 | — | 为纯文本模型关联一个能看图的模型 |
 | 代理 | — | 该配置专用的 HTTP/SOCKS 代理，可选 |
@@ -50,16 +50,16 @@ description: '管理多个 AI 模型配置，了解关联视觉模型和高级�
 
 | 场景 | 推荐模型 | 原因 |
 |------|---------|------|
-| 日常使用 | DeepSeek V4 Flash Vision / Qwen 3.7 Plus / Gemini 3.7 Flash | 便宜、速度快、中文好；DeepSeek 默认就能看图 |
-| 复杂推理 | DeepSeek V4 Pro / Claude Opus 5 / GPT-5.6 / Grok 4.6 | 长推理、多步骤任务更稳 |
-| 看图分析 | 豆包 Seed 2.1 / Qwen 3.7 Plus / GPT-5.6 / Gemini 3.7 Flash / Claude Sonnet 5 | 视觉能力好 |
+| 日常使用 | DeepSeek V4.1 Flash / Qwen 3.7 Plus / Gemini 3.8 Flash | 便宜、速度快、中文好；DeepSeek 默认就能看图 |
+| 复杂推理 | DeepSeek V4 Pro / Claude Opus 5 / GPT-5.6 / Grok 4.7 | 长推理、多步骤任务更稳 |
+| 看图分析 | 豆包 Seed 2.1 / Qwen 3.7 Plus / GPT-5.6 / Gemini 3.8 Flash / Claude Sonnet 5 | 视觉能力好 |
 | 离线使用 | Ollama（`qwen3.5:9b`） | 完全免费、不联网 |
 
 在对话区顶部的模型选择器中可以随时切换，不会丢失当前对话上下文。
 
 ## 混合多模态（关联视觉模型）
 
-许多强大的推理模型（如 DeepSeek R1）不支持图片输入，而视觉模型在复杂推理上可能不如专业文本模型。旗鱼的「关联模型」功能让你两全其美。
+许多强大的推理模型（如 DeepSeek V4 Pro）不支持图片输入，而视觉模型在复杂推理上可能不如专业文本模型。旗鱼的「关联模型」功能让你两全其美。
 
 ### 工作原理
 
@@ -72,25 +72,25 @@ description: '管理多个 AI 模型配置，了解关联视觉模型和高级�
 ### 配置方法
 
 1. 打开 设置 → AI 模型配置
-2. 确保你已添加一个支持图片的模型（如 GPT-4o）并将其「模型类型」设为 **视觉**
-3. 编辑你的主力文本模型（如 DeepSeek R1），将「模型类型」设为 **通用**
+2. 确保你已添加一个支持图片的模型（如 GPT-5.6）并将其「模型类型」设为 **视觉**
+3. 编辑你的主力文本模型（如 DeepSeek V4 Pro），将「模型类型」设为 **通用**
 4. 在「关联视觉模型」下拉框中选择刚才的视觉模型
 5. 确保「自动视觉模型切换」开关已开启（设置 → 通用）
 
 ### 典型使用场景
 
-你的主力模型是 DeepSeek R1，关联视觉模型为 GPT-4o：
+你的主力模型是 DeepSeek V4 Pro，关联视觉模型为 GPT-5.6：
 
 | 你的消息 | 使用的模型 | 原因 |
 |---------|-----------|------|
-| 纯文本：「分析这段代码的性能问题」 | DeepSeek R1 | 推理能力强 |
-| 截图：「这个报错怎么解决？」 | 自动切换 GPT-4o | 能看图 |
-| 追问：「还有其他优化建议吗？」 | 回到 DeepSeek R1 | 纯文本 |
+| 纯文本：「分析这段代码的性能问题」 | DeepSeek V4 Pro | 推理能力强 |
+| 截图：「这个报错怎么解决？」 | 自动切换 GPT-5.6 | 能看图 |
+| 追问：「还有其他优化建议吗？」 | 回到 DeepSeek V4 Pro | 纯文本 |
 
 ### 使用建议
 
-- 主模型选推理能力最强的（如 DeepSeek R1、o1），关联模型选视觉能力好的（如 GPT-4o、Claude Sonnet）
-- 如果主模型本身支持视觉（如 GPT-4o），无需配置关联模型
+- 主模型选推理能力最强的（如 DeepSeek V4 Pro、GPT-5.6），关联模型选视觉能力好的（如 GPT-5.6、Claude Sonnet）
+- 如果主模型本身支持视觉（如 GPT-5.6），无需配置关联模型
 - 切换是按次请求进行的，不会影响对话连贯性
 
 ## 代理设置
@@ -137,7 +137,7 @@ ollama pull llama3.1:8b    # 英文能力强
 
 **模型名称填什么？**
 - 使用服务商文档中列出的模型 ID（区分大小写）
-- 如 `gpt-5.6`（非 `GPT-5.6`）、`deepseek-v4-flash`（非 `DeepSeek Chat`）
+- 如 `gpt-5.6`（非 `GPT-5.6`）、`deepseek-flash`（非 `DeepSeek Chat`）
 
 **切换模型后 AI 行为不同了**
 - 不同模型的能力差异很大，这是正常的

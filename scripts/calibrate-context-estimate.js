@@ -96,7 +96,7 @@ async function main() {
 
   if (coef) {
     // 跨主流厂商各测一个，覆盖 DeepSeek / Moonshot / 阿里 / 火山 / Anthropic
-    const wanted = ['deepseek-v4-flash', 'kimi-k2.6', 'qwen3.8-27b', 'doubao-seed-2-1-turbo-260628', 'claude-opus-4-8']
+    const wanted = ['deepseek-flash', 'kimi-k2.6', 'qwen3.8-27b', 'doubao-seed-2-1-turbo-260628', 'claude-opus-4-8']
     const picked = wanted
       .map(m => profiles.find(p => p.model === m))
       .filter(Boolean)

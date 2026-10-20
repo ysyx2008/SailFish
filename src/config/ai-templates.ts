@@ -46,7 +46,7 @@ export const AI_TEMPLATES: AiTemplate[] = [
   {
     name: 'DeepSeek',
     apiUrl: 'https://api.deepseek.com/chat/completions',
-    model: 'deepseek-v4-flash-vision-exp',
+    model: 'deepseek-flash',
     descKey: 'aiSettings.templates.deepseek',
     keyUrl: 'https://platform.deepseek.com/api_keys',
     contextLength: 1_000_000,
@@ -67,22 +67,23 @@ export const AI_TEMPLATES: AiTemplate[] = [
   {
     name: 'Doubao',
     apiUrl: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
-    model: 'doubao-seed-2-1-pro-260628',
+    model: 'doubao-seed-2-1-pro-260915',
     descKey: 'aiSettings.templates.doubao',
     keyUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey',
-    contextLength: 256_000,
+    contextLength: 1_000_000,
     isLocal: false,
     needsApiKey: true,
   },
   {
     name: 'Zhipu',
     apiUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-    model: 'glm-5.3',
+    model: 'glm-5.3-flash',
     descKey: 'aiSettings.templates.zhipu',
     keyUrl: 'https://open.bigmodel.cn/apikey/platform',
     contextLength: 1_000_000,
     isLocal: false,
     needsApiKey: true,
+    modelType: 'vision',
   },
   {
     name: 'Kimi',
@@ -127,7 +128,7 @@ export const AI_TEMPLATES: AiTemplate[] = [
   {
     name: 'Gemini',
     apiUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-    model: 'gemini-3.7-flash',
+    model: 'gemini-3.8-flash',
     descKey: 'aiSettings.templates.gemini',
     keyUrl: 'https://aistudio.google.com/apikey',
     contextLength: 1_000_000,
@@ -137,7 +138,7 @@ export const AI_TEMPLATES: AiTemplate[] = [
   {
     name: 'Grok',
     apiUrl: 'https://api.x.ai/v1/chat/completions',
-    model: 'grok-4.6',
+    model: 'grok-4.7',
     descKey: 'aiSettings.templates.grok',
     keyUrl: 'https://console.x.ai/team/default/api-keys',
     contextLength: 500_000,
@@ -165,3 +166,32 @@ export const AI_TEMPLATES: AiTemplate[] = [
     needsApiKey: false,
   },
 ]
+
+/**
+ * 去掉接口尾巴（/chat/completions、/messages）和 /v1，只留「连的是哪家服务」。
+ * 各家文档里的写法不一：同一个 DeepSeek，有的写 /chat/completions，有的写 /v1/chat/completions。
+ */
+function serviceBase(apiUrl: string): string {
+  const raw = apiUrl.trim()
+  try {
+    const u = new URL(raw)
+    const path = u.pathname
+      .replace(/\/+$/, '')
+      .replace(/\/(chat\/completions|messages)$/, '')
+      .replace(/\/v1$/, '')
+    return `${u.protocol}//${u.host.toLowerCase()}${path}`
+  } catch {
+    return raw.toLowerCase()
+  }
+}
+
+/**
+ * 某个 AI 配置是不是连着这个模板对应的服务。
+ *
+ * 看服务地址，不看配置的名字或模型：名字用户随时会改（「智谱」「豆包 turbo」…），
+ * 模型也会随厂商换代，按这两样判断，用户明明配过的服务会显示成没配。
+ */
+export function isProfileOfTemplate(profile: { apiUrl: string }, template: { apiUrl: string }): boolean {
+  if (!template.apiUrl.trim() || !profile.apiUrl.trim()) return false
+  return serviceBase(profile.apiUrl) === serviceBase(template.apiUrl)
+}

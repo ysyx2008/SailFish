@@ -78,7 +78,7 @@ curl https://api.telegram.org
 
 - API 地址格式正确（包含 `https://`，不含多余路径）
 - API Key 完整（没有被截断或有多余空格）
-- 模型名称正确（如 `gpt-4o` 而非 `GPT-4o`）
+- 模型名称正确（如 `gpt-5.6` 而非 `GPT-5.6`）
 
 ### SSH 配置
 

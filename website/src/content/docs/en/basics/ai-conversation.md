@@ -65,7 +65,7 @@ Typical use cases:
 - Send a webpage screenshot and ask "What's wrong with this layout?"
 - Share a table screenshot for the AI to analyze data
 
-> If your primary model doesn't support images (e.g., DeepSeek R1), you can configure an "associated vision model" (e.g., GPT-4o). SailFish will automatically switch when you send an image. See [Model Configuration](/en/docs/ai-advanced/model-config) for details.
+> If your primary model doesn't support images (e.g., DeepSeek V4 Pro), you can configure an "associated vision model" (e.g., GPT-5.6). SailFish will automatically switch when you send an image. See [Model Configuration](/en/docs/ai-advanced/model-config) for details.
 
 ## Conversation History
 
@@ -116,7 +116,7 @@ You can tell the AI "Remember: our production server IP is 10.0.1.100," and it w
 If you have multiple AI models configured, you can switch between them using the model selector at the top of the chat area:
 
 - **Daily use with cheaper models**: e.g., DeepSeek (low cost, fast)
-- **Complex tasks with stronger models**: e.g., Claude, GPT-4o (better reasoning)
+- **Complex tasks with stronger models**: e.g., Claude, GPT-5.6 (better reasoning)
 
 Switching models does not lose the current conversation context.
 

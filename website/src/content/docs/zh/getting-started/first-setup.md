@@ -46,7 +46,7 @@ API Key 是 AI 服务商提供给你的一串密钥，用来验证你的身份�
 4. 点击 **「新增」** 按钮
 5. 在服务商列表中选择 **「DeepSeek」** — 系统会自动填入 API 地址和默认模型
 6. 在 **API Key** 输入框中，粘贴你刚才复制的 API Key
-7. 模型选择 `deepseek-v4-flash-vision-exp`（默认已选好，能看图）
+7. 模型选择 `deepseek-flash`（默认已选好，能看图）
 8. 点击 **「保存」**
 
 ## 第三步：设为当前使用
@@ -97,11 +97,11 @@ API Key 是 AI 服务商提供给你的一串密钥，用来验证你的身份�
 
 | 服务商 | 特点 | 模型推荐 | 是否需要翻墙 |
 |--------|------|---------|-------------|
-| DeepSeek | 高性价比，推理强，也能看图 | deepseek-v4-flash-vision-exp | 否 |
+| DeepSeek | 高性价比，推理强，也能看图 | deepseek-flash | 否 |
 | 通义千问 (Qwen) | 阿里云出品，免费额度大 | qwen3.7-plus | 否 |
 | OpenAI | 全球最知名 | gpt-5.6 | 是 |
 | Claude | 长文本、复杂推理 | claude-sonnet-5 | 是 |
-| Gemini | Google 出品，能看图 | gemini-3.7-flash | 是 |
+| Gemini | Google 出品，能看图 | gemini-3.8-flash | 是 |
 | Ollama | 本地部署，完全免费 | qwen3.5:9b | 否 |
 
 > 你可以配置多个模型，日常用便宜的（DeepSeek），复杂任务切换到强力模型（Claude Opus 5、GPT-5.6），在旗鱼顶部的模型选择器中一键切换。

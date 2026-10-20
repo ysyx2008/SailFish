@@ -91,7 +91,7 @@ Don't worry; getting an API Key is simple. The next article, "First Setup," will
 Common AI providers:
 
 - **DeepSeek** — Strong performance at low cost; recommended for beginners
-- **OpenAI (GPT-4o)** — One of the most widely used AI services
+- **OpenAI (GPT-5.6)** — One of the most widely used AI services
 - **Anthropic (Claude)** — Strong at long documents and complex reasoning
 - **Ollama** — Local deployment, completely free, no API Key needed
 

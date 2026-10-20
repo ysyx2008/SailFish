@@ -43,7 +43,7 @@ xattr -cr /Applications/SailFish.app
 
 ### 回复质量不好
 
-- 尝试更换模型（Claude、GPT-4o 等通常效果更好）
+- 尝试更换模型（Claude、GPT-5.6 等通常效果更好）
 - 提供更详细的需求描述
 - 在对话中提供更多上下文信息
 
