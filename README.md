@@ -155,7 +155,7 @@ SailFish does not ship a model — you bring an API key. Settings include one-cl
 **Recommended models** (Function Calling required):
 
 - **Daily** (fast, affordable, and can see images): DeepSeek V4.1 Flash · Qwen 3.7 Plus · Claude Sonnet 5 · Gemini 3.8 Flash
-- **Complex** (long reasoning, multi-step): DeepSeek V4 Pro · GPT-5.6 · Claude Opus 5 · Grok 4.6
+- **Complex** (long reasoning, multi-step): DeepSeek V4 Pro · GPT-5.6 · Claude Opus 5 · Grok 4.7
 - **Vision** (screenshots, images, scanned PDFs): DeepSeek V4.1 Flash (enough as the default) · Doubao Seed 2.1 · Qwen 3.7 Plus · GPT-5.6 · Gemini 3.8 Flash · Claude Sonnet 5
 - **Local / offline**: Ollama (preset `qwen3.5:9b`; small context windows struggle with multi-step work)
 - **More**: Zhipu GLM-5.3 Flash, Kimi K3, MiniMax M3, Mistral Large, and any OpenAI-compatible endpoint

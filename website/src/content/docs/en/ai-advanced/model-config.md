@@ -51,7 +51,7 @@ We recommend configuring 2–3 models and switching by scenario:
 | Scenario | Recommended | Why |
 |----------|-------------|-----|
 | Everyday use | DeepSeek V4.1 Flash / Qwen 3.7 Plus / Gemini 3.8 Flash | Cheap, fast, good at Chinese; DeepSeek sees images by default |
-| Complex reasoning | DeepSeek V4 Pro / Claude Opus 5 / GPT-5.6 / Grok 4.6 | Stronger on long, multi-step work |
+| Complex reasoning | DeepSeek V4 Pro / Claude Opus 5 / GPT-5.6 / Grok 4.7 | Stronger on long, multi-step work |
 | Image analysis | Doubao Seed 2.1 / Qwen 3.7 Plus / GPT-5.6 / Gemini 3.8 Flash / Claude Sonnet 5 | Best vision capabilities |
 | Offline use | Ollama (`qwen3.5:9b`) | Completely free, no internet needed |
 

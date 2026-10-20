@@ -549,7 +549,7 @@ export default {
       minimax: 'MiniMax 海螺大模型，默认使用 M3，支持超长上下文',
       claude: 'Anthropic Claude Opus 5，适合复杂任务，支持 100 万 token 上下文',
       gemini: 'Google Gemini 3.8 Flash，速度快、能看图，支持 100 万 token 上下文',
-      grok: 'xAI Grok 4.6，编码与推理能力强',
+      grok: 'xAI Grok 4.7，编码与推理能力强',
       mistral: 'Mistral AI，欧洲开源大模型领军者',
       ollama: '本地部署的 Ollama，数据不出本地',
       custom: '手动配置 API 地址、模型等信息',

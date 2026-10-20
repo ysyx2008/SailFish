@@ -51,7 +51,7 @@ description: '管理多个 AI 模型配置，了解关联视觉模型和高级�
 | 场景 | 推荐模型 | 原因 |
 |------|---------|------|
 | 日常使用 | DeepSeek V4.1 Flash / Qwen 3.7 Plus / Gemini 3.8 Flash | 便宜、速度快、中文好；DeepSeek 默认就能看图 |
-| 复杂推理 | DeepSeek V4 Pro / Claude Opus 5 / GPT-5.6 / Grok 4.6 | 长推理、多步骤任务更稳 |
+| 复杂推理 | DeepSeek V4 Pro / Claude Opus 5 / GPT-5.6 / Grok 4.7 | 长推理、多步骤任务更稳 |
 | 看图分析 | 豆包 Seed 2.1 / Qwen 3.7 Plus / GPT-5.6 / Gemini 3.8 Flash / Claude Sonnet 5 | 视觉能力好 |
 | 离线使用 | Ollama（`qwen3.5:9b`） | 完全免费、不联网 |
 

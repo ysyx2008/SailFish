@@ -154,7 +154,7 @@ macOS 首次打开若提示无法验证开发者：系统设置 → 隐私与安
 **推荐模型**（需支持 Function Calling）：
 
 - **日常**（快、省、够用，也能看图）：DeepSeek V4.1 Flash · Qwen 3.7 Plus · Claude Sonnet 5 · Gemini 3.8 Flash
-- **复杂任务**（长推理、多步骤）：DeepSeek V4 Pro · GPT-5.6 · Claude Opus 5 · Grok 4.6
+- **复杂任务**（长推理、多步骤）：DeepSeek V4 Pro · GPT-5.6 · Claude Opus 5 · Grok 4.7
 - **视觉**（截图、识图、扫描件）：DeepSeek V4.1 Flash（默认就够）· 豆包 Seed 2.1 · Qwen 3.7 Plus · GPT-5.6 · Gemini 3.8 Flash · Claude Sonnet 5
 - **本地离线**：Ollama（预设 `qwen3.5:9b`；窗口较小的模型做多步任务会吃力）
 - **更多**：智谱 GLM-5.3 Flash、Kimi K3、MiniMax M3、Mistral Large，以及任何 OpenAI 兼容接口

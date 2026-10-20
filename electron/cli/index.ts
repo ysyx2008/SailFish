@@ -150,7 +150,7 @@ async function configSet(args: string[]): Promise<void> {
   if (!key || !rawValue) {
     console.error(`Usage: ${cliName()} config:set <key> <value>`)
     console.error(`Example: ${cliName()} config:set theme one-dark`)
-    console.error(`For complex values, use JSON: ${cliName()} config:set aiProfiles '[{"id":"1","name":"GPT-5.5","apiUrl":"...","apiKey":"...","model":"gpt-5.5"}]'`)
+    console.error(`For complex values, use JSON: ${cliName()} config:set aiProfiles '[{"id":"1","name":"GPT-5.6","apiUrl":"...","apiKey":"...","model":"gpt-5.6"}]'`)
     process.exit(1)
   }
   const config = getConfig()
@@ -202,7 +202,7 @@ async function configInit(): Promise<void> {
   console.log('  SFT_CLI_NO_BORROW=1 - Do not borrow AI Profiles/credentials in sandbox')
   console.log('')
   console.log('Or configure via commands:')
-  console.log(`  ${cliName()} config:set aiProfiles '[{"id":"default","name":"My AI","apiUrl":"https://api.openai.com/v1","apiKey":"sk-xxx","model":"gpt-5.5"}]'`)
+  console.log(`  ${cliName()} config:set aiProfiles '[{"id":"default","name":"My AI","apiUrl":"https://api.openai.com/v1","apiKey":"sk-xxx","model":"gpt-5.6"}]'`)
   console.log(`  ${cliName()} config:set activeAiProfile "default"`)
   console.log('')
   console.log(`Config file location: ${config.get('language') !== undefined ? 'loaded' : 'will be created'}`)
@@ -2536,7 +2536,7 @@ function applyEnvOverrides(): void {
       name: 'CLI Environment',
       apiUrl: apiUrl || profiles[0]?.apiUrl || 'https://api.openai.com/v1',
       apiKey: apiKey || profiles[0]?.apiKey || '',
-      model: model || profiles[0]?.model || 'gpt-5.5'
+      model: model || profiles[0]?.model || 'gpt-5.6'
     }
 
     const existingIdx = profiles.findIndex(p => p.id === 'env-override')

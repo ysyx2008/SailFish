@@ -67,10 +67,10 @@ export const AI_TEMPLATES: AiTemplate[] = [
   {
     name: 'Doubao',
     apiUrl: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
-    model: 'doubao-seed-2-1-pro-260628',
+    model: 'doubao-seed-2-1-pro-260915',
     descKey: 'aiSettings.templates.doubao',
     keyUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey',
-    contextLength: 256_000,
+    contextLength: 1_000_000,
     isLocal: false,
     needsApiKey: true,
   },
@@ -138,7 +138,7 @@ export const AI_TEMPLATES: AiTemplate[] = [
   {
     name: 'Grok',
     apiUrl: 'https://api.x.ai/v1/chat/completions',
-    model: 'grok-4.6',
+    model: 'grok-4.7',
     descKey: 'aiSettings.templates.grok',
     keyUrl: 'https://console.x.ai/team/default/api-keys',
     contextLength: 500_000,

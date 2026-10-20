@@ -549,7 +549,7 @@ export default {
       minimax: 'MiniMax LLM, defaults to M3 with long context support',
       claude: 'Anthropic Claude Opus 5, strong on complex work, 1M-token context',
       gemini: 'Google Gemini 3.8 Flash, fast multimodal, 1M-token context',
-      grok: 'xAI Grok 4.6, strong coding and reasoning',
+      grok: 'xAI Grok 4.7, strong coding and reasoning',
       mistral: 'Mistral AI, leading European open-source LLM',
       ollama: 'Local Ollama deployment, data stays local',
       custom: 'Manually configure API URL, model, etc.',
