@@ -28,6 +28,12 @@ export interface CalendarEvent {
   alarmBlock?: string
   /** 状态 */
   status?: 'confirmed' | 'tentative' | 'cancelled'
+  /** 组织者邮箱（ORGANIZER 中的 mailto 地址，已转小写）；为空表示原始数据未声明 */
+  organizer?: string
+  /** 参会人邮箱列表（ATTENDEE 中的 mailto 地址，已转小写） */
+  attendees?: string[]
+  /** 原始数据里的时区认不出来，开始/结束时刻只是按本机时区估的；为空表示时刻可信 */
+  timeZoneUnknown?: boolean
   /** 原始数据（用于更新） */
   etag?: string
   /** 事件 URL（CalDAV） */

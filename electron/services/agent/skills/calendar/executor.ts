@@ -11,11 +11,32 @@ import {
   readRRuleValue,
   readRecurrencePatch,
   recurrenceEndedBefore,
-  replaceEventRRule,
   untilOnOrAfterStart,
   viewRecurrence,
   type RecurrenceReadError,
 } from './recurrence'
+import {
+  findMismatch,
+  isSameLocalDay,
+  normalizeText,
+  organizerIsOther,
+  parseUserDateTime,
+  readWritePrivilege,
+  resolveEnd,
+  shiftEnd,
+  unverifiedMoments,
+  type CheckedField,
+  type ExpectedWrite,
+  type WriteOperation
+} from './write-check'
+import {
+  addICalDuration,
+  findMasterEventRange,
+  parseICalDuration,
+  readCalAddress,
+  readReportResource,
+  zonedToUtc
+} from './ical-util'
 import { riskNeedsConfirm } from '../../command-audit/confirm-policy'
 
 const log = createLogger('CalendarExecutor')
@@ -604,11 +625,21 @@ async function calendarCreate(
   }
 
   // 解析时间
-  const startDate = new Date(startStr)
-  const endDate = endStr 
-    ? new Date(endStr) 
-    : new Date(startDate.getTime() + 60 * 60 * 1000) // 默认 1 小时
   const allDayFlag = Boolean(allDay)
+  const startDate = parseUserDateTime(startStr, allDayFlag)
+  if (!startDate) {
+    return { success: false, output: '', error: t('calendar.invalid_time', { value: startStr }) }
+  }
+  const endInput = endStr ? parseUserDateTime(endStr, allDayFlag) : null
+  if (endStr && !endInput) {
+    return { success: false, output: '', error: t('calendar.invalid_time', { value: endStr }) }
+  }
+  // 没给结束时：全天按一天，定时按一小时
+  const rawEnd = endInput ?? (allDayFlag ? startDate : new Date(startDate.getTime() + 60 * 60 * 1000))
+  const endDate = resolveEnd(startDate, rawEnd, allDayFlag)
+  if (!endDate) {
+    return { success: false, output: '', error: t('calendar.end_before_start') }
+  }
 
   if (recurrenceRead.patch?.until && !untilOnOrAfterStart(recurrenceRead.patch.until, startDate, allDayFlag)) {
     return { success: false, output: '', error: t('calendar.recurrence_until_before_start') }
@@ -665,14 +696,42 @@ async function calendarCreate(
       rrule
     })
 
-    // 创建事件
-    await session.client.createCalendarObject({
+    // 创建事件。tsdav 只返回 Response、不校验 ok，服务端拒绝时不会抛异常
+    const response = await session.client.createCalendarObject({
       calendar: { url: calendarId },
       filename: `${uid}.ics`,
       iCalString: icalData
     })
 
-    const output = t('calendar.created', { title })
+    if (!response.ok) {
+      return {
+        success: false,
+        output: '',
+        error: await describeWriteFailure('create', response.status, undefined, calendarId, session)
+      }
+    }
+
+    // 回读核验：读不到、或标题与开始时间对不上，都不能报「已创建」
+    const verified = await verifyEventWritten(
+      calendarId,
+      uid,
+      {
+        allDay: allDayFlag,
+        title,
+        start: startDate,
+        end: endDate,
+        location: location || undefined,
+        description: description || undefined,
+        recurrence: rrule
+      },
+      session,
+      'create'
+    )
+    if (!verified.ok) {
+      return { success: false, output: '', error: verified.error }
+    }
+
+    const output = withNote(t('calendar.created', { title }), verified.note)
     executor.addStep({
       type: 'tool_result',
       content: output,
@@ -732,7 +791,15 @@ async function calendarUpdate(
     }
 
     const allDayFlag = originalEvent.allDay || false
-    const nextStart = startStr ? new Date(startStr) : originalEvent.start
+    const startInput = startStr ? parseUserDateTime(startStr, allDayFlag) : null
+    if (startStr && !startInput) {
+      return { success: false, output: '', error: t('calendar.invalid_time', { value: startStr }) }
+    }
+    const endInput = endStr ? parseUserDateTime(endStr, allDayFlag) : null
+    if (endStr && !endInput) {
+      return { success: false, output: '', error: t('calendar.invalid_time', { value: endStr }) }
+    }
+    const nextStart = startInput ?? originalEvent.start
     if (recurrenceRead.patch?.until && !untilOnOrAfterStart(recurrenceRead.patch.until, nextStart, allDayFlag)) {
       return { success: false, output: '', error: t('calendar.recurrence_until_before_start') }
     }
@@ -747,17 +814,34 @@ async function calendarUpdate(
 
     // 构建确认信息
     const changes: string[] = []
+    const momentDiffers = (next: Date, prev: Date) =>
+      allDayFlag ? !isSameLocalDay(next, prev) : next.getTime() !== prev.getTime()
     const titleChanged = Boolean(title) && title !== originalEvent.title
-    const startChanged = Boolean(startStr) && new Date(startStr as string).getTime() !== originalEvent.start.getTime()
-    const endChanged = Boolean(endStr) && new Date(endStr as string).getTime() !== originalEvent.end.getTime()
-    const locationChanged = location !== undefined && location !== originalEvent.location
+    const startChanged = startInput != null && momentDiffers(startInput, originalEvent.start)
+
+    // 只改了开始时间：会议时长不变，结束时间跟着后移
+    let nextEnd = endInput ?? originalEvent.end
+    if (startChanged && !endInput) {
+      nextEnd = shiftEnd(originalEvent.start, originalEvent.end, nextStart, allDayFlag)
+    }
+    if (startChanged || endInput) {
+      const resolved = resolveEnd(nextStart, nextEnd, allDayFlag)
+      if (!resolved) {
+        return { success: false, output: '', error: t('calendar.end_before_start') }
+      }
+      nextEnd = resolved
+    }
+    const endChanged = (startChanged || endInput != null) && momentDiffers(nextEnd, originalEvent.end)
+
+    const locationChanged = location !== undefined && (location || '') !== (originalEvent.location || '')
     const descriptionChanged = description !== undefined && description !== (originalEvent.description || '')
     if (titleChanged) changes.push(`${t('calendar.title')}: ${originalEvent.title} → ${title}`)
-    if (startChanged) changes.push(`${t('calendar.start')}: ${formatDateTime(originalEvent.start)} → ${startStr}`)
-    if (endChanged) changes.push(`${t('calendar.end')}: ${formatDateTime(originalEvent.end)} → ${endStr}`)
+    if (startChanged) changes.push(`${t('calendar.start')}: ${formatDateTime(originalEvent.start)} → ${formatDateTime(nextStart)}`)
+    if (endChanged) changes.push(`${t('calendar.end')}: ${formatDateTime(originalEvent.end)} → ${formatDateTime(nextEnd)}`)
     if (locationChanged) changes.push(`${t('calendar.location')}: ${originalEvent.location || '(无)'} → ${location || '(无)'}`)
     if (descriptionChanged) changes.push(`${t('calendar.description')}: ${originalEvent.description || '(无)'} → ${description || '(无)'}`)
-    if ((nextRRule ?? '') !== (originalEvent.recurrence ?? '')) {
+    const recurrenceChanged = (nextRRule ?? '') !== (originalEvent.recurrence ?? '')
+    if (recurrenceChanged) {
       const before = originalEvent.recurrence
         ? formatRecurrenceLabel(originalEvent.recurrence)
         : t('calendar.recurrence_none')
@@ -769,6 +853,11 @@ async function calendarUpdate(
 
     if (changes.length === 0) {
       return { success: false, output: '', error: t('calendar.no_changes') }
+    }
+
+    // 他人发起的会议多半改不动，提前把这一点摆出来，别等写完才失败
+    if (organizerIsOther(originalEvent.organizer, session.username)) {
+      changes.push(t('calendar.organizer_warning', { organizer: originalEvent.organizer || '' }))
     }
 
     let confirmInfo = `${t('calendar.update_confirm')}\n\n`
@@ -797,33 +886,22 @@ async function calendarUpdate(
       }
     }
 
-    // 构建更新后的 iCalendar 数据
-    const updatedEvent = {
-      ...originalEvent,
-      title: title || originalEvent.title,
-      start: startStr ? new Date(startStr) : originalEvent.start,
-      end: endStr ? new Date(endStr) : originalEvent.end,
-      location: location !== undefined ? location : originalEvent.location,
-      description: description !== undefined ? description : originalEvent.description
+    // 只在原始数据上改这次要变的项，保留发起人、参会人等其余内容，
+    // 不能用 buildICalEvent 重建——那样会把他人的会议邀请抹成孤立事件。
+    // 没变的项不传：只改标题时，开始、结束时间不会被重写成别的写法
+    const changed = {
+      title: titleChanged ? title : undefined,
+      start: startChanged ? nextStart : undefined,
+      end: endChanged ? nextEnd : undefined,
+      location: locationChanged ? (location ?? '') : undefined,
+      description: descriptionChanged ? (description ?? '') : undefined,
+      rrule: recurrenceChanged ? (nextRRule ?? '') : undefined
     }
+    const icalData = patchICalEvent(eventObj.data, { ...changed, allDay: allDayFlag })
 
-    const onlyRecurrenceChanged = !titleChanged && !startChanged && !endChanged && !locationChanged && !descriptionChanged
-    const icalData = onlyRecurrenceChanged
-      ? replaceEventRRule(eventObj.data, nextRRule)
-      : buildICalEvent({
-        uid: originalEvent.uid,
-        title: updatedEvent.title,
-        start: updatedEvent.start,
-        end: updatedEvent.end,
-        allDay: updatedEvent.allDay || false,
-        location: updatedEvent.location,
-        description: updatedEvent.description,
-        alarmBlock: originalEvent.alarmBlock,
-        rrule: nextRRule
-      })
-
-    // 更新事件
-    await session.client.updateCalendarObject({
+    // 更新事件。必须检查响应状态码：tsdav 只返回 Response、不校验 ok，
+    // 服务端回 403（无编辑权限）或 412（版本冲突）时不会抛异常
+    const response = await session.client.updateCalendarObject({
       calendarObject: {
         url: eventObj.url,
         etag: eventObj.etag,
@@ -831,7 +909,35 @@ async function calendarUpdate(
       }
     })
 
-    const output = t('calendar.updated', { title: updatedEvent.title })
+    if (!response.ok) {
+      return {
+        success: false,
+        output: '',
+        error: await describeWriteFailure('update', response.status, originalEvent.organizer, eventObj.url, session)
+      }
+    }
+
+    // 回读核验：拿到 2xx 不等于内容真的落盘，读回来对一次再报成功
+    const verified = await verifyEventWritten(
+      calendarId,
+      eventId,
+      {
+        allDay: allDayFlag,
+        title: changed.title,
+        start: changed.start,
+        end: changed.end,
+        location: changed.location,
+        description: changed.description,
+        recurrence: changed.rrule
+      },
+      session,
+      'update'
+    )
+    if (!verified.ok) {
+      return { success: false, output: '', error: verified.error }
+    }
+
+    const output = withNote(t('calendar.updated', { title: title || originalEvent.title }), verified.note)
     executor.addStep({
       type: 'tool_result',
       content: output,
@@ -869,7 +975,7 @@ async function calendarDelete(
 
   try {
     // 通过 UID 直接获取要删除的事件（比获取所有事件要高效）
-    const eventsToDelete: Array<{ url: string; etag?: string; title: string }> = []
+    const eventsToDelete: Array<{ id: string; url: string; etag?: string; title: string; organizer?: string }> = []
     
     for (const eventId of eventIds) {
       const eventObj = await fetchEventByUid(calendarId, eventId, session)
@@ -877,9 +983,11 @@ async function calendarDelete(
         const event = parseICalEvent(eventObj.data, eventObj.url, eventObj.etag)
         if (event) {
           eventsToDelete.push({
+            id: eventId,
             url: eventObj.url,
             etag: eventObj.etag,
-            title: event.title
+            title: event.title,
+            organizer: event.organizer
           })
         }
       }
@@ -916,23 +1024,50 @@ async function calendarDelete(
       }
     }
 
-    // 删除事件
-    let deletedCount = 0
+    // 删除事件。tsdav 只返回 Response、不校验 ok，无权删除时也不会抛错，
+    // 所以这里必须自己看状态码，再读回确认日程真的没了，失败的如实列出
+    const deletedTitles: string[] = []
+    const failures: string[] = []
     for (const event of eventsToDelete) {
       try {
-        await session.client.deleteCalendarObject({
+        const response = await session.client.deleteCalendarObject({
           calendarObject: {
             url: event.url,
             etag: event.etag
           }
         })
-        deletedCount++
+        if (!response.ok) {
+          failures.push(`${event.title}：${await describeWriteFailure('delete', response.status, event.organizer, event.url, session)}`)
+          continue
+        }
+        const notDeleted = deleteFailureMessage(await verifyResourceDeleted(event.url, session))
+        if (notDeleted) {
+          failures.push(`${event.title}：${notDeleted}`)
+          continue
+        }
+        deletedTitles.push(event.title)
       } catch (e) {
         log.error(`Failed to delete event: ${event.title}`, e)
+        failures.push(`${event.title}：${e instanceof Error ? e.message : String(e)}`)
       }
     }
 
-    const output = t('calendar.deleted', { count: deletedCount })
+    // 只要有没删掉的，整体不报成功；已删掉的与没删掉的分别列出，免得被误以为全没动
+    if (failures.length > 0) {
+      return {
+        success: false,
+        output: '',
+        error: deletedTitles.length === 0
+          ? failures.join('；')
+          : t('calendar.deleted_with_failures', {
+            count: deletedTitles.length,
+            deleted: deletedTitles.join('、'),
+            failures: failures.join('；')
+          })
+      }
+    }
+
+    const output = t('calendar.deleted', { count: deletedTitles.length })
     executor.addStep({
       type: 'tool_result',
       content: output,
@@ -1279,11 +1414,26 @@ async function todoCreate(
       status: 'needs-action'
     })
 
-    await session.client.createCalendarObject({
+    const response = await session.client.createCalendarObject({
       calendar: { url: calendarId },
       filename: `${uid}.ics`,
       iCalString: icalData
     })
+
+    // tsdav 只返回 Response、不校验 ok，服务端拒绝时不会抛异常
+    if (!response.ok) {
+      return {
+        success: false,
+        output: '',
+        error: await describeWriteFailure('create', response.status, undefined, calendarId, session)
+      }
+    }
+
+    // 回读核验：读不到、或标题对不上，都不能报「已创建」
+    const verified = await verifyTodoWritten(calendarId, uid, { title }, session, 'create')
+    if (!verified.ok) {
+      return { success: false, output: '', error: verified.error }
+    }
 
     const output = t('calendar.todo_created', { title })
     executor.addStep({
@@ -1412,13 +1562,36 @@ async function todoUpdate(
 
     const icalData = buildICalTodo(updatedTodo)
 
-    await session.client.updateCalendarObject({
+    const response = await session.client.updateCalendarObject({
       calendarObject: {
         url: todoObj.url,
         etag: todoObj.etag,
         data: icalData
       }
     })
+
+    if (!response.ok) {
+      return {
+        success: false,
+        output: '',
+        error: await describeWriteFailure('update', response.status, undefined, todoObj.url, session)
+      }
+    }
+
+    // 回读核验：这次改了标题或状态的，读回来要对得上
+    const verified = await verifyTodoWritten(
+      calendarId,
+      todoId,
+      {
+        title: title && title !== originalTodo.title ? updatedTodo.title : undefined,
+        status: status ? updatedTodo.status : undefined
+      },
+      session,
+      'update'
+    )
+    if (!verified.ok) {
+      return { success: false, output: '', error: verified.error }
+    }
 
     const output = t('calendar.todo_updated', { title: updatedTodo.title })
     executor.addStep({
@@ -1502,22 +1675,48 @@ async function todoDelete(
       }
     }
 
-    let deletedCount = 0
+    const deletedTitles: string[] = []
+    const failures: string[] = []
     for (const todo of todosToDelete) {
       try {
-        await session.client.deleteCalendarObject({
+        const response = await session.client.deleteCalendarObject({
           calendarObject: {
             url: todo.url,
             etag: todo.etag
           }
         })
-        deletedCount++
+        if (!response.ok) {
+          failures.push(`${todo.title}：${await describeWriteFailure('delete', response.status, undefined, todo.url, session)}`)
+          continue
+        }
+        const notDeleted = deleteFailureMessage(await verifyResourceDeleted(todo.url, session))
+        if (notDeleted) {
+          failures.push(`${todo.title}：${notDeleted}`)
+          continue
+        }
+        deletedTitles.push(todo.title)
       } catch (e) {
         log.error(`Failed to delete todo: ${todo.title}`, e)
+        failures.push(`${todo.title}：${e instanceof Error ? e.message : String(e)}`)
       }
     }
 
-    const output = t('calendar.todos_deleted', { count: deletedCount })
+    // 只要有没删掉的，整体不报成功；已删掉的与没删掉的分别列出
+    if (failures.length > 0) {
+      return {
+        success: false,
+        output: '',
+        error: deletedTitles.length === 0
+          ? failures.join('；')
+          : t('calendar.deleted_with_failures', {
+            count: deletedTitles.length,
+            deleted: deletedTitles.join('、'),
+            failures: failures.join('；')
+          })
+      }
+    }
+
+    const output = t('calendar.todos_deleted', { count: deletedTitles.length })
     executor.addStep({
       type: 'tool_result',
       content: output,
@@ -1639,7 +1838,8 @@ async function fetchEventByUid(
     try {
       const response = await fetch(eventUrl, {
         method: 'GET',
-        headers: { 'Authorization': authHeader }
+        headers: { 'Authorization': authHeader },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
       })
       
       if (response.ok) {
@@ -1683,40 +1883,258 @@ async function fetchEventByUid(
         'Content-Type': 'application/xml; charset=utf-8',
         'Depth': '1'
       },
-      body: reportBody
+      body: reportBody,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
     })
     
     if (response.status === 207) {
       const responseText = await response.text()
-      
-      // 提取 href
-      const hrefMatch = responseText.match(/<[^>]*href[^>]*>([^<]+)<\/[^>]*href>/i)
-      const eventUrl = hrefMatch ? 
-        (hrefMatch[1].startsWith('http') ? hrefMatch[1] : new URL(hrefMatch[1], calendarId).href) : 
-        calendarId
-      
-      // 提取 etag
-      const etagMatch = responseText.match(/<[^>]*getetag[^>]*>([^<]+)<\/[^>]*getetag>/i)
-      const etag = etagMatch ? etagMatch[1].replace(/"/g, '') : undefined
-      
-      // 提取 calendar-data
-      const dataMatch = responseText.match(/<[^>]*calendar-data[^>]*>([\s\S]*?)<\/[^>]*calendar-data>/i)
-      if (dataMatch) {
-        let data = dataMatch[1].trim()
-        if (data.startsWith('<![CDATA[')) {
-          data = data.replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '')
-        }
-        data = data.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
-        
-        if (data.includes('VEVENT')) {
-          return { url: eventUrl, etag, data }
-        }
-      }
+      const found = readReportResource(responseText, calendarId, 'VEVENT')
+      if (found) return found
     }
   } catch {
     // REPORT 失败
   }
   
+  return null
+}
+
+/**
+ * 写操作被服务端拒绝时，探测当前账户对该资源的写权限。
+ * 走标准的 current-user-privilege-set；服务端不支持时返回 unknown。
+ * 目的只是把「被拒绝的原因」从猜测收敛到有依据的判断，不支持的场景不硬猜。
+ */
+async function probeWritePermission(
+  resourceUrl: string,
+  operation: WriteOperation,
+  session: import('./session').CalendarSession
+): Promise<'write' | 'read-only' | 'unknown'> {
+  try {
+    const credential = await getCalendarCredential(session.accountId)
+    if (!credential) return 'unknown'
+    const authHeader = `Basic ${Buffer.from(`${session.username}:${credential}`).toString('base64')}`
+
+    const response = await fetch(resourceUrl, {
+      method: 'PROPFIND',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Depth': '0'
+      },
+      body: `<?xml version="1.0" encoding="utf-8" ?>
+<D:propfind xmlns:D="DAV:">
+  <D:prop>
+    <D:current-user-privilege-set/>
+  </D:prop>
+</D:propfind>`,
+      signal: AbortSignal.timeout(8000)
+    })
+
+    if (!response.ok && response.status !== 207) return 'unknown'
+    return readWritePrivilege(await response.text(), operation)
+  } catch {
+    return 'unknown'
+  }
+}
+
+/**
+ * 把写操作被服务端拒绝的状态码翻译成人能看懂的说明。
+ * 403 的原因不止一种（非发起人、日历只读、授权范围不足、服务端策略），
+ * 所以先做一次权限取证，取不到就如实列出可能性，不下单因结论。
+ */
+async function describeWriteFailure(
+  operation: WriteOperation,
+  status: number,
+  organizer: string | undefined,
+  resourceUrl: string,
+  session: import('./session').CalendarSession
+): Promise<string> {
+  const hint = organizer && organizerIsOther(organizer, session.username)
+    ? t('calendar.organizer_hint', { organizer })
+    : ''
+
+  if (status === 401 || status === 403) {
+    const probe = await probeWritePermission(resourceUrl, operation, session)
+    if (probe === 'read-only') {
+      return t('calendar.write_forbidden_readonly', { status, hint })
+    }
+    if (probe === 'write') {
+      return t('calendar.write_forbidden_privileged', { status, hint })
+    }
+    return t('calendar.write_forbidden', { status, hint })
+  }
+  // 创建时的 412 是「同名日程已存在」，不是被别人改过
+  if (status === 412 && operation !== 'create') {
+    return t('calendar.write_conflict', { status })
+  }
+  return t('calendar.write_rejected', { status })
+}
+
+/** 写入后回读前的等待。只在第一次核对不过时用；测试里可以改短 */
+export const verifyTiming = { retryDelayMs: 800 }
+
+/** 读取单个日程 / 待办时每次请求的等待上限，服务端卡住时不至于一直挂着 */
+const FETCH_TIMEOUT_MS = 15000
+
+/** 核对通过时可带一句需要告诉用户的说明（例如某一项没能核对） */
+type VerifyResult = { ok: true; note?: string } | { ok: false; error: string }
+
+/** 在成功说明后面附上核对时发现的情况 */
+function withNote(output: string, note: string | undefined): string {
+  return note ? `${output}\n${note}` : output
+}
+
+/** 核对不过时等一拍再核一次：部分服务端写入后短暂延迟才可见 */
+async function checkWithRetry<T extends { ok: boolean }>(check: () => Promise<T>): Promise<T> {
+  const first = await check()
+  if (first.ok) return first
+  await new Promise(resolve => setTimeout(resolve, verifyTiming.retryDelayMs))
+  return check()
+}
+
+const FIELD_LABEL_KEYS: Record<CheckedField, TranslationKey> = {
+  title: 'calendar.title',
+  start: 'calendar.start',
+  end: 'calendar.end',
+  location: 'calendar.location',
+  description: 'calendar.description',
+  recurrence: 'calendar.recurrence'
+}
+
+type VerifyKind = 'create' | 'update'
+
+/** 回读发现对不上时的说明。创建后日程已经在服务端，要提醒别重复创建 */
+function mismatchMessage(kind: VerifyKind, field: string, expected: string, actual: string): string {
+  return t(kind === 'create' ? 'calendar.create_mismatch' : 'calendar.verify_mismatch', { field, expected, actual })
+}
+
+/** 读不到时的说明。创建与修改的后果不同：创建读不到，重复创建可能出现两份 */
+function missingMessage(kind: VerifyKind): string {
+  return t(kind === 'create' ? 'calendar.create_unconfirmed' : 'calendar.verify_read_failed')
+}
+
+/**
+ * 写后回读核验：重新拉一次事件，对照这次预期的结果。
+ * 服务端回了 2xx 但内容没变的情况并不罕见，这一步避免把「请求发出去」当成「事情办成了」。
+ */
+async function verifyEventWritten(
+  calendarId: string,
+  eventId: string,
+  expected: ExpectedWrite,
+  session: import('./session').CalendarSession,
+  kind: VerifyKind
+): Promise<VerifyResult> {
+  return checkWithRetry<VerifyResult>(async () => {
+    const fresh = await fetchEventByUid(calendarId, eventId, session)
+    if (!fresh) return { ok: false, error: missingMessage(kind) }
+
+    const parsed = parseICalEvent(fresh.data, fresh.url, fresh.etag)
+    if (!parsed) return { ok: false, error: t('calendar.verify_parse_failed') }
+
+    const mismatch = findMismatch(expected, parsed, {
+      moment: (date, allDay) => (allDay ? formatDate(date) : formatDateTime(date)),
+      recurrence: rrule => (rrule ? formatRecurrenceLabel(rrule) : t('calendar.recurrence_none')),
+      empty: t('calendar.value_empty')
+    })
+    if (mismatch) {
+      return {
+        ok: false,
+        error: mismatchMessage(kind, t(FIELD_LABEL_KEYS[mismatch.field]), mismatch.expected, mismatch.actual)
+      }
+    }
+
+    // 时区认不出而没能核对的时刻，不能当成对上了：除时刻之外还有别的项核对过，
+    // 就照实附一句说明；这次只有时刻可核对，则整体是「未能确认」
+    if (unverifiedMoments(expected, parsed).length > 0) {
+      const note = t('calendar.verify_time_unconfirmed')
+      const checkedOthers = [expected.title, expected.location, expected.description, expected.recurrence]
+        .some(value => value !== undefined)
+      return checkedOthers ? { ok: true, note } : { ok: false, error: note }
+    }
+    return { ok: true }
+  })
+}
+
+/** 待办写入后回读：核对标题与状态（待办没有日程那么多项） */
+async function verifyTodoWritten(
+  calendarId: string,
+  todoId: string,
+  expected: { title?: string; status?: NonNullable<CalendarTodo['status']> },
+  session: import('./session').CalendarSession,
+  kind: VerifyKind
+): Promise<VerifyResult> {
+  const statusLabel = (status: string) =>
+    t(`calendar.todo_status_${status.replace('-', '_')}` as TranslationKey)
+
+  return checkWithRetry<VerifyResult>(async () => {
+    const fresh = await fetchTodoByUid(calendarId, todoId, session)
+    if (!fresh) return { ok: false, error: missingMessage(kind) }
+
+    const parsed = parseICalTodo(fresh.data, fresh.url, fresh.etag)
+    if (!parsed) return { ok: false, error: t('calendar.verify_parse_failed') }
+
+    if (expected.title !== undefined && normalizeText(expected.title) !== normalizeText(parsed.title)) {
+      return {
+        ok: false,
+        error: mismatchMessage(kind, t('calendar.title'), expected.title, parsed.title)
+      }
+    }
+    const actualStatus = parsed.status ?? 'needs-action'
+    if (expected.status && expected.status !== actualStatus) {
+      return {
+        ok: false,
+        error: mismatchMessage(kind, t('calendar.todo_status'), statusLabel(expected.status), statusLabel(actualStatus))
+      }
+    }
+    return { ok: true }
+  })
+}
+
+/** 一个资源现在的状态：还在、没了、没问成 */
+type ResourceState = 'present' | 'absent' | 'unknown'
+
+/**
+ * 直接问服务端：这个地址上的资源还在不在。
+ * 只有明确的「不存在」（404 / 410）才算没了；读取出错、鉴权失败等不能当成没了。
+ */
+async function probeResourceState(
+  resourceUrl: string,
+  session: import('./session').CalendarSession
+): Promise<ResourceState> {
+  try {
+    const credential = await getCalendarCredential(session.accountId)
+    if (!credential) return 'unknown'
+    const authHeader = `Basic ${Buffer.from(`${session.username}:${credential}`).toString('base64')}`
+    const response = await fetch(resourceUrl, {
+      method: 'GET',
+      headers: { 'Authorization': authHeader },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+    })
+    if (response.status === 404 || response.status === 410) return 'absent'
+    if (!response.ok) return 'unknown'
+    // 200 但内容不是日历（登录页、网关提示页等）：既不能说它还在，也不能说它没了
+    return /BEGIN:V(EVENT|TODO)/.test(await response.text()) ? 'present' : 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
+/** 删除后回读：确认那个地址上的资源已经没了。第一次不过再等一拍核一次 */
+async function verifyResourceDeleted(
+  resourceUrl: string,
+  session: import('./session').CalendarSession
+): Promise<ResourceState> {
+  const result = await checkWithRetry(async () => {
+    const state = await probeResourceState(resourceUrl, session)
+    return { ok: state === 'absent', state }
+  })
+  return result.state
+}
+
+/** 把删除后回读的结果翻译成失败说明；已删掉返回 null */
+function deleteFailureMessage(state: ResourceState): string | null {
+  if (state === 'present') return t('calendar.delete_not_applied')
+  if (state === 'unknown') return t('calendar.delete_unconfirmed')
   return null
 }
 
@@ -1781,7 +2199,7 @@ function extractCalendarName(url: string): string {
 /**
  * 解析 iCalendar 事件数据
  */
-function parseICalEvent(icalData: string | undefined, url?: string, etag?: string): CalendarEvent | null {
+export function parseICalEvent(icalData: string | undefined, url?: string, etag?: string): CalendarEvent | null {
   if (!icalData) {
     return null
   }
@@ -1791,22 +2209,30 @@ function parseICalEvent(icalData: string | undefined, url?: string, etag?: strin
     const unfoldedData = icalData.replace(/\r?\n[ \t]/g, '')
     
     // 简单解析 iCalendar 格式
-    const lines = unfoldedData.split(/\r?\n/)
+    const allLines = unfoldedData.split(/\r?\n/)
+    // 重复日程里单独改过的场次排在前面时，也要读主日程
+    const masterRange = findMasterEventRange(allLines)
+    const lines = masterRange ? allLines.slice(masterRange[0], masterRange[1] + 1) : allLines
     let uid = ''
     let summary = ''
     let dtstart = ''
     let dtend = ''
+    let duration = ''
     let dtstartTzid = ''
     let dtendTzid = ''
     let location = ''
     let description = ''
     let isAllDay = false
     let inVEvent = false
+    let organizer = ''
+    const attendees: string[] = []
+    // 日程里嵌套的子块（提醒等）深度：子块里的属性不属于日程本身
+    let nestedDepth = 0
 
     // 提取时区信息的辅助函数
     const extractTzid = (line: string): string => {
-      const tzidMatch = line.match(/TZID=([^:;]+)/)
-      return tzidMatch ? tzidMatch[1] : ''
+      const tzidMatch = line.match(/TZID=("[^"]+"|[^:;]+)/)
+      return tzidMatch ? tzidMatch[1].replace(/^"|"$/g, '') : ''
     }
 
     for (const line of lines) {
@@ -1819,6 +2245,17 @@ function parseICalEvent(icalData: string | undefined, url?: string, etag?: strin
         break // 只取第一个事件
       }
       if (!inVEvent) continue
+
+      // 提醒（VALARM）等子块里也有 DESCRIPTION 之类的属性，不能算到日程头上
+      if (line.startsWith('BEGIN:')) {
+        nestedDepth++
+        continue
+      }
+      if (line.startsWith('END:') && nestedDepth > 0) {
+        nestedDepth--
+        continue
+      }
+      if (nestedDepth > 0) continue
 
       if (line.startsWith('UID:')) {
         uid = line.substring(4).trim()
@@ -1841,6 +2278,9 @@ function parseICalEvent(icalData: string | undefined, url?: string, etag?: strin
           dtend = match[1].trim()
           dtendTzid = extractTzid(line)
         }
+      } else if (line.startsWith('DURATION')) {
+        const colonIdx = line.indexOf(':')
+        if (colonIdx !== -1) duration = line.substring(colonIdx + 1).trim()
       } else if (line.startsWith('LOCATION')) {
         const colonIdx = line.indexOf(':')
         if (colonIdx !== -1) {
@@ -1851,6 +2291,12 @@ function parseICalEvent(icalData: string | undefined, url?: string, etag?: strin
         if (colonIdx !== -1) {
           description = unescapeICalText(line.substring(colonIdx + 1).trim())
         }
+      } else if (line.startsWith('ORGANIZER')) {
+        const mail = readCalAddress(line)
+        if (mail) organizer = mail
+      } else if (line.startsWith('ATTENDEE')) {
+        const mail = readCalAddress(line)
+        if (mail && !attendees.includes(mail)) attendees.push(mail)
       }
     }
 
@@ -1892,16 +2338,31 @@ function parseICalEvent(icalData: string | undefined, url?: string, etag?: strin
     }
 
     const alarmBlock = readAlarmBlock(unfoldedData)
+    const startMoment = resolveICalDate(dtstart, dtstartTzid)
+    const endMoment = dtend ? resolveICalDate(dtend, dtendTzid || dtstartTzid) : null
+    // 没有结束时间时：有时长就按时长算；全天日程按一天；其余结束即开始
+    const spanned = parseICalDuration(duration)
+    const end = endMoment
+      ? endMoment.date
+      : spanned
+        ? addICalDuration(startMoment.date, spanned, isAllDay)
+        : isAllDay
+          ? addICalDuration(startMoment.date, { days: 1, ms: 0 }, true)
+          : startMoment.date
     return {
       uid,
       title: summary,
-      start: parseICalDate(dtstart, dtstartTzid),
-      end: dtend ? parseICalDate(dtend, dtendTzid || dtstartTzid) : parseICalDate(dtstart, dtstartTzid),
+      start: startMoment.date,
+      end,
+      timeZoneUnknown: !startMoment.resolved || (endMoment ? !endMoment.resolved : false) || undefined,
       allDay: isAllDay,
       location: location || undefined,
       description: description || undefined,
-      recurrence: readRRuleValue(unfoldedData),
+      // 只在主日程里找：单独改过的场次排在前面时，整份文本里第一个日程并不带规则
+      recurrence: readRRuleValue(lines.join('\n')),
       alarmBlock,
+      organizer: organizer || undefined,
+      attendees: attendees.length > 0 ? attendees : undefined,
       url,
       etag
     }
@@ -1912,18 +2373,19 @@ function parseICalEvent(icalData: string | undefined, url?: string, etag?: strin
 }
 
 /**
- * 解析 iCalendar 日期格式
+ * 解析 iCalendar 日期格式。
+ * resolved 为 false 表示原始数据里的时区认不出来，时刻只是按本机时区估的。
  */
-function parseICalDate(dateStr: string, tzid?: string): Date {
+function resolveICalDate(dateStr: string, tzid?: string): { date: Date; resolved: boolean } {
   // 格式: 20240115T090000Z 或 20240115 或带时区 20240115T090000
   if (dateStr.length === 8) {
     // 全天事件 YYYYMMDD
     const year = parseInt(dateStr.substring(0, 4))
     const month = parseInt(dateStr.substring(4, 6)) - 1
     const day = parseInt(dateStr.substring(6, 8))
-    return new Date(year, month, day)
+    return { date: new Date(year, month, day), resolved: true }
   }
-  
+
   // 带时间 YYYYMMDDTHHMMSS 或 YYYYMMDDTHHMMSSZ
   const cleanStr = dateStr.replace('Z', '')
   const year = parseInt(cleanStr.substring(0, 4))
@@ -1932,42 +2394,43 @@ function parseICalDate(dateStr: string, tzid?: string): Date {
   const hour = parseInt(cleanStr.substring(9, 11)) || 0
   const minute = parseInt(cleanStr.substring(11, 13)) || 0
   const second = parseInt(cleanStr.substring(13, 15)) || 0
-  
+
   if (dateStr.endsWith('Z')) {
     // UTC 时间
-    return new Date(Date.UTC(year, month, day, hour, minute, second))
+    return { date: new Date(Date.UTC(year, month, day, hour, minute, second)), resolved: true }
   }
-  
-  // 处理带时区的情况
-  // 常见时区映射（企业微信使用 TZ08 表示 UTC+8）
+
+  // 没有时区标识的是「浮动时间」，本来就按本机时间理解
+  if (!tzid) {
+    return { date: new Date(year, month, day, hour, minute, second), resolved: true }
+  }
+
+  // 标准时区名（Asia/Shanghai、Europe/Berlin 等）按真实规则换算，含夏令时
+  const zoned = zonedToUtc(year, month + 1, day, hour, minute, second, tzid)
+  if (zoned) return { date: zoned, resolved: true }
+
+  // 非标准写法：企业微信用 TZ08 表示 UTC+8
   const tzOffsets: Record<string, number> = {
-    'TZ08': 8, 'Asia/Shanghai': 8, 'Asia/Hong_Kong': 8,
-    'TZ09': 9, 'Asia/Tokyo': 9,
-    'TZ00': 0, 'UTC': 0, 'GMT': 0,
-    'TZ-05': -5, 'America/New_York': -5,
-    'TZ-08': -8, 'America/Los_Angeles': -8
+    'TZ08': 8, 'TZ09': 9, 'TZ00': 0, 'TZ-05': -5, 'TZ-08': -8
   }
-  
-  if (tzid && tzOffsets[tzid] !== undefined) {
-    // 将带时区的本地时间转换为 Date 对象
-    // 创建 UTC 时间然后减去时区偏移
-    const offsetHours = tzOffsets[tzid]
-    return new Date(Date.UTC(year, month, day, hour - offsetHours, minute, second))
+  if (tzOffsets[tzid] !== undefined) {
+    return { date: new Date(Date.UTC(year, month, day, hour - tzOffsets[tzid], minute, second)), resolved: true }
   }
-  
-  // 没有时区信息，假设是本地时间
-  return new Date(year, month, day, hour, minute, second)
+
+  // 认不出的时区：按本机时区估一个，并如实标明不可信
+  return { date: new Date(year, month, day, hour, minute, second), resolved: false }
+}
+
+function parseICalDate(dateStr: string, tzid?: string): Date {
+  return resolveICalDate(dateStr, tzid).date
 }
 
 /**
  * 反转义 iCalendar 文本
  */
 function unescapeICalText(text: string): string {
-  return text
-    .replace(/\\n/g, '\n')
-    .replace(/\\,/g, ',')
-    .replace(/\\;/g, ';')
-    .replace(/\\\\/g, '\\')
+  // 一次扫完：分步替换会把「反斜杠 + n」先误当成换行
+  return text.replace(/\\([nN,;\\])/g, (_match, ch: string) => (ch === 'n' || ch === 'N' ? '\n' : ch))
 }
 
 /**
@@ -1982,9 +2445,149 @@ function escapeICalText(text: string): string {
 }
 
 /**
+ * 按 RFC 5545 把一行折叠到 75 字节以内（续行以单个空格开头），
+ * 避免长描述、长地点被服务端拒收。
+ */
+export function foldICalLine(line: string): string {
+  const bytes = Buffer.from(line, 'utf8')
+  if (bytes.length <= 75) return line
+
+  const chunks: string[] = []
+  let current = ''
+  let currentBytes = 0
+  for (const char of line) {
+    const charBytes = Buffer.byteLength(char, 'utf8')
+    const limit = chunks.length === 0 ? 75 : 74
+    if (currentBytes + charBytes > limit) {
+      chunks.push(current)
+      current = char
+      currentBytes = charBytes
+    } else {
+      current += char
+      currentBytes += charBytes
+    }
+  }
+  if (current) chunks.push(current)
+  return chunks.join('\r\n ')
+}
+
+/**
+ * 在原始 iCalendar 数据上做字段级替换。
+ *
+ * 与 buildICalEvent 重建整份数据不同，这里只动传入的那几项，
+ * ORGANIZER、ATTENDEE、STATUS、CLASS、提醒等一律原样保留——否则他人发起的会议邀请
+ * 会被抹成一份没有发起人、没有参会人的孤立事件，服务端要么拒收要么忽略。
+ * 只改主日程（重复日程里单独改过的场次不动），按规范递增 SEQUENCE、刷新 DTSTAMP；
+ * 提醒等子块里的同名属性（如提醒的 DESCRIPTION）不算日程自己的。
+ */
+export function patchICalEvent(
+  originalData: string,
+  patch: {
+    title?: string
+    start?: Date
+    end?: Date
+    allDay?: boolean
+    location?: string
+    description?: string
+    rrule?: string
+  }
+): string {
+  const lines = originalData.replace(/\r?\n[ \t]/g, '').split(/\r?\n/)
+  const updates = new Map<string, string | null>()
+
+  if (patch.title !== undefined) {
+    updates.set('SUMMARY', `SUMMARY:${escapeICalText(patch.title)}`)
+  }
+  if (patch.start) {
+    updates.set('DTSTART', patch.allDay
+      ? `DTSTART;VALUE=DATE:${formatICalDate(patch.start, true)}`
+      : `DTSTART:${formatICalDateUTC(patch.start)}`)
+  }
+  if (patch.end) {
+    updates.set('DTEND', patch.allDay
+      ? `DTEND;VALUE=DATE:${formatICalDate(patch.end, true)}`
+      : `DTEND:${formatICalDateUTC(patch.end)}`)
+  }
+  if (patch.location !== undefined) {
+    updates.set('LOCATION', patch.location ? `LOCATION:${escapeICalText(patch.location)}` : null)
+  }
+  if (patch.description !== undefined) {
+    updates.set('DESCRIPTION', patch.description ? `DESCRIPTION:${escapeICalText(patch.description)}` : null)
+  }
+  if (patch.rrule !== undefined) {
+    updates.set('RRULE', patch.rrule ? `RRULE:${patch.rrule}` : null)
+  }
+
+  const out: string[] = []
+  const applied = new Set<string>()
+  // 只改主日程；重复日程里单独改过的场次（带 RECURRENCE-ID）和其它组件原样放过
+  const range = findMasterEventRange(lines)
+  let nestedDepth = 0
+  let sequenceSeen = false
+  let dtstampSeen = false
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (!range || i <= range[0] || i > range[1]) {
+      out.push(line)
+      continue
+    }
+
+    if (i === range[1]) {
+      // 原日程里没有的属性，在日程结束前补上
+      for (const [key, value] of updates) {
+        if (!applied.has(key) && value !== null) out.push(value)
+      }
+      if (!sequenceSeen) out.push('SEQUENCE:1')
+      if (!dtstampSeen) out.push(`DTSTAMP:${formatICalDateUTC(new Date())}`)
+      out.push(line)
+      continue
+    }
+
+    if (line.startsWith('BEGIN:')) {
+      nestedDepth++
+      out.push(line)
+      continue
+    }
+    if (nestedDepth > 0) {
+      if (line.startsWith('END:')) nestedDepth--
+      out.push(line)
+      continue
+    }
+
+    const key = line.split(/[;:]/, 1)[0].toUpperCase()
+
+    if (updates.has(key)) {
+      const value = updates.get(key)
+      // 同名属性重复出现时，只在第一处落笔
+      if (!applied.has(key) && typeof value === 'string') out.push(value)
+      applied.add(key)
+      continue
+    }
+    // 写入结束时间后，不能再留着时长：两者并存不合规
+    if (key === 'DURATION' && typeof updates.get('DTEND') === 'string') continue
+    if (key === 'SEQUENCE') {
+      const parsed = parseInt(line.substring(line.indexOf(':') + 1), 10)
+      out.push(`SEQUENCE:${Number.isFinite(parsed) ? parsed + 1 : 1}`)
+      sequenceSeen = true
+      continue
+    }
+    if (key === 'DTSTAMP') {
+      out.push(`DTSTAMP:${formatICalDateUTC(new Date())}`)
+      dtstampSeen = true
+      continue
+    }
+    out.push(line)
+  }
+
+  while (out.length > 0 && out[out.length - 1] === '') out.pop()
+  return out.map(foldICalLine).join('\r\n') + '\r\n'
+}
+
+/**
  * 构建 iCalendar 事件数据
  */
-function buildICalEvent(params: {
+export function buildICalEvent(params: {
   uid: string
   title: string
   start: Date
@@ -2001,17 +2604,20 @@ function buildICalEvent(params: {
   const { uid, title, start, end, allDay, location, description, reminderMinutes, alarmBlock, rrule } = params
   
   const now = new Date()
-  const dtstamp = formatICalDate(now, false)
+  // DTSTAMP 与定时事件的 DTSTART/DTEND 一律用 UTC 带 Z，
+  // 避免写成「浮动时间」后被各端按本地时区各自解释导致时间漂移
+  const dtstamp = formatICalDateUTC(now)
   
   let dtstart: string
   let dtend: string
   
   if (allDay) {
+    // 全天事件用本地日期，转 UTC 会因时区偏移落到前一天
     dtstart = `DTSTART;VALUE=DATE:${formatICalDate(start, true)}`
     dtend = `DTEND;VALUE=DATE:${formatICalDate(end, true)}`
   } else {
-    dtstart = `DTSTART:${formatICalDate(start, false)}`
-    dtend = `DTEND:${formatICalDate(end, false)}`
+    dtstart = `DTSTART:${formatICalDateUTC(start)}`
+    dtend = `DTEND:${formatICalDateUTC(end)}`
   }
   
   let ical = `BEGIN:VCALENDAR
@@ -2051,7 +2657,8 @@ END:VALARM`
 END:VEVENT
 END:VCALENDAR`
 
-  return ical
+  // 按规范：每行以回车换行结尾，超过 75 字节的行折叠
+  return ical.split(/\r?\n/).map(foldICalLine).join('\r\n') + '\r\n'
 }
 
 /**
@@ -2076,7 +2683,7 @@ function formatICalDate(date: Date, dateOnly: boolean): string {
 /**
  * 格式化日期为 iCalendar UTC 格式（用于 CalDAV 查询）
  */
-function _formatICalDateUTC(date: Date): string {
+function formatICalDateUTC(date: Date): string {
   const year = date.getUTCFullYear()
   const month = String(date.getUTCMonth() + 1).padStart(2, '0')
   const day = String(date.getUTCDate()).padStart(2, '0')
@@ -2159,7 +2766,8 @@ async function fetchTodoByUid(
     try {
       const response = await fetch(todoUrl, {
         method: 'GET',
-        headers: { 'Authorization': authHeader }
+        headers: { 'Authorization': authHeader },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
       })
 
       if (response.ok) {
@@ -2203,32 +2811,14 @@ async function fetchTodoByUid(
         'Content-Type': 'application/xml; charset=utf-8',
         'Depth': '1'
       },
-      body: reportBody
+      body: reportBody,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
     })
 
     if (response.status === 207) {
       const responseText = await response.text()
-
-      const hrefMatch = responseText.match(/<[^>]*href[^>]*>([^<]+)<\/[^>]*href>/i)
-      const todoUrl = hrefMatch ?
-        (hrefMatch[1].startsWith('http') ? hrefMatch[1] : new URL(hrefMatch[1], calendarId).href) :
-        calendarId
-
-      const etagMatch = responseText.match(/<[^>]*getetag[^>]*>([^<]+)<\/[^>]*getetag>/i)
-      const etag = etagMatch ? etagMatch[1].replace(/"/g, '') : undefined
-
-      const dataMatch = responseText.match(/<[^>]*calendar-data[^>]*>([\s\S]*?)<\/[^>]*calendar-data>/i)
-      if (dataMatch) {
-        let data = dataMatch[1].trim()
-        if (data.startsWith('<![CDATA[')) {
-          data = data.replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '')
-        }
-        data = data.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
-
-        if (data.includes('VTODO')) {
-          return { url: todoUrl, etag, data }
-        }
-      }
+      const found = readReportResource(responseText, calendarId, 'VTODO')
+      if (found) return found
     }
   } catch {
     // REPORT 失败
