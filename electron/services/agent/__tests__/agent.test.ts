@@ -1854,6 +1854,37 @@ describe('Agent run method', () => {
       }
     })
 
+    it('落过盘的步骤后来原地改了：收尾保存整份重写，没改过就照旧追加', async () => {
+      const saves: Array<{ options?: { forceRewrite?: boolean }; steps: any[] }> = []
+      const mockHistoryService = {
+        getAgentRecordById: vi.fn().mockReturnValue(undefined),
+        getRecentAgentRecords: vi.fn().mockReturnValue([]),
+        saveAgentRecord: vi.fn((r, options) => { saves.push({ options, steps: JSON.parse(JSON.stringify(r.steps)) }) }),
+        getAgentRecordStore: vi.fn(() => mockHistoryService)
+      }
+      const services = createMockServices({ historyService: mockHistoryService as any })
+      const agentWithHistory = new TestAgent(services)
+      let editInPlace = true
+      ;(services.aiService as any).chatWithToolsStream.mockImplementation(
+        (_m: any, _t: any, onChunk: any, _otc: any, onDone: any) => {
+          const run = (agentWithHistory as any).currentRun
+          const first = run.steps[0]
+          if (editInPlace) (agentWithHistory as any).updateStep(first.id, { content: `${first.content}（改过）` })
+          onChunk('Done'); onDone({ content: 'Done', tool_calls: undefined }); return Promise.resolve()
+        }
+      )
+
+      await agentWithHistory.run('Edit me', createMockContext({ sessionId: 'session_rewrite' }))
+      const final = saves[saves.length - 1]
+      expect(final.options?.forceRewrite).toBe(true)
+      expect(final.steps[0].content).toContain('（改过）')
+
+      editInPlace = false
+      saves.length = 0
+      await agentWithHistory.run('Again', createMockContext({ sessionId: 'session_rewrite' }))
+      expect(saves[saves.length - 1].options).toBeUndefined()
+    })
+
     /**
      * 防回归：新开 tab 的第一次对话不应被全局历史污染
      *

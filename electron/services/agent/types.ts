@@ -177,6 +177,9 @@ export interface AgentRun {
   pendingConfirmation?: PendingConfirmationInternal
   pendingSecureInput?: PendingSecureInputInternal
   pendingUserMessages: PendingUserMessage[]
+  /** 上次落盘的步骤。记录只追加，这些步骤原地改了，要整份重写才留得下 */
+  savedStepIds?: Set<string>
+  stepsEditedAfterSave?: boolean
   config: AgentConfig
   context: AgentContext  // 运行上下文
   // 实时终端输出缓冲区（Agent 运行期间收集）

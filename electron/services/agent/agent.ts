@@ -2353,8 +2353,13 @@ export abstract class Agent {
     })
     if (!record) return
 
+    const run = this.currentRun
     try {
-      historyService.saveAgentRecord(record)
+      historyService.saveAgentRecord(record, run?.stepsEditedAfterSave ? { forceRewrite: true } : undefined)
+      if (run) {
+        run.savedStepIds = new Set(record.steps.map(s => s.id))
+        run.stepsEditedAfterSave = false
+      }
     } catch (err) {
       log.error('保存会话历史失败:', err)
     }
@@ -2391,6 +2396,7 @@ export abstract class Agent {
 
     try {
       historyService.saveAgentRecord(record)
+      run.savedStepIds = new Set(record.steps.map(s => s.id))
     } catch (err) {
       log.error('保存检查点失败:', err)
     }
@@ -6078,6 +6084,7 @@ export abstract class Agent {
     } else {
       // 更新现有步骤
       Object.assign(step, updates)
+      if (this.currentRun.savedStepIds?.has(stepId)) this.currentRun.stepsEditedAfterSave = true
     }
     
     this.callbacks?.onStep?.(this.currentRun.id, step)
