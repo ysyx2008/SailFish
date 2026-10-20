@@ -5,7 +5,6 @@ import { ExternalLink, Eye, EyeOff, Play, RotateCcw, Upload, Volume2 } from 'luc
 import { useConfigStore } from '../../stores/config'
 import { applyMasterCueEnabled, clampCueVolume, CUE_SOUND_KINDS, CUE_VOLUME_MAX, CUE_VOLUME_STEP, type CueSoundKind } from '@shared/types'
 import { playCueSound } from '../../composables/useCueSound'
-import { maskSecret } from '../../utils/mask-secret'
 import AppSelect from '../common/AppSelect.vue'
 import { WEB_SEARCH_PROVIDERS, webSearchKeyFromModelProfiles, type WebSearchProviderId } from '@shared/types'
 import {
@@ -440,11 +439,14 @@ const webSearchModelKeyHint = computed(() =>
 const webSearchKeyVisible = ref(false)
 watch(webSearchProviderId, () => { webSearchKeyVisible.value = false })
 
-/** 框本身仍是空的；沿用时在框里露出那一把（默认只露头尾），看上去就是已经有了 */
+/**
+ * 框本身仍是空的；沿用时在框里显示那一把，样子和用户自己填的一样：
+ * 遮住时一个字符一个圆点，点眼睛才出现明文（遮住时明文不进页面）。
+ */
 const webSearchKeyPlaceholder = computed(() => {
   const reused = webSearchReusedKey.value
   if (!reused) return 'API Key'
-  return webSearchKeyVisible.value ? reused : maskSecret(reused)
+  return webSearchKeyVisible.value ? reused : '•'.repeat(reused.length)
 })
 
 const webSearchDirty = computed(() => {
