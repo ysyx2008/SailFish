@@ -462,8 +462,6 @@ export default {
     apiUrlPlaceholder: 'http://10.0.1.100:8080/v1/chat/completions',
     apiKey: 'API Key',
     apiKeyPlaceholder: 'sk-...（本地部署可留空）',
-    showApiKey: '显示 API Key',
-    hideApiKey: '隐藏 API Key',
     apiKeyNotRequired: '大多数 API 服务需要提供 Key 才能正常使用（本地部署的 Ollama 等除外）。',
     modelRecommendation: '',
     model: '模型名称',
