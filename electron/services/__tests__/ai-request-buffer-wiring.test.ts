@@ -104,6 +104,17 @@ describe('AI 请求经过缓冲池', () => {
     expect(getModelRequestBuffer().snapshot(key)).toMatchObject({ inFlight: 0, queued: 0, recovering: false })
   }, 10_000)
 
+  it('服务端错误等重试时也放掉名额，到点再排', async () => {
+    const { ai, key } = serviceFor('flaky-model')
+    scripts.set('flaky-model', [{ status: 503, body: JSON.stringify({ error: { message: 'busy' } }) }])
+    const pending = run(ai, { bufferPriority: 'queued' })
+    await sleep(300)
+    expect(getModelRequestBuffer().snapshot(key)).toMatchObject({ inFlight: 0 })
+    const result = await pending
+    expect(result.done?.content).toBe('ok')
+    expect(getModelRequestBuffer().snapshot(key)).toMatchObject({ inFlight: 0, queued: 0 })
+  }, 15_000)
+
   it('排队中点停止：马上按已中止收尾，不留名额', async () => {
     const { ai, key } = serviceFor('paused-model')
     scripts.set('paused-model', [{ status: 429, headers: { 'Retry-After': '5' } }])

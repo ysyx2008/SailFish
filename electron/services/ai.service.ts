@@ -2513,7 +2513,7 @@ export class AiService {
     const rateLimitMaxRetries = streamOptions?.rateLimitMaxRetries ?? AI_RETRY.RATE_LIMIT_MAX_RETRIES
     // 5xx 服务端错误重试计数器（独立于网络错误重试）
     let serverErrorRetryCount = 0
-    // 缓冲池名额：一次请求同一时刻最多占一个；撞限流等重试时先放掉。换模型仍记在起始那一档上
+    // 缓冲池名额：一次请求同一时刻最多占一个；等重试时先放掉，到点再排。换模型仍记在起始那一档上
     const bufferKey = modelRequestKey(profile)
     let permit: ModelRequestPermit | undefined
     let bufferPriority: ModelRequestPriority = streamOptions?.bufferPriority ?? 'urgent'
@@ -2701,7 +2701,8 @@ export class AiService {
           ...(isTimeoutError(error) ? { cause: 'timeout' as const } : {})
         }
         resetForRetry()
-        scheduleRetry(doRequest, delay)
+        releasePermit()
+        scheduleRetry(sendWithPermit, delay)
         return true
       }
       return false
@@ -2855,13 +2856,14 @@ export class AiService {
               getAiDebugService().logResponseError(reqId, `${res.statusCode} Server Error - retry ${serverErrorRetryCount}/${AI_RETRY.SERVER_ERROR_MAX_RETRIES} in ${delaySec}s`)
               pendingRetryInfo = { attempt: serverErrorRetryCount, max: AI_RETRY.SERVER_ERROR_MAX_RETRIES, delayMs: delay, reason: 'server_error', statusCode: res.statusCode }
               resetForRetry()
-              scheduleRetry(doRequest, delay)
+              releasePermit()
+              scheduleRetry(sendWithPermit, delay)
             } else if (tryVisionFallback(parsed.message)) {
               // 已降级重试
             } else {
               const status = res.statusCode
               const exhaustedTransient =
-                (status === 429 && rateLimitRetryCount >= AI_RETRY.RATE_LIMIT_MAX_RETRIES) ||
+                (status === 429 && rateLimitRetryCount >= rateLimitMaxRetries) ||
                 (status !== undefined && AI_RETRY.RETRYABLE_STATUS_CODES.includes(status)
                   && serverErrorRetryCount >= AI_RETRY.SERVER_ERROR_MAX_RETRIES)
               if (tryModelFailover(classifyFailoverTrigger({

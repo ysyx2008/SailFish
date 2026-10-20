@@ -165,6 +165,7 @@ class BufferGroup {
     this.recovering = false
     this.probeOutstanding = false
     this.consecutiveThrottles = 0
+    this.pausedUntil = Math.min(this.pausedUntil, this.clock.now())
     if (this.inFlight + this.queuedCount() >= this.window) {
       if (this.fastGrowth) {
         this.window++

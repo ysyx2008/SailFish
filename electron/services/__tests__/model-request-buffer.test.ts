@@ -208,6 +208,23 @@ describe('ModelRequestBuffer', () => {
     expect(buffer.snapshot(KEY)?.recovering).toBe(false)
   })
 
+  it('暂停中当面请求成功：接口已恢复，排队的不再干等暂停结束', async () => {
+    const { granted, take } = tracker(buffer)
+    for (let i = 0; i < 4; i++) void take('queued')
+    await flush()
+    granted[0].reportThrottled(60_000)
+    for (const p of granted.slice(0, 4)) p.release()
+    void take('queued')
+    await flush()
+    expect(granted).toHaveLength(4)
+    const urgent = await take('urgent')
+    urgent.reportSuccess()
+    urgent.release()
+    await flush()
+    expect(granted).toHaveLength(6)
+    expect(buffer.snapshot(KEY)?.pausedForMs).toBe(0)
+  })
+
   it('已开工伙计接着发的，排在新排上的前面', async () => {
     const { granted, take } = tracker(buffer)
     for (let i = 0; i < 4; i++) void take('queued')
