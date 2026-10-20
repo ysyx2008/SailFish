@@ -12,10 +12,23 @@ const kimi = {
   apiKey: 'kimi-key',
 }
 
+const deepseek = {
+  id: 'd1',
+  apiUrl: 'https://api.deepseek.com/chat/completions',
+  apiKey: 'deepseek-key',
+}
+
 describe('webSearchKeyFromModelProfiles', () => {
   it('reuses the key of a matching model profile', () => {
     expect(webSearchKeyFromModelProfiles('zhipu', [kimi, zhipu], 'k1')).toBe('zhipu-key')
     expect(webSearchKeyFromModelProfiles('kimi', [zhipu, kimi], 'z1')).toBe('kimi-key')
+    expect(webSearchKeyFromModelProfiles('deepseek', [zhipu, kimi, deepseek], 'z1')).toBe('deepseek-key')
+  })
+
+  it('does not hand a DeepSeek key to other vendors, nor other vendors keys to DeepSeek', () => {
+    expect(webSearchKeyFromModelProfiles('zhipu', [deepseek], 'd1')).toBe('')
+    expect(webSearchKeyFromModelProfiles('kimi', [deepseek], 'd1')).toBe('')
+    expect(webSearchKeyFromModelProfiles('deepseek', [zhipu, kimi], 'z1')).toBe('')
   })
 
   it('prefers the model that is currently in use when several match', () => {

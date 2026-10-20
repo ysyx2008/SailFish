@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ExternalLink, Play, RotateCcw, Upload, Volume2 } from 'lucide-vue-next'
+import { ExternalLink, Eye, EyeOff, Play, RotateCcw, Upload, Volume2 } from 'lucide-vue-next'
 import { useConfigStore } from '../../stores/config'
 import { applyMasterCueEnabled, clampCueVolume, CUE_SOUND_KINDS, CUE_VOLUME_MAX, CUE_VOLUME_STEP, type CueSoundKind } from '@shared/types'
 import { playCueSound } from '../../composables/useCueSound'
@@ -414,21 +414,39 @@ const webSearchKeyUrls: Record<string, string> = {
   bocha: 'https://open.bochaai.com/api-keys',
   zhipu: 'https://open.bigmodel.cn/apikey/platform',
   kimi: 'https://platform.kimi.com/console/api-keys',
+  deepseek: 'https://platform.deepseek.com/api_keys',
   jina: 'https://jina.ai/api-dashboard/key-manager',
   tavily: 'https://app.tavily.com/home',
   google: 'https://developers.google.com/custom-search/v1/introduction',
 }
 const webSearchKeyUrl = computed(() => webSearchKeyUrls[webSearchProviderId.value] || '')
 
-const webSearchModelKeyHint = computed(() => {
+/** 搜索自己没填密钥、却沿用着模型密钥时，正在用的那一把；否则为空 */
+const webSearchReusedKey = computed(() => {
   if (webSearchApiKey.value.trim()) return ''
-  const reused = webSearchKeyFromModelProfiles(
+  return webSearchKeyFromModelProfiles(
     webSearchProviderId.value,
     configStore.aiProfiles,
     configStore.activeAiProfileId,
   )
-  if (!reused) return ''
-  return t(`settings.webSearch.useModelKey.${webSearchProviderId.value}`)
+})
+
+const webSearchModelKeyHint = computed(() =>
+  webSearchReusedKey.value ? t(`settings.webSearch.useModelKey.${webSearchProviderId.value}`) : '',
+)
+
+/** 和模型设置页一样：密钥默认遮住，点眼睛才显示明文 */
+const webSearchKeyVisible = ref(false)
+watch(webSearchProviderId, () => { webSearchKeyVisible.value = false })
+
+/**
+ * 框本身仍是空的；沿用时在框里显示那一把，样子和用户自己填的一样：
+ * 遮住时一个字符一个圆点，点眼睛才出现明文（遮住时明文不进页面）。
+ */
+const webSearchKeyPlaceholder = computed(() => {
+  const reused = webSearchReusedKey.value
+  if (!reused) return 'API Key'
+  return webSearchKeyVisible.value ? reused : '•'.repeat(reused.length)
 })
 
 const webSearchDirty = computed(() => {
@@ -773,7 +791,29 @@ function openWebSearchKeyUrl() {
                 <span>{{ t('settings.webSearch.getKey') }}</span>
               </button>
             </div>
-            <input v-model="webSearchApiKey" type="password" class="input" placeholder="API Key" />
+            <div class="secret-input">
+              <input
+                v-model="webSearchApiKey"
+                :type="webSearchKeyVisible ? 'text' : 'password'"
+                class="input"
+                :class="{ 'input-reused-key': webSearchReusedKey }"
+                spellcheck="false"
+                autocomplete="off"
+                autocapitalize="off"
+                :placeholder="webSearchKeyPlaceholder"
+              />
+              <button
+                type="button"
+                class="secret-toggle"
+                :title="webSearchKeyVisible ? t('aiSettings.hideApiKey') : t('aiSettings.showApiKey')"
+                :aria-label="webSearchKeyVisible ? t('aiSettings.hideApiKey') : t('aiSettings.showApiKey')"
+                :aria-pressed="webSearchKeyVisible"
+                @click="webSearchKeyVisible = !webSearchKeyVisible"
+              >
+                <EyeOff v-if="webSearchKeyVisible" :size="14" />
+                <Eye v-else :size="14" />
+              </button>
+            </div>
             <span v-if="webSearchModelKeyHint" class="form-hint">{{ webSearchModelKeyHint }}</span>
           </div>
 
@@ -859,6 +899,40 @@ function openWebSearchKeyUrl() {
   font-size: 13px;
   background: var(--bg-secondary);
   border-radius: 6px;
+}
+
+/* 与模型设置页的密钥框同款：右侧一个显示/隐藏按钮 */
+.secret-input {
+  position: relative;
+}
+
+.secret-input .input {
+  width: 100%;
+  padding-right: 32px;
+}
+
+.secret-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.secret-toggle:hover {
+  color: var(--text-primary);
+}
+
+/* 沿用模型密钥时，露出的头尾用和已填内容一样的字色，不让它看上去像空着 */
+.input-reused-key::placeholder {
+  color: var(--text-primary);
+  opacity: 1;
 }
 
 .form-label-row {

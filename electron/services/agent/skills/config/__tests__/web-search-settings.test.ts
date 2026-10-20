@@ -56,6 +56,17 @@ describe('format web search settings', () => {
     expect(summary).toContain('沿用模型密钥')
     expect(summary).not.toContain(MODEL_SECRET)
   })
+
+  it('lists DeepSeek and says its model key is reused', () => {
+    const store = makeStore(
+      { enabled: true, providerId: 'deepseek', apiKeys: {} },
+      [{ id: 'd1', apiUrl: 'https://api.deepseek.com/chat/completions', apiKey: MODEL_SECRET }],
+    )
+    const summary = formatWebSearchSummary(store)
+    expect(summary).toContain('DeepSeek')
+    expect(summary).toContain('`deepseek` · 当前使用 · 沿用模型密钥')
+    expect(summary).not.toContain(MODEL_SECRET)
+  })
 })
 
 describe('executeWebSearchSettingsAction', () => {
@@ -121,6 +132,27 @@ describe('executeWebSearchSettingsAction', () => {
     expect(store.saved?.apiKeys.kimi).toBe(SECRET)
     expect(store.saved?.enabled).toBe(true)
     expect(store.saved?.apiExtras?.kimi?.tier).toBe('basic')
+  })
+
+  it('can switch to DeepSeek and write its key, and clears back to reusing the model key', () => {
+    const store = makeStore({ enabled: true, providerId: 'bocha', apiKeys: { bocha: 'bocha-secret' } })
+    const result = executeWebSearchSettingsAction(store, { provider: 'deepseek', apiKey: SECRET, setCurrent: true })
+    expect(result.success).toBe(true)
+    expect(result.output).not.toContain(SECRET)
+    expect(store.saved?.providerId).toBe('deepseek')
+    expect(store.saved?.apiKeys.deepseek).toBe(SECRET)
+    expect(store.saved?.apiKeys.bocha).toBe('bocha-secret')
+
+    executeWebSearchSettingsAction(store, { provider: 'deepseek', apiKey: '' })
+    expect(store.saved?.apiKeys.deepseek).toBeUndefined()
+  })
+
+  it('tells the user DeepSeek has no tier to set', () => {
+    const store = makeStore({ enabled: true, providerId: 'deepseek', apiKeys: {} })
+    const result = executeWebSearchSettingsAction(store, { provider: 'deepseek', tier: 'pro' })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('DeepSeek')
+    expect(store.saved?.apiExtras?.deepseek).toBeUndefined()
   })
 
   it('does not turn search on just by switching provider', () => {
