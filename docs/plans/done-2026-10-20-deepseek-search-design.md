@@ -41,7 +41,9 @@ DeepSeek 在 2026-10-17 开放了独立的 Search / Fetch 接口。用户的理�
 
 ## 验证
 
-- vitest：web-search 与 config 技能相关 8 个文件通过。
+- vitest 全量：344 个文件、4742 条通过。新增 `deepseek.test.ts`，并补了密钥沿用、配置技能、文案键三处用例；`src/i18n/web-search-copy.test.ts` 保证每个搜索服务商在中英文里都有说明（故意删一条英文提示时会报）。
 - `tsc`（electron）、`vue-tsc`、eslint 通过。
-- 真实端到端（临时数据目录，只从桌面借用模型配置里的密钥，不写桌面数据）：`websearch:test` 在搜索里没单独填密钥时用模型密钥搜通，返回 3 条带长摘要的结果；错误密钥时日志和报错都带 DeepSeek 原话（401）；214 字搜索词被截到 128 字后照样返回结果。
-- `bash electron/cli/test-cli.sh --no-ai` 回归。
+- 真实端到端（临时数据目录，只从桌面借用模型配置里的密钥，不写桌面数据）：`websearch:test` 在搜索里没单独填密钥时用模型密钥搜通，返回 3 条带长摘要的结果；错误密钥时报错带 DeepSeek 原话（401）；214 字搜索词被截到 128 字后照样返回结果。
+- 真实窗口（`launchApp` 静默起，预置一份 DeepSeek 模型）：设置 →「语音与搜索」里选 DeepSeek，有说明、「获取密钥」、没有档位项；模型里有 DeepSeek 密钥时出现「已用模型设置里的 DeepSeek 密钥」提示，没有时不出现。
+- `bash electron/cli/test-cli.sh --no-ai` 回归：104 项，101 通过、0 失败、3 项因 `--no-ai` 跳过。
+- 代码审查（Claude CLI）：提了两点。接口 200 但结构不对会被当成「没搜到」——已改成明确报错并补测试；README 里的服务商列表没带上 DeepSeek——对外文案，未动，留给用户定。

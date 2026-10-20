@@ -51,15 +51,15 @@ export class DeepSeekProvider implements WebSearchProvider {
     }
 
     const rawText = await resp.text()
-    let data: DeepSeekResponse
+    let data: DeepSeekResponse | null
     try {
-      data = JSON.parse(rawText) as DeepSeekResponse
+      data = JSON.parse(rawText) as DeepSeekResponse | null
     } catch {
       throw new Error(`DeepSeek returned non-JSON response: ${rawText.slice(0, 200)}`)
     }
-    if (!Array.isArray(data.results)) {
-      log.warn('Unexpected response. Keys:', Object.keys(data ?? {}))
-      return []
+    // 没搜到时接口返回空数组。结构对不上不能当成没搜到，否则真正的原因就看不见了
+    if (!Array.isArray(data?.results)) {
+      throw new Error(`DeepSeek returned unexpected response: ${rawText.slice(0, 200)}`)
     }
     return mapResults(data.results).slice(0, count)
   }
@@ -70,12 +70,14 @@ function clipQuery(query: string): string {
 }
 
 /** 长摘要是给模型读的，优先用；没有时退回短摘要 */
-function mapResults(items: DeepSeekHit[]): WebSearchResult[] {
-  return items.map(item => ({
-    title: item.title || '',
-    url: item.url || '',
-    snippet: item.summary?.trim() || item.snippet?.trim() || '',
-  }))
+function mapResults(items: unknown[]): WebSearchResult[] {
+  return items
+    .filter((item): item is DeepSeekHit => typeof item === 'object' && item !== null)
+    .map(item => ({
+      title: item.title || '',
+      url: item.url || '',
+      snippet: item.summary?.trim() || item.snippet?.trim() || '',
+    }))
 }
 
 function readErrorDetail(text: string): string {

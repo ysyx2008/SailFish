@@ -112,6 +112,22 @@ describe('DeepSeekProvider', () => {
     await expect(new DeepSeekProvider(() => 'key').search('旗鱼')).rejects.toThrow('DeepSeek search failed: 429 rate limited')
   })
 
+  it('does not mistake an unexpected 200 answer for "nothing found"', async () => {
+    const provider = new DeepSeekProvider(() => 'key')
+    for (const body of ['null', '{}', '{"error":{"message":"gateway says no"}}', '{"results":"oops"}']) {
+      mockFetch(body)
+      await expect(provider.search('旗鱼')).rejects.toThrow('DeepSeek returned unexpected response')
+    }
+    mockFetch('{"error":{"message":"gateway says no"}}')
+    await expect(provider.search('旗鱼')).rejects.toThrow('gateway says no')
+  })
+
+  it('skips entries in the list that are not objects', async () => {
+    mockFetch({ results: [null, 'x', { title: '有效', url: 'https://example.com', summary: 's' }] })
+    const results = await new DeepSeekProvider(() => 'key').search('旗鱼')
+    expect(results).toEqual([{ title: '有效', url: 'https://example.com', snippet: 's' }])
+  })
+
   it('reports a non-JSON answer with the start of the body', async () => {
     mockFetch('<html>gateway</html>')
     await expect(new DeepSeekProvider(() => 'key').search('旗鱼')).rejects.toThrow('DeepSeek returned non-JSON response: <html>gateway</html>')
