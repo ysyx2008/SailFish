@@ -33,11 +33,11 @@ export function buildGoalSystemSection(goal: GoalSnapshot): string {
     '',
     '## 完成审计',
     '- 目标里的每一条要求，都要能在这场对话里指出对应证据。',
-    '- 全部要求都有证据，才能调用 update_goal(status=complete)。没有证据不许报完成。',
-    '- 同一处障碍连续三轮都过不去，才能调用 update_goal(status=blocked)。难、慢、不确定、还没做完，都不算停滞。',
+    '- 全部要求都有证据，才能调用 goal(action=update, status=complete)。没有证据不许报完成。',
+    '- 同一处障碍连续三轮都过不去，才能调用 goal(action=update, status=blocked)。难、慢、不确定、还没做完，都不算停滞。',
     '- 不要自己暂停、恢复、清除目标，也不要给自己加预算。这些归用户。',
-    '- 用户没明确要求时，不要调用 create_goal。',
-    '- 目标正文只在用户于对话里明确要求修改时，才能用 edit_goal 改；自动续跑且这一轮没有人开口时，调用会被拒绝。',
+    '- 用户没明确要求时，不要调用 goal(action=create)。',
+    '- 目标正文只在用户于对话里明确要求修改时，才能用 goal(action=update, objective=…) 改；自动续跑且这一轮没有人开口时，调用会被拒绝。',
   ].join('\n')
 }
 
@@ -57,8 +57,8 @@ export function buildContinuationPrompt(goal: GoalSnapshot, opts?: { reopened?: 
     budgetLine,
     '',
     '先做完成审计：逐条对照目标要求，列出这场对话里已经有的证据。',
-    '若每条都有证据，调用 update_goal(status=complete)。',
-    '若同一处障碍已经连续三轮过不去，调用 update_goal(status=blocked) 并写清卡在哪。',
+    '若每条都有证据，调用 goal(action=update, status=complete)。',
+    '若同一处障碍已经连续三轮过不去，调用 goal(action=update, status=blocked) 并写清卡在哪。',
     '否则继续做还没完成的部分。不要重复已经做成的事。',
   ].join('\n')
 }
@@ -73,6 +73,6 @@ export function buildBudgetWrapUpPrompt(goal: GoalSnapshot): string {
     '',
     `已用 ${goal.tokensUsed} / 预算 ${goal.tokenBudget ?? '—'} tokens。`,
     '',
-    '若现有证据已经覆盖全部要求，调用 update_goal(status=complete)。否则诚实说明未完成的部分。',
+    '若现有证据已经覆盖全部要求，调用 goal(action=update, status=complete)。否则诚实说明未完成的部分。',
   ].join('\n')
 }

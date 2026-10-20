@@ -205,6 +205,25 @@ function dispatchAgentsPrefix(args: Record<string, unknown>): string | null {
 }
 
 /**
+ * goal 的预卡片标题：按 action 和已到的参数切换（查看 / 创建 / 更新终态 / 改写正文）。
+ * action 还没到时返回 null，上层保留缓存。
+ */
+function goalCallPrefix(args: Record<string, unknown>): string | null {
+  const objective = typeof args.objective === 'string' ? args.objective : ''
+  switch (args.action) {
+    case 'get':
+      return t('goal.tool_get')
+    case 'create':
+      return objective ? `${t('goal.tool_create')}: ${objective}` : t('goal.tool_create')
+    case 'update':
+      if (typeof args.status === 'string') return `${t('goal.tool_update')}: ${args.status}`
+      return objective ? `${t('goal.tool_edit')}: ${objective}` : t('goal.tool_update')
+    default:
+      return null
+  }
+}
+
+/**
  * read_file 的预卡片标题切换：info_only=true 时显示"读取文件 (仅查询信息)"，否则"读取文件"。
  * 提到顶层避免每次 getAgentTools 调用都生成新的函数引用（影响 toEqual 比较与 prompt cache）。
  */
@@ -465,89 +484,45 @@ function getGoalTools(): ToolDefinition[] {
     {
       type: 'function',
       function: {
-        name: 'get_goal',
-        description: '查看当前任务是否挂了目标，以及目标正文、状态和用量。',
-        parameters: { type: 'object', properties: {} }
-      },
-      _meta: {
-        allowedForSubAgent: false,
-        streamDisplay: { titleKey: 'goal.tool_get' }
-      }
-    } as ToolDefinitionWithMeta,
-    {
-      type: 'function',
-      function: {
-        name: 'create_goal',
-        description: `给当前任务挂一个会自己推进的目标。只有用户明确要求时才能调用。已有未完成目标时不要覆盖。
-若看不出怎样才算做完，先问清楚再创建。`,
+        name: 'goal',
+        description: `管理当前任务的目标，按 action 区分：
+- get：查看目标正文、状态和用量。
+- create：给当前任务挂一个会自己推进的目标。只有用户明确要求时才能用；已有未完成目标时不要覆盖；看不出怎样才算做完，先问清楚再创建。
+- update：二选一。
+  · 标终态：status 取 complete 或 blocked，reason 写明依据。complete 要求目标里每条要求都能在这场对话里指出证据，没有证据不许报完成；blocked 要求同一处障碍连续三轮都过不去，难、慢、不确定、还没做完都不算。
+  · 改正文：只传 objective，目标本身、状态和已花的用量不变。只有用户在对话里明确要求改目标时才能用；自动续跑且这一轮没有人开口时会被拒绝；已达成或预算用尽的目标不能改。`,
         parameters: {
           type: 'object',
           properties: {
+            action: {
+              type: 'string',
+              enum: ['get', 'create', 'update'],
+              description: 'get=查看，create=创建，update=标终态或改正文'
+            },
             objective: {
               type: 'string',
-              description: '目标正文，要写得能验收'
+              description: '目标正文，要写得能验收。create 时是新目标，update 改正文时是改写后的完整正文'
             },
             token_budget: {
               type: 'number',
-              description: '可选的 token 预算。用户没说就不要填。'
-            }
-          },
-          required: ['objective']
-        }
-      },
-      _meta: {
-        allowedForSubAgent: false,
-        streamDisplay: { titleKey: 'goal.tool_create', titleField: 'objective' }
-      }
-    } as ToolDefinitionWithMeta,
-    {
-      type: 'function',
-      function: {
-        name: 'update_goal',
-        description: `更新当前目标的终态。只能标成 complete 或 blocked。
-- complete：目标里每条要求都能在这场对话里指出证据。没有证据不许报完成。
-- blocked：同一处障碍连续三轮都过不去。难、慢、不确定、还没做完，都不算。`,
-        parameters: {
-          type: 'object',
-          properties: {
+              description: '仅 create 可选的 token 预算。用户没说就不要填'
+            },
             status: {
               type: 'string',
               enum: ['complete', 'blocked'],
-              description: 'complete=达成，blocked=停滞'
+              description: 'update 标终态：complete=达成，blocked=停滞'
             },
             reason: {
               type: 'string',
-              description: '达成时写证据；停滞时写卡在哪、已经试过什么'
+              description: '标终态时必填：达成写证据；停滞写卡在哪、已经试过什么'
             }
           },
-          required: ['status', 'reason']
+          required: ['action']
         }
       },
       _meta: {
         allowedForSubAgent: false,
-        streamDisplay: { titleKey: 'goal.tool_update', titleField: 'status' }
-      }
-    } as ToolDefinitionWithMeta,
-    {
-      type: 'function',
-      function: {
-        name: 'edit_goal',
-        description: `改写当前目标的正文，目标本身、状态和已花的用量都不变。只有用户在对话里明确要求改目标时才能调用。
-自动续跑且这一轮没有人开口时调用会被拒绝；已达成或预算用尽的目标也不能改。`,
-        parameters: {
-          type: 'object',
-          properties: {
-            objective: {
-              type: 'string',
-              description: '改写后的完整目标正文，要写得能验收'
-            }
-          },
-          required: ['objective']
-        }
-      },
-      _meta: {
-        allowedForSubAgent: false,
-        streamDisplay: { titleKey: 'goal.tool_edit', titleField: 'objective' }
+        streamDisplay: { customRender: goalCallPrefix }
       }
     } as ToolDefinitionWithMeta,
   ]

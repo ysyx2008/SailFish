@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GoalContract } from '../../goal/goal-contract'
-import { createGoal, editGoal, getGoal, updateGoal } from '../goal'
+import { createGoal, editGoal, getGoal, goalTool, updateGoal } from '../goal'
 import type { ToolExecutorConfig } from '../types'
 
 function mockExecutor(opts?: { goal?: GoalContract; supports?: boolean }): ToolExecutorConfig & { notices: Array<Record<string, unknown>> } {
@@ -21,13 +21,13 @@ function mockExecutor(opts?: { goal?: GoalContract; supports?: boolean }): ToolE
 }
 
 describe('goal tools', () => {
-  it('get_goal reports none', () => {
+  it('查看：没有目标时如实说', () => {
     const result = getGoal(mockExecutor())
     expect(result.success).toBe(true)
     expect(result.output).toContain('没有目标')
   })
 
-  it('create_goal then get_goal', () => {
+  it('创建之后能查到', () => {
     const executor = mockExecutor()
     const created = createGoal({ objective: '把测试跑绿' }, executor)
     expect(created.success).toBe(true)
@@ -42,7 +42,7 @@ describe('goal tools', () => {
     expect(result.success).toBe(false)
   })
 
-  it('update_goal complete needs evidence', () => {
+  it('更新标达成：必须带证据', () => {
     const executor = mockExecutor({ goal: GoalContract.start('做完') as GoalContract })
     expect(updateGoal({ status: 'complete' }, executor).success).toBe(false)
     const result = updateGoal({ status: 'complete', reason: '测试已绿，见 vitest 输出' }, executor)
@@ -51,7 +51,7 @@ describe('goal tools', () => {
     expect(executor.notices[0]?.systemInjected).toBe(true)
   })
 
-  it('update_goal blocked needs a reason', () => {
+  it('更新标停滞：必须说卡在哪', () => {
     const executor = mockExecutor({ goal: GoalContract.start('做完') as GoalContract })
     expect(updateGoal({ status: 'blocked' }, executor).success).toBe(false)
     const result = updateGoal({ status: 'blocked', reason: '同一处连续三轮过不去' }, executor)
@@ -65,7 +65,7 @@ describe('goal tools', () => {
     expect(createGoal({ objective: 'x' }, executor).success).toBe(false)
   })
 
-  describe('edit_goal', () => {
+  describe('更新里改正文', () => {
     const withUserWords = (executor: ReturnType<typeof mockExecutor>, heard: boolean) => {
       executor.hasUserWordsThisRun = () => heard
       return executor
@@ -144,5 +144,46 @@ describe('goal tools', () => {
       expect(editGoal({ objective: 'x' }, withUserWords(mockExecutor(), true)).success).toBe(false)
       expect(editGoal({ objective: 'x' }, withUserWords(mockExecutor({ supports: false }), true)).success).toBe(false)
     })
+  })
+})
+
+describe('goal 工具只有一个入口', () => {
+  it('按 action 分派：get / create / update', () => {
+    const executor = mockExecutor()
+    executor.hasUserWordsThisRun = () => true
+
+    expect(goalTool({ action: 'get' }, executor).output).toContain('没有目标')
+    expect(goalTool({ action: 'create', objective: '把测试跑绿' }, executor).success).toBe(true)
+    expect(goalTool({ action: 'get' }, executor).output).toContain('把测试跑绿')
+    expect(goalTool({ action: 'update', objective: '把测试跑绿，并补用例' }, executor).success).toBe(true)
+    expect(executor.getGoal?.()?.objective).toBe('把测试跑绿，并补用例')
+    expect(goalTool({ action: 'update', status: 'complete', reason: '测试已绿' }, executor).success).toBe(true)
+    expect(executor.getGoal?.()?.status).toBe('achieved')
+  })
+
+  it('action 缺失或不认识：拒绝，目标不动', () => {
+    const goal = GoalContract.start('做完') as GoalContract
+    const executor = mockExecutor({ goal })
+    expect(goalTool({}, executor).success).toBe(false)
+    expect(goalTool({ action: 'delete' }, executor).success).toBe(false)
+    expect(goalTool({ action: 'complete', status: 'complete', reason: 'x' }, executor).success).toBe(false)
+    expect(goal.status).toBe('active')
+  })
+
+  it('update 一次只做一件事：标终态和改正文不能混在一起', () => {
+    const goal = GoalContract.start('做完') as GoalContract
+    const executor = mockExecutor({ goal })
+    executor.hasUserWordsThisRun = () => true
+    const result = goalTool({ action: 'update', status: 'complete', reason: '好了', objective: '别的' }, executor)
+    expect(result.success).toBe(false)
+    expect(goal.status).toBe('active')
+    expect(goal.objective).toBe('做完')
+  })
+
+  it('update 什么都没带：当作标终态，因缺 status 被拒绝', () => {
+    const goal = GoalContract.start('做完') as GoalContract
+    const executor = mockExecutor({ goal })
+    expect(goalTool({ action: 'update' }, executor).success).toBe(false)
+    expect(goal.status).toBe('active')
   })
 })

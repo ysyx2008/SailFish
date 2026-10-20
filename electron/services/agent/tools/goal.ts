@@ -57,7 +57,7 @@ export function createGoal(args: Record<string, unknown>, executor: ToolExecutor
   return ok(t('goal.tool_created', { objective: started.objective }))
 }
 
-export function updateGoal(args: Record<string, unknown>, executor: ToolExecutorConfig): ToolResult {
+function finishGoal(args: Record<string, unknown>, executor: ToolExecutorConfig): ToolResult {
   const blocked = requireGoalSupport(executor)
   if (blocked) return deny(blocked)
 
@@ -93,6 +93,28 @@ export function updateGoal(args: Record<string, unknown>, executor: ToolExecutor
   persist(executor)
   executor.addStep({ type: 'proactive_notice', content: t('goal.notice_blocked'), systemInjected: true })
   return ok(t('goal.tool_marked_blocked', { reason }))
+}
+
+/** 更新：标终态（status + reason）和改正文（objective）二选一，不在一次调用里混着来 */
+export function updateGoal(args: Record<string, unknown>, executor: ToolExecutorConfig): ToolResult {
+  const hasStatus = args.status !== undefined
+  const hasObjective = args.objective !== undefined
+  if (hasStatus && hasObjective) return deny(t('goal.tool_update_one_thing'))
+  return hasObjective ? editGoal(args, executor) : finishGoal(args, executor)
+}
+
+/** 目标工具的唯一入口：按 action 分派 */
+export function goalTool(args: Record<string, unknown>, executor: ToolExecutorConfig): ToolResult {
+  switch (args.action) {
+    case 'get':
+      return getGoal(executor)
+    case 'create':
+      return createGoal(args, executor)
+    case 'update':
+      return updateGoal(args, executor)
+    default:
+      return deny(t('goal.tool_action_invalid'))
+  }
 }
 
 export function editGoal(args: Record<string, unknown>, executor: ToolExecutorConfig): ToolResult {

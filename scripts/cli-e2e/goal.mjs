@@ -145,7 +145,7 @@ const scenario = (name, run) => scenarios.push({ name, run })
 scenario('一句话挂目标，没有终端也自己推到达成', async () => {
   const llm = await startMockLlm({
     onUser: () => say('第一步做完了，还差核对。'),
-    onContinue: () => callTool('update_goal', { status: 'complete', reason: 'a.txt 已核对，内容与要求一致' }),
+    onContinue: () => callTool('goal', { action: 'update', status: 'complete', reason: 'a.txt 已核对，内容与要求一致' }),
     afterTool: () => say('目标做完了，证据都在上面。'),
   })
   try {
@@ -178,7 +178,7 @@ scenario('一句话挂目标，没有终端也自己推到达成', async () => {
 scenario('卡住了：说清状态，没有终端不写下一步', async () => {
   const llm = await startMockLlm({
     onUser: () => say('先看一下情况。'),
-    onContinue: () => callTool('update_goal', { status: 'blocked', reason: '缺少部署权限，连续三轮都过不去' }),
+    onContinue: () => callTool('goal', { action: 'update', status: 'blocked', reason: '缺少部署权限，连续三轮都过不去' }),
     afterTool: () => say('卡在部署权限上，需要你处理。'),
   })
   try {
@@ -213,7 +213,7 @@ scenario('没有目标时的管理命令：说清楚，不惊动模型', async (
 scenario('终端里接着说：Ctrl+C 暂停、看状态、改、继续、清除、换', async () => {
   const llm = await startMockLlm({
     onUser: (text) => say(text.includes('另一个目标') ? '收到，我来推进另一个目标。' : '第一轮做完了。'),
-    onContinue: (n) => (n === 2 ? callTool('update_goal', { status: 'complete', reason: '改过的要求也都核对了' }) : hang()),
+    onContinue: (n) => (n === 2 ? callTool('goal', { action: 'update', status: 'complete', reason: '改过的要求也都核对了' }) : hang()),
     afterTool: () => say('这回做完了。'),
   })
   const env = sandbox(llm.port)
@@ -288,7 +288,7 @@ scenario('终端里接着说：Ctrl+C 暂停、看状态、改、继续、清除
 scenario('同一屏里：挂目标、看状态、离开', async () => {
   const llm = await startMockLlm({
     onUser: () => say('屏上第一轮做完了。'),
-    onContinue: () => callTool('update_goal', { status: 'complete', reason: '屏上的要求都核对了' }),
+    onContinue: () => callTool('goal', { action: 'update', status: 'complete', reason: '屏上的要求都核对了' }),
     afterTool: () => say('屏上做完了。'),
   })
   const env = sandbox(llm.port)
