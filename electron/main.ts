@@ -1,5 +1,6 @@
 // ⚠️ 必须是第一个 import：在任何 service 实例化之前完成 userData 目录重定向
 import { runStartupMigrationIfNeeded, runStartupRestoreIfNeeded, getDataDirInfo, requestDataDirMigration, requestDataDirReset, requestFullRestore, isTargetNonEmpty } from './utils/bootstrap'
+import { getReviewLane } from './utils/review-lane'
 import { exportUserData, CopyCanceledError, validateBackupArchive } from './utils/data-backup'
 import { app, BrowserWindow, ipcMain, shell, dialog, session, Tray, Menu, nativeImage, nativeTheme, powerMonitor, clipboard, protocol, net } from 'electron'
 import { autoUpdater } from 'electron-updater'
@@ -1865,6 +1866,7 @@ app.whenReady().then(async () => {
   createWindow()
   setupWindowServices()
   createTray()
+  if (getReviewLane() && process.platform === 'darwin') app.dock?.setBadge(t('window.reviewBadge'))
   log.info(`[startup] window created & tray ready (+${Date.now() - APP_START_TIME}ms)`)
 
   // ⚠️ 勿删：macOS 本地网络 TCC 探测（见 utils/local-network-permission.ts）。
@@ -2765,6 +2767,10 @@ ipcMain.handle('ai:abort', async (_event, requestId?: string) => {
 // 应用信息
 ipcMain.handle('app:getVersion', async () => {
   return APP_VERSION
+})
+
+ipcMain.handle('app:getReviewLane', async () => {
+  return getReviewLane()
 })
 
 ipcMain.handle('app:getMessagingDocsPath', async () => {

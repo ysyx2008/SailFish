@@ -115,6 +115,7 @@ interface Window {
     // 应用信息
     app: {
       getVersion: () => Promise<string>
+      getReviewLane: () => Promise<{ branch: string } | null>
       getMessagingDocsPath: () => Promise<string>
       notifyMounted: () => void
       onRunTask: (callback: (task: string) => void) => () => void

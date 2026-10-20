@@ -277,6 +277,8 @@ const electronAPI = {
   // 应用信息
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion') as Promise<string>,
+    /** 工作树里起的验收实例返回这一路的分支名，平时那个返回 null */
+    getReviewLane: () => ipcRenderer.invoke('app:getReviewLane') as Promise<{ branch: string } | null>,
     getMessagingDocsPath: () => ipcRenderer.invoke('app:getMessagingDocsPath') as Promise<string>,
     // 渲染端 Vue mount 完成后调用，主进程据此决定何时 show 主窗口，
     // 避免在 ready-to-show 时 show 出"还没挂 UI 的黑屏窗口"。

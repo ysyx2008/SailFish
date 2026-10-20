@@ -9,6 +9,7 @@ const translations = {
     'window.fileManager': '文件管理器',
     'window.aiDebug': 'AI 调试控制台',
     'window.llmBench': '压测控制台',
+    'window.reviewBadge': '验收',
 
     // 文件对话框
     'dialog.selectXshellFile': '选择 Xshell 会话文件',
@@ -135,6 +136,7 @@ const translations = {
     'window.fileManager': 'File Manager',
     'window.aiDebug': 'AI Debug Console',
     'window.llmBench': 'Benchmark Console',
+    'window.reviewBadge': 'Review',
 
     'dialog.selectXshellFile': 'Select Xshell Session File',
     'dialog.selectXshellDir': 'Select Xshell Sessions Folder',

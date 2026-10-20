@@ -12,6 +12,7 @@ import { bootstrapWorkbenchCapabilities } from './workbench/bootstrap'
 import { isOemFeatureEnabled } from '@shared/oem-features'
 import SessionManager from './components/SessionManager.vue'
 import AppSidebar from './components/AppSidebar.vue'
+import ReviewLaneBadge from './components/ReviewLaneBadge.vue'
 import TerminalPlaceEmpty from './components/TerminalPlaceEmpty.vue'
 import SettingsModal from './components/Settings/SettingsModal.vue'
 import FileExplorer from './components/FileExplorer/FileExplorer.vue'
@@ -1671,6 +1672,7 @@ onUnmounted(() => {
     :data-ui-theme="currentUiTheme"
     :data-color-scheme="currentColorScheme"
   >
+    <ReviewLaneBadge />
     <!-- 主体内容：不再有全宽标题栏，侧栏与主区各有自己的顶条 -->
     <div class="app-body">
       <!-- 主导航侧栏：新对话 / 联络 / 终端 + 最近对话 + 秘书 -->
