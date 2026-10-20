@@ -3,6 +3,11 @@ export default {
 
   // Setup Wizard
   setup: {
+    steps: {
+      welcome: 'Welcome',
+      model: 'Connect a model',
+      ready: 'Get started'
+    },
     welcome: {
       title: 'Welcome to SailFish',
       subtitle: 'AI-powered smart assistant for efficient work',
@@ -10,18 +15,22 @@ export default {
       features: {
         aiChat: {
           title: 'AI Chat Assistant',
+          short: 'Ask AI right in your terminal',
           desc: 'Chat with AI directly in the terminal, ask about command usage, troubleshoot issues, get help. Supports multiple LLMs including OpenAI, Qwen, DeepSeek, and local Ollama deployments.'
         },
         agent: {
           title: 'Agent Auto-Execution',
+          short: 'Hand off tasks in plain words',
           desc: 'AI Agent can understand your natural language instructions and automatically execute complex operations tasks. Supports command execution, file operations, system monitoring, making AI your capable assistant.'
         },
         ssh: {
           title: 'SSH Session Management',
+          short: 'Manage all your servers in one place',
           desc: 'Unified management of multiple servers, supports grouping, jump hosts, quick connections. One-click import of Xshell session configurations for quick migration.'
         },
         knowledge: {
           title: 'Local Knowledge Base',
+          short: 'Search docs and memory locally',
           desc: 'Upload documents to local knowledge base, AI automatically retrieves relevant content during conversations for more accurate answers. Supports PDF, Word, text formats, using lightweight vector model with no additional download required.'
         }
       },

@@ -146,16 +146,6 @@ export const AI_TEMPLATES: AiTemplate[] = [
     needsApiKey: true,
   },
   {
-    name: 'Mistral',
-    apiUrl: 'https://api.mistral.ai/v1/chat/completions',
-    model: 'mistral-large-2512',
-    descKey: 'aiSettings.templates.mistral',
-    keyUrl: 'https://console.mistral.ai/api-keys',
-    contextLength: 256_000,
-    isLocal: false,
-    needsApiKey: true,
-  },
-  {
     name: 'Ollama',
     apiUrl: 'http://localhost:11434/v1/chat/completions',
     model: 'qwen3.5:9b',
