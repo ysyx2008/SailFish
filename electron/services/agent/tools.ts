@@ -26,6 +26,9 @@ import { ASSISTANT_WORKBENCH_AGENT_TOOLS } from '@sailfish/workbench-assistant/a
 import { getAllTerminalTools } from './skills/terminal/tools'
 import { MAX_LIVE_CHILDREN } from './sub-agent-roster'
 
+const SUB_AGENT_NAME_DESCRIPTION = '能反映出他在干什么的短名字，让用户一眼看懂（如「读 nginx 配置」）。不要用人名、编号或跟任务无关的代号。可选，不填则从任务简述生成'
+const FORK_TURNS_DESCRIPTION = '带多少对话。默认 all。none=不带，all=全带，正整数字符串（如 1、3）=只带最近几轮。'
+
 /** @deprecated Use TerminalType from @shared/types */
 export type AgentMode = TerminalType
 
@@ -199,10 +202,20 @@ function writeTextFilePrefix(args: Record<string, unknown>): string {
  *   t('dispatch.running', { count, type })
  * tasks 数组还没到或为空时返回 null（上层调用方保留缓存）。
  */
+/** dispatch_agents 两种写法各自的条目：tasks[] 与 batch.items[]。 */
+function dispatchAgentsEntries(args: Record<string, unknown>): { tasks: unknown[]; batchItems: unknown[]; instruction?: string } {
+  const tasks = Array.isArray(args.tasks) ? (args.tasks as unknown[]) : []
+  const batch = args.batch && typeof args.batch === 'object' ? args.batch as { items?: unknown; instruction?: unknown } : undefined
+  const batchItems = Array.isArray(batch?.items) ? batch.items as unknown[] : []
+  const instruction = typeof batch?.instruction === 'string' ? batch.instruction : undefined
+  return { tasks, batchItems, instruction }
+}
+
 function dispatchAgentsPrefix(args: Record<string, unknown>): string | null {
-  const rawTasks = Array.isArray(args.tasks) ? (args.tasks as unknown[]) : []
-  if (rawTasks.length === 0) return null
-  return t('dispatch.running', { count: rawTasks.length })
+  const { tasks, batchItems } = dispatchAgentsEntries(args)
+  const count = tasks.length + batchItems.length
+  if (count === 0) return null
+  return t('dispatch.running', { count })
 }
 
 /**
@@ -241,17 +254,18 @@ function contextToolTitleKey(args: Record<string, unknown>): string {
 }
 
 /**
- * dispatch_agents 的字符数累计：tasks[].prompt + tasks[].description 嵌套字段。
+ * dispatch_agents 的字符数累计：tasks[] 的 prompt/description，batch 的 instruction 与 items[] 的 input/description。
  * 用 customProgress 暴露给 formatStreamPreCardFromMeta，让用户看到子任务指令在持续增长。
  */
 function dispatchAgentsCharCount(args: Record<string, unknown>): number {
-  const rawTasks = Array.isArray(args.tasks) ? (args.tasks as unknown[]) : []
-  let chars = 0
-  for (const task of rawTasks) {
-    if (!task || typeof task !== 'object') continue
-    const rec = task as { prompt?: unknown; description?: unknown }
-    if (typeof rec.prompt === 'string') chars += rec.prompt.length
-    if (typeof rec.description === 'string') chars += rec.description.length
+  const { tasks, batchItems, instruction } = dispatchAgentsEntries(args)
+  let chars = instruction?.length ?? 0
+  for (const entry of [...tasks, ...batchItems]) {
+    if (!entry || typeof entry !== 'object') continue
+    const rec = entry as { prompt?: unknown; input?: unknown; description?: unknown }
+    for (const field of [rec.prompt, rec.input, rec.description]) {
+      if (typeof field === 'string') chars += field.length
+    }
   }
   return chars
 }
@@ -1183,7 +1197,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       type: 'function',
       function: {
         name: 'dispatch_agents',
-        description: `派出这场任务里的同事（伙计）并行干活，派出的都立刻开工。立刻返回每个人的名字。一场任务里没做完的伙计最多 ${MAX_LIVE_CHILDREN} 个，这次要派的加上没做完的超过这个数时，整批不派。`,
+        description: `派出这场任务里的同事（伙计）并行干活，派出的都立刻开工。立刻返回每个人的名字。两种写法：tasks 每人各写一份指令；batch 一份共同指令加一批条目，每个条目派一个人。同一次可以两种一起用。同时向模型发几个请求由系统按接口的承受情况调节，暂时发不出去的排队，轮到了再发。每个伙计各自占用对话上下文和费用。一场任务里没做完的伙计最多 ${MAX_LIVE_CHILDREN} 个，这次要派的加上没做完的超过这个数时，整批不派。`,
         parameters: {
           type: 'object',
           properties: {
@@ -1192,20 +1206,38 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
               items: {
                 type: 'object',
                 properties: {
-                  name: { type: 'string', description: '能反映出他在干什么的短名字，让用户一眼看懂（如「读 nginx 配置」）。不要用人名、编号或跟任务无关的代号。可选，不填则从任务简述生成' },
+                  name: { type: 'string', description: SUB_AGENT_NAME_DESCRIPTION },
                   description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
                   prompt: { type: 'string', description: '详细任务指令' },
-                  fork_turns: {
-                    type: 'string',
-                    description: '带多少对话。默认 all。none=不带，all=全带，正整数字符串（如 1、3）=只带最近几轮。'
-                  }
+                  fork_turns: { type: 'string', description: FORK_TURNS_DESCRIPTION }
                 },
                 required: ['description', 'prompt']
               },
-              description: '子任务列表'
+              description: '每人各写一份指令'
+            },
+            batch: {
+              type: 'object',
+              description: '一份共同指令加一批条目。交给每个伙计的指令是 instruction、换行、再接本条目的 input',
+              properties: {
+                instruction: { type: 'string', description: '每个伙计都收到的共同指令' },
+                items: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      name: { type: 'string', description: SUB_AGENT_NAME_DESCRIPTION },
+                      description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
+                      input: { type: 'string', description: '这个伙计自己的那部分，接在共同指令后面' }
+                    },
+                    required: ['description', 'input']
+                  }
+                },
+                fork_turns: { type: 'string', description: `${FORK_TURNS_DESCRIPTION}这一批共用。` }
+              },
+              required: ['instruction', 'items']
             }
           },
-          required: ['tasks']
+          required: []
         }
       },
       _meta: {

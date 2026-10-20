@@ -42,7 +42,8 @@ vi.mock('../../web-search/index', () => ({
   getApiKey: () => '',
 }))
 
-import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent } from '../tools/sub-agent'
+import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, parseDispatchTasks } from '../tools/sub-agent'
+import { getAgentTools } from '../tools'
 import { MAX_LIVE_CHILDREN, SubAgentRoster, type ChildAgentHandle } from '../sub-agent-roster'
 import type { ToolExecutorConfig, AgentConfig } from '../tools/types'
 import type { AgentContext } from '../types'
@@ -329,5 +330,83 @@ describe('dispatch_agents 异步派出', () => {
     expect(result.success).toBe(false)
     expect(result.error).toMatch(/fork_turns/)
     expect(roster.hasLive()).toBe(false)
+  })
+})
+
+describe('两种写法', () => {
+  it('batch：每个条目一个伙计，指令是共同指令、换行、本条目', () => {
+    const parsed = parseDispatchTasks({
+      batch: {
+        instruction: '读这个文件，列出导出的函数',
+        items: [
+          { name: '读 a', description: '读 a.ts', input: 'src/a.ts' },
+          { description: '读 b.ts', input: 'src/b.ts' },
+        ],
+      },
+    })
+    if ('error' in parsed) throw new Error(parsed.error)
+    expect(parsed.tasks.map(t => t.prompt)).toEqual([
+      '读这个文件，列出导出的函数\nsrc/a.ts',
+      '读这个文件，列出导出的函数\nsrc/b.ts',
+    ])
+    expect(parsed.tasks[0].name).toBe('读 a')
+    expect(parsed.tasks[1].description).toBe('读 b.ts')
+  })
+
+  it('两种写法默认都全带对话；batch 的 fork_turns 这一批共用', () => {
+    const defaults = parseDispatchTasks({
+      tasks: [{ description: 'x', prompt: 'x' }],
+      batch: { instruction: '做', items: [{ description: 'y', input: 'y' }] },
+    })
+    if ('error' in defaults) throw new Error(defaults.error)
+    expect(defaults.tasks.map(t => t.forkTurns)).toEqual([{ kind: 'all' }, { kind: 'all' }])
+
+    const none = parseDispatchTasks({
+      batch: { instruction: '做', fork_turns: 'none', items: [{ description: 'a', input: 'a' }, { description: 'b', input: 'b' }] },
+    })
+    if ('error' in none) throw new Error(none.error)
+    expect(none.tasks.map(t => t.forkTurns.kind)).toEqual(['none', 'none'])
+  })
+
+  it('两个都没给、给了空的、缺共同指令或条目内容，都报错', () => {
+    expect(parseDispatchTasks({})).toHaveProperty('error')
+    expect(parseDispatchTasks({ tasks: [] })).toHaveProperty('error')
+    expect(parseDispatchTasks({ batch: { instruction: '', items: [{ description: 'a', input: 'a' }] } })).toHaveProperty('error')
+    expect(parseDispatchTasks({ batch: { instruction: '做', items: [] } })).toHaveProperty('error')
+    expect(parseDispatchTasks({ batch: { instruction: '做', items: [{ description: 'a' }] } })).toHaveProperty('error')
+  })
+
+  it('混用时一起派出，合起来算进保险丝', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, () => stubChild('ok', 200))
+    const ok = await dispatchSubAgents({
+      tasks: [{ name: '单独的', description: '单独的', prompt: '干' }],
+      batch: { instruction: '读', items: Array.from({ length: 3 }, (_, i) => ({ description: `条目 ${i}`, input: `${i}` })) },
+    }, defaultConfig, executor)
+    expect(ok.success).toBe(true)
+    expect(roster.liveCount()).toBe(4)
+
+    const over = await dispatchSubAgents({
+      tasks: [{ description: '再来', prompt: '干' }],
+      batch: { instruction: '读', items: Array.from({ length: MAX_LIVE_CHILDREN - 4 }, (_, i) => ({ description: `b${i}`, input: `${i}` })) },
+    }, defaultConfig, executor)
+    expect(over.success).toBe(false)
+    expect(roster.liveCount()).toBe(4)
+    roster.abortAll()
+  })
+
+  it('模型还在写参数时，预卡片人数把两种写法加在一起', () => {
+    const tool = getAgentTools(undefined, { mode: 'assistant' }).find(t => t.function.name === 'dispatch_agents') as any
+    const render = tool._meta.streamDisplay.customRender as (args: Record<string, unknown>) => string | null
+    expect(render({
+      tasks: [{ description: 'a', prompt: 'a' }],
+      batch: { instruction: '读', items: [{ description: 'b', input: 'b' }, { description: 'c', input: 'c' }] },
+    })).toBe('派出 3 个伙计')
+  })
+
+  it('工具说明里写着保险丝的数', () => {
+    const tool = getAgentTools(undefined, { mode: 'assistant' }).find(t => t.function.name === 'dispatch_agents')!
+    expect(tool.function.description).toContain(String(MAX_LIVE_CHILDREN))
+    expect(Object.keys((tool.function.parameters as { properties: object }).properties).sort()).toEqual(['batch', 'tasks'])
   })
 })

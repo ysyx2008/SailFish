@@ -1381,10 +1381,11 @@ export class AiService {
    */
   constructor(configService?: ConfigService) {
     this.configService = configService ?? getConfigService()
+    // 同时在途的请求数由缓冲池管，大批伙计时会远超 Node 默认的监听数
     this.httpsAgent = new https.Agent({ keepAlive: true })
-    this.httpsAgent.setMaxListeners(30)
+    this.httpsAgent.setMaxListeners(0)
     this.httpAgent = new http.Agent({ keepAlive: true })
-    this.httpAgent.setMaxListeners(30)
+    this.httpAgent.setMaxListeners(0)
   }
 
   /**

@@ -9,7 +9,7 @@ import type { ToolDefinition } from '../../ai.service'
 import type { AgentContext } from '../types'
 import { getDefaultShell, getLocalOS } from '../../../utils/platform'
 import { getMetaByName } from '../tool-metadata'
-import { MAX_LIVE_CHILDREN, type ChildSnapshot, type RosterSpawnDeps, type SubAgentRoster } from '../sub-agent-roster'
+import { MAX_LIVE_CHILDREN, type ChildSnapshot, type RosterSpawnDeps, type SpawnTask, type SubAgentRoster } from '../sub-agent-roster'
 import { parseForkTurns, sanitizeParentMessages, type ForkTurns } from '../sanitize-parent-messages'
 import type { ToolExecutorConfig, ToolResult, AgentConfig } from './types'
 import { getAgentTools, filterSubAgentTools } from '../tools'
@@ -146,6 +146,69 @@ function spawnDeps(
   }
 }
 
+type ParsedSpawnTask = SpawnTask & { forkTurns: ForkTurns }
+
+function optionalName(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+/** tasks 每人一份指令；batch 一份共同指令加一批条目，交给伙计的是共同指令、换行、本条目。两种可同次混用。 */
+export function parseDispatchTasks(args: Record<string, unknown>): { tasks: ParsedSpawnTask[] } | { error: string } {
+  const tasks: ParsedSpawnTask[] = []
+  const rawTasks = args.tasks
+  const rawBatch = args.batch
+  if (rawTasks !== undefined && !Array.isArray(rawTasks)) {
+    return { error: 'tasks 必须是数组，每项包含 description 和 prompt' }
+  }
+  if (Array.isArray(rawTasks)) {
+    for (let i = 0; i < rawTasks.length; i++) {
+      const task = rawTasks[i] as Record<string, unknown> | undefined
+      if (typeof task?.prompt !== 'string' || task.prompt.trim() === '') {
+        return { error: `子任务 ${i + 1} 缺少 prompt（任务指令）` }
+      }
+      const forkTurns = parseForkTurns(task.fork_turns)
+      if ('error' in forkTurns) return { error: `子任务 ${i + 1}：${forkTurns.error}` }
+      tasks.push({
+        name: optionalName(task.name),
+        description: typeof task.description === 'string' && task.description ? task.description : 'task',
+        prompt: task.prompt,
+        forkTurns,
+      })
+    }
+  }
+  if (rawBatch !== undefined) {
+    const batch = rawBatch as Record<string, unknown> | null
+    if (!batch || typeof batch !== 'object' || Array.isArray(batch)) {
+      return { error: 'batch 必须是对象，包含 instruction 和 items' }
+    }
+    if (typeof batch.instruction !== 'string' || batch.instruction.trim() === '') {
+      return { error: 'batch 缺少 instruction（共同指令）' }
+    }
+    if (!Array.isArray(batch.items) || batch.items.length === 0) {
+      return { error: 'batch.items 必须是非空数组，每项包含 description 和 input' }
+    }
+    const forkTurns = parseForkTurns(batch.fork_turns)
+    if ('error' in forkTurns) return { error: `batch：${forkTurns.error}` }
+    for (let i = 0; i < batch.items.length; i++) {
+      const item = batch.items[i] as Record<string, unknown> | undefined
+      if (typeof item?.input !== 'string' || item.input.trim() === '') {
+        return { error: `batch 第 ${i + 1} 条缺少 input` }
+      }
+      const name = optionalName(item.name)
+      tasks.push({
+        name,
+        description: typeof item.description === 'string' && item.description ? item.description : (name ?? `${i + 1}`),
+        prompt: `${batch.instruction}\n${item.input}`,
+        forkTurns,
+      })
+    }
+  }
+  if (tasks.length === 0) {
+    return { error: 'tasks 和 batch 至少给一个，且不能为空' }
+  }
+  return { tasks }
+}
+
 export async function dispatchSubAgents(
   args: Record<string, unknown>,
   _config: AgentConfig,
@@ -157,16 +220,12 @@ export async function dispatchSubAgents(
     return { success: false, output: '', error: 'dispatch_agents 需要主人花名册（内部错误）' }
   }
 
-  const rawTasks = args.tasks as Array<{
-    name?: string
-    description: string
-    prompt: string
-    fork_turns?: unknown
-  }> | undefined
-  if (!rawTasks || !Array.isArray(rawTasks) || rawTasks.length === 0) {
-    return { success: false, output: '', error: 'tasks 参数必须是非空数组，每项包含 description 和 prompt' }
+  const parsed = parseDispatchTasks(args)
+  if ('error' in parsed) {
+    return { success: false, output: '', error: parsed.error }
   }
-  if (rawTasks.length > roster.room()) {
+  const parsedTasks = parsed.tasks
+  if (parsedTasks.length > roster.room()) {
     return {
       success: false,
       output: '',
@@ -174,33 +233,16 @@ export async function dispatchSubAgents(
         max: MAX_LIVE_CHILDREN,
         live: roster.liveCount(),
         room: roster.room(),
-        count: rawTasks.length,
+        count: parsedTasks.length,
       }),
     }
-  }
-  const parsedTasks: Array<{ name?: string; description: string; prompt: string; forkTurns: ForkTurns }> = []
-  for (let i = 0; i < rawTasks.length; i++) {
-    const task = rawTasks[i]
-    if (!task?.prompt || typeof task.prompt !== 'string' || task.prompt.trim() === '') {
-      return { success: false, output: '', error: `子任务 ${i + 1} 缺少 prompt（任务指令）` }
-    }
-    const forkTurns = parseForkTurns(task.fork_turns)
-    if ('error' in forkTurns) {
-      return { success: false, output: '', error: `子任务 ${i + 1}：${forkTurns.error}` }
-    }
-    parsedTasks.push({
-      name: typeof task.name === 'string' ? task.name : undefined,
-      description: task.description || 'task',
-      prompt: task.prompt,
-      forkTurns,
-    })
   }
 
   const progressStep = executor.addStep({
     type: 'tool_call',
-    content: t('dispatch.running', { count: rawTasks.length }),
+    content: t('dispatch.running', { count: parsedTasks.length }),
     toolName: 'dispatch_agents',
-    toolArgs: { tasks: rawTasks.map(task => ({ name: task.name, description: task.description })) },
+    toolArgs: { tasks: parsedTasks.map(task => ({ name: task.name, description: task.description })) },
     riskLevel: 'safe',
     success: true,
     subAgents: []
