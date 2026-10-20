@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { ExternalLink, FolderInput, Database, Plug, Check, ChevronDown, ChevronUp } from 'lucide-vue-next'
 import { useConfigStore, type AiProfile } from '../stores/config'
 import { oemResolved } from '@shared/oem-resolve'
-import { AI_TEMPLATES, RECOMMENDED_MIN_CONTEXT, type AiTemplate } from '../config/ai-templates'
+import { AI_TEMPLATES, RECOMMENDED_MIN_CONTEXT, isProfileOfTemplate, type AiTemplate } from '../config/ai-templates'
 import { v4 as uuidv4 } from 'uuid'
 import { showAlert, showConfirm } from '../composables/useConfirm'
 
@@ -81,9 +81,9 @@ const aiTemplates = computed(() => {
   }))
 })
 
-// 检查模板是否已配置
-const isTemplateConfigured = (templateName: string) => {
-  return configStore.aiProfiles.some(p => p.name === templateName)
+// 这个模板对应的服务是否已有配置（按服务地址判断；名字、模型都可能被用户或厂商改过）
+const isTemplateConfigured = (template: { apiUrl: string }) => {
+  return configStore.aiProfiles.some(p => isProfileOfTemplate(p, template))
 }
 
 const selectTemplate = (index: number) => {
@@ -447,7 +447,7 @@ onMounted(async () => {
             <!-- 已配置提示 -->
             <div v-if="configStore.aiProfiles.length > 0" class="configured-hint">
               <Check :size="18" class="configured-icon" />
-              <span>{{ t('setup.aiConfig.alreadyConfigured', { name: configStore.aiProfiles[0].name }) }}</span>
+              <span>{{ t('setup.aiConfig.alreadyConfigured', { count: configStore.aiProfiles.length }) }}</span>
             </div>
 
             <!-- 模板卡片列表 -->
@@ -458,14 +458,14 @@ onMounted(async () => {
                 class="ai-template-card"
                 :class="{ 
                   selected: selectedTemplateIndex === template.index,
-                  configured: isTemplateConfigured(template.name)
+                  configured: isTemplateConfigured(template)
                 }"
               >
                 <div class="ai-template-header" @click="selectTemplate(template.index)">
                   <div class="ai-template-info">
                     <div class="ai-template-name">
                       {{ template.name }}
-                      <span v-if="isTemplateConfigured(template.name)" class="configured-tag">
+                      <span v-if="isTemplateConfigured(template)" class="configured-tag">
                         <Check :size="12" />
                         {{ t('setup.aiConfig.configured') }}
                       </span>
@@ -473,7 +473,7 @@ onMounted(async () => {
                     <div class="ai-template-desc">{{ template.desc }}</div>
                   </div>
                   <ChevronDown 
-                    v-if="!isTemplateConfigured(template.name)"
+                    v-if="!isTemplateConfigured(template)"
                     :size="18" 
                     class="expand-arrow" 
                     :class="{ rotated: selectedTemplateIndex === template.index }"
@@ -481,7 +481,7 @@ onMounted(async () => {
                 </div>
                 
                 <!-- 展开区域：API Key 输入 / 自定义表单 -->
-                <div v-if="selectedTemplateIndex === template.index && !isTemplateConfigured(template.name)" class="ai-template-body">
+                <div v-if="selectedTemplateIndex === template.index && !isTemplateConfigured(template)" class="ai-template-body">
                   <div v-if="template.contextLength && template.contextLength < RECOMMENDED_MIN_CONTEXT" class="context-small-note">
                     {{ t('aiSettings.contextLengthTooSmall') }}
                   </div>

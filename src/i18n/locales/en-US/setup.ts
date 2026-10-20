@@ -42,7 +42,7 @@ export default {
       required: 'Please configure at least one AI model to continue',
       oemNeedLogin: 'Company models appear after you sign in. You can continue now; after signing in you do not need to enter an address or model name.',
       oemUnavailable: 'The company model list is not here yet. You can continue and it will be fetched again next time you open the app, or add your own below.',
-      alreadyConfigured: 'Configured: {name}',
+      alreadyConfigured: 'Models configured: {count}',
       configured: 'Configured',
       enterApiKey: 'Enter API Key',
       apiKeyRequired: 'Please enter API Key',

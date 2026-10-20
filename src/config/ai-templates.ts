@@ -166,3 +166,32 @@ export const AI_TEMPLATES: AiTemplate[] = [
     needsApiKey: false,
   },
 ]
+
+/**
+ * 去掉接口尾巴（/chat/completions、/messages）和 /v1，只留「连的是哪家服务」。
+ * 各家文档里的写法不一：同一个 DeepSeek，有的写 /chat/completions，有的写 /v1/chat/completions。
+ */
+function serviceBase(apiUrl: string): string {
+  const raw = apiUrl.trim()
+  try {
+    const u = new URL(raw)
+    const path = u.pathname
+      .replace(/\/+$/, '')
+      .replace(/\/(chat\/completions|messages)$/, '')
+      .replace(/\/v1$/, '')
+    return `${u.protocol}//${u.host.toLowerCase()}${path}`
+  } catch {
+    return raw.toLowerCase()
+  }
+}
+
+/**
+ * 某个 AI 配置是不是连着这个模板对应的服务。
+ *
+ * 看服务地址，不看配置的名字或模型：名字用户随时会改（「智谱」「豆包 turbo」…），
+ * 模型也会随厂商换代，按这两样判断，用户明明配过的服务会显示成没配。
+ */
+export function isProfileOfTemplate(profile: { apiUrl: string }, template: { apiUrl: string }): boolean {
+  if (!template.apiUrl.trim() || !profile.apiUrl.trim()) return false
+  return serviceBase(profile.apiUrl) === serviceBase(template.apiUrl)
+}
