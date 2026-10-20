@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, Coins, Hourglass, Pause, Play, Target, TriangleAlert, X } from 'lucide-vue-next'
+import { Check, ChevronDown, Coins, Hourglass, Pause, Play, Target, TriangleAlert, X } from 'lucide-vue-next'
 import { showConfirm } from '../composables/useConfirm'
 import { goalClearNeedsConfirm } from '../composables/goal/clear'
 import { formatExactTokens, formatGoalElapsed, formatGoalTokenUsage } from '../composables/goal/format'
@@ -10,7 +10,8 @@ import type { GoalContract, TerminalType } from '@shared/types'
 
 /**
  * 输入框上方的目标卡片：挂着什么目标、现在什么状态、花了多少时间和 token。
- * 一眼看全，不展开；停下来需要用户的几种状态，把「继续」做成明确的按钮。
+ * 一行放得下就一眼看全；目标正文太长时只显示开头，点一下展开全文，再点收回。
+ * 停下来需要用户的几种状态，把「继续」做成明确的按钮。
  */
 const props = defineProps<{
   agentKey: string
@@ -99,6 +100,41 @@ const budgetRatio = computed(() => {
   return Math.min(1, Math.max(0, current.tokensUsed / current.tokenBudget))
 })
 
+/** 目标正文：一行放不下才可以点开；展开着时一直可以点回去 */
+const objectiveEl = ref<HTMLElement | null>(null)
+const expanded = ref(false)
+const overflowing = ref(false)
+const expandable = computed(() => overflowing.value || expanded.value)
+
+const measureOverflow = () => {
+  const el = objectiveEl.value
+  if (!el || expanded.value) return
+  overflowing.value = el.scrollWidth > el.clientWidth + 1
+}
+
+const toggleObjective = () => {
+  if (!expandable.value) return
+  expanded.value = !expanded.value
+  if (!expanded.value) void nextTick(measureOverflow)
+}
+
+// 卡片出现 / 窗口宽度变化时重新量；换了目标或改了正文就收回
+watch(objectiveEl, (el, _prev, onCleanup) => {
+  if (!el) {
+    overflowing.value = false
+    expanded.value = false
+    return
+  }
+  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measureOverflow) : undefined
+  observer?.observe(el)
+  onCleanup(() => observer?.disconnect())
+  measureOverflow()
+})
+watch(() => [liveGoal.value?.goalId, liveGoal.value?.objective], () => {
+  expanded.value = false
+  void nextTick(measureOverflow)
+})
+
 const canPause = computed(() => liveGoal.value?.status === 'active')
 const canResume = computed(() => {
   const status = liveGoal.value?.status
@@ -153,6 +189,7 @@ const clear = async () => {
       <div class="goal-dock-clip">
         <div
           class="goal-card"
+          :class="{ 'is-expanded': expanded }"
           data-testid="goal-pill"
           :data-status="liveGoal.status"
           role="group"
@@ -162,7 +199,18 @@ const clear = async () => {
             <component :is="statusIcon" :size="11" :stroke-width="2.6" />
           </span>
 
-          <span class="goal-objective" :title="liveGoal.objective">{{ liveGoal.objective }}</span>
+          <button
+            type="button"
+            class="goal-objective"
+            data-testid="goal-pill-objective"
+            :disabled="!expandable"
+            :aria-expanded="expandable ? expanded : undefined"
+            :title="expandable && !expanded ? liveGoal.objective : undefined"
+            @click="toggleObjective"
+          >
+            <span ref="objectiveEl" class="goal-objective-text">{{ liveGoal.objective }}</span>
+            <ChevronDown v-if="expandable" class="goal-chevron" :size="12" :stroke-width="2.4" aria-hidden="true" />
+          </button>
 
           <span class="goal-meta">
             <span class="goal-status">{{ statusLabel }}</span>
@@ -258,8 +306,12 @@ const clear = async () => {
   position: relative;
   box-sizing: border-box;
   display: flex;
-  align-items: center;
+  /* 一行高 24px；展开成多行后，徽章、状态、按钮都贴着第一行 */
+  align-items: flex-start;
   gap: 9px;
+  /* 收起时固定一行高，展开改成 auto：靠 interpolate-size 让高度平滑长开 */
+  height: 36px;
+  interpolate-size: allow-keywords;
   margin-bottom: 8px;
   padding: 5px 5px 5px 9px;
   color: var(--text-primary);
@@ -269,8 +321,9 @@ const clear = async () => {
     linear-gradient(120deg, color-mix(in srgb, var(--goal-tint) 9%, transparent) 0%, transparent 55%),
     var(--bg-secondary);
   overflow: hidden;
-  transition: border-color 0.3s ease, background-color 0.3s ease;
+  transition: border-color 0.3s ease, background-color 0.3s ease, height 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+.goal-card.is-expanded { height: auto; }
 .goal-card[data-status='paused'] { --goal-tint: var(--text-secondary); }
 .goal-card[data-status='achieved'] { --goal-tint: var(--color-success); }
 .goal-card[data-status='blocked'],
@@ -282,6 +335,7 @@ const clear = async () => {
   flex: none;
   display: grid;
   place-items: center;
+  margin-top: 2px;
   width: 20px;
   height: 20px;
   border-radius: 50%;
@@ -302,22 +356,62 @@ const clear = async () => {
   animation: goal-orbit 1.8s linear infinite;
 }
 
-/* 目标正文：一行，放不下就省略，全文在鼠标停上去时给出 */
+/* 目标正文：一行，放不下就省略；放不下的可以点开看全文，也可以停在上面看提示 */
 .goal-objective {
   flex: 1 1 0;
   min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+.goal-objective:not(:disabled) { cursor: pointer; }
+.goal-objective:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent-primary) 60%, transparent);
+  outline-offset: 2px;
+}
+.goal-objective-text {
+  min-width: 0;
+  padding: 3px 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 18px;
 }
+.goal-chevron {
+  flex: none;
+  margin-top: 6px;
+  color: var(--text-muted);
+  transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.15s ease;
+}
+.goal-objective:not(:disabled):hover .goal-chevron { color: var(--text-primary); }
+
+/* 展开：换行显示全文；再长的在卡片里滚动 */
+.goal-card.is-expanded .goal-objective-text {
+  max-height: min(40vh, 220px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+.goal-card.is-expanded .goal-chevron { transform: rotate(180deg); }
+
 /* 状态、用时、token：目标正文右边一小段，不抢正文 */
 .goal-meta {
   flex: none;
   display: flex;
   align-items: center;
+  height: 24px;
   gap: 6px;
   font-size: 12px;
   line-height: 1.3;
@@ -425,7 +519,9 @@ const clear = async () => {
   .goal-dock-enter-active,
   .goal-dock-leave-active,
   .goal-dock-enter-active .goal-card,
-  .goal-dock-leave-active .goal-card {
+  .goal-dock-leave-active .goal-card,
+  .goal-card,
+  .goal-chevron {
     transition: none;
   }
 }
