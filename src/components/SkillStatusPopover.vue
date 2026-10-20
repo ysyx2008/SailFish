@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Sparkles, Settings } from 'lucide-vue-next'
+import { useBuiltinSkillText } from '../composables/useBuiltinSkillText'
 
 interface SkillItem {
   id: string
@@ -15,7 +16,8 @@ const emit = defineEmits<{
   openSettings: []
 }>()
 
-const { t, te } = useI18n()
+const { t } = useI18n()
+const { builtinSkillName, builtinSkillDescription } = useBuiltinSkillText()
 
 const showPopover = ref(false)
 const popoverRef = ref<HTMLElement | null>(null)
@@ -43,17 +45,11 @@ const statusTooltip = computed(() => {
 })
 
 function localizedName(skill: SkillItem): string {
-  if (skill.kind !== 'builtin') return skill.name
-  const key = `skillSettings.builtinSkillNames.${skill.id}`
-  return te(key) ? String(t(key)) : skill.name
+  return skill.kind === 'builtin' ? builtinSkillName(skill) : skill.name
 }
 
 function localizedDetail(skill: SkillItem): string {
-  if (skill.kind === 'builtin') {
-    const key = `skillSettings.builtinSkillDescs.${skill.id}`
-    if (te(key)) return String(t(key))
-  }
-  return skill.description
+  return skill.kind === 'builtin' ? builtinSkillDescription(skill) : skill.description
 }
 
 const query = computed(() => searchQuery.value.trim().toLowerCase())

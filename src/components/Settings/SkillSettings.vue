@@ -3,23 +3,18 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RefreshCw, FolderOpen, Eye, X, Download, Trash2, ArrowUpCircle, Search, Star } from 'lucide-vue-next'
 import { showConfirm, showAlert } from '../../composables/useConfirm'
+import { useBuiltinSkillText } from '../../composables/useBuiltinSkillText'
 import { oemResolved } from '@shared/oem-resolve'
 
 const props = defineProps<{
   pendingInstallSkillId?: string
 }>()
 
-const { t, te, locale } = useI18n()
-
-function localizedBuiltinSkillName(skill: BuiltinSkill): string {
-  const key = `skillSettings.builtinSkillNames.${skill.id}`
-  return te(key) ? String(t(key)) : skill.name
-}
-
-function localizedBuiltinSkillDesc(skill: BuiltinSkill): string {
-  const key = `skillSettings.builtinSkillDescs.${skill.id}`
-  return te(key) ? String(t(key)) : skill.description
-}
+const { t, locale } = useI18n()
+const {
+  builtinSkillName: localizedBuiltinSkillName,
+  builtinSkillDescription: localizedBuiltinSkillDesc,
+} = useBuiltinSkillText()
 
 interface BuiltinSkill {
   id: string
