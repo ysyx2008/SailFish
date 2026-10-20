@@ -11,9 +11,24 @@ import { HostProfileService } from '../services/host-profile.service'
 import type { ExecutionMode } from '../services/agent/types'
 import { createLogger, initLogging } from '../utils/logger'
 import { getDefaultShell, getLocalOS } from '../utils/platform'
-import { clampAskUserTimeout } from '@shared/types/agent'
+import { clampAskUserTimeout, type AgentContext } from '@shared/types/agent'
 import { oemResolved } from '@shared/oem-resolve'
 import { t, type TranslationKey } from '../services/agent/i18n'
+import electronLog from 'electron-log/main'
+import { isSameSkillId } from '@sailfish/shared-types'
+import { CliTranscript, confirmationLines } from './transcript'
+import { agentTaskFromWords } from './invoke'
+import { cliLaunch } from './launch'
+import { composeLine, parseSlash, pathExists, taskFromCompose } from './compose'
+import { createTuiSession, type TuiSession } from './tui-session'
+
+/** 对话进行时，内部日志留在文件里，不再插进回复。 */
+function quietConsole(): () => void {
+  const transport = electronLog.transports.console
+  const previous = transport.level
+  transport.level = false
+  return () => { transport.level = previous }
+}
 
 const log = createLogger('CLI')
 
@@ -52,6 +67,8 @@ function printTable(rows: Record<string, unknown>[], columns?: string[]): void {
   }
 }
 
+const BOOLEAN_FLAGS = new Set(['once', 'verbose', 'free'])
+
 function parseArgs(args: string[]): { positional: string[], flags: Record<string, string | boolean> } {
   const positional: string[] = []
   const flags: Record<string, string | boolean> = {}
@@ -61,7 +78,7 @@ function parseArgs(args: string[]): { positional: string[], flags: Record<string
     if (arg.startsWith('--')) {
       const key = arg.slice(2)
       const next = args[i + 1]
-      if (next && !next.startsWith('--') && !next.startsWith('-')) {
+      if (!BOOLEAN_FLAGS.has(key) && next && !next.startsWith('--') && !next.startsWith('-')) {
         flags[key] = next
         i++
       } else {
@@ -1278,11 +1295,14 @@ async function sshList(): Promise<void> {
 
 // ==================== Agent Commands ====================
 
-async function agentRun(args: string[]): Promise<void> {
+async function agentRun(args: string[], surface: 'plain' | 'screen' = 'plain'): Promise<void> {
   const { positional, flags } = parseArgs(args)
   const task = positional.join(' ')
-  if (!task) {
-    console.error(`Usage: ${cliName()} agent:run <task> [--mode <strict|relaxed|free>] [--free]`)
+  const once = flags.once === true || !process.stdin.isTTY
+  // 带上一句话直接开工。什么都不带、并且是自己开着终端，才进同一屏。
+  const screen = surface === 'screen' && !task && Boolean(process.stdin.isTTY && process.stdout.isTTY) && !once
+  if (!task && !screen) {
+    console.error(`Usage: ${cliName()} agent:run <task> [--mode <strict|relaxed|free>] [--free] [--once] [--verbose]`)
     console.error(`   or: ${cliName()} "a quoted multi-word task" [--mode relaxed]`)
     process.exit(1)
   }
@@ -1316,47 +1336,26 @@ async function agentRun(args: string[]): Promise<void> {
   const history = getHistory()
   agent.setHistoryService(history)
 
-  // Create a local terminal for the agent
-  const ptyId = pty.create({}).id
-  
+  // 站在用户敲命令的那个目录里，而不是回家目录
+  const cwd = process.cwd()
+  const ptyId = pty.create({ cwd }).id
+  const { initTerminalStateService } = require('../services/terminal-state.service')
+  initTerminalStateService(pty).initTerminal(ptyId, 'local', cwd)
+
   // 默认 relaxed：与桌面一致，高危需确认；--free / --mode free 才全自动
   const modeRaw = String(flags.mode || 'relaxed')
   const mode = ['strict', 'relaxed', 'free'].includes(modeRaw) ? modeRaw : 'relaxed'
-  
-  // Set up output callbacks with inline-overwrite for streaming/progress updates.
-  // Three rendering states per step:
-  //   unseen → inline (streaming/progress, \r overwrite) → printed (final, console.log)
-  // Once a step reaches "printed", all subsequent onStep calls for it are skipped.
-  let inlineMode = false
-  const printedSteps = new Set<string>()
-  const cols = () => process.stdout.columns || 80
-  const truncateToWidth = (str: string, maxWidth: number): string => {
-    let width = 0
-    let end = 0
-    for (const ch of str) {
-      const code = ch.codePointAt(0)!
-      const w = code >= 0x1100 ? 2 : 1
-      if (width + w > maxWidth) break
-      width += w
-      end += ch.length
-    }
-    return str.substring(0, end)
-  }
-  const clearInline = () => {
-    if (inlineMode) {
-      process.stdout.write('\r\x1b[K')
-      inlineMode = false
-    }
-  }
-  const writeInline = (text: string) => {
-    const line = truncateToWidth(text.replace(/\n/g, ' '), cols() - 1)
-    process.stdout.write('\r\x1b[K' + line)
-    inlineMode = true
-  }
-  const stepPrefix = (type: string) =>
-    type === 'thinking' ? '💭' : type === 'tool_call' ? '🔧' :
-    type === 'tool_result' ? '📋' : type === 'message' ? '💬' :
-    type === 'auto_review' ? '✅' : '  '
+  const verbose = flags.verbose === true
+  const session: TuiSession | null = screen
+    ? createTuiSession({ cwd, title: oemResolved.identity.productName })
+    : null
+  const transcript = new CliTranscript({
+    verbose,
+    tty: Boolean(process.stdout.isTTY),
+    color: Boolean(process.stdout.isTTY) && !process.env.NO_COLOR,
+    columns: process.stdout.columns || 80,
+    ...(session ? { write: (chunk: string) => session.write(chunk) } : {}),
+  })
 
   /**
    * stdin 单飞：同一时刻只允许一个读取者。
@@ -1375,6 +1374,7 @@ async function agentRun(args: string[]): Promise<void> {
   const cancelPendingRead = () => {
     activeReader?.cancel()
     activeReader = null
+    session?.cancelRead()
   }
 
   /**
@@ -1432,25 +1432,44 @@ async function agentRun(args: string[]): Promise<void> {
     })
   }
 
+  // 同一屏时改走屏幕上的那一行；平时仍是原来的逐行读取。
+  const io = {
+    read: readLine as (prompt: string, opts?: { hidden?: boolean; timeoutMs?: number; composer?: boolean }) => Promise<string | null>,
+    show: (line: string) => { console.log(line) },
+  }
+  if (session) {
+    io.read = (prompt, opts) => session.readLine(prompt, opts)
+    io.show = (line) => session.note(line)
+  }
+
   /**
    * ask_user 应答：交互式终端下把提问接到 stdin。
    * 非 TTY 时该工具本就不在工具列表里（context.unattended），不会走到这里。
    */
   const answerAsking = async (step: any) => {
     const args = step.toolArgs || {}
-    const options: string[] = Array.isArray(args.options) ? args.options : []
-    options.forEach((opt, i) => console.log(`   ${i + 1}. ${opt}`))
+    const options: string[] = Array.isArray(args.options) ? args.options.filter((opt: unknown) => typeof opt === 'string') : []
+    const defaultValue = typeof args.default_value === 'string' ? args.default_value : ''
 
     // 与工具自身的等待窗口对齐（misc.ts 同款上下限），过期后不再占着 stdin
     const deadline = clampAskUserTimeout(args.timeout) * 1000
     const startedAt = Date.now()
+    const prompt = defaultValue
+      ? `你的回答（直接回车选「${defaultValue}」）： `
+      : '你的回答： '
 
-    // 误按回车不该让用户失去作答机会——重新提示，直到有内容或窗口耗尽
+    // 误按回车不该让用户失去作答机会——有默认值时回车就是选它，否则重新问
     while (Date.now() - startedAt < deadline) {
-      const answer = await readLine('   Your answer: ', { timeoutMs: deadline - (Date.now() - startedAt) })
+      transcript.clearActivity()
+      const answer = await io.read(prompt, { timeoutMs: deadline - (Date.now() - startedAt) })
       if (answer === null) return
       const raw = answer.trim()
-      if (!raw) continue
+      if (!raw) {
+        if (!defaultValue) continue
+        io.show(`  ${defaultValue}`)
+        agent.addUserMessage(ptyId, defaultValue)
+        return
+      }
       // 有选项时，纯数字按编号解释（这是列表本身的约定，不是猜测语义）
       const index = options.length > 0 && /^\d+$/.test(raw) ? Number(raw) - 1 : -1
       const picked = index >= 0 && index < options.length ? options[index] : undefined
@@ -1459,58 +1478,37 @@ async function agentRun(args: string[]): Promise<void> {
     }
   }
 
+  const reviewerNote = (confirmation: any): string => {
+    if (!confirmation.autoReview) return ''
+    const { rationale, reason } = confirmation.autoReview
+    return rationale
+      || (reason ? t(`autoReview.reason.${reason}` as TranslationKey) : '')
+      || ''
+  }
+
+  const asked = new Set<string>()
   const callbacks = {
     onStep: (_agentId: string, step: any) => {
-      if (printedSteps.has(step.id)) return
-      
-      const isStreaming = step.isStreaming === true
-      
-      // Streaming content → inline overwrite (single-line \r progress)
-      if (isStreaming) {
-        const prefix = stepPrefix(step.type)
-        const preview = (step.content || '').substring(0, 80)
-        writeInline(`${prefix} [${step.type}] ${preview}`)
-        return
-      }
-      
-      // Non-streaming step → print full line and mark as done
-      clearInline()
-      printedSteps.add(step.id)
-      
-      // final_result duplicates the last message; skip it since onComplete prints the result
-      if (step.type === 'final_result' || step.type === 'user_task') return
-      
-      const prefix = stepPrefix(step.type)
-      const content = step.content?.substring(0, 200) || ''
-      console.log(`${prefix} [${step.type}] ${content}`)
-
-      // Agent 在提问：把回答接到 stdin（异步，不阻塞回调）
-      if (step.type === 'asking') {
+      transcript.push(step)
+      if (step.type === 'asking' && !step.isStreaming && !asked.has(step.id)) {
+        asked.add(step.id)
         void answerAsking(step)
-        return
-      }
-
-      if (step.toolName) {
-        console.log(`   Tool: ${step.toolName}`)
-        if (step.toolArgs) {
-          const argsStr = JSON.stringify(step.toolArgs).substring(0, 200)
-          console.log(`   Args: ${argsStr}`)
-        }
       }
     },
     onNeedSecureInput: (request: any) => {
       // 没有这个回调时 Agent 会永久挂起（连超时都没有），所以两种情况都必须给出结论
       void (async () => {
+        transcript.clearActivity()
         if (!process.stdin.isTTY) {
-          console.log(`\n🔑 ${request.prompt || request.envName} — no TTY, cancelled`)
+          transcript.hint(`${request.prompt || request.envName}：没有交互终端，已取消`)
           agent.resolveSecureInput(ptyId, request.requestId, false)
           return
         }
-        console.log(`\n🔑 ${request.prompt || `${request.skillId} needs ${request.envName}`}`)
-        const entered = await readLine(`   ${request.envName} (input hidden): `, { hidden: true, timeoutMs: 300_000 })
+        io.show(request.prompt || `需要填写 ${request.envName}`)
+        const entered = await io.read(`${request.envName}（输入不显示）： `, { hidden: true, timeoutMs: 300_000 })
         const value = entered?.trim()
         if (!value) {
-          console.log('   Cancelled')
+          transcript.hint('已取消')
           agent.resolveSecureInput(ptyId, request.requestId, false)
           return
         }
@@ -1518,55 +1516,61 @@ async function agentRun(args: string[]): Promise<void> {
           const { getDefaultCredentialService } = await import('../services/credential.service')
           await getDefaultCredentialService().setSkillEnv(request.skillId, request.envName, value)
           agent.resolveSecureInput(ptyId, request.requestId, true)
-          console.log('   Saved')
+          transcript.hint('已记下')
         } catch (err) {
           // 存不进去也必须给出结论，否则 Agent 一直等在那里
-          console.error(`   Failed to save: ${err instanceof Error ? err.message : String(err)}`)
+          transcript.fail(err instanceof Error ? err.message : String(err))
           agent.resolveSecureInput(ptyId, request.requestId, false)
         }
       })()
     },
     onNeedConfirm: (confirmation: any) => {
-      console.log(`\n⚠️  Confirmation needed: ${confirmation.toolName} (risk: ${confirmation.riskLevel})`)
-      console.log(`   Args: ${JSON.stringify(confirmation.toolArgs).substring(0, 200)}`)
-      if (confirmation.autoReview) {
-        const { rationale, reason } = confirmation.autoReview
-        const note = rationale
-          || (reason ? t(`autoReview.reason.${reason}` as TranslationKey) : '')
-          || 'handed over'
-        console.log(`   Reviewer: ${note}`)
-      }
+      transcript.clearActivity()
+      const riskKey = `taskmgr.risk.${confirmation.riskLevel}` as TranslationKey
+      const riskLabel = t(riskKey) === riskKey ? String(confirmation.riskLevel || '') : t(riskKey)
+      for (const line of confirmationLines({
+        toolName: confirmation.toolName,
+        toolArgs: confirmation.toolArgs,
+        displayName: confirmation.displayName,
+        riskLabel,
+        reasons: confirmation.reasons,
+        reviewerNote: reviewerNote(confirmation),
+      })) io.show(line)
       void (async () => {
         if (mode === 'free') {
-          console.log('   Auto-approved (--mode free / --free)')
+          transcript.hint('已按全自动放行')
           agent.confirmToolCall(ptyId, confirmation.toolCallId, true)
           return
         }
         if (!process.stdin.isTTY) {
-          console.log('   No TTY: rejected (pass --mode free or --free to auto-approve)')
+          transcript.hint('没有交互终端，这一步被拒绝了。要自动放行请加 --free')
           agent.confirmToolCall(ptyId, confirmation.toolCallId, false)
           return
         }
-        // 与提问/密钥输入共用同一把 stdin 锁，避免两个 readline 同时抢输入
-        const answer = await readLine('   Allow this tool call? [y/N] ')
-        const ok = /^y(es)?$/i.test((answer ?? '').trim())
+        const answer = await io.read('允许吗？[y/N] ')
+        if (answer === null) {
+          agent.confirmToolCall(ptyId, confirmation.toolCallId, false)
+          return
+        }
+        const ok = /^y(es)?$/i.test(answer.trim())
         agent.confirmToolCall(ptyId, confirmation.toolCallId, ok)
-        console.log(ok ? '   Approved' : '   Rejected')
+        transcript.hint(ok ? '已允许' : '已拒绝')
       })()
     },
-    onComplete: () => {
-      clearInline()
+    onComplete: (_agentId: string, _result: string, _pending?: unknown, extra?: { aborted?: boolean }) => {
+      if (extra?.aborted) transcript.interrupted()
       cancelPendingRead()
     },
-    onError: (_agentId: string, error: string) => {
-      clearInline()
+    onError: (_agentId: string, error: string, extra?: { aborted?: boolean }) => {
       cancelPendingRead()
-      console.error(`\n✗ Agent error: ${error}`)
+      if (extra?.aborted) transcript.interrupted()
+      else transcript.fail(error)
     }
   }
 
   const context = {
     ptyId,
+    cwd,
     terminalOutput: [],
     systemInfo: {
       os: getLocalOS(),
@@ -1578,52 +1582,231 @@ async function agentRun(args: string[]): Promise<void> {
     unattended: !process.stdin.isTTY
   }
 
-  console.log(`Running agent task: "${task}"`)
-  console.log(`Execution mode: ${mode}\n`)
+  let busy = false
+  const onSigint = () => {
+    if (session) {
+      session.handleInterrupt()
+      return
+    }
+    if (busy) {
+      transcript.interrupted()
+      cancelPendingRead()
+      agent.abort(ptyId)
+      return
+    }
+    process.exit(130)
+  }
+  process.on('SIGINT', onSigint)
 
-  try {
-    const said = await agent.say(ptyId, task, context, {
-      surface: 'terminal',
-      config: { executionMode: mode as ExecutionMode },
-      callbacks,
+  const screenHint = '拖进终端或粘贴的路径会作为附件。/skills 查看技能，/skill 名字 加上，/unskill 名字 拿掉，/exit 离开。PgUp 往上翻。'
+
+  const skillCatalog = (): { id: string; name: string }[] => {
+    const skills = require('../services/agent/skills') as typeof import('../services/agent/skills')
+    const list = skills.getSkillsSummary().map(item => ({ id: item.id, name: item.name }))
+    try {
+      const { getUserSkillService } = require('../services/user-skill.service')
+      for (const item of getUserSkillService().getEnabledSkills() as { id: string; name: string }[]) {
+        if (!list.some(known => isSameSkillId(known.id, item.id))) list.push({ id: item.id, name: item.name })
+      }
+    } catch { /* 用户技能读不到时，名单里只剩内置的 */ }
+    return list
+  }
+
+  const visibleSkills = (): { id: string; name: string; systemManaged?: boolean }[] => {
+    return agent.getVisibleSkills(ptyId)
+  }
+
+  const refreshAside = () => {
+    if (!session) return
+    const names = visibleSkills().filter(item => !item.systemManaged).map(item => item.name)
+    session.setAside(names.length ? `技能 ${names.join('、')}` : '')
+  }
+
+  const showSkills = () => {
+    if (!session) return
+    const list = skillCatalog()
+    const pinned = visibleSkills()
+    const on = list.filter(item => pinned.some(visible => isSameSkillId(visible.id, item.id)))
+    session.note(on.length ? `已加上：${on.map(item => item.name).join('、')}` : '还没有加上的技能')
+    session.note('可以加：')
+    for (const item of list) {
+      const mark = pinned.some(visible => isSameSkillId(visible.id, item.id)) ? '  · 已加上' : ''
+      session.note(`  ${item.id}  ${item.name}${mark}`)
+    }
+    session.note('加上用 /skill 后面的名字，拿掉用 /unskill。')
+    refreshAside()
+  }
+
+  const changeSkill = async (action: 'skill' | 'unskill', arg: string) => {
+    if (!session) return
+    if (!arg) {
+      session.note(action === 'skill' ? '用法：/skill 技能名' : '用法：/unskill 技能名')
+      return
+    }
+    const hits = skillCatalog().filter(item => item.id === arg || item.name === arg)
+    if (hits.length !== 1) {
+      session.note(hits.length > 1 ? '有好几个同名的，用名单里左边那一列。' : '没有叫这个的技能。/skills 看名单。')
+      return
+    }
+    const chosen = hits[0]
+    if (action === 'unskill') {
+      await agent.unpinSkill(ptyId, chosen.id)
+      session.note(`已拿掉「${chosen.name}」`)
+    } else {
+      const result = await agent.pinSkill(ptyId, chosen.id)
+      if (!result.ok) {
+        session.note(result.error === 'system_managed'
+          ? '这个由系统自己管，不用加。'
+          : result.error === 'mcp_not_supported'
+            ? '外部工具包不在这里加。'
+            : (result.error ? `没加上：${result.error}` : '没加上。'))
+        return
+      }
+      session.note(`已加上「${chosen.name}」`)
+    }
+    refreshAside()
+  }
+
+  const runScreen = async () => {
+    if (!session) return
+    const screenSession = session
+    let depth = 0
+    screenSession.setOnInterrupt(() => {
+      transcript.interrupted()
+      cancelPendingRead()
+      agent.abort(ptyId)
     })
-    console.log('\n=== Result ===')
-    console.log(said.outcome === 'ran' ? said.result : '')
+    const deliver = async (raw: string) => {
+      const text = raw.trim()
+      if (!text) return
+      const slash = parseSlash(text)
+      if (slash && slash.name !== 'unknown') {
+        screenSession.note(`› ${text}`)
+        if (slash.name === 'exit') {
+          screenSession.requestLeave(0)
+          if (depth > 0) agent.abort(ptyId)
+          return
+        }
+        if (slash.name === 'help') {
+          screenSession.note(screenHint)
+          return
+        }
+        if (slash.name === 'skills') {
+          showSkills()
+          return
+        }
+        await changeSkill(slash.name, slash.arg)
+        return
+      }
+      const composed = composeLine(text, cwd, pathExists)
+      if (slash?.name === 'unknown' && composed.paths.length === 0) {
+        screenSession.note('没有这条命令。/help 看能用的。')
+        return
+      }
+      const message = taskFromCompose(composed)
+      if (!message) return
+      depth++
+      screenSession.setBusy(true)
+      busy = true
+      try {
+        const payload: AgentContext = { ...context }
+        if (composed.paths.length > 0) {
+          const { materializeAttachments } = await import('./attach')
+          const files = await materializeAttachments(composed.paths)
+          for (const err of files.errors) screenSession.note(err)
+          if (files.attachments.length > 0) payload.attachments = files.attachments
+          if (files.documentContext) payload.documentContext = files.documentContext
+          if (files.images) payload.images = files.images
+          if (files.previewImages) payload.previewImages = files.previewImages
+        }
+        screenSession.note(`› ${message}`)
+        const said = await agent.say(ptyId, message, payload, {
+          surface: 'terminal',
+          config: { executionMode: mode as ExecutionMode },
+          callbacks,
+        })
+        if (said.outcome === 'ran') transcript.finish(said.result || '')
+      } catch (error: any) {
+        transcript.fail(error?.message || String(error))
+      } finally {
+        depth--
+        busy = depth > 0
+        screenSession.setBusy(depth > 0)
+      }
+    }
 
-    // 标题由后端在第一句时起，退出前稍等它写完（避免进程退出时请求还在飞）
+    screenSession.setOnBareSubmit((text) => { void deliver(text) })
+    screenSession.note(screenHint)
+    while (!screenSession.leaving) {
+      const next = await screenSession.readLine('› ', { composer: true })
+      if (next === null) break
+      const text = next.trim()
+      if (!text) continue
+      if (/^(exit|quit)$/i.test(text)) {
+        screenSession.requestLeave(0)
+        break
+      }
+      await deliver(text)
+    }
+  }
+
+  const restoreConsole = verbose ? () => {} : quietConsole()
+  let hinted = false
+  let turn: string | null = task
+  try {
+    if (session) {
+      await session.run(runScreen)
+    } else while (turn) {
+      busy = true
+      try {
+        const said = await agent.say(ptyId, turn, context, {
+          surface: 'terminal',
+          config: { executionMode: mode as ExecutionMode },
+          callbacks,
+        })
+        transcript.finish(said.outcome === 'ran' ? said.result : '')
+      } catch (error: any) {
+        transcript.fail(error?.message || String(error))
+      } finally {
+        busy = false
+      }
+      if (once) break
+      if (!hinted) {
+        transcript.hint('接着说就行，exit 结束。Ctrl+C 停下正在做的这一轮')
+        hinted = true
+      }
+      const next = await readLine('› ')
+      if (next === null) break
+      const text = next.trim()
+      if (!text) continue
+      if (/^(exit|quit)$/i.test(text)) break
+      turn = text
+    }
+
+    // 标题在第一句时另起请求，退出前等它写完，但不打到屏幕上
     const title = await Promise.race([
       agent.getAgent(ptyId)?.waitForInitialTitle() ?? Promise.resolve(null),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 30_000)),
     ])
-    if (title) console.log(`\n📌 Session title: ${title}`)
+    if (verbose) {
+      const sessionId = agent.getAgent(ptyId)?.getSessionId()
+      if (sessionId) console.log(`\nsession: ${sessionId}${title ? `  ${title}` : ''}`)
+    }
 
     // 这场没记的记忆收尾时补上，同样等它写完再退出
     await Promise.race([
       agent.getAgent(ptyId)?.flushMemory() ?? Promise.resolve(),
       new Promise<void>((resolve) => { setTimeout(resolve, 60_000).unref() }),
     ])
-
-    const sessionId = agent.getAgent(ptyId)?.getSessionId()
-    if (sessionId) {
-      const record = history.getAgentRecordById(sessionId)
-      if (record) {
-        console.log(`\n=== History ===`)
-        console.log(`sessionId: ${sessionId}`)
-        if (record.title) console.log(`title: ${record.title}`)
-        console.log(`steps: ${record.steps?.length || 0}, status: ${record.status}`)
-      } else {
-        console.log(`\n=== History ===`)
-        console.log(`sessionId: ${sessionId} (record not found on disk yet)`)
-      }
-    }
-  } catch (error: any) {
-    console.error('\nAgent execution failed:', error.message || error)
   } finally {
+    process.removeListener('SIGINT', onSigint)
+    restoreConsole()
     pty.dispose(ptyId)
     agent.cleanupAgent(ptyId)
     // 关掉 keep-alive 连接池，否则 Node 事件循环还会挂十几秒
     ai.dispose()
   }
+  if (session?.exitCode === 130) process.exitCode = 130
 }
 
 // ==================== Companion（联络） ====================
@@ -1691,7 +1874,7 @@ async function companionChat(args: string[]): Promise<void> {
   const { positional, flags } = parseArgs(args)
   const message = positional.join(' ')
   if (!message) {
-    console.error(`Usage: ${cliName()} companion <消息> [--mode <strict|relaxed|free>] [--free] [--task-wait <秒>]`)
+    console.error(`Usage: ${cliName()} companion <消息> [--mode <strict|relaxed|free>] [--free] [--task-wait <秒>] [--once] [--verbose]`)
     process.exit(1)
   }
 
@@ -1718,62 +1901,64 @@ async function companionChat(args: string[]): Promise<void> {
   // 联络这一轮为任务等回执的上限：防止任务长挂导致 CLI 永不退出（0 = 不等，回复后即退出）
   const taskWaitSec = Math.max(0, Number(flags['task-wait'] ?? 600) || 0)
 
-  const stepPrefix = (type: string) =>
-    type === 'thinking' ? '💭' : type === 'tool_call' ? '🔧' :
-    type === 'tool_result' ? '📋' : type === 'message' ? '💬' : '  '
-
-  const spokenToolCalls = new Set<string>()
-  const awaitCards = new Set<string>()
+  const verbose = flags.verbose === true
+  const once = flags.once === true || !process.stdin.isTTY
+  const transcript = new CliTranscript({
+    verbose,
+    tty: Boolean(process.stdout.isTTY),
+    color: Boolean(process.stdout.isTTY) && !process.env.NO_COLOR,
+    columns: process.stdout.columns || 80,
+  })
   let userLines: ReturnType<typeof listenForUserLines> | undefined
   /** 联络开始为任务等回执时记下，到上限不再等 */
   let onStartedWaiting: (() => void) | undefined
 
   const callbacks = {
     onStep: (_agentId: string, step: any) => {
-      // 流式中间态不打（CLI 只看落定的步骤）；final_result 与末尾 message 重复，跳过
-      if (step.isStreaming) return
-      // 对用户说的话已经在 talk_to_user 那一步打印过
-      if (step.type === 'final_result' || step.type === 'user_task' || step.type === 'proactive_notice') return
-      if (step.type === 'task_receipt') {
-        console.log(`\n📨 联络收到任务回执：\n${step.content}`)
-        return
-      }
-      if (step.type === 'tool_call' && step.toolName === 'talk_to_user' && !spokenToolCalls.has(step.id)) {
-        spokenToolCalls.add(step.id)
-        console.log(`\n🗣  联络对你说：${step.toolArgs?.message ?? step.content}`)
-        return
-      }
       if (step.type === 'tool_call' && step.toolName === 'manage_tasks' && step.toolArgs?.action === 'await') {
         onStartedWaiting?.()
-        // 等待卡每秒刷新一次已等多久，命令行只在它出现时打一行
-        if (awaitCards.has(step.id)) return
-        awaitCards.add(step.id)
       }
-      const content = (step.content || '').substring(0, 300)
-      console.log(`${stepPrefix(step.type)} [${step.type}] ${content}`)
-      if (step.toolName) console.log(`   Tool: ${step.toolName}`)
+      transcript.push(step)
     },
     onNeedConfirm: (confirmation: any) => {
-      console.log(`\n⚠️  联络自身操作需确认: ${confirmation.toolName} (risk: ${confirmation.riskLevel})`)
+      transcript.clearActivity()
+      const riskKey = `taskmgr.risk.${confirmation.riskLevel}` as TranslationKey
+      const riskLabel = t(riskKey) === riskKey ? String(confirmation.riskLevel || '') : t(riskKey)
+      const note = confirmation.autoReview
+        ? (confirmation.autoReview.rationale
+          || (confirmation.autoReview.reason ? t(`autoReview.reason.${confirmation.autoReview.reason}` as TranslationKey) : ''))
+        : ''
+      for (const line of confirmationLines({
+        toolName: confirmation.toolName,
+        toolArgs: confirmation.toolArgs,
+        displayName: confirmation.displayName,
+        riskLabel,
+        reasons: confirmation.reasons,
+        reviewerNote: note,
+      })) console.log(line)
       void (async () => {
         if (mode === 'free') {
-          console.log('   自动批准（--mode free / --free）')
+          transcript.hint('已按全自动放行')
           agent.confirmToolCall(COMPANION_AGENT_KEY, confirmation.toolCallId, true)
           return
         }
         userLines?.pause()
         let ok = false
         try {
-          ok = await promptYesNo('   批准该操作？')
+          ok = await promptYesNo('允许吗？')
         } finally {
           userLines?.resume()
         }
         agent.confirmToolCall(COMPANION_AGENT_KEY, confirmation.toolCallId, ok)
-        console.log(ok ? '   已批准' : '   已拒绝')
-      })().catch(err => console.error('   确认处理异常:', err))
+        transcript.hint(ok ? '已允许' : '已拒绝')
+      })().catch(err => transcript.fail(err instanceof Error ? err.message : String(err)))
     },
-    onError: (_agentId: string, error: string) => {
-      console.error(`\n✗ 联络执行出错: ${error}`)
+    onComplete: (_agentId: string, _result: string, _pending?: unknown, extra?: { aborted?: boolean }) => {
+      if (extra?.aborted) transcript.interrupted()
+    },
+    onError: (_agentId: string, error: string, extra?: { aborted?: boolean }) => {
+      if (extra?.aborted) transcript.interrupted()
+      else transcript.fail(error)
     }
   }
 
@@ -1785,6 +1970,7 @@ async function companionChat(args: string[]): Promise<void> {
     terminalOutput: [],
     systemInfo: { os: getLocalOS(), shell: getDefaultShell() },
     terminalType: 'assistant' as const,
+    cwd: process.cwd(),
   })
 
   // 联络派完任务后这一轮等着回执，最多等 --task-wait 秒（0 = 派完就收工，回复后即退出）
@@ -1793,34 +1979,74 @@ async function companionChat(args: string[]): Promise<void> {
   let deadlineTimer: NodeJS.Timeout | undefined
   onStartedWaiting = () => {
     if (deadlineTimer || taskWaitSec <= 0) return
-    console.log(`\n… 联络在等后台任务的回执（上限 ${taskWaitSec}s，--task-wait 可调；这时敲的话直接说给联络）`)
+    transcript.hint(`联络在等派出的任务（最多 ${taskWaitSec} 秒，--task-wait 可调）。这时敲的话直接说给联络`)
     // 不 unref：等回执期间这个定时器同时是进程的保活句柄（没有 TTY 时没有别的东西占着事件循环）
     deadlineTimer = setTimeout(() => agent.abort(COMPANION_AGENT_KEY), taskWaitSec * 1000)
   }
-  userLines = listenForUserLines(line => {
-    agent.say(COMPANION_AGENT_KEY, line, companionContext(), { surface: 'assistant' })
-      .catch((err: any) => console.error('\n联络执行失败:', err?.message || err))
-  })
 
-  console.log(`联络对话: "${message}"`)
-  console.log(`执行模式: ${mode}\n`)
-
+  const restoreConsole = verbose ? () => {} : quietConsole()
+  let turn: string | null = message
+  let hinted = false
+  let busy = false
+  const onSigint = () => {
+    if (busy) {
+      transcript.interrupted()
+      agent.abort(COMPANION_AGENT_KEY)
+      return
+    }
+    process.exit(130)
+  }
+  process.on('SIGINT', onSigint)
   try {
-    const result = await agent.runAssistant(
-      COMPANION_AGENT_KEY,
-      message,
-      companionContext(),
-      { executionMode: mode as 'strict' | 'relaxed' | 'free' },
-      undefined,
-      callbacks
-    )
-    console.log('\n=== 联络回复 ===')
-    console.log(result)
-  } catch (error: any) {
-    console.error('\n联络执行失败:', error.message || error)
+    while (turn) {
+      const saying = turn
+      busy = true
+      userLines = listenForUserLines(line => {
+        agent.say(COMPANION_AGENT_KEY, line, companionContext(), { surface: 'assistant' })
+          .catch((err: any) => transcript.fail(err?.message || String(err)))
+      })
+      try {
+        const result = await agent.runAssistant(
+          COMPANION_AGENT_KEY,
+          saying,
+          companionContext(),
+          { executionMode: mode as 'strict' | 'relaxed' | 'free' },
+          undefined,
+          callbacks
+        )
+        transcript.finish(result)
+      } catch (error: any) {
+        transcript.fail(error?.message || String(error))
+      } finally {
+        busy = false
+        if (deadlineTimer) clearTimeout(deadlineTimer)
+        deadlineTimer = undefined
+        userLines.close()
+        userLines = undefined
+      }
+      if (once) break
+      if (!hinted) {
+        transcript.hint('接着对联络说就行，exit 结束')
+        hinted = true
+      }
+      const readline = await import('readline')
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+      const next = await new Promise<string | null>((resolve) => {
+        rl.question('› ', resolve)
+        rl.once('close', () => resolve(null))
+      })
+      rl.close()
+      if (next === null) break
+      const text = next.trim()
+      if (!text) continue
+      if (/^(exit|quit)$/i.test(text)) break
+      turn = text
+    }
   } finally {
+    process.removeListener('SIGINT', onSigint)
+    restoreConsole()
     if (deadlineTimer) clearTimeout(deadlineTimer)
-    userLines.close()
+    userLines?.close()
   }
 
   const remaining = supervisor.listLiveTasks().filter((t: any) => t.isRunning)
@@ -2337,15 +2563,18 @@ ${oemResolved.identity.productName} CLI v${version}
 
   默认使用桌面真实数据（配置 / 凭据 / 历史）。
   高危操作默认需确认（--mode relaxed）；全自动请显式 --mode free 或 --free。
+  不带参数、自己开着终端，进入同一屏：底下输入，上面是这场对话。拖进终端的文件会附上，/skills 可查看并加上技能。
+  带上一句话则直接开工，字在当前终端里往下走，说完可以接着说。从别的程序接进来，或 --once，答完即离开。
+  不必给整句话加引号。秘书站在你敲命令的那个目录里。
 
 用法:
-  ${cliName()} "用引号包起来的任务说明" [options]   # 主路径 → Agent
+  ${cliName()}                                        # 不带参数，进入同一屏
+  ${cliName()} "用引号包起来的任务说明" [options]   # 带上一句话，直接开工
   ${cliName()} agent:run <task> [options]           # 同上（单词语任务请走这条或 --task）
   ${cliName()} <command> [args]
 
 任务判定（shell 会剥掉引号，CLI 只能看到结果）:
-  · 单个参数且含空格 → 视为任务（典型：${cliName()} "列出当前目录"）
-  · 单个参数且不像命令名（如中文）→ 视为任务
+  · 一句话不必加引号，第一个词不是已知命令就交给秘书
   · --task / -t <text> → 显式任务（英文单词语请用这条）
   · 英文单词语未知命令（如 modell）→ 报错提示，不丢给 Agent
 
@@ -2364,8 +2593,10 @@ ${oemResolved.identity.productName} CLI v${version}
   --share-desktop            开发态改用桌面真实数据（装机命令默认已是）
   --mode <strict|relaxed|free>  执行模式（默认 relaxed）
   --free                     等同 --mode free（危险：跳过确认）
+  --once                     说完这一轮就退出（默认在终端里可以接着说）
+  --verbose                  多打过程：工具结果、内部日志、会话号
   --task / -t <text>         显式任务文本
-  --task-wait <秒>           companion 命令专用：后台任务值班上限（默认 600；0 = 不值班）
+  --task-wait <秒>           companion 命令专用：联络为任务等回执的上限（默认 600；0 = 不等）
 
 替我审批（默认关；只对交互式任务生效）:
   ${cliName()} config:set autoApprovalReview true
@@ -2496,18 +2727,15 @@ function resolveCliInvocation(args: string[]): { command: string; cmdArgs: strin
     return null
   }
 
-  // 单个参数且含空白 → 引号任务（shell 已剥引号）
-  // 或不像命令标识符（含中文/标点等）→ 也视为任务（避免「"只回复好的"」无空格时进未知命令）
-  if (positional.length === 1) {
-    const looksLikeCommand = /^[a-z][a-z0-9:_-]*$/i.test(head)
-    if (/\s/.test(head) || !looksLikeCommand) {
-      const restFlags: string[] = []
-      for (const [k, v] of Object.entries(flags)) {
-        if (v === true) restFlags.push(`--${k}`)
-        else restFlags.push(`--${k}`, String(v))
-      }
-      return { command: 'agent:run', cmdArgs: [head, ...restFlags] }
+  // 没加引号时 shell 会把一句话拆开。第一个词不是已知命令，就整句交给秘书。
+  const task = agentTaskFromWords(positional)
+  if (task) {
+    const restFlags: string[] = []
+    for (const [k, v] of Object.entries(flags)) {
+      if (v === true) restFlags.push(`--${k}`)
+      else restFlags.push(`--${k}`, String(v))
     }
+    return { command: 'agent:run', cmdArgs: [task, ...restFlags] }
   }
 
   printUnknownAsTaskHint(positional.length === 1 ? head : positional.join(' '))
@@ -2575,20 +2803,35 @@ async function webSearchTest(args: string[]): Promise<void> {
 
 // ==================== Main ====================
 
+/** 嵌入模型走进程内推理，退出前放掉，避免 process.exit 时被硬杀掉。 */
+async function disposeCliKnowledge(): Promise<void> {
+  try {
+    const { getKnowledgeService } = require('../services/knowledge')
+    const ks = getKnowledgeService()
+    if (ks) await ks.disposeAsync(1000)
+  } catch { /* 没加载过就不用放 */ }
+}
+
 async function runCli(): Promise<void> {
   const config = new ConfigService()
   initLogging(config.getLogLevel())
 
   const args = process.argv.slice(2)
-  const first = args[0]
-
-  if (!first || first === '--help' || first === '-h' || first === 'help') {
+  const launch = cliLaunch(args, Boolean(process.stdin.isTTY && process.stdout.isTTY))
+  if (launch === 'version') {
+    console.log(getVersion())
+    return
+  }
+  if (launch === 'help') {
     printHelp()
     return
   }
-
-  if (first === '--version' || first === '-v') {
-    console.log(getVersion())
+  if (launch === 'screen') {
+    try {
+      await agentRun(args, 'screen')
+    } finally {
+      await disposeCliKnowledge()
+    }
     return
   }
 
@@ -2697,12 +2940,7 @@ async function runCli(): Promise<void> {
     }
     exitCode = 1
   } finally {
-    // CLI 无 utilityProcess，嵌入走进程内 ORT；退出前 dispose，避免 process.exit 时 SIGABRT
-    try {
-      const { getKnowledgeService } = require('../services/knowledge')
-      const ks = getKnowledgeService()
-      if (ks) await ks.disposeAsync(1000)
-    } catch { /* ignore */ }
+    await disposeCliKnowledge()
   }
   if (exitCode !== 0) process.exit(exitCode)
 }
