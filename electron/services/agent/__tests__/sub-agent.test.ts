@@ -518,6 +518,7 @@ describe('进度推给界面', () => {
     expect(step.subAgents![0].steps).toHaveLength(20)
     expect(step.subAgents![0].steps!.every(st => st.result === undefined)).toBe(true)
     expect(step.subAgents![3].prompt).toBe('条目 3')
+    expect((step.toolArgs as { batch?: { instruction: string } }).batch?.instruction).toBe('很长的共同指令'.repeat(50))
   })
 
   it('伙计在排队等模型时卡片上看得出来，拿到名额后恢复', async () => {

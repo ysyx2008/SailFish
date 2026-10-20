@@ -197,6 +197,7 @@ export class SubAgentRoster {
     for (const wake of waiters) wake()
   }
 
+  /** 等到有人敲门、没人在干了或中止。把陆续回来的攒一攒，在主人接着跑之前做（见 settleKnocks），这里不再等 */
   async waitForKnock(signal: AbortSignal): Promise<void> {
     await new Promise<void>((resolve) => {
       if (!this.hasLive() || signal.aborted) {
@@ -212,7 +213,6 @@ export class SubAgentRoster {
       signal.addEventListener('abort', done, { once: true })
       if (!this.hasLive() || signal.aborted) done()
     })
-    await this.settle(signal, () => this.hasLive())
   }
 
   waitUntil(names: string[] | undefined, signal: AbortSignal): Promise<ChildSnapshot[]> {
@@ -318,6 +318,9 @@ export class SubAgentRoster {
       return { ok: true }
     }
 
+    if (!LIVE.has(slot.status) && this.room() <= 0) {
+      return { ok: false, error: `没做完的伙计已有 ${MAX_LIVE_CHILDREN} 个，等有人做完再追问 ${name}` }
+    }
     slot.status = 'running'
     slot.error = undefined
     deps.onProgress()

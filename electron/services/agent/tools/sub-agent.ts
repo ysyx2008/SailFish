@@ -271,6 +271,10 @@ function optionalName(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined
 }
 
+function isBatchArgs(value: unknown): value is { instruction: string } {
+  return !!value && typeof value === 'object' && typeof (value as { instruction?: unknown }).instruction === 'string'
+}
+
 /** tasks 每人一份指令；batch 一份共同指令加一批条目，交给伙计的是共同指令、换行、本条目。两种可同次混用。 */
 export function parseDispatchTasks(args: Record<string, unknown>): { tasks: ParsedSpawnTask[] } | { error: string } {
   const tasks: ParsedSpawnTask[] = []
@@ -362,7 +366,10 @@ export async function dispatchSubAgents(
     type: 'tool_call',
     content: t('dispatch.running', { count: parsedTasks.length }),
     toolName: 'dispatch_agents',
-    toolArgs: { tasks: parsedTasks.map(task => ({ name: task.name, description: task.description })) },
+    toolArgs: {
+      tasks: parsedTasks.map(task => ({ name: task.name, description: task.description })),
+      ...(isBatchArgs(args.batch) ? { batch: { instruction: args.batch.instruction } } : {}),
+    },
     riskLevel: 'safe',
     success: true,
     subAgents: []

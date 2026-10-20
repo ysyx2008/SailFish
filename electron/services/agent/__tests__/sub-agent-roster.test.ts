@@ -291,21 +291,49 @@ describe('waitUntil', () => {
     expect(news.arrived).toHaveLength(2)
   })
 
-  it('主人闲着等时，第一声敲门后也稍等，按停立刻醒', async () => {
+  it('主人闲着等时，第一声敲门就醒（稍等留给接着跑之前那一步，不等两遍）', async () => {
     const roster = new SubAgentRoster({ knockSettleMs: 5000 })
     const kids = [20, 10_000].map(delayMs => stubChild({ delayMs }))
     roster.spawn(
       ['a', 'slow'].map(name => ({ name, description: name, prompt: name })),
       spawnDeps(roster, () => kids.shift()!)
     )
+    const started = Date.now()
+    await roster.waitForKnock(new AbortController().signal)
+    expect(Date.now() - started).toBeLessThan(500)
+    expect(roster.hasLive()).toBe(true)
+    roster.abortAll()
+  })
+
+  it('闲着等时按停立刻醒', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 5000 })
+    roster.spawn(
+      [{ name: 'slow', description: 'slow', prompt: 'slow' }],
+      spawnDeps(roster, () => stubChild({ delayMs: 10_000 }))
+    )
     const hold = new AbortController()
     let woke = false
     const waiting = roster.waitForKnock(hold.signal).then(() => { woke = true })
-    await new Promise(resolve => setTimeout(resolve, 150))
+    await new Promise(resolve => setTimeout(resolve, 100))
     expect(woke).toBe(false)
     hold.abort()
     await waiting
     expect(woke).toBe(true)
+    roster.abortAll()
+  })
+
+  it('追问已经收工的伙计也算进保险丝', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const deps = spawnDeps(roster, () => stubChild({ delayMs: 5 }))
+    roster.spawn([{ name: 'done', description: 'done', prompt: 'done' }], deps)
+    await roster.waitUntil(['done'], new AbortController().signal)
+    roster.spawn(
+      Array.from({ length: MAX_LIVE_CHILDREN }, (_, i) => ({ name: `busy${i}`, description: 'busy', prompt: 'busy' })),
+      spawnDeps(roster, () => stubChild({ delayMs: 10_000 }))
+    )
+    const result = roster.followup('done', '再看一眼', deps)
+    expect(result.ok).toBe(false)
+    expect(roster.liveCount()).toBe(MAX_LIVE_CHILDREN)
     roster.abortAll()
   })
 

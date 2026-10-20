@@ -1899,6 +1899,18 @@ describe('Agent run method', () => {
       expect(final.options?.forceRewrite).toBe(true)
       expect(final.steps[0].content).toContain('（改过）')
 
+      saves.length = 0
+      ;(services.aiService as any).chatWithToolsStream.mockImplementationOnce(
+        (_m: any, _t: any, onChunk: any, _otc: any, onDone: any) => {
+          const run = (agentWithHistory as any).currentRun
+          const saved = run.steps.find((s: any) => run.savedStepIds?.has(s.id))
+          ;(agentWithHistory as any).removeStep(saved.id)
+          onChunk('Done'); onDone({ content: 'Done', tool_calls: undefined }); return Promise.resolve()
+        }
+      )
+      await agentWithHistory.run('Remove one', createMockContext({ sessionId: 'session_rewrite' }))
+      expect(saves[saves.length - 1].options?.forceRewrite).toBe(true)
+
       editInPlace = false
       saves.length = 0
       await agentWithHistory.run('Again', createMockContext({ sessionId: 'session_rewrite' }))

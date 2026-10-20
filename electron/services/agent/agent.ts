@@ -6100,6 +6100,7 @@ export abstract class Agent {
     if (index === -1) return
 
     this.currentRun.steps.splice(index, 1)
+    if (this.currentRun.savedStepIds?.delete(stepId)) this.currentRun.stepsEditedAfterSave = true
     this.callbacks?.onStepRemoved?.(this.currentRun.id, stepId)
   }
   
