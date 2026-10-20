@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Plus, Pencil, Trash2, X, ExternalLink, Eye, Copy, GripVertical, RefreshCw, ChevronDown, Camera } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2, X, ExternalLink, Eye, EyeOff, Copy, GripVertical, RefreshCw, ChevronDown, Camera } from 'lucide-vue-next'
 import { useConfigStore, type AiProfile, type AiModelType, type ApiFormat } from '../../stores/config'
 import { oemResolved } from '@shared/oem-resolve'
 import { showAlert, showConfirm } from '../../composables/useConfirm'
@@ -17,6 +17,7 @@ const configStore = useConfigStore()
 
 const showForm = ref(false)
 const isCopyMode = ref(false)
+const showApiKey = ref(false)
 
 // ESC 关闭编辑表单
 const handleKeydown = (e: KeyboardEvent) => {
@@ -109,6 +110,7 @@ const contextLengthTooSmall = computed(() => {
 const openNewProfile = () => {
   resetForm()
   isCopyMode.value = false
+  showApiKey.value = false
   showForm.value = true
 }
 
@@ -116,6 +118,7 @@ const openEditProfile = (profile: AiProfile) => {
   editingProfile.value = profile
   formData.value = { ...profile }
   isCopyMode.value = false
+  showApiKey.value = false
   showForm.value = true
 }
 
@@ -128,6 +131,7 @@ const openCopyProfile = (profile: AiProfile) => {
     name: `${profile.name} ${t('aiSettings.copySuffix')}`,
   }
   isCopyMode.value = true
+  showApiKey.value = false
   showForm.value = true
 }
 
@@ -526,7 +530,28 @@ const openKeyUrl = (url: string) => {
                     <span>{{ t('aiSettings.getApiKey') }}</span>
                   </button>
                 </div>
-                <input v-model="formData.apiKey" type="password" class="input" :placeholder="t('aiSettings.apiKeyPlaceholder')" />
+                <div class="secret-input">
+                  <input
+                    v-model="formData.apiKey"
+                    :type="showApiKey ? 'text' : 'password'"
+                    class="input"
+                    spellcheck="false"
+                    autocomplete="off"
+                    autocapitalize="off"
+                    :placeholder="t('aiSettings.apiKeyPlaceholder')"
+                  />
+                  <button
+                    type="button"
+                    class="secret-toggle"
+                    :title="showApiKey ? t('aiSettings.hideApiKey') : t('aiSettings.showApiKey')"
+                    :aria-label="showApiKey ? t('aiSettings.hideApiKey') : t('aiSettings.showApiKey')"
+                    :aria-pressed="showApiKey"
+                    @click="showApiKey = !showApiKey"
+                  >
+                    <EyeOff v-if="showApiKey" :size="14" />
+                    <Eye v-else :size="14" />
+                  </button>
+                </div>
               </div>
               <div class="form-group">
                 <label class="form-label">{{ t('aiSettings.model') }} *</label>
@@ -968,6 +993,33 @@ const openKeyUrl = (url: string) => {
 
 .get-key-btn:hover {
   background: var(--bg-hover);
+}
+
+.secret-input {
+  position: relative;
+}
+
+.secret-input .input {
+  width: 100%;
+  padding-right: 32px;
+}
+
+.secret-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.secret-toggle:hover {
+  color: var(--text-primary);
 }
 
 .form-body {
