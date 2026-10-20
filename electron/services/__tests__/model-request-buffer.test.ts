@@ -223,6 +223,35 @@ describe('ModelRequestBuffer', () => {
     expect(order).toEqual(['continuing', 'queued-a'])
   })
 
+  it('当面请求撞了限流再试：窗口满时等空位，空出来先给它', async () => {
+    const { granted, take } = tracker(buffer)
+    for (let i = 0; i < 4; i++) void take('queued')
+    await flush()
+    const order: string[] = []
+    void take('continuing').then(() => order.push('continuing'))
+    void take('urgentRetry').then(() => order.push('urgentRetry'))
+    await flush()
+    expect(order).toEqual([])
+    granted[0].release()
+    await flush()
+    expect(order).toEqual(['urgentRetry'])
+  })
+
+  it('当面请求撞了限流再试：窗口有空位就发，不等暂停结束', async () => {
+    const { granted, take } = tracker(buffer)
+    for (let i = 0; i < 4; i++) void take('queued')
+    await flush()
+    granted[0].reportThrottled()
+    for (const p of granted.slice(0, 3)) p.release()
+    await flush()
+    expect(buffer.snapshot(KEY)?.pausedForMs).toBeGreaterThan(0)
+    void take('queued')
+    void take('urgentRetry')
+    await flush()
+    expect(granted).toHaveLength(5)
+    expect(buffer.snapshot(KEY)).toMatchObject({ inFlight: 2, queued: 1 })
+  })
+
   it('排队中点停止：从队里拿掉、报中止，不占名额', async () => {
     const { take } = tracker(buffer)
     for (let i = 0; i < 4; i++) void take('queued')

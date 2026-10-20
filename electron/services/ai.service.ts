@@ -2516,6 +2516,7 @@ export class AiService {
     // 缓冲池名额：一次请求同一时刻最多占一个；撞限流等重试时先放掉。换模型仍记在起始那一档上
     const bufferKey = modelRequestKey(profile)
     let permit: ModelRequestPermit | undefined
+    let bufferPriority: ModelRequestPriority = streamOptions?.bufferPriority ?? 'urgent'
     const releasePermit = () => {
       permit?.release()
       permit = undefined
@@ -2834,6 +2835,7 @@ export class AiService {
               pendingRetryInfo = { attempt: rateLimitRetryCount, max: rateLimitMaxRetries, delayMs: retryAfterMs, reason: 'rate_limit', statusCode: 429 }
               resetForRetry()
               releasePermit()
+              if (bufferPriority === 'urgent') bufferPriority = 'urgentRetry'
               scheduleRetry(sendWithPermit, retryAfterMs)
             } else if (isContextLengthApiFailure(parsed.code, parsed.message)) {
               // 已经换过模型才继续换：避免大窗口切到小窗口后卡死。原模型对话太长不换。
@@ -3213,7 +3215,7 @@ export class AiService {
         void doRequest()
         return
       }
-      getModelRequestBuffer().acquire(bufferKey, streamOptions?.bufferPriority ?? 'urgent', {
+      getModelRequestBuffer().acquire(bufferKey, bufferPriority, {
         signal: abortController.signal,
         onWait: streamOptions?.onBufferWait,
       }).then((granted) => {

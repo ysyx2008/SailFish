@@ -9,10 +9,12 @@ import { createHash } from 'crypto'
 
 /**
  * urgent：用户当面等的，不排队。
+ * urgentRetry：当面等的撞了限流再试。排在所有排队的前面，窗口里有空位就发，不等暂停结束；
+ *   不再硬挤，免得接口被伙计占满时一次次撞限流、把重试次数用光。
  * continuing：已经开工的伙计接着发的，排队里优先。
  * queued：伙计第一次请求、关切、唤醒、后台整理。
  */
-export type ModelRequestPriority = 'urgent' | 'continuing' | 'queued'
+export type ModelRequestPriority = 'urgent' | 'urgentRetry' | 'continuing' | 'queued'
 
 export interface ModelRequestBufferTuning {
   initialWindow: number
@@ -114,6 +116,7 @@ class BufferGroup {
   /** 被限流后还没有这一代的请求成功过 */
   private recovering = false
   private probeOutstanding = false
+  private readonly front: Waiter[] = []
   private readonly continuing: Waiter[] = []
   private readonly queued: Waiter[] = []
 
@@ -129,7 +132,7 @@ class BufferGroup {
     if (priority === 'urgent') return Promise.resolve(this.grant(false))
 
     return new Promise((resolve, reject) => {
-      const lane = priority === 'continuing' ? this.continuing : this.queued
+      const lane = priority === 'urgentRetry' ? this.front : priority === 'continuing' ? this.continuing : this.queued
       const waiter: Waiter = { resolve, reject, options, waiting: false, detach: () => {} }
       const onAbort = () => {
         const idx = lane.indexOf(waiter)
@@ -212,7 +215,7 @@ class BufferGroup {
   }
 
   private queuedCount(): number {
-    return this.continuing.length + this.queued.length
+    return this.front.length + this.continuing.length + this.queued.length
   }
 
   private grant(fromQueue: boolean): ModelRequestPermit {
@@ -230,6 +233,13 @@ class BufferGroup {
   }
 
   private tryGrantHead(): boolean {
+    if (this.front.length > 0) {
+      if (this.inFlight >= this.window) return false
+      const waiter = this.front.shift()!
+      this.stopWaiting(waiter)
+      waiter.resolve(this.grant(false))
+      return true
+    }
     if (!this.canGrantQueued()) return false
     const waiter = this.continuing.shift() ?? this.queued.shift()
     if (!waiter) return false

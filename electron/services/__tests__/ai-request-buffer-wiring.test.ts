@@ -140,6 +140,25 @@ describe('AI 请求经过缓冲池', () => {
     await background
     expect(getModelRequestBuffer().snapshot(key)).toMatchObject({ inFlight: 0, queued: 0 })
   }, 10_000)
+
+  it('当面的请求被限流后，重试等窗口空出位置再发，不硬挤', async () => {
+    const { ai, key } = serviceFor('crowded-model')
+    const holders = await Promise.all(
+      Array.from({ length: 8 }, () => getModelRequestBuffer().acquire(key, 'queued')),
+    )
+    scripts.set('crowded-model', [{ status: 429, headers: { 'Retry-After': '1' } }])
+    let finished = false
+    const urgent = run(ai).then((r) => { finished = true; return r })
+    await sleep(1_500)
+    expect(finished).toBe(false)
+    expect(getModelRequestBuffer().snapshot(key)?.queued).toBe(1)
+
+    for (const p of holders.slice(0, 5)) p.release()
+    const result = await urgent
+    expect(result.done?.content).toBe('ok')
+    for (const p of holders.slice(5)) p.release()
+    expect(getModelRequestBuffer().snapshot(key)).toMatchObject({ inFlight: 0, queued: 0 })
+  }, 10_000)
 })
 
 describe('被限流时重试几次可以调', () => {
