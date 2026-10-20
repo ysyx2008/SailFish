@@ -454,6 +454,8 @@ export interface RunOptions {
   ledBy?: AssignedBy
   /** 空闲续跑：气泡用短提示，正文给模型；不是用户刚说的话 */
   goalContinuation?: boolean
+  /** 这一轮开头先上墙的一行小字说明（系统说的，不是用户说的话，也不进模型） */
+  openingNotice?: string
 }
 
 /**

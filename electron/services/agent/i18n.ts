@@ -1925,6 +1925,8 @@ const translations = {
     'goal.notice_usage_limited': '模型额度不够了，目标先停在这里。额度恢复后可以继续。',
     'goal.notice_budget_limited': '这次目标的 token 预算用完了。加预算或清掉目标后再说。',
     'goal.notice_achieved': '目标已达成。',
+    'goal.notice_resumed': '已继续推进目标。',
+    'goal.notice_reopened': '已重新打开目标，继续推进。',
   },
   'en-US': {
     // Tool names
@@ -3840,6 +3842,8 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'goal.notice_usage_limited': 'Model usage ran out, so the goal stopped. Resume after quota returns.',
     'goal.notice_budget_limited': 'This goal used up its token budget. Add budget or clear it.',
     'goal.notice_achieved': 'Goal achieved.',
+    'goal.notice_resumed': 'Goal resumed.',
+    'goal.notice_reopened': 'Goal reopened, continuing.',
   }
 } as const
 

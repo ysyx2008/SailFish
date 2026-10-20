@@ -145,6 +145,91 @@ describe('GoalRuntime 一轮收场后的记账', () => {
   })
 })
 
+describe('GoalRuntime 点继续时对话开头的小字说明', () => {
+  function runWith(goal: GoalContract, rounds: number) {
+    const notices: Array<string | undefined> = []
+    const agent = {
+      getGoal: () => goal,
+      getConversationKind: () => 'task',
+      getLastRunOutcome: () => ({ aborted: false, failed: false, usageLimited: false, unretryable: false, tokenDelta: 0, durationSeconds: 0 }),
+      appendGoalNotice: () => {},
+      hasQueuedUserInput: () => false,
+      isRunning: () => false,
+    } as unknown as Agent
+    const runtime = new GoalRuntime({
+      persist: () => {},
+      notify: () => {},
+      runAgent: async (_agent, _message, _context, options) => {
+        notices.push(options.openingNotice)
+        if (notices.length >= rounds) goal.markAchieved()
+        return ''
+      },
+    })
+    return { runtime, agent, notices }
+  }
+
+  it('暂停的目标点继续：第一轮开头说「已继续推进目标」，后面自己续的几轮不再说', async () => {
+    const goal = startGoal()
+    goal.pause()
+    const { runtime, agent, notices } = runWith(goal, 3)
+
+    await runtime.resumeAndContinue('tab-1', agent, {} as AgentContext, {})
+
+    expect(notices).toEqual([t('goal.notice_resumed'), undefined, undefined])
+  })
+
+  it('已达成的目标点继续：说「已重新打开目标」，不是「已继续推进」', async () => {
+    const goal = startGoal()
+    goal.markAchieved()
+    const { runtime, agent, notices } = runWith(goal, 1)
+
+    await runtime.resumeAndContinue('tab-1', agent, {} as AgentContext, {})
+
+    expect(notices).toEqual([t('goal.notice_reopened')])
+    expect(notices[0]).not.toBe(t('goal.notice_resumed'))
+  })
+
+  it('用户自己发一句话引出的续跑，没有这行说明', async () => {
+    const goal = startGoal()
+    const { runtime, agent, notices } = runWith(goal, 2)
+
+    await runtime.afterUserTurn('tab-1', agent, {} as AgentContext, {})
+
+    expect(notices).toEqual([undefined, undefined])
+  })
+
+  it('点继续时有人正在说话、第一轮没跑成：这行说明留到真正发出的那一轮', async () => {
+    const goal = startGoal()
+    goal.pause()
+    const notices: Array<string | undefined> = []
+    let queued = true
+    const agent = {
+      getGoal: () => goal,
+      getConversationKind: () => 'task',
+      getLastRunOutcome: () => ({ aborted: false, failed: false, usageLimited: false, unretryable: false, tokenDelta: 0, durationSeconds: 0 }),
+      appendGoalNotice: () => {},
+      hasQueuedUserInput: () => queued,
+      isRunning: () => false,
+    } as unknown as Agent
+    const runtime = new GoalRuntime({
+      persist: () => {},
+      notify: () => {},
+      runAgent: async (_agent, _message, _context, options) => {
+        notices.push(options.openingNotice)
+        goal.markAchieved()
+        return ''
+      },
+    })
+
+    await runtime.resumeAndContinue('tab-1', agent, {} as AgentContext, {})
+    expect(notices).toHaveLength(0)
+
+    queued = false
+    await runtime.afterUserTurn('tab-1', agent, {} as AgentContext, {})
+    expect(notices).toEqual([t('goal.notice_resumed')])
+  })
+})
+
 describe('GoalRuntime 重新打开已达成的目标', () => {
   function reopenWith(goal: GoalContract, rounds: number) {
     const prompts: string[] = []

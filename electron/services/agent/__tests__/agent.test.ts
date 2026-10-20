@@ -40,7 +40,8 @@ import type {
   AgentServices, 
   PromptOptions,
   AgentCallbacks,
-  AgentStep
+  AgentStep,
+  RunOptions
 } from '../types'
 import { TaskMemoryStore } from '../task-memory'
 import { Conversation, ConversationManager, ConversationStore } from '../../conversation'
@@ -3131,7 +3132,7 @@ describe('Agent goal visibility', () => {
 })
 
 describe('Agent goal accounting', () => {
-  const runOnce = async (prepare: (goal: GoalContract) => void, options?: { goalContinuation?: boolean }) => {
+  const runOnce = async (prepare: (goal: GoalContract) => void, options?: RunOptions) => {
     const agent = new TestAgent(createMockServices())
     agent.setAgentId('tab-1')
     const started = GoalContract.start('把测试跑绿')
@@ -3170,5 +3171,32 @@ describe('Agent goal accounting', () => {
   it('续跑和预算用尽后的收尾那一轮，仍算在目标头上', async () => {
     const { outcome, goal } = await runOnce(g => { g.accountUsage({ expectedGoalId: g.goalId, tokenDelta: 1, timeDeltaSeconds: 0 }) }, { goalContinuation: true })
     expect(outcome?.goalId).toBe(goal.goalId)
+  })
+
+  it('这一轮带了开头说明：紧跟在系统塞进来的那一轮后面上墙一行小字，不冒用户气泡', async () => {
+    const steps: AgentStep[] = []
+    await runOnce(() => {}, {
+      goalContinuation: true,
+      openingNotice: '已继续推进目标。',
+      callbacks: { onStep: (_runId, step) => { steps.push(step) } },
+    })
+
+    const types = steps.map(s => s.type)
+    const task = types.indexOf('user_task')
+    const notice = types.indexOf('proactive_notice')
+    expect(task).toBeGreaterThanOrEqual(0)
+    expect(notice).toBe(task + 1)
+    expect(steps[task].systemInjected).toBe(true)
+    expect(steps[notice]).toMatchObject({ content: '已继续推进目标。', systemInjected: true })
+  })
+
+  it('没有开头说明的续跑：不多出小字', async () => {
+    const steps: AgentStep[] = []
+    await runOnce(() => {}, {
+      goalContinuation: true,
+      callbacks: { onStep: (_runId, step) => { steps.push(step) } },
+    })
+
+    expect(steps.some(s => s.type === 'proactive_notice')).toBe(false)
   })
 })

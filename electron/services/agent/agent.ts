@@ -1946,6 +1946,9 @@ export abstract class Agent {
     } else if (run.noticeKind === 'task_receipt') {
       this.addStep({ type: 'task_receipt', content: run.noticeDisplay ?? message })
     }
+    if (options?.openingNotice) {
+      this.addStep({ type: 'proactive_notice', content: options.openingNotice, systemInjected: true })
+    }
 
     // 准备阶段用户补充：run() IPC 往返期间缓冲的消息，紧跟 user_task 上墙
     if (this.preRunUserMessages.length > 0) {
