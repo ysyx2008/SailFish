@@ -43,7 +43,7 @@ Click **More info** → **Run anyway**.
 
 ### Poor reply quality
 
-- Try a different model (Claude, GPT-4o, etc. often perform better)
+- Try a different model (Claude, GPT-5.6, etc. often perform better)
 - Give more detailed instructions
 - Provide more context in the conversation
 

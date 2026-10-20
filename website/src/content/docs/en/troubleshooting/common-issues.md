@@ -79,7 +79,7 @@ In **Settings** → **AI Models**, verify:
 
 - API URL format (include `https://`, no stray path segments)
 - API Key is complete (no truncation or extra spaces)
-- Model name is correct (e.g. `gpt-4o`, not `GPT-4o`)
+- Model name is correct (e.g. `gpt-5.6`, not `GPT-5.6`)
 
 ### SSH
 

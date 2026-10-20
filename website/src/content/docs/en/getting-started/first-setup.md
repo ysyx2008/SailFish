@@ -46,7 +46,7 @@ If this is your first time using an AI API, we recommend starting with **DeepSee
 4. Click **"Add"**
 5. Select **"DeepSeek"** in the provider list — the system will fill in the API URL and default model
 6. In the **API Key** field, paste the API Key you copied
-7. Choose model `deepseek-v4-flash-vision-exp` (selected by default; can see images)
+7. Choose model `deepseek-flash` (selected by default; can see images)
 8. Click **"Save"**
 
 ## Step 3: Set as Active
@@ -97,11 +97,11 @@ Besides DeepSeek, here are other common AI providers you can configure in SailFi
 
 | Provider | Highlights | Recommended Model | VPN Required |
 |----------|------------|-------------------|--------------|
-| DeepSeek | Cost-effective, strong reasoning, can see images | deepseek-v4-flash-vision-exp | No |
+| DeepSeek | Cost-effective, strong reasoning, can see images | deepseek-flash | No |
 | Qwen | Alibaba Cloud, generous free tier | qwen3.7-plus | No |
 | OpenAI | Widely used globally | gpt-5.6 | Yes |
 | Claude | Long documents, complex reasoning | claude-sonnet-5 | Yes |
-| Gemini | Google, strong vision | gemini-3.7-flash | Yes |
+| Gemini | Google, strong vision | gemini-3.8-flash | Yes |
 | Ollama | Local deployment, free | qwen3.5:9b | No |
 
 > You can configure multiple models: use a cheaper one for daily tasks (e.g., DeepSeek) and switch to a stronger one (Claude Opus 5, GPT-5.6) for complex work. Switch in the top model selector in SailFish.

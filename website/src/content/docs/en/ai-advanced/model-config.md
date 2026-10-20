@@ -13,11 +13,11 @@ SailFish includes preset templates for these providers — click to auto-fill th
 
 | Provider | Description | Recommended Models |
 |----------|-------------|-------------------|
-| DeepSeek | Chinese reasoning model, excellent value, vision by default | deepseek-v4-flash-vision-exp / deepseek-v4-pro |
+| DeepSeek | Chinese reasoning model, excellent value, vision by default | deepseek-flash / deepseek-v4-pro |
 | Qwen (Tongyi) | Alibaba Cloud LLM | qwen3.7-plus / qwen3.8-max |
 | OpenAI | GPT series, industry leader | gpt-5.6 / gpt-5.6-terra / gpt-5.6-luna |
 | Claude | By Anthropic, strong at long text and complex work | claude-sonnet-5 / claude-opus-5 |
-| Gemini | By Google, strong multimodal | gemini-3.7-flash |
+| Gemini | By Google, strong multimodal | gemini-3.8-flash |
 | Ollama | Local deployment, free & offline | qwen3.5:9b and others |
 
 Also supports Doubao, Zhipu, Kimi, Grok, Mistral, and any other provider with an OpenAI-compatible API.
@@ -36,7 +36,7 @@ Also supports Doubao, Zhipu, Kimi, Grok, Mistral, and any other provider with an
 | Name | ✅ | Custom label to distinguish configs (e.g. "Daily DeepSeek", "Complex Tasks Claude") |
 | API URL | ✅ | Provider's API endpoint; auto-filled from template |
 | API Key | ⚠️ | Secret key from the provider (leave blank for Ollama / local) |
-| Model | ✅ | Model identifier (e.g. `gpt-5.6`, `deepseek-v4-flash`) |
+| Model | ✅ | Model identifier (e.g. `gpt-5.6`, `deepseek-flash`) |
 | Type | ✅ | General or Vision — affects multimodal routing |
 | Linked Vision Model | — | Associate a vision-capable model for image handling |
 | Proxy | — | Per-config HTTP/SOCKS proxy, optional |
@@ -50,16 +50,16 @@ We recommend configuring 2–3 models and switching by scenario:
 
 | Scenario | Recommended | Why |
 |----------|-------------|-----|
-| Everyday use | DeepSeek V4 Flash Vision / Qwen 3.7 Plus / Gemini 3.7 Flash | Cheap, fast, good at Chinese; DeepSeek sees images by default |
+| Everyday use | DeepSeek V4.1 Flash / Qwen 3.7 Plus / Gemini 3.8 Flash | Cheap, fast, good at Chinese; DeepSeek sees images by default |
 | Complex reasoning | DeepSeek V4 Pro / Claude Opus 5 / GPT-5.6 / Grok 4.6 | Stronger on long, multi-step work |
-| Image analysis | Doubao Seed 2.1 / Qwen 3.7 Plus / GPT-5.6 / Gemini 3.7 Flash / Claude Sonnet 5 | Best vision capabilities |
+| Image analysis | Doubao Seed 2.1 / Qwen 3.7 Plus / GPT-5.6 / Gemini 3.8 Flash / Claude Sonnet 5 | Best vision capabilities |
 | Offline use | Ollama (`qwen3.5:9b`) | Completely free, no internet needed |
 
 Switch models anytime using the selector at the top of the chat area — the current conversation context is preserved.
 
 ## Hybrid Multimodal (Linked Vision Model)
 
-Many powerful reasoning models (like DeepSeek R1) don't support image input, while vision models may not match them at complex reasoning. SailFish's "linked model" feature gives you the best of both worlds.
+Many powerful reasoning models (like DeepSeek V4 Pro) don't support image input, while vision models may not match them at complex reasoning. SailFish's "linked model" feature gives you the best of both worlds.
 
 ### How It Works
 
@@ -72,25 +72,25 @@ Many powerful reasoning models (like DeepSeek R1) don't support image input, whi
 ### Setup Steps
 
 1. Open Settings → AI Model Configuration
-2. Make sure you have a vision-capable model (e.g. GPT-4o) with "Type" set to **Vision**
-3. Edit your primary text model (e.g. DeepSeek R1), set "Type" to **General**
+2. Make sure you have a vision-capable model (e.g. GPT-5.6) with "Type" set to **Vision**
+3. Edit your primary text model (e.g. DeepSeek V4 Pro), set "Type" to **General**
 4. In the "Linked Vision Model" dropdown, select the vision model
 5. Ensure "Auto Vision Model Switch" is enabled (Settings → General)
 
 ### Typical Usage
 
-Primary model: DeepSeek R1. Linked vision model: GPT-4o.
+Primary model: DeepSeek V4 Pro. Linked vision model: GPT-5.6.
 
 | Your message | Model used | Reason |
 |-------------|------------|--------|
-| Text: "Analyze this code for performance issues" | DeepSeek R1 | Strong reasoning |
-| Screenshot: "What does this error mean?" | Auto-switches to GPT-4o | Can see images |
-| Follow-up: "Any other suggestions?" | Back to DeepSeek R1 | Text only |
+| Text: "Analyze this code for performance issues" | DeepSeek V4 Pro | Strong reasoning |
+| Screenshot: "What does this error mean?" | Auto-switches to GPT-5.6 | Can see images |
+| Follow-up: "Any other suggestions?" | Back to DeepSeek V4 Pro | Text only |
 
 ### Tips
 
-- Pick the strongest reasoner as primary (DeepSeek R1, o1), and the best vision model as linked (GPT-4o, Claude Sonnet)
-- If your primary model already supports vision (e.g. GPT-4o), no linked model is needed
+- Pick the strongest reasoner as primary (DeepSeek V4 Pro, GPT-5.6), and the best vision model as linked (GPT-5.6, Claude Sonnet)
+- If your primary model already supports vision (e.g. GPT-5.6), no linked model is needed
 - Switching happens per-request and doesn't break conversation flow
 
 ## Proxy Settings
@@ -137,7 +137,7 @@ ollama pull llama3.1:8b    # strong for English
 
 **What model name should I enter?**
 - Use the model ID from the provider's documentation (case-sensitive)
-- e.g. `gpt-5.6` (not `GPT-5.6`), `deepseek-v4-flash` (not `DeepSeek Chat`)
+- e.g. `gpt-5.6` (not `GPT-5.6`), `deepseek-flash` (not `DeepSeek Chat`)
 
 **AI behavior changed after switching models**
 - Different models have very different capabilities — this is expected
