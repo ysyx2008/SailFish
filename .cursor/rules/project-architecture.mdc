@@ -319,6 +319,7 @@ Agent 的记忆分三层，模拟人类记忆的衰减梯度，三层协同在�
 
 ```bash
 npm run dev           # 开发模式
+npm run review        # 列出每一路工作树走到哪；npm run review <名字> 起那一路验收（同一时间只开一个开发进程）
 npm run build         # 完整构建
 npm run sailfish -- --help # CLI 帮助
 npm run test          # 运行测试

@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "dev": "vite",
+    "review": "node scripts/review.mjs",
     "dev:steam": "cross-env VITE_STEAM_BUILD=true vite",
     "postinstall": "patch-package && node scripts/fix-sherpa-onnx.js",
     "ensure:oem-config": "node scripts/ensure-oem-config.js",

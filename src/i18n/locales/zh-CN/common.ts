@@ -4,7 +4,9 @@ export default {
   // 应用级别
   app: {
     title: '旗鱼',
-    description: 'AI 驱动的智能助手'
+    description: 'AI 驱动的智能助手',
+    reviewLane: '验收中 · {branch}',
+    reviewLaneTip: '这个窗口跑的是工作树里还没合入的代码，数据用的仍是你平时那份',
   },
 
   // 工作台工具（Agent 流式预卡片标题）

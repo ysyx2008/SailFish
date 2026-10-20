@@ -7,6 +7,8 @@ import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import type { ChildProcess } from 'node:child_process'
 import { BUNDLED_GRAMMARS, BUNDLED_WASM_DIR, grammarSourceDir } from './electron/services/agent/skills/coding/grammars'
 import { oemResolved } from './shared/oem-resolve'
+import { REVIEW_LANE_ENV } from './shared/review-lane'
+import { laneOf } from './scripts/review-lane.mjs'
 
 /**
  * OEM 可选配置：有 shared/oem.config.ts 则打包进覆盖配置，没有则用 oem-defaults。
@@ -56,6 +58,17 @@ export { oemConfig } from '${from}'
 
 /** dev 主进程 rebuild 前给 Electron 最多 4s 优雅退出，避免 LanceDB 写入/compaction 被强杀 */
 const DEV_GRACEFUL_SHUTDOWN_MS = 4000
+
+/** 工作树里起的开发模式要在界面上标出是哪一路；主目录里什么都不做 */
+let reviewLaneChecked = false
+function applyReviewLaneEnv(): void {
+  if (reviewLaneChecked) return
+  reviewLaneChecked = true
+  const lane = laneOf(__dirname)
+  if (!lane) return
+  process.env[REVIEW_LANE_ENV] = lane.branch
+  console.log(`\n验收：${lane.branch}（${lane.worktree}）\n`)
+}
 
 async function restartElectronDev(
   startup: (argv?: string[], options?: import('node:child_process').SpawnOptions, customElectronPkg?: string) => Promise<void>
@@ -279,6 +292,9 @@ if (isSteamBuild) {
 }
 export default defineConfig({
   server: {
+    // 同一时间只开一个开发进程（主目录或某一路工作树）：两个同时开会抢同一份数据、同一个机器人
+    port: 5173,
+    strictPort: true,
     warmup: {
       clientFiles: [
         './src/components/AiPanel.vue',
@@ -306,6 +322,7 @@ export default defineConfig({
       {
         entry: 'electron/main.ts',
         onstart({ startup }) {
+          applyReviewLaneEnv()
           void restartElectronDev(startup)
         },
         vite: {

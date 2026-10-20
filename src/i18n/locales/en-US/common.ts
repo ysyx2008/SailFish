@@ -4,7 +4,9 @@ export default {
   // App level
   app: {
     title: 'SailFish',
-    description: 'AI-powered smart assistant'
+    description: 'AI-powered smart assistant',
+    reviewLane: 'Reviewing · {branch}',
+    reviewLaneTip: 'This window runs unmerged code from a worktree, on your usual data',
   },
 
   // Workbench tools (agent stream pre-card titles)
