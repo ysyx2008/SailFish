@@ -1,6 +1,6 @@
 ---
 name: commit-scoped-changes
-description: When committing or staging changes, only include files related to the current task or conversation; do not stage or commit unrelated modifications. Before committing, update docs/ideas.md when the change matches an existing idea. Use when the user asks to commit, stage, 提交, or when preparing to run git add/commit.
+description: When committing or staging changes, only include files related to the current task or conversation; do not stage or commit unrelated modifications. Before committing, update docs/ideas.md when the change matches an existing idea. Use when a stage of work is done and should be committed (agents commit on their own without waiting to be asked), when the user asks to commit, stage, 提交, or when preparing to run git add/commit.
 ---
 
 # 只提交当前相关修改
@@ -18,8 +18,7 @@ description: When committing or staging changes, only include files related to t
 2. **看工作区**：运行 `git status`，列出所有已修改/未跟踪文件。
 3. **划定范围**：只把**与当前任务直接相关**的文件纳入本次提交；其余视为无关，不 stage。
 4. **执行提交**：
-   - 只对相关文件执行 `git add <path>...`，再 `git commit`；
-   - 或明确告诉用户：「以下文件与当前任务相关，建议只提交这些：…；以下文件未纳入本次提交：…」。
+   - 只对相关文件执行 `git add <path>...`，再 `git commit`。自己提交，不把「建议提交这些」抛给用户。
 5. 若工作区存在明显与当前任务无关的修改，在提交后**简短提醒**用户还有未提交的改动（可列出文件），避免用户误以为都已提交。
 6. **提交前对想法本**（下面一节）。对得上的状态改动和功能放进同一次提交。
 
