@@ -3,6 +3,11 @@ export default {
 
   // 首次设置向导
   setup: {
+    steps: {
+      welcome: '欢迎',
+      model: '连接模型',
+      ready: '开始使用'
+    },
     welcome: {
       title: '欢迎使用旗鱼',
       subtitle: 'AI 驱动的智能助手，让工作更高效',
@@ -10,18 +15,22 @@ export default {
       features: {
         aiChat: {
           title: 'AI 对话助手',
+          short: '在终端里直接问 AI',
           desc: '在终端中直接与 AI 对话，询问命令用法、排查问题、获取帮助。支持多种大模型，包括 OpenAI、通义千问、DeepSeek 等，也支持本地部署的 Ollama。'
         },
         agent: {
           title: '助手自动执行',
+          short: '用大白话交办任务',
           desc: 'AI 助手可以理解您的自然语言指令，自动执行复杂的运维任务。支持命令执行、文件操作、系统监控等，让 AI 成为您的得力助手。'
         },
         ssh: {
           title: 'SSH 会话管理',
+          short: '统一管理多台服务器',
           desc: '统一管理多台服务器，支持分组、跳板机、快速连接。可以一键导入 Xshell 会话配置，快速迁移现有环境。'
         },
         knowledge: {
           title: '本地知识库',
+          short: '文档和记忆本地检索',
           desc: '上传文档到本地知识库，AI 对话时自动检索相关内容，提供更精准的答案。支持 PDF、Word、文本等多种格式，使用轻量级向量模型，无需额外下载。'
         }
       },
