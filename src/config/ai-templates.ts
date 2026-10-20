@@ -77,12 +77,13 @@ export const AI_TEMPLATES: AiTemplate[] = [
   {
     name: 'Zhipu',
     apiUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-    model: 'glm-5.3',
+    model: 'glm-5.3-flash',
     descKey: 'aiSettings.templates.zhipu',
     keyUrl: 'https://open.bigmodel.cn/apikey/platform',
     contextLength: 1_000_000,
     isLocal: false,
     needsApiKey: true,
+    modelType: 'vision',
   },
   {
     name: 'Kimi',

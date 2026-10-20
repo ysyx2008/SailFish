@@ -544,7 +544,7 @@ export default {
       qwen: 'Alibaba Qwen, defaults to Qwen 3.7 Plus',
       deepseek: 'DeepSeek V4.1 Flash — everyday use plus images, no linked vision model needed',
       doubao: 'ByteDance Doubao, defaults to Seed 2.1 Pro',
-      zhipu: 'Zhipu GLM, defaults to GLM-5.3',
+      zhipu: 'Zhipu GLM-5.3 Flash — everyday use plus images, no linked vision model needed',
       kimi: 'Moonshot Kimi, defaults to Kimi K3',
       minimax: 'MiniMax LLM, defaults to M3 with long context support',
       claude: 'Anthropic Claude Opus 5, strong on complex work, 1M-token context',

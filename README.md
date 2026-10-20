@@ -158,7 +158,7 @@ SailFish does not ship a model — you bring an API key. Settings include one-cl
 - **Complex** (long reasoning, multi-step): DeepSeek V4 Pro · GPT-5.6 · Claude Opus 5 · Grok 4.6
 - **Vision** (screenshots, images, scanned PDFs): DeepSeek V4.1 Flash (enough as the default) · Doubao Seed 2.1 · Qwen 3.7 Plus · GPT-5.6 · Gemini 3.8 Flash · Claude Sonnet 5
 - **Local / offline**: Ollama (preset `qwen3.5:9b`; small context windows struggle with multi-step work)
-- **More**: Zhipu GLM-5.3, Kimi K3, MiniMax M3, Mistral Large, and any OpenAI-compatible endpoint
+- **More**: Zhipu GLM-5.3 Flash, Kimi K3, MiniMax M3, Mistral Large, and any OpenAI-compatible endpoint
 
 A text-only model can be paired with a vision model: pictures go there, then conversation returns. For web search in China, Bocha, Zhipu, or Kimi all work. Step-by-step: [First setup](https://www.sfterm.com/en/docs/getting-started/first-setup/).
 

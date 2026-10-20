@@ -157,7 +157,7 @@ macOS 首次打开若提示无法验证开发者：系统设置 → 隐私与安
 - **复杂任务**（长推理、多步骤）：DeepSeek V4 Pro · GPT-5.6 · Claude Opus 5 · Grok 4.6
 - **视觉**（截图、识图、扫描件）：DeepSeek V4.1 Flash（默认就够）· 豆包 Seed 2.1 · Qwen 3.7 Plus · GPT-5.6 · Gemini 3.8 Flash · Claude Sonnet 5
 - **本地离线**：Ollama（预设 `qwen3.5:9b`；窗口较小的模型做多步任务会吃力）
-- **更多**：智谱 GLM-5.3、Kimi K3、MiniMax M3、Mistral Large，以及任何 OpenAI 兼容接口
+- **更多**：智谱 GLM-5.3 Flash、Kimi K3、MiniMax M3、Mistral Large，以及任何 OpenAI 兼容接口
 
 纯文本模型可以关联一个视觉模型：遇到图片时自动转过去，说完再回来。网页搜索在国内可用博查、智谱或 Kimi。手把手见 [首次配置](https://www.sfterm.com/docs/getting-started/first-setup/)。
 

@@ -544,7 +544,7 @@ export default {
       qwen: '阿里云通义千问，默认使用 Qwen 3.7 Plus',
       deepseek: 'DeepSeek V4.1 Flash，日常够用，也能看图，不必再关联视觉模型',
       doubao: '字节跳动豆包大模型，默认使用 Seed 2.1 Pro',
-      zhipu: '智谱 GLM 大模型，默认使用 GLM-5.3',
+      zhipu: '智谱 GLM-5.3 Flash，日常够用，也能看图，不必再关联视觉模型',
       kimi: 'Moonshot Kimi，默认使用 Kimi K3',
       minimax: 'MiniMax 海螺大模型，默认使用 M3，支持超长上下文',
       claude: 'Anthropic Claude Opus 5，适合复杂任务，支持 100 万 token 上下文',
