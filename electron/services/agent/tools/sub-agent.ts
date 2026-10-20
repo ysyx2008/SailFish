@@ -19,27 +19,100 @@ import { createLogger } from '../../../utils/logger'
 import { t } from '../i18n'
 
 const log = createLogger('SubAgent')
-const MAX_RESULT_LENGTH = 8000
-
-function archiveLongResult(taskId: string, text: string, artifactDir: string): string {
-  if (text.length <= MAX_RESULT_LENGTH) return text
-  try {
-    fs.mkdirSync(artifactDir, { recursive: true })
-    const filePath = path.join(artifactDir, `${taskId}.md`)
-    fs.writeFileSync(filePath, text, 'utf-8')
-    log.info(`Sub-agent [${taskId}] result archived to ${filePath} (${text.length} chars)`)
-    return truncateFromEndWithNotice(text, MAX_RESULT_LENGTH, (originalLength) =>
-      t('dispatch.result_archived', { total: originalLength, path: filePath }))
-  } catch (err) {
-    log.warn(`Sub-agent [${taskId}] failed to archive result, falling back to truncation: ${err}`)
-    return truncateFromEnd(text, MAX_RESULT_LENGTH)
-  }
-}
+/** 直接带回对话的结果：各人上限乘这一轮派过的人数，大致不超过这个预算 */
+const INLINE_RESULT_BUDGET = 40000
+const INLINE_RESULT_MAX = 8000
+const INLINE_RESULT_MIN = 1000
 
 function buildArtifactDir(): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   const nonce = Math.random().toString(36).slice(2, 6)
   return path.join(getScratchPath(), 'sub-agents', `${stamp}-${nonce}`)
+}
+
+function statusLabel(status: ChildSnapshot['status']): string {
+  switch (status) {
+    case 'completed': return t('dispatch.status_completed')
+    case 'interrupted': return t('dispatch.status_interrupted')
+    case 'failed': return t('dispatch.status_failed')
+    case 'pending': return t('dispatch.status_pending')
+    default: return t('dispatch.status_running')
+  }
+}
+
+/** 做完 / 在干 / 失败 / 已打断各几个 */
+function formatCounts(children: ChildSnapshot[]): string {
+  const count = (pred: (c: ChildSnapshot) => boolean) => children.filter(pred).length
+  return t('dispatch.counts', {
+    completed: count(c => c.status === 'completed'),
+    running: count(c => c.status === 'running' || c.status === 'pending'),
+    failed: count(c => c.status === 'failed'),
+    interrupted: count(c => c.status === 'interrupted'),
+  })
+}
+
+/** 这一轮伙计的落盘处：每人一份结果文件，再加一份总览，一人一行。 */
+export class SubAgentWorkspace {
+  private readonly dir: string
+  readonly overviewPath: string
+  private readonly results = new Map<string, { chars: number; file?: string }>()
+
+  constructor(dir = buildArtifactDir()) {
+    this.dir = dir
+    this.overviewPath = path.join(dir, 'overview.md')
+  }
+
+  /** 直接带回对话的字数上限：这一轮派得越多越紧 */
+  static inlineLimit(dispatched: number): number {
+    const share = Math.floor(INLINE_RESULT_BUDGET / Math.max(1, dispatched))
+    return Math.min(INLINE_RESULT_MAX, Math.max(INLINE_RESULT_MIN, share))
+  }
+
+  /** 全文落文件；返回带进对话的那份，超出上限只留尾部和文件位置 */
+  keepResult(name: string, text: string, dispatched: number): string {
+    const file = this.write(`${name}.md`, text)
+    this.results.set(name, { chars: text.length, file })
+    const limit = SubAgentWorkspace.inlineLimit(dispatched)
+    if (text.length <= limit) return text
+    if (!file) return truncateFromEnd(text, limit)
+    return truncateFromEndWithNotice(text, limit, (originalLength) =>
+      t('dispatch.result_archived', { total: originalLength, path: file }))
+  }
+
+  writeOverview(children: ChildSnapshot[]): void {
+    const lines = [
+      t('dispatch.overview_title', { total: children.length, counts: formatCounts(children) }),
+      t('dispatch.overview_header'),
+      ...children.map(c => {
+        const kept = this.results.get(c.name)
+        return [c.name, statusLabel(c.status), kept ? String(kept.chars) : '-', kept?.file ?? '-', c.description].join(' | ')
+      }),
+    ]
+    this.write('overview.md', lines.join('\n') + '\n')
+  }
+
+  private write(fileName: string, content: string): string | undefined {
+    const filePath = path.join(this.dir, fileName)
+    try {
+      fs.mkdirSync(this.dir, { recursive: true })
+      fs.writeFileSync(filePath, content, 'utf-8')
+      return filePath
+    } catch (err) {
+      log.warn(`Sub-agent workspace write failed (${filePath}): ${err}`)
+      return undefined
+    }
+  }
+}
+
+const workspaces = new WeakMap<SubAgentRoster, SubAgentWorkspace>()
+
+function workspaceOf(roster: SubAgentRoster): SubAgentWorkspace {
+  let workspace = workspaces.get(roster)
+  if (!workspace) {
+    workspace = new SubAgentWorkspace()
+    workspaces.set(roster, workspace)
+  }
+  return workspace
 }
 
 /** 伙计工具清单：按元数据过滤，不再分 read/write */
@@ -99,17 +172,18 @@ function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubA
   return [
     t('dispatch.spawned', { count: names.length, list: lines.join('\n') }),
     t('dispatch.capacity', { live: roster.liveCount(), room: roster.room() }),
+    t('dispatch.overview_at', { path: workspaceOf(roster).overviewPath }),
   ].join('\n')
 }
 
 function spawnDeps(
   executor: ToolExecutorConfig,
   progressStepId: string,
-  artifactDir: string,
   ownedNames?: Set<string>
 ): RosterSpawnDeps | { error: string } {
   const roster = executor.getSubAgentRoster?.()
   if (!roster) return { error: 'dispatch_agents 需要主人花名册（内部错误）' }
+  const workspace = workspaceOf(roster)
   const createChild = executor.createChildAgent
   if (!createChild) return { error: 'dispatch_agents 需要能创建伙计（内部错误）' }
   const agentContext = executor.getAgentContext?.()
@@ -119,7 +193,10 @@ function spawnDeps(
     createChild,
     getParentMessages: () => executor.getParentMessages?.() ?? [],
     getParentContext: () => toSubAgentContext(executor.getAgentContext?.() ?? agentContext),
-    knock: (message) => executor.knockParent?.(message),
+    knock: (message) => {
+      workspace.writeOverview(roster.list())
+      executor.knockParent?.(message)
+    },
     onProgress: (children) => {
       const visible = ownedNames
         ? children.filter(c => ownedNames.has(c.name))
@@ -142,7 +219,7 @@ function spawnDeps(
     isParentAborted: () => executor.isAborted(),
     sanitize: sanitizeParentMessages,
     formatKnock,
-    archiveResult: (name, text) => archiveLongResult(name, text, artifactDir),
+    archiveResult: (name, text) => workspace.keepResult(name, text, roster.list().length),
   }
 }
 
@@ -249,12 +326,13 @@ export async function dispatchSubAgents(
   })
 
   const ownedNames = new Set<string>()
-  const deps = spawnDeps(executor, progressStep.id, buildArtifactDir(), ownedNames)
+  const deps = spawnDeps(executor, progressStep.id, ownedNames)
   if ('error' in deps) {
     return { success: false, output: '', error: deps.error }
   }
 
   const names = roster.spawn(parsedTasks, deps)
+  workspaceOf(roster).writeOverview(roster.list())
 
   const snapshots = roster.list().filter(c => names.includes(c.name))
   executor.updateStep(progressStep.id, {
@@ -291,7 +369,7 @@ export async function followupAgent(args: Record<string, unknown>, executor: Too
     success: true,
   })
 
-  const deps = spawnDeps(executor, progressStep.id, buildArtifactDir())
+  const deps = spawnDeps(executor, progressStep.id)
   if ('error' in deps) return { success: false, output: '', error: deps.error }
 
   const result = roster.followup(name, message, deps)
@@ -316,35 +394,27 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
     ? AbortSignal.any([parentSignal, timeout])
     : timeout
 
-  const snapshots = await roster.waitForNews(names, signal)
+  const news = await roster.waitForNews(names, signal)
   if (executor.isAborted()) {
     return { success: false, output: '', error: t('error.operation_aborted') }
   }
+  if (news.targets.length === 0) {
+    return { success: true, output: t('dispatch.wait_empty') }
+  }
 
-  const stillLive = snapshots.some(c => c.status === 'pending' || c.status === 'running')
-  const noneLeft = snapshots.length === 0
-  const rosterLines = snapshots.map(c => {
-    const status = c.status === 'completed'
-      ? t('dispatch.status_completed')
-      : c.status === 'interrupted'
-        ? t('dispatch.status_interrupted')
-        : c.status === 'failed'
-          ? t('dispatch.status_failed')
-          : c.status === 'pending'
-            ? t('dispatch.status_pending')
-            : t('dispatch.status_running')
-    return `- ${c.name}：${status}`
-  })
-  const body = rosterLines.join('\n') || t('dispatch.wait_empty')
-  if (noneLeft) {
-    return { success: true, output: body }
-  }
-  if (stillLive && snapshots.every(c => c.status === 'pending' || c.status === 'running')) {
-    return { success: true, output: `${t('dispatch.wait_news_timeout', { seconds: timeoutSec })}\n${body}` }
-  }
+  const stillWorking = news.targets.some(c => c.status === 'pending' || c.status === 'running')
+  const headline = news.arrived.length > 0
+    ? t('dispatch.wait_arrived', { list: news.arrived.map(c => `${c.name}（${statusLabel(c.status)}）`).join('、') })
+    : stillWorking
+      ? t('dispatch.wait_news_timeout', { seconds: timeoutSec })
+      : t('dispatch.wait_all_done')
   return {
     success: true,
-    output: `${t('dispatch.wait_news')}\n${body}`
+    output: [
+      headline,
+      t('dispatch.wait_counts', { total: news.targets.length, counts: formatCounts(news.targets) }),
+      t('dispatch.overview_at', { path: workspaceOf(roster).overviewPath }),
+    ].join('\n'),
   }
 }
 
@@ -357,6 +427,7 @@ export async function interruptAgent(args: Record<string, unknown>, executor: To
   if (!result.ok) return { success: false, output: '', error: result.error }
   if (result.finalized) {
     const snap = roster.get(name)
+    workspaceOf(roster).writeOverview(roster.list())
     if (snap) executor.knockParent?.(formatKnock(snap))
   }
   return { success: true, output: t('dispatch.interrupt_ok', { name }) }

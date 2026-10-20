@@ -183,7 +183,7 @@ describe('waitUntil', () => {
   })
 
   it('waitForNews 第一个人回来就返回，不等齐', async () => {
-    const roster = new SubAgentRoster()
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
     const fast = stubChild({ delayMs: 20, result: '快的做完了' })
     const slow = stubChild({ delayMs: 80, result: '慢的做完了' })
     const kids = [fast, slow]
@@ -198,12 +198,13 @@ describe('waitUntil', () => {
     const started = Date.now()
     const news = await roster.waitForNews(['读包', '读说明'], new AbortController().signal)
     expect(Date.now() - started).toBeLessThan(150)
-    expect(news.some(c => c.status === 'completed')).toBe(true)
+    expect(news.arrived.map(c => c.name)).toEqual(['读包'])
+    expect(news.targets).toHaveLength(2)
     expect(roster.hasLive()).toBe(true)
   })
 
   it('第二次等的是下一条敲门，不会因为第一个人已经做完立刻返回', async () => {
-    const roster = new SubAgentRoster()
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
     const fast = stubChild({ delayMs: 20, result: '快的做完了' })
     const slow = stubChild({ delayMs: 90, result: '慢的做完了' })
     const kids = [fast, slow]
@@ -219,7 +220,8 @@ describe('waitUntil', () => {
     const started = Date.now()
     const second = await roster.waitForNews(['读包', '读说明'], new AbortController().signal)
     expect(Date.now() - started).toBeGreaterThanOrEqual(50)
-    expect(second.every(c => c.status === 'completed')).toBe(true)
+    expect(second.arrived.map(c => c.name)).toEqual(['读说明'])
+    expect(second.targets.every(c => c.status === 'completed')).toBe(true)
     expect(roster.hasLive()).toBe(false)
   })
 
@@ -258,7 +260,53 @@ describe('waitUntil', () => {
     const started = Date.now()
     const news = await roster.waitForNews(['alice'], new AbortController().signal)
     expect(Date.now() - started).toBeLessThan(40)
-    expect(news[0]?.status).toBe('completed')
+    expect(news.arrived[0]?.status).toBe('completed')
+  })
+
+  it('第一声敲门后稍等一会儿，陆续做完的一次领走', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 200 })
+    const kids = [20, 50, 80, 5000].map(delayMs => stubChild({ delayMs }))
+    roster.spawn(
+      ['a', 'b', 'c', 'slow'].map(name => ({ name, description: name, prompt: name })),
+      spawnDeps(roster, () => kids.shift()!)
+    )
+    const started = Date.now()
+    const news = await roster.waitForNews(undefined, new AbortController().signal)
+    expect(Date.now() - started).toBeLessThan(600)
+    expect(news.arrived.map(c => c.name).sort()).toEqual(['a', 'b', 'c'])
+    expect(roster.hasLive()).toBe(true)
+    roster.abortAll()
+  })
+
+  it('要等的都做完了就不再多等', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 5000 })
+    const kids = [20, 40].map(delayMs => stubChild({ delayMs }))
+    roster.spawn(
+      ['a', 'b'].map(name => ({ name, description: name, prompt: name })),
+      spawnDeps(roster, () => kids.shift()!)
+    )
+    const started = Date.now()
+    const news = await roster.waitForNews(undefined, new AbortController().signal)
+    expect(Date.now() - started).toBeLessThan(500)
+    expect(news.arrived).toHaveLength(2)
+  })
+
+  it('主人闲着等时，第一声敲门后也稍等，按停立刻醒', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 5000 })
+    const kids = [20, 10_000].map(delayMs => stubChild({ delayMs }))
+    roster.spawn(
+      ['a', 'slow'].map(name => ({ name, description: name, prompt: name })),
+      spawnDeps(roster, () => kids.shift()!)
+    )
+    const hold = new AbortController()
+    let woke = false
+    const waiting = roster.waitForKnock(hold.signal).then(() => { woke = true })
+    await new Promise(resolve => setTimeout(resolve, 150))
+    expect(woke).toBe(false)
+    hold.abort()
+    await waiting
+    expect(woke).toBe(true)
+    roster.abortAll()
   })
 })
 

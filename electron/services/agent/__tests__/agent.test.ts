@@ -428,6 +428,28 @@ describe('Agent', () => {
       expect(steps[1].content).toBe('mid-stream supplement')
     })
 
+    it('伙计敲门不掐断主人正在等的模型回复，只排进待处理；用户补话仍会打断', () => {
+      const run = {
+        id: 'run-1',
+        isRunning: true,
+        executionPhase: 'thinking',
+        requestId: 'req-1',
+        pendingUserMessages: [] as unknown[],
+        steps: [],
+      }
+      agent.injectCurrentRun(run)
+      const abort = agent.exposeServices().aiService.abort as ReturnType<typeof vi.fn>
+      abort.mockClear()
+
+      ;(agent as any).injectSubAgentKnock('[伙计 a 完成]')
+      expect(abort).not.toHaveBeenCalled()
+      expect(run.pendingUserMessages).toHaveLength(1)
+
+      agent.addUserMessage('等一下，换个方向')
+      expect(abort).toHaveBeenCalledWith('req-1')
+      expect(run.pendingUserMessages).toHaveLength(2)
+    })
+
     it('should append supplement after completed steps', () => {
       agent.injectCurrentRun({
         id: 'run-1',

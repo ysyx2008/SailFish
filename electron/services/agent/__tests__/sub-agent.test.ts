@@ -42,7 +42,10 @@ vi.mock('../../web-search/index', () => ({
   getApiKey: () => '',
 }))
 
-import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, parseDispatchTasks } from '../tools/sub-agent'
+import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
+import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, parseDispatchTasks, SubAgentWorkspace } from '../tools/sub-agent'
 import { getAgentTools } from '../tools'
 import { MAX_LIVE_CHILDREN, SubAgentRoster, type ChildAgentHandle } from '../sub-agent-roster'
 import type { ToolExecutorConfig, AgentConfig } from '../tools/types'
@@ -230,7 +233,7 @@ describe('dispatch_agents 异步派出', () => {
   })
 
   it('wait_agents 第一个人回来就返回，不把全文再报一遍', async () => {
-    const roster = new SubAgentRoster()
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
     const fast = stubChild('快的：name=SailFish', 20)
     const slow = stubChild('慢的：README 三句话', 80)
     const executor = createExecutor(roster, (name) => name === '读包' ? fast : slow)
@@ -245,11 +248,26 @@ describe('dispatch_agents 异步派出', () => {
     const waited = await waitAgents({ names: ['读包', '读说明'] }, executor)
     expect(Date.now() - started).toBeLessThan(150)
     expect(waited.success).toBe(true)
-    expect(waited.output).toMatch(/有新消息|There is an update/)
-    expect(waited.output).toContain('读包')
+    expect(waited.output).toContain('新到：读包（已完成）')
+    expect(waited.output).toContain('要等的 2 个里：做完 1 / 在干 1 / 失败 0 / 已打断 0')
     expect(waited.output).not.toContain('快的：name=SailFish')
     expect(waited.output).not.toContain('慢的：README')
     expect(roster.hasLive()).toBe(true)
+  })
+
+  it('wait_agents 人多时只报计数和新到的，不列全员', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, (name) => stubChild('ok', name === 'w0' ? 10 : 5000))
+    await dispatchSubAgents({
+      batch: { instruction: '干', items: Array.from({ length: 30 }, (_, i) => ({ name: `w${i}`, description: `w${i}`, input: `${i}` })) }
+    }, defaultConfig, executor)
+    const waited = await waitAgents({}, executor)
+    expect(waited.output.split('\n')).toHaveLength(3)
+    expect(waited.output).toContain('新到：w0（已完成）')
+    expect(waited.output).toContain('要等的 30 个里：做完 1 / 在干 29')
+    expect(waited.output).toContain('overview.md')
+    expect(waited.output).not.toContain('w17')
+    roster.abortAll()
   })
 
   it('fork_turns=none 时伙计开局不带这场对话', async () => {
@@ -408,5 +426,45 @@ describe('两种写法', () => {
     const tool = getAgentTools(undefined, { mode: 'assistant' }).find(t => t.function.name === 'dispatch_agents')!
     expect(tool.function.description).toContain(String(MAX_LIVE_CHILDREN))
     expect(Object.keys((tool.function.parameters as { properties: object }).properties).sort()).toEqual(['batch', 'tasks'])
+  })
+})
+
+describe('结果落文件与总览', () => {
+  it('直接带回的字数随这一轮派的人数收紧，夹在 1000 到 8000 之间', () => {
+    expect(SubAgentWorkspace.inlineLimit(1)).toBe(8000)
+    expect(SubAgentWorkspace.inlineLimit(5)).toBe(8000)
+    expect(SubAgentWorkspace.inlineLimit(10)).toBe(4000)
+    expect(SubAgentWorkspace.inlineLimit(40)).toBe(1000)
+    expect(SubAgentWorkspace.inlineLimit(200)).toBe(1000)
+  })
+
+  it('结果全文都落文件；超出上限的对话里只留尾部和位置；总览一人一行', async () => {
+    const realFs = await vi.importActual<typeof import('fs')>('fs')
+    const dir = realFs.mkdtempSync(path.join(os.tmpdir(), 'sub-agent-ws-'))
+    const writes = new Map<string, string>()
+    vi.mocked(fs.writeFileSync).mockImplementation((file, data) => { writes.set(String(file), String(data)) })
+    try {
+      const ws = new SubAgentWorkspace(dir)
+      const short = ws.keepResult('短的', '三句话', 40)
+      const long = ws.keepResult('长的', 'x'.repeat(5000), 40)
+      expect(short).toBe('三句话')
+      expect(long.length).toBeLessThan(1500)
+      expect(long).toContain(path.join(dir, '长的.md'))
+      expect(writes.get(path.join(dir, '长的.md'))).toHaveLength(5000)
+
+      ws.writeOverview([
+        { name: '短的', description: '读 a', prompt: 'a', status: 'completed', steps: [] },
+        { name: '长的', description: '读 b', prompt: 'b', status: 'completed', steps: [] },
+        { name: '还在干', description: '读 c', prompt: 'c', status: 'running', steps: [] },
+      ])
+      const overview = writes.get(ws.overviewPath)!.trim().split('\n')
+      expect(overview[0]).toContain('共 3 个')
+      expect(overview).toHaveLength(5)
+      expect(overview[3]).toContain(`长的 | 已完成 | 5000 | ${path.join(dir, '长的.md')} | 读 b`)
+      expect(overview[4]).toContain('还在干 | 还在做 | - | - | 读 c')
+    } finally {
+      vi.mocked(fs.writeFileSync).mockReset()
+      realFs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

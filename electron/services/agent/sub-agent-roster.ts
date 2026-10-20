@@ -64,6 +64,16 @@ const LIVE: ReadonlySet<ChildStatus> = new Set(['pending', 'running'])
 /** 一场任务里同时没做完的伙计最多这么多个。只防失控，不管该派几个。 */
 export const MAX_LIVE_CHILDREN = 200
 
+/** 第一声敲门之后再等这么久，让陆续做完的一起进来，主人只被叫醒一次 */
+const KNOCK_SETTLE_MS = 1500
+
+export interface WaitNews {
+  /** 这次新到的，一次领走 */
+  arrived: ChildSnapshot[]
+  /** 等的那几位现在的样子 */
+  targets: ChildSnapshot[]
+}
+
 export function allocateChildName(description: string, used: Set<string>, explicit?: string): string {
   const raw = (explicit || description || 'worker').trim()
   const base = raw
@@ -98,15 +108,44 @@ export class SubAgentRoster {
   private waiters: Array<() => void> = []
   /** 还没被 waitForNews 领走的敲门，按先后排队。 */
   private unreadNews: string[] = []
+  private readonly knockSettleMs: number
+
+  constructor(options?: { knockSettleMs?: number }) {
+    this.knockSettleMs = options?.knockSettleMs ?? KNOCK_SETTLE_MS
+  }
 
   private enqueueNews(name: string): void {
     this.unreadNews.push(name)
   }
 
-  private takeUnread(targets: string[]): string | undefined {
-    const idx = this.unreadNews.findIndex(name => targets.includes(name))
-    if (idx < 0) return undefined
-    return this.unreadNews.splice(idx, 1)[0]
+  private hasUnread(targets: string[]): boolean {
+    return this.unreadNews.some(name => targets.includes(name))
+  }
+
+  private takeAllUnread(targets: string[]): string[] {
+    const taken = this.unreadNews.filter(name => targets.includes(name))
+    this.unreadNews = this.unreadNews.filter(name => !targets.includes(name))
+    return [...new Set(taken)]
+  }
+
+  /** 第一声敲门之后再等一小会儿，让陆续做完的一起进来；要等的都不在干了就不等。 */
+  private settle(signal: AbortSignal, stillWorking: () => boolean): Promise<void> {
+    if (this.knockSettleMs <= 0 || signal.aborted || !stillWorking()) return Promise.resolve()
+    return new Promise((resolve) => {
+      const finish = () => {
+        clearTimeout(timer)
+        signal.removeEventListener('abort', finish)
+        this.waiters = this.waiters.filter(w => w !== check)
+        resolve()
+      }
+      const check = () => {
+        if (!stillWorking()) finish()
+        else this.waiters.push(check)
+      }
+      const timer = setTimeout(finish, this.knockSettleMs)
+      signal.addEventListener('abort', finish, { once: true })
+      this.waiters.push(check)
+    })
   }
 
   hasLive(): boolean {
@@ -147,8 +186,8 @@ export class SubAgentRoster {
     for (const wake of waiters) wake()
   }
 
-  waitForKnock(signal: AbortSignal): Promise<void> {
-    return new Promise((resolve) => {
+  async waitForKnock(signal: AbortSignal): Promise<void> {
+    await new Promise<void>((resolve) => {
       if (!this.hasLive() || signal.aborted) {
         resolve()
         return
@@ -162,6 +201,7 @@ export class SubAgentRoster {
       signal.addEventListener('abort', done, { once: true })
       if (!this.hasLive() || signal.aborted) done()
     })
+    await this.settle(signal, () => this.hasLive())
   }
 
   waitUntil(names: string[] | undefined, signal: AbortSignal): Promise<ChildSnapshot[]> {
@@ -190,24 +230,22 @@ export class SubAgentRoster {
     })
   }
 
-  /** 等下一条还没领走的敲门，不是「只要有人已经做完」。 */
-  waitForNews(names: string[] | undefined, signal: AbortSignal): Promise<ChildSnapshot[]> {
+  /**
+   * 等下一批还没领走的敲门，不是「只要有人已经做完」。
+   * 第一声到了再稍等一会儿，然后把已经到的一次领走。
+   */
+  async waitForNews(names: string[] | undefined, signal: AbortSignal): Promise<WaitNews> {
     const targets = names?.length ? names : [...this.children.keys()]
-    const noneLeft = () => targets.every(name => {
+    const stillWorking = () => targets.some(name => {
       const child = this.children.get(name)
-      return !child || !LIVE.has(child.status)
+      return !!child && LIVE.has(child.status)
     })
-    const snapshots = () => targets.map(name => this.get(name)).filter((c): c is ChildSnapshot => !!c)
-    return new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       const check = () => {
-        if (signal.aborted) {
+        if (signal.aborted || this.hasUnread(targets) || !stillWorking()) {
           signal.removeEventListener('abort', check)
-          resolve(snapshots())
-          return
-        }
-        if (this.takeUnread(targets) || noneLeft()) {
-          signal.removeEventListener('abort', check)
-          resolve(snapshots())
+          this.waiters = this.waiters.filter(w => w !== check)
+          resolve()
           return
         }
         this.waiters.push(check)
@@ -215,6 +253,12 @@ export class SubAgentRoster {
       signal.addEventListener('abort', check)
       check()
     })
+    if (this.hasUnread(targets)) await this.settle(signal, stillWorking)
+    const arrived = this.takeAllUnread(targets)
+      .map(name => this.get(name))
+      .filter((c): c is ChildSnapshot => !!c)
+    const snapshots = targets.map(name => this.get(name)).filter((c): c is ChildSnapshot => !!c)
+    return { arrived, targets: snapshots }
   }
 
   /** 全部立刻开工。超过保险丝整批不收，调用方应先看 room()。 */

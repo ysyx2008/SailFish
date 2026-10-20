@@ -1273,7 +1273,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       type: 'function',
       function: {
         name: 'wait_agents',
-        description: `等下一条敲门（不传 names 则等任何一个还活着的）。有人回来或超时就返回，不等全部做完。只报谁回来了、谁还在做，不重复正文——正文在敲门里。只有下一步被挡住了才等，派出后先干自己的。`,
+        description: `等下一批敲门（不传 names 则等任何一个还活着的）。第一个回来后再稍等一会儿，把这期间回来的一起报；超时也返回，不等全部做完。返回这次新到的名字和各状态的人数，不重复正文——正文在敲门里，全员一人一行在总览文件里。`,
         parameters: {
           type: 'object',
           properties: {

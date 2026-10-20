@@ -5806,13 +5806,11 @@ export abstract class Agent {
     })
   }
 
+  /** 敲门只排进待处理，等这次模型回复走完、下一个循环边界再领；几十个陆续做完时不能每次都掐断重发 */
   protected injectSubAgentKnock(message: string): void {
     const run = this.currentRun
     if (!run?.isRunning) return
     run.pendingUserMessages.push({ message, silent: true })
-    if (run.executionPhase === 'thinking' && run.requestId) {
-      this.services.aiService.abort(run.requestId)
-    }
     this.wakeHold()
   }
 
