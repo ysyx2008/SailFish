@@ -2,10 +2,12 @@
 // npm run review           列出每一路走到哪一步
 // npm run review <名字>    在那一路的工作树里起开发进程（名字是分支名或工作树目录名的一部分）
 // npm run review:cli <名字> [一句话]   在那一路的工作树里跑命令行，后面的话原样交给命令行
+// node scripts/review.mjs --install   装短命令：之后 review / review <名字> / review --cli <名字> 即可
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import net from 'node:net'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { laneOf } from './review-lane.mjs'
@@ -13,6 +15,8 @@ import { laneOf } from './review-lane.mjs'
 const INTEGRATION = 'develop'
 const DEV_PORT = 5173
 const LOCK_STAMP = '.review-lock-sha256'
+const SHORTCUT = path.join(os.homedir(), '.local/bin/review')
+const [command, cliCommand] = fs.existsSync(SHORTCUT) ? ['review', 'review --cli'] : ['npm run review', 'npm run review:cli']
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 
 /** 失败返回 null，和「输出为空」区分开 */
@@ -103,7 +107,7 @@ function printList() {
     console.log(`  ${facts(l).join('；')}`)
     if (l.subject) console.log(`  最近一次提交：${l.when}，${l.subject}`)
     console.log(`  位置：${l.path}`)
-    console.log(`  起来看：npm run review ${l.branch}　　命令行：npm run review:cli ${l.branch}`)
+    console.log(`  起来看：${command} ${l.branch}　　命令行：${cliCommand} ${l.branch}`)
   }
   console.log('')
 }
@@ -194,11 +198,26 @@ function startCli(query, args) {
   follow(spawn(process.execPath, [path.join(lane.path, 'electron/cli/main.js'), ...args], { cwd: lane.path, stdio: 'inherit' }))
 }
 
+// 装一个不带 npm run 的短命令，指向主目录这份脚本，在哪个目录下敲都一样
+function installShortcut() {
+  if (process.platform === 'win32') fail('Windows 上先用 npm run review。')
+  const dir = path.join(os.homedir(), '.local/bin')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(SHORTCUT, `#!/bin/sh\nexec node "${path.join(mainRepo, 'scripts/review.mjs')}" "$@"\n`, { mode: 0o755 })
+  const onPath = (process.env.PATH ?? '').split(path.delimiter).includes(dir)
+  console.log(`装好了：${SHORTCUT}`)
+  console.log(onPath ? '以后直接敲 review、review <名字>、review --cli <名字>。' : `${dir} 不在 PATH 里，加进去之后才能直接敲 review。`)
+}
+
 const argv = process.argv.slice(2)
+if (argv[0] === '--install') {
+  installShortcut()
+  process.exit(0)
+}
 const cliMode = argv[0] === '--cli'
 const [name, ...rest] = cliMode ? argv.slice(1) : argv
 if (!name) {
-  if (cliMode) fail('要说验哪一路：npm run review:cli <名字> [一句话]')
+  if (cliMode) fail(`要说验哪一路：${cliCommand} <名字> [一句话]`)
   printList()
 } else if (cliMode) startCli(name, rest)
 else await startApp(name)
