@@ -1,6 +1,2 @@
-import type { GoalContract } from '@shared/types'
-
-/** 清除前要不要再问一句：目标已经达成，清掉只是收起卡片，没有可惜的。 */
-export function goalClearNeedsConfirm(goal?: GoalContract | null): boolean {
-  return goal?.status !== 'achieved'
-}
+// 清除、换掉目标前要不要再问一句——定义在 shared，桌面和命令行同用一份。
+export { goalClearNeedsConfirm, goalReplaceNeedsConfirm } from '@shared/utils/goal-view'

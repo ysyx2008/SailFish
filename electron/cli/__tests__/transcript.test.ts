@@ -167,6 +167,47 @@ describe('confirmationLines', () => {
   })
 })
 
+describe('CliTranscript 目标续跑', () => {
+  it('系统起的续跑那一轮留一行；用户自己说的话不重复打', () => {
+    const { transcript, text } = capture({ tty: false })
+    transcript.push({ id: 'u1', type: 'user_task', content: '/goal 把测试跑绿' })
+    transcript.push({ id: 'u2', type: 'user_task', content: '继续推进目标', systemInjected: true })
+    transcript.push({ id: 'u2', type: 'user_task', content: '继续推进目标', systemInjected: true })
+    expect(text()).toBe('· 继续推进目标\n')
+  })
+
+  it('目标通知（桌面口吻）不打进终端，由命令行自己收工时说', () => {
+    const { transcript, text } = capture({ tty: false })
+    transcript.push({ id: 'n1', type: 'proactive_notice', content: '目标已暂停。点继续才会再推进。', systemInjected: true })
+    expect(text()).toBe('')
+  })
+
+  it('连着跑好几轮后，第一轮的结论不会在末尾再打一遍', () => {
+    const { transcript, text } = capture({ tty: false })
+    transcript.push({ id: 'm1', type: 'message', isStreaming: false, content: '第一轮做完了。' })
+    transcript.push({ id: 'u2', type: 'user_task', content: '继续推进目标', systemInjected: true })
+    transcript.push({ id: 'm2', type: 'message', isStreaming: false, content: '第二轮做完了。' })
+    transcript.finish('第一轮做完了。')
+    expect(text().match(/第一轮做完了。/g)).toHaveLength(1)
+  })
+
+  it('这一轮的结论只和这一轮打出来的话比，不被更早几轮的话吞掉', () => {
+    const { transcript, text } = capture({ tty: false })
+    transcript.push({ id: 'm1', type: 'message', isStreaming: false, content: '配置补上了，接着跑测试。' })
+    transcript.finish('配置补上了，接着跑测试。')
+    transcript.finish('接着跑测试。')
+    expect(text().match(/接着跑测试。/g)).toHaveLength(2)
+  })
+
+  it('续跑后的正文与上一轮之间隔开', () => {
+    const { transcript, text } = capture({ tty: false })
+    transcript.push({ id: 'm1', type: 'message', isStreaming: false, content: '第一轮做完了。' })
+    transcript.push({ id: 'u2', type: 'user_task', content: '继续推进目标', systemInjected: true })
+    transcript.push({ id: 'm2', type: 'message', isStreaming: false, content: '第二轮做完了。' })
+    expect(text()).toBe('第一轮做完了。\n· 继续推进目标\n\n第二轮做完了。\n')
+  })
+})
+
 describe('agentTaskFromWords', () => {
   it('没加引号的一句中文是任务', () => {
     expect(agentTaskFromWords(['看下', '这个', '项目'])).toBe('看下 这个 项目')

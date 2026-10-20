@@ -191,6 +191,7 @@ Agent 有四种存在方式，对应四类**互斥**的会话（`kind`）。把�
 - **装机命令**：macOS 可在「设置 → 数据管理」安装 `sailfish` 到 `~/.local/bin`（VS Code 式薄壳）。打包态经 `ELECTRON_RUN_AS_NODE` 加载 `dist-electron/cli.js`；开发态指向仓库 `electron/cli/main.js`
 - **用法**：`npm run sailfish -- "任务说明"` 或安装后 `sailfish "任务说明"` / `sailfish <command>`（`npm run sft` / `cli` 为别名）
 - **测试**：`bash electron/cli/test-cli.sh`（12 个功能区覆盖，含 Watch & Sensor）
+- **目标（`/goal`，2026-10-20）**：命令行里同样在对话里写 `/goal 目标正文`（也可 `edit / pause / resume / clear`），续跑用的就是后端的目标推进，终端只负责解析、确认、每轮一行与收工一句；Ctrl+C = 暂停；没有交互终端时不替人答确认。解析与展示规则在 `shared/utils/goal-command.ts` / `goal-view.ts`（桌面同用）。端到端：`node scripts/cli-e2e/goal.mjs`（真起命令行进程 + 脚本化假模型；`E2E_SHOW=1` 看终端真实输出）
 
 ### 服务实例化
 - 服务在 `main.ts` 中直接实例化，部分使用工厂函数（如 `getKnowledgeService()`）

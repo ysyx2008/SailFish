@@ -27,7 +27,7 @@ import { showConfirm, showAlert } from './useConfirm'
 import { toast } from './useToast'
 import { exactSlashCommand, formatSlashInvocation, parseGoalHint, resolveExactSlash } from './slash-commands'
 import { liveGoalOfAny, rememberLiveGoalFor, revealLiveGoal } from './goal/live'
-import { goalClearNeedsConfirm } from './goal/clear'
+import { goalClearNeedsConfirm, goalReplaceNeedsConfirm } from './goal/clear'
 import { formatAccelerator } from '../utils/shortcut'
 import { toIpcPlain } from '../utils/ipc-plain'
 import { coalescePendingHandoff, decideFollowUpDrain, mergePendingIntoQueue, optimisticPlaceholderConfirmedBy, turnFailureAlreadyVisible, withFailedAtHead, withRetried } from './follow-up-drain'
@@ -1826,7 +1826,7 @@ export function useAgentMode(
     const objective = parsed.objective
     const existing = await window.electronAPI.goal.get(agentKey, action.sessionId)
     let replace = false
-    if (existing && existing.status !== 'achieved' && existing.status !== 'budget_limited') {
+    if (goalReplaceNeedsConfirm(existing)) {
       replace = await showConfirm({
         title: t('slash.goalDesc'),
         message: t('goal.replaceConfirm'),
