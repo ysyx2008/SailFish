@@ -13,6 +13,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { Conversation } from '../conversation'
+import { GoalContract } from '../../agent/goal/goal-contract'
 import type { AgentRecord, AgentStep } from '@shared/types'
 import type { AiMessage } from '../../ai.service'
 
@@ -635,5 +636,120 @@ describe('Conversation 聚合根（领域模型）', () => {
     expect(conv.taskMemory.getTask('compact_1')?.userRequest).toBe('压缩上下文')
     expect(conv.getCachePrefix()).toEqual(handoff)
     expect(conv.messages.some(m => m.role === 'user' && m.content === '压缩上下文')).toBe(true)
+  })
+
+  it('toRecord / fromRecord：目标跟着会话走', () => {
+    const conv = Conversation.create({ agentKey: 'tab-g', terminalType: 'local' }, { id: 'sess_g' })
+    const started = GoalContract.start('把测试跑绿', { tokenBudget: 800, now: 1 })
+    if ('error' in started) throw new Error(started.error)
+    conv.setGoal(started)
+    conv.commitRun({
+      runId: 'r1',
+      userRequest: '开始',
+      steps: [userStep('开始'), finalStep('好')],
+      taskMessageLog: [{ role: 'user', content: '开始' }],
+      runMessages: [{ role: 'user', content: '开始' }],
+      taskStatus: 'success',
+      result: '好',
+    })
+
+    const record = conv.toRecord()!
+    expect(record.goal?.objective).toBe('把测试跑绿')
+    expect(record.goal?.tokenBudget).toBe(800)
+
+    const restored = Conversation.fromRecord(record)
+    expect(restored.goal?.goalId).toBe(started.goalId)
+    expect(restored.toRecord()?.goal?.tokensUsed).toBe(0)
+  })
+
+  it('fromRecord：接回来时没有一轮在跑，推进中的目标回到已暂停，其余状态不动', () => {
+    const make = (id: string, finish: (goal: GoalContract) => void) => {
+      const conv = Conversation.create({ agentKey: `tab-${id}`, terminalType: 'local' }, { id })
+      const started = GoalContract.start('把测试跑绿', { now: 1 })
+      if ('error' in started) throw new Error(started.error)
+      finish(started)
+      conv.setGoal(started)
+      conv.commitRun({
+        runId: 'r1',
+        userRequest: '开始',
+        steps: [userStep('开始'), finalStep('好')],
+        taskMessageLog: [{ role: 'user', content: '开始' }],
+        runMessages: [{ role: 'user', content: '开始' }],
+        taskStatus: 'success',
+        result: '好',
+      })
+      return conv.toRecord()!
+    }
+
+    const active = Conversation.fromRecord(make('sess_a', () => {}))
+    expect(active.goal?.status).toBe('paused')
+    expect(active.goal?.canContinue()).toBe(false)
+
+    expect(Conversation.fromRecord(make('sess_b', g => { g.markAchieved() })).goal?.status).toBe('achieved')
+    expect(Conversation.fromRecord(make('sess_c', g => { g.markBlocked() })).goal?.status).toBe('blocked')
+  })
+
+  it('fork：继承目标但带续跑延迟', () => {
+    const conv = Conversation.create({ agentKey: 'tab-gf', terminalType: 'local' }, { id: 'sess_gf' })
+    const started = GoalContract.start('迁完鉴权', { now: 1 })
+    if ('error' in started) throw new Error(started.error)
+    conv.setGoal(started)
+    conv.commitRun({
+      runId: 'r1',
+      userRequest: '迁',
+      steps: [userStep('迁'), finalStep('进行中')],
+      taskMessageLog: [{ role: 'user', content: '迁' }],
+      runMessages: [{ role: 'user', content: '迁' }],
+      taskStatus: 'success',
+      result: '进行中',
+    })
+
+    const forked = Conversation.forkFromRecord(conv.toRecord()!, 'sess_fork')
+    expect(forked).toBeTruthy()
+    expect(forked!.conversation.goal?.goalId).toBe(started.goalId)
+    expect(forked!.conversation.goal?.continuationDeferred).toBe(true)
+    expect(forked!.conversation.goal?.canContinue()).toBe(false)
+    expect(forked!.record.goal?.continuationDeferred).toBe(true)
+  })
+
+  it('toRecord：系统代发的步骤会带着走', () => {
+    const conv = Conversation.create({ agentKey: 'tab-si', terminalType: 'local' }, { id: 'sess_si' })
+    conv.commitRun({
+      runId: 'r1',
+      userRequest: '继续推进目标',
+      steps: [{ ...userStep('继续推进目标'), systemInjected: true }, finalStep('下一步')],
+      taskMessageLog: [{ role: 'user', content: '继续推进目标' }],
+      runMessages: [{ role: 'user', content: '继续推进目标' }],
+      taskStatus: 'success',
+      result: '下一步',
+    })
+    const record = conv.toRecord()!
+    expect(record.steps.find(s => s.type === 'user_task')?.systemInjected).toBe(true)
+    const restored = Conversation.fromRecord(record)
+    expect(restored.toRecord()?.steps.find(s => s.type === 'user_task')?.systemInjected).toBe(true)
+  })
+
+  it('appendTranscriptStep：空闲时追加的目标说明能落盘', () => {
+    const conv = Conversation.create({ agentKey: 'tab-gn', terminalType: 'local' }, { id: 'sess_gn' })
+    conv.commitRun({
+      runId: 'r1',
+      userRequest: '做完',
+      steps: [userStep('做完'), finalStep('先告一段落')],
+      taskMessageLog: [{ role: 'user', content: '做完' }],
+      runMessages: [{ role: 'user', content: '做完' }],
+      taskStatus: 'success',
+      result: '先告一段落',
+    })
+    conv.appendTranscriptStep({
+      id: 'n1',
+      type: 'proactive_notice',
+      content: '目标已暂停。点继续才会再推进。',
+      timestamp: Date.now(),
+      systemInjected: true,
+    })
+    const record = conv.toRecord()!
+    const notice = record.steps.find(s => s.type === 'proactive_notice')
+    expect(notice?.systemInjected).toBe(true)
+    expect(notice?.content).toContain('已暂停')
   })
 })

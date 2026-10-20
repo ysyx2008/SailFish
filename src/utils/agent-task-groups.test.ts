@@ -101,6 +101,27 @@ describe('groupAgentSteps', () => {
     expect(groups[0].isReceipt).toBeUndefined()
     expect(groups[0].steps[0].id).toBe('r')
   })
+
+  it('hides a system-injected continuation as its own turn without a user bubble', () => {
+    const { groups } = groupAgentSteps([
+      step({ type: 'user_task', content: '把测试跑绿', systemInjected: true }),
+      step({ type: 'thinking', content: '接着做' }),
+    ])
+    expect(groups).toHaveLength(1)
+    expect(groups[0].userTask).toBe('')
+    expect(groups[0].isSystemInjected).toBe(true)
+  })
+
+  it('keeps an idle goal notice as a system-injected turn', () => {
+    const { groups } = groupAgentSteps([
+      step({ type: 'user_task', content: '把测试跑绿' }),
+      step({ type: 'final_result', content: '完成' }),
+      step({ id: 'notice', type: 'proactive_notice', content: '目标已暂停', systemInjected: true }),
+    ])
+    expect(groups).toHaveLength(2)
+    expect(groups[1].isSystemInjected).toBe(true)
+    expect(groups[1].steps.map(s => s.id)).toEqual(['notice'])
+  })
 })
 
 describe('groupNeedsProcessCompleteFooter', () => {

@@ -1221,6 +1221,42 @@ const electronAPI = {
     }
   },
 
+  goal: {
+    get: (agentKey: string, sessionId?: string) =>
+      ipcRenderer.invoke('goal:get', agentKey, sessionId) as Promise<import('@shared/types').GoalContract | null>,
+    set: (input: {
+      agentKey: string
+      objective: string
+      terminalType: import('@shared/types').TerminalType
+      sessionId?: string
+      sshHost?: string
+      tokenBudget?: number
+      replace?: boolean
+    }) => ipcRenderer.invoke('goal:set', input) as Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>,
+    pause: (input: { agentKey: string; sessionId?: string; terminalType?: import('@shared/types').TerminalType; sshHost?: string }) =>
+      ipcRenderer.invoke('goal:pause', input) as Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>,
+    resume: (input: {
+      agentKey: string
+      sessionId?: string
+      terminalType?: import('@shared/types').TerminalType
+      sshHost?: string
+      context?: import('@shared/types').AgentContext
+      profileId?: string
+    }) =>
+      ipcRenderer.invoke('goal:resume', input) as Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>,
+    clear: (input: { agentKey: string; sessionId?: string; terminalType?: import('@shared/types').TerminalType; sshHost?: string }) =>
+      ipcRenderer.invoke('goal:clear', input) as Promise<{ ok: true } | { ok: false; error: string }>,
+    edit: (input: { agentKey: string; objective: string; sessionId?: string; terminalType?: import('@shared/types').TerminalType; sshHost?: string }) =>
+      ipcRenderer.invoke('goal:edit', input) as Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>,
+    onUpdated: (callback: (data: { agentKey: string; goal?: import('@shared/types').GoalContract }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { agentKey: string; goal?: import('@shared/types').GoalContract }) => callback(data)
+      ipcRenderer.on('goal:updated', handler)
+      return () => {
+        ipcRenderer.removeListener('goal:updated', handler)
+      }
+    }
+  },
+
   allowlist: {
     // NOTE: 返回类型须与 built-in-rules-view.ts 的 BuiltInRulesView 保持同步；
     // preload 不能直接 import main 进程模块，故在此手写镜像。

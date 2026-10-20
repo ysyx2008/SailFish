@@ -21,6 +21,8 @@ export interface AgentTaskGroupDraft {
   isOnboarding?: boolean
   /** 闲着时收到任务回执另起的一轮：不是用户开的口 */
   isReceipt?: boolean
+  /** 空闲续跑等系统塞进去的一轮：对话里不冒用户气泡 */
+  isSystemInjected?: boolean
 }
 
 const AFTER_END_STEP_TYPES = new Set(['tool_call', 'tool_result', 'thinking'])
@@ -70,7 +72,7 @@ export function groupAgentSteps(allSteps: readonly AgentStep[]): {
       currentGroup = {
         id: step.id,
         index: groups.length,
-        userTask: (isProactive || isOnboarding) ? '' : step.content,
+        userTask: (isProactive || isOnboarding || step.systemInjected) ? '' : step.content,
         images: step.images,
         docPreviewImages: step.docPreviewImages,
         attachments: step.attachments,
@@ -78,6 +80,7 @@ export function groupAgentSteps(allSteps: readonly AgentStep[]): {
         afterEndSteps: [],
         isProactive,
         isOnboarding,
+        isSystemInjected: step.systemInjected,
       }
       leadingSupplements = []
       groups.push(currentGroup)
@@ -103,6 +106,15 @@ export function groupAgentSteps(allSteps: readonly AgentStep[]): {
     } else if (step.type === 'proactive_notice') {
       if (currentGroup) {
         currentGroup.steps.push(step)
+      } else if (step.systemInjected) {
+        groups.push({
+          id: step.id,
+          index: groups.length,
+          userTask: '',
+          steps: [step],
+          afterEndSteps: [],
+          isSystemInjected: true,
+        })
       } else {
         groups.push({
           id: step.id,

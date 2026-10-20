@@ -28,7 +28,7 @@ import type {
   TaskReceiptText,
   TerminalType,
 } from './types'
-import { COMPANION_AGENT_KEY, type ApprovalMode, type AssignedBy, type VisibleConversationSkill } from '@shared/types'
+import { COMPANION_AGENT_KEY, type ApprovalMode, type AssignedBy, type VisibleConversationSkill, type GoalContract as GoalSnapshot } from '@shared/types'
 import { getDefaultShell, getLocalOS } from '../../utils/platform'
 import { SailFish } from './sailfish'
 import { TaskSupervisor } from './task-supervisor'
@@ -36,12 +36,14 @@ import { ConversationStore, ConversationManager, Companion, Conversation } from 
 import { CompanionSeedPicker, createThinkingFeed, type CompanionPickReply } from '../conversation/companion-seed'
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import type { CommandHandlingInfo } from './risk-assessor'
-import { setConfigService as setI18nConfigService } from './i18n'
+import { setConfigService as setI18nConfigService, t } from './i18n'
 import { getTerminalStateService } from '../terminal-state.service'
 import { getKnowledgeService } from '../knowledge'
 import { createLogger } from '../../utils/logger'
 import { conversationRootId } from './skills/browser/session-key'
 import { setAttachLockRunningChecker } from './skills/browser/bridge-session'
+import { GoalRuntime, agentSupportsGoal } from './goal/goal-runtime'
+import { GoalContract } from './goal/goal-contract'
 
 const log = createLogger('AgentService')
 
@@ -101,6 +103,9 @@ export class AgentService {
 
   private skillsChangedListeners: Array<(agentKey: string, skills: VisibleConversationSkill[]) => void> = []
 
+  private readonly goalRuntime: GoalRuntime
+  private goalUpdatedListener?: (payload: { agentKey: string; goal?: GoalSnapshot }) => void
+
   constructor(
     aiService: AiService, 
     ptyService: PtyService,
@@ -137,6 +142,16 @@ export class AgentService {
     }
 
     setAttachLockRunningChecker((rootId) => this.isConversationRunning(rootId))
+
+    this.goalRuntime = new GoalRuntime({
+      persist: (agent) => agent.persistConversation(),
+      notify: (agentKey, goal) => this.goalUpdatedListener?.({ agentKey, goal }),
+      runAgent: (agent, message, context, options) => agent.run(message, context, options),
+    })
+  }
+
+  onGoalUpdated(listener: (payload: { agentKey: string; goal?: GoalSnapshot }) => void): void {
+    this.goalUpdatedListener = listener
   }
   
   // ==================== 服务设置（延迟初始化） ====================
@@ -254,6 +269,7 @@ export class AgentService {
       agent.setCallbacks(this.defaultCallbacks)
       this.applyDefaultCommandRiskPolicy(agent)
       this.agents.set(ptyId, agent)
+      agent.setGoalChangedListener((goal) => this.goalUpdatedListener?.({ agentKey: ptyId, goal }))
       log.info(`Created agent: agentKey=${ptyId}`)
     }
     this.bindSkillsChangedHook(ptyId, agent)
@@ -427,6 +443,7 @@ export class AgentService {
       agent.setCallbacks(this.defaultCallbacks)
       this.applyDefaultCommandRiskPolicy(agent)
       this.agents.set(agentId, agent)
+      agent.setGoalChangedListener((goal) => this.goalUpdatedListener?.({ agentKey: agentId, goal }))
       log.info(`Created assistant agent: ${agentId} (persistentNamed=${agent.isPersistentNamedAgent()})`)
     }
     this.bindSkillsChangedHook(agentId, agent)
@@ -795,10 +812,19 @@ export class AgentService {
       cwd: context.cwd || os.homedir()
     }
     
-    return agent.run(userMessage, enrichedContext, {
-      profileId,
-      callbacks
-    })
+    const hold = !!agent.getGoal()?.canContinue()
+    if (hold) agent.setHoldComplete(true)
+    const runOpts = { profileId, callbacks }
+    try {
+      const result = await agent.run(userMessage, enrichedContext, runOpts)
+      await this.goalRuntime.afterUserTurn(agentId, agent, enrichedContext, runOpts)
+      return result
+    } catch (error) {
+      await this.goalRuntime.afterUserTurn(agentId, agent, enrichedContext, runOpts, { continueIfIdle: false })
+      throw error
+    } finally {
+      if (hold) agent.setHoldComplete(false)
+    }
   }
 
   // ==================== 生命周期管理 ====================
@@ -869,12 +895,24 @@ export class AgentService {
       agent.updateConfig(config)
     }
     
-    return agent.run(userMessage, context, {
+    const hold = !!agent.getGoal()?.canContinue()
+    if (hold) agent.setHoldComplete(true)
+    const runOpts = {
       profileId,
       workerOptions,
       callbacks,
       cwdResolver: this.terminalCwdResolver(ptyId, context)
-    })
+    }
+    try {
+      const result = await agent.run(userMessage, context, runOpts)
+      await this.goalRuntime.afterUserTurn(ptyId, agent, context, runOpts)
+      return result
+    } catch (error) {
+      await this.goalRuntime.afterUserTurn(ptyId, agent, context, runOpts, { continueIfIdle: false })
+      throw error
+    } finally {
+      if (hold) agent.setHoldComplete(false)
+    }
   }
 
   /**
@@ -899,7 +937,9 @@ export class AgentService {
     if (opts.surface === 'assistant') {
       const agent = this.createAssistantAgent(agentKey)
       const ctx = agent.withKnownPane(context)
-      return agent.say(
+      return this.sayAndMaybeContinue(
+        agentKey,
+        agent,
         message,
         { ...ctx, cwd: ctx.cwd || os.homedir() },
         { config: opts.config, profileId: opts.profileId, callbacks, ...ledBy }
@@ -907,13 +947,36 @@ export class AgentService {
     }
     const agent = this.getOrCreateAgent(agentKey)
     const ctx = agent.withKnownPane(context)
-    return agent.say(message, ctx, {
+    return this.sayAndMaybeContinue(agentKey, agent, message, ctx, {
       config: opts.config,
       profileId: opts.profileId,
       callbacks,
       cwdResolver: this.terminalCwdResolver(agentKey, ctx),
       ...ledBy,
     })
+  }
+
+  private async sayAndMaybeContinue(
+    agentKey: string,
+    agent: SailFish,
+    message: string,
+    context: AgentContext,
+    options: import('./types').RunOptions & { config?: Partial<AgentConfig> }
+  ): Promise<{ outcome: 'supplemented' } | { outcome: 'ran'; result: string }> {
+    const hold = !!agent.getGoal()?.canContinue()
+    if (hold) agent.setHoldComplete(true)
+    try {
+      const outcome = await agent.say(message, context, options)
+      if (outcome.outcome === 'ran') {
+        await this.goalRuntime.afterUserTurn(agentKey, agent, context, options)
+      }
+      return outcome
+    } catch (error) {
+      await this.goalRuntime.afterUserTurn(agentKey, agent, context, options, { continueIfIdle: false })
+      throw error
+    } finally {
+      if (hold) agent.setHoldComplete(false)
+    }
   }
 
   /** 联络那一轮为任务欠的账被清掉了（开跑失败、回执没投出去）：叫醒它重新看一遍还要不要等 */
@@ -965,8 +1028,11 @@ export class AgentService {
    */
   abort(ptyId: string): boolean {
     const agent = this.getAgent(ptyId)
-    return agent?.abort() ?? false
-    }
+    if (!agent) return false
+    const ok = agent.abort()
+    this.goalRuntime.onUserAbort(ptyId, agent)
+    return ok
+  }
 
   async compactContext(params: {
     agentKey: string
@@ -1137,5 +1203,142 @@ export class AgentService {
   isRunning(ptyId: string): boolean {
     const agent = this.getAgent(ptyId)
     return agent?.isRunning() ?? false
+  }
+
+  getGoal(agentKey: string, sessionId?: string): GoalSnapshot | undefined {
+    const agent = this.resolveGoalAgent({ agentKey, sessionId })
+    const live = agent?.getGoal()?.snapshot()
+    if (live) return live
+    if (!sessionId) return undefined
+    const stored = this.services.conversationManager?.getRecord(sessionId)?.goal
+    return GoalContract.fromStored(stored)?.snapshot()
+  }
+
+  setGoal(input: {
+    agentKey: string
+    objective: string
+    terminalType: TerminalType
+    sessionId?: string
+    sshHost?: string
+    tokenBudget?: number
+    replace?: boolean
+  }): { ok: true; goal: GoalSnapshot } | { ok: false; error: string } {
+    if (!agentSupportsGoal(input.agentKey)) {
+      return { ok: false, error: 'not_supported' }
+    }
+    const agent = this.resolveGoalAgent(input)
+    if (!agent || !agent.supportsGoal()) {
+      return { ok: false, error: 'not_supported' }
+    }
+
+    const existing = agent.getGoal()
+    if (existing && !existing.isTerminal() && !input.replace) {
+      return { ok: false, error: 'already_exists' }
+    }
+
+    const started = GoalContract.start(input.objective, input.tokenBudget !== undefined ? { tokenBudget: input.tokenBudget } : undefined)
+    if ('error' in started) return { ok: false, error: started.error }
+
+    agent.setGoal(started)
+    agent.persistConversation()
+    agent.notifyGoalChanged()
+    return { ok: true, goal: started.snapshot() }
+  }
+
+  pauseGoal(input: { agentKey: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }): { ok: true; goal: GoalSnapshot } | { ok: false; error: string } {
+    const agent = this.resolveGoalAgent(input)
+    const goal = agent?.getGoal()
+    if (!agent || !goal) return { ok: false, error: 'no_goal' }
+    if (agent.isRunning()) {
+      this.abort(input.agentKey)
+      const paused = agent.getGoal()
+      if (!paused) return { ok: false, error: 'no_goal' }
+      return { ok: true, goal: paused.snapshot() }
+    }
+    const result = goal.pause()
+    if (!result.ok) return { ok: false, error: result.error }
+    agent.appendGoalNotice(t('goal.notice_paused'))
+    agent.persistConversation()
+    agent.notifyGoalChanged()
+    return { ok: true, goal: goal.snapshot() }
+  }
+
+  async resumeGoal(input: {
+    agentKey: string
+    sessionId?: string
+    terminalType?: TerminalType
+    sshHost?: string
+    context?: AgentContext
+    profileId?: string
+    /** 这一轮的过程推给谁。不传就沿用这个实例上一轮留下的；重启后点开的历史会话没有「上一轮」 */
+    callbacks?: AgentCallbacks
+  }): Promise<{ ok: true; goal: GoalSnapshot } | { ok: false; error: string }> {
+    const agent = this.resolveGoalAgent(input)
+    const goal = agent?.getGoal()
+    if (!agent || !goal) return { ok: false, error: 'no_goal' }
+    const context = input.context ?? agent.buildResumeContext()
+    if (!context) return { ok: false, error: 'no_context' }
+    const resumeContext: AgentContext = {
+      ...context,
+      sessionId: context.sessionId ?? agent.getSessionId(),
+      sshHost: context.sshHost ?? input.sshHost,
+    }
+    agent.setHoldComplete(true)
+    try {
+      const result = await this.goalRuntime.resumeAndContinue(input.agentKey, agent, resumeContext, {
+        profileId: input.profileId,
+        ...(input.callbacks ? { callbacks: input.callbacks } : {}),
+      })
+      if (!result.ok) return { ok: false, error: result.error ?? 'resume_failed' }
+      return { ok: true, goal: agent.getGoal()?.snapshot() ?? goal.snapshot() }
+    } finally {
+      agent.setHoldComplete(false)
+    }
+  }
+
+  clearGoal(input: { agentKey: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }): { ok: true } | { ok: false; error: string } {
+    const agent = this.resolveGoalAgent(input)
+    if (!agent?.getGoal()) return { ok: false, error: 'no_goal' }
+    if (agent.isRunning()) {
+      this.abort(input.agentKey)
+    }
+    agent.clearGoal()
+    agent.persistConversation()
+    agent.notifyGoalChanged()
+    return { ok: true }
+  }
+
+  editGoal(input: { agentKey: string; objective: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }): { ok: true; goal: GoalSnapshot } | { ok: false; error: string } {
+    const agent = this.resolveGoalAgent(input)
+    const goal = agent?.getGoal()
+    if (!agent || !goal) return { ok: false, error: 'no_goal' }
+    const result = goal.editObjective(input.objective)
+    if (!result.ok) return { ok: false, error: result.error }
+    agent.persistConversation()
+    agent.notifyGoalChanged()
+    return { ok: true, goal: goal.snapshot() }
+  }
+
+  private resolveGoalAgent(input: {
+    agentKey: string
+    sessionId?: string
+    terminalType?: TerminalType
+    sshHost?: string
+  }): SailFish | undefined {
+    if (!input.agentKey || !agentSupportsGoal(input.agentKey)) return undefined
+    const agent = this.getOrCreateAgent(input.agentKey)
+    const liveSession = agent.getSessionId()
+    const sessionId = input.sessionId || liveSession
+    if (!sessionId) return agent
+    // 正在跑的这场不能被别场的记录换掉：问的是别场，这个 Agent 就不是它
+    if (agent.isRunning() && liveSession && sessionId !== liveSession) return undefined
+    const record = this.services.conversationManager?.getRecord(sessionId)
+    agent.ensureConversation({
+      terminalType: input.terminalType ?? record?.terminalType ?? 'assistant',
+      sessionId,
+      sshHost: input.sshHost ?? record?.sshHost,
+      record,
+    })
+    return agent
   }
 }

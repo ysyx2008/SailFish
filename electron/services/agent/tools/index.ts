@@ -31,6 +31,7 @@ import { executeWebSearch } from './web-search'
 import { executeWebFetch } from './web-fetch'
 import { listSshSessionsTool, managePaneTool } from './split-pane'
 import { listWorkbenchArtifactsTool, manageWorkbenchArtifactsTool } from './workbench'
+import { goalTool } from './goal'
 
 // 重新导出类型
 export type { ToolExecutorConfig, AgentConfig, ToolResult, ErrorCategory } from './types'
@@ -244,6 +245,9 @@ async function dispatchTool(
 
     case 'ask_user':
       return askUser(args, executor)
+
+    case 'goal':
+      return goalTool(args, executor)
 
     case 'talk_to_user':
       return messageUser(args, executor)

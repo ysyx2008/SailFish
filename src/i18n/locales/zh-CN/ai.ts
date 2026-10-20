@@ -877,6 +877,45 @@ export default {
     moreItems: '还有 {count} 个项目，请输入关键词筛选'
   },
 
+  slash: {
+    selectCommand: '选择命令',
+    helpDesc: '列出可用的斜杠命令',
+    goalDesc: '给这场任务挂一个会自己推进的目标',
+    goalHint: '/goal [目标正文|clear|edit|pause|resume]',
+  },
+
+  goal: {
+    onlyTask: '只有任务会话能挂目标。先开一场任务再说。',
+    noneHint: '这场任务还没有目标。用法：/goal [目标正文|clear|edit|pause|resume]',
+    statusLine: '{status} · {tokens} tokens · {objective}',
+    paused: '已暂停目标',
+    resumed: '已继续目标',
+    cleared: '已清除目标',
+    edited: '已改目标',
+    editNeedText: '改目标需要写新的正文，例如 /goal edit 把测试跑绿',
+    replaceTitle: '换一个目标',
+    replace: '换掉',
+    replaceConfirm: '这场任务已有未完成的目标。要换成新的吗？',
+    setFailed: '没能挂上目标',
+    actionFailed: '这次操作没做成',
+    pause: '暂停',
+    resume: '继续',
+    clear: '清除',
+    clearConfirm: '清除这个目标？空闲续跑也会停。',
+    timeLimitUnsupported: '按时间停的目标还没有。先按这件事一直做到完。',
+    status: {
+      active: '推进中',
+      paused: '已暂停',
+      blocked: '停滞',
+      usage_limited: '额度受限',
+      budget_limited: '预算用尽',
+      achieved: '已达成',
+    },
+    tokensUnit: 'tokens',
+    tokensExact: '已用 {count} tokens',
+    statusAria: '目标，{status}：{objective}',
+  },
+
 
   // 知识库
   knowledge: {

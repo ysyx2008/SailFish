@@ -20,6 +20,7 @@ import { CliTranscript, confirmationLines } from './transcript'
 import { agentTaskFromWords } from './invoke'
 import { cliLaunch } from './launch'
 import { composeLine, parseSlash, pathExists, taskFromCompose } from './compose'
+import { CliGoalCommand } from './goal-command'
 import { createTuiSession, type TuiSession } from './tui-session'
 
 /** 对话进行时，内部日志留在文件里，不再插进回复。 */
@@ -1442,6 +1443,22 @@ async function agentRun(args: string[], surface: 'plain' | 'screen' = 'plain'): 
     io.show = (line) => session.note(line)
   }
 
+  // /goal：只有任务能挂目标，这里的 agent:run 本就是任务。终端那头没人能答、也没法再敲一行时，不替人答应
+  const goalCommand = new CliGoalCommand(agent, {
+    agentKey: ptyId,
+    terminalType: 'local',
+    interactive: !once,
+    confirm: async (question) => {
+      // 同一屏里这一轮还在跑时，屏上那一行读取已被正在跑的这一轮占着（确认、提问），不能再借来问
+      if (busy) {
+        io.show('这一轮还在跑，先按 Ctrl+C 停下，再换或清除目标。')
+        return false
+      }
+      const answer = await io.read(question)
+      return answer !== null && /^y(es)?$/i.test(answer.trim())
+    },
+  })
+
   /**
    * ask_user 应答：交互式终端下把提问接到 stdin。
    * 非 TTY 时该工具本就不在工具列表里（context.unattended），不会走到这里。
@@ -1598,7 +1615,7 @@ async function agentRun(args: string[], surface: 'plain' | 'screen' = 'plain'): 
   }
   process.on('SIGINT', onSigint)
 
-  const screenHint = '拖进终端或粘贴的路径会作为附件。/skills 查看技能，/skill 名字 加上，/unskill 名字 拿掉，/exit 离开。PgUp 往上翻。'
+  const screenHint = '拖进终端或粘贴的路径会作为附件。/skills 查看技能，/skill 名字 加上，/unskill 名字 拿掉，/goal 目标 交给它一直做到完，/exit 离开。PgUp 往上翻。'
 
   const skillCatalog = (): { id: string; name: string }[] => {
     const skills = require('../services/agent/skills') as typeof import('../services/agent/skills')
@@ -1676,6 +1693,31 @@ async function agentRun(args: string[], surface: 'plain' | 'screen' = 'plain'): 
       cancelPendingRead()
       agent.abort(ptyId)
     })
+    /** 说一句话；这一句若是补进正在跑的那一轮，不重复收尾 */
+    const speak = async (message: string, payload: AgentContext) => {
+      const said = await agent.say(ptyId, message, payload, {
+        surface: 'terminal',
+        config: { executionMode: mode as ExecutionMode },
+        callbacks,
+      })
+      if (said.outcome === 'ran') transcript.finish(said.result || '')
+    }
+    /** 开一轮（可能同时有几轮在飞，只有最外面那轮收工时才总结目标） */
+    const runTurn = async (work: () => Promise<void>) => {
+      depth++
+      screenSession.setBusy(true)
+      busy = true
+      try {
+        await work()
+        if (depth === 1) for (const line of goalCommand.reportAfterTurn()) screenSession.note(line)
+      } catch (error: any) {
+        transcript.fail(error?.message || String(error))
+      } finally {
+        depth--
+        busy = depth > 0
+        screenSession.setBusy(depth > 0)
+      }
+    }
     const deliver = async (raw: string) => {
       const text = raw.trim()
       if (!text) return
@@ -1695,6 +1737,21 @@ async function agentRun(args: string[], surface: 'plain' | 'screen' = 'plain'): 
           showSkills()
           return
         }
+        if (slash.name === 'goal') {
+          const outcome = await goalCommand.apply(slash.arg, context)
+          for (const note of outcome.notes) screenSession.note(note)
+          if (outcome.say !== undefined) {
+            const message = outcome.say
+            await runTurn(() => speak(message, context))
+          } else if (outcome.resume) {
+            const resume = outcome.resume
+            await runTurn(async () => {
+              for (const note of await resume()) screenSession.note(note)
+              transcript.finish('')
+            })
+          }
+          return
+        }
         await changeSkill(slash.name, slash.arg)
         return
       }
@@ -1705,10 +1762,7 @@ async function agentRun(args: string[], surface: 'plain' | 'screen' = 'plain'): 
       }
       const message = taskFromCompose(composed)
       if (!message) return
-      depth++
-      screenSession.setBusy(true)
-      busy = true
-      try {
+      await runTurn(async () => {
         const payload: AgentContext = { ...context }
         if (composed.paths.length > 0) {
           const { materializeAttachments } = await import('./attach')
@@ -1720,19 +1774,8 @@ async function agentRun(args: string[], surface: 'plain' | 'screen' = 'plain'): 
           if (files.previewImages) payload.previewImages = files.previewImages
         }
         screenSession.note(`› ${message}`)
-        const said = await agent.say(ptyId, message, payload, {
-          surface: 'terminal',
-          config: { executionMode: mode as ExecutionMode },
-          callbacks,
-        })
-        if (said.outcome === 'ran') transcript.finish(said.result || '')
-      } catch (error: any) {
-        transcript.fail(error?.message || String(error))
-      } finally {
-        depth--
-        busy = depth > 0
-        screenSession.setBusy(depth > 0)
-      }
+        await speak(message, payload)
+      })
     }
 
     screenSession.setOnBareSubmit((text) => { void deliver(text) })
@@ -1757,14 +1800,32 @@ async function agentRun(args: string[], surface: 'plain' | 'screen' = 'plain'): 
     if (session) {
       await session.run(runScreen)
     } else while (turn) {
-      busy = true
       try {
-        const said = await agent.say(ptyId, turn, context, {
-          surface: 'terminal',
-          config: { executionMode: mode as ExecutionMode },
-          callbacks,
-        })
-        transcript.finish(said.outcome === 'ran' ? said.result : '')
+        let line = turn
+        let resume: (() => Promise<string[]>) | undefined
+        const slash = parseSlash(turn)
+        if (slash?.name === 'goal') {
+          // 问「要换掉吗」的时候人在答，Ctrl+C 照常退出；真开始跑了才算这一轮在忙
+          const outcome = await goalCommand.apply(slash.arg, context)
+          for (const note of outcome.notes) console.log(note)
+          line = outcome.say ?? ''
+          resume = outcome.resume
+        }
+        busy = true
+        if (resume) {
+          for (const note of await resume()) console.log(note)
+          transcript.finish('')
+        }
+        if (line) {
+          const said = await agent.say(ptyId, line, context, {
+            surface: 'terminal',
+            config: { executionMode: mode as ExecutionMode },
+            callbacks,
+          })
+          transcript.finish(said.outcome === 'ran' ? said.result : '')
+        }
+        // 只在真开过一轮之后总结；/goal pause 这类管理命令自己已经说过了
+        if (line || resume) for (const note of goalCommand.reportAfterTurn()) console.log(note)
       } catch (error: any) {
         transcript.fail(error?.message || String(error))
       } finally {
@@ -2566,6 +2627,8 @@ ${oemResolved.identity.productName} CLI v${version}
   不带参数、自己开着终端，进入同一屏：底下输入，上面是这场对话。拖进终端的文件会附上，/skills 可查看并加上技能。
   带上一句话则直接开工，字在当前终端里往下走，说完可以接着说。从别的程序接进来，或 --once，答完即离开。
   不必给整句话加引号。秘书站在你敲命令的那个目录里。
+  /goal 目标：交给它一直做到完（达成、停滞、额度不够，或你按 Ctrl+C 才停）。可以带在命令里，也可以在对话里敲：
+    /goal 看状态   /goal pause|resume|clear   /goal edit 新正文
 
 用法:
   ${cliName()}                                        # 不带参数，进入同一屏

@@ -7,14 +7,14 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
-export type SlashName = 'help' | 'exit' | 'skills' | 'skill' | 'unskill' | 'unknown'
+export type SlashName = 'help' | 'exit' | 'skills' | 'skill' | 'unskill' | 'goal' | 'unknown'
 
 export interface SlashCommand {
   name: SlashName
   arg: string
 }
 
-const COMMANDS = new Set<SlashName>(['help', 'exit', 'skills', 'skill', 'unskill'])
+const COMMANDS = new Set<SlashName>(['help', 'exit', 'skills', 'skill', 'unskill', 'goal'])
 
 /** 行首是命令时返回它。`/Users/文件` 这种路径不是命令。 */
 export function parseSlash(line: string): SlashCommand | null {
@@ -23,7 +23,9 @@ export function parseSlash(line: string): SlashCommand | null {
   const match = /^\/([A-Za-z][\w-]*)(?:\s+([\s\S]*))?$/.exec(trimmed)
   if (!match) return null
   const word = match[1].toLowerCase()
-  const arg = (match[2] || '').trim().replace(/^["']|["']$/g, '')
+  // 目标正文是原话，首尾的引号也是话的一部分；其余命令的参数是名字，包着引号时去掉
+  const rawArg = (match[2] || '').trim()
+  const arg = word === 'goal' ? rawArg : rawArg.replace(/^["']|["']$/g, '')
   if (word === 'quit') return { name: 'exit', arg: '' }
   if (COMMANDS.has(word as SlashName)) return { name: word as SlashName, arg }
   if (/^\/[A-Za-z][\w-]*$/.test(trimmed)) return { name: 'unknown', arg: word }

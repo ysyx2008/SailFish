@@ -12,7 +12,7 @@ import { getDefaultShell } from './utils/platform'
 import { requestLocalNetworkAccess } from './utils/local-network-permission'
 import { isAbortError } from './utils/abort'
 import { createTerminalDataCoalescer } from './utils/terminal-data-coalescer'
-import type { AttachmentInfo, DocumentParseProgress, UiThemeMode, UiThemeName, WebSearchSettings, IMProcessMode, SayResult } from '@shared/types'
+import type { AttachmentInfo, DocumentParseProgress, UiThemeMode, UiThemeName, WebSearchSettings, IMProcessMode, SayResult, TerminalType } from '@shared/types'
 import { clampUiZoomFactor, isApprovalMode, stepUiZoomFactor, UI_ZOOM_DEFAULT } from '@shared/types'
 import { getAppTitle as buildAppTitle, getBrandName } from '@shared/brand'
 import { oemResolved } from '@shared/oem-resolve'
@@ -2054,6 +2054,7 @@ app.whenReady().then(async () => {
 
     // 后端 init 才加载 Agent/终端原生模块与远程会话栈（首屏不触发）
     const { ptyService, sshService, agentService } = await rt()
+    void wireGoalUpdates()
     await ensureSftpProgressBridge(agentRuntimeDeps())
     schedulerService = await ensureSchedulerService()
     sensorService = await ensureSensorService()
@@ -4374,6 +4375,20 @@ function createRendererAgentCallbacks(
   }
 }
 
+/** 界面发起的一轮：过程推回发起它的窗口；远程 Web 会话那场同时镜像给 Web 端 */
+async function rendererRunCallbacks(
+  sender: Electron.WebContents,
+  agentKey: string,
+  surface: 'assistant' | 'terminal'
+): Promise<{ callbacks: AgentCallbacks; mirror?: RemoteRunMirror }> {
+  let mirror: RemoteRunMirror | undefined
+  if (surface === 'assistant') {
+    const { webChat } = await ensureRemoteSessionStack()
+    if (agentKey === webChat.getAgentId()) mirror = webChat
+  }
+  return { callbacks: createRendererAgentCallbacks(sender, agentKey, mirror), mirror }
+}
+
 // 往一场对话里说一句：正在跑就补进这一轮，否则开新一轮——由那场对话自己决定，界面按返回结果显示
 ipcMain.handle('agent:say', async (event, { agentKey, surface, message, context, config, profileId }: {
   /** 终端形态 = tabId；助手形态 = 前端的 agentId */
@@ -4387,12 +4402,7 @@ ipcMain.handle('agent:say', async (event, { agentKey, surface, message, context,
   await ensureSkillsChangedBridge()
   const fullConfig = { ...config, debugMode: configService.getAgentDebugMode() }
   const { agentService } = await rt()
-  let mirror: RemoteRunMirror | undefined
-  if (surface === 'assistant') {
-    const { webChat } = await ensureRemoteSessionStack()
-    if (agentKey === webChat.getAgentId()) mirror = webChat
-  }
-  const callbacks = createRendererAgentCallbacks(event.sender, agentKey, mirror)
+  const { callbacks, mirror } = await rendererRunCallbacks(event.sender, agentKey, surface)
 
   try {
     const said = await agentService.say(agentKey, message, context, { surface, config: fullConfig, profileId, callbacks })
@@ -4579,6 +4589,75 @@ ipcMain.handle('agent:getVisibleSkills', async (_event, agentKey: string) => {
   await ensureSkillsChangedBridge()
   const { agentService } = await rt()
   return agentService.getVisibleSkills(agentKey)
+})
+
+let goalUpdatesWired = false
+async function wireGoalUpdates() {
+  if (goalUpdatesWired) return
+  const { agentService } = await rt()
+  agentService.onGoalUpdated((payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('goal:updated', payload)
+    }
+  })
+  goalUpdatesWired = true
+}
+
+ipcMain.handle('goal:get', async (_event, agentKey: string, sessionId?: string) => {
+  await wireGoalUpdates()
+  const { agentService } = await rt()
+  return agentService.getGoal(agentKey, sessionId) ?? null
+})
+
+ipcMain.handle('goal:set', async (_event, input: {
+  agentKey: string
+  objective: string
+  terminalType: TerminalType
+  sessionId?: string
+  sshHost?: string
+  tokenBudget?: number
+  replace?: boolean
+}) => {
+  await wireGoalUpdates()
+  const { agentService } = await rt()
+  return agentService.setGoal(input)
+})
+
+ipcMain.handle('goal:pause', async (_event, input: { agentKey: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }) => {
+  await wireGoalUpdates()
+  const { agentService } = await rt()
+  return agentService.pauseGoal(input)
+})
+
+ipcMain.handle('goal:resume', async (event, input: {
+  agentKey: string
+  sessionId?: string
+  terminalType?: TerminalType
+  sshHost?: string
+  context?: import('./services/agent/types').AgentContext
+  profileId?: string
+}) => {
+  await wireGoalUpdates()
+  const { agentService } = await rt()
+  // 重新推进的那一轮和用户亲手发的一轮一样，过程要推回界面；重启后点开的历史会话没有上一轮留下的回调
+  const { callbacks } = await rendererRunCallbacks(
+    event.sender,
+    input.agentKey,
+    input.terminalType === 'assistant' ? 'assistant' : 'terminal'
+  )
+  return agentService.resumeGoal({ ...input, callbacks })
+})
+
+ipcMain.handle('goal:clear', async (_event, input: { agentKey: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }) => {
+  await wireGoalUpdates()
+  const { agentService } = await rt()
+  return agentService.clearGoal(input)
+})
+
+ipcMain.handle('goal:edit', async (_event, input: { agentKey: string; objective: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }) => {
+  await wireGoalUpdates()
+  const { agentService } = await rt()
+  return agentService.editGoal(input)
 })
 
 ipcMain.handle('agent:fork', async (_event, opts: {

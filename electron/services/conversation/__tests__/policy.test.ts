@@ -19,6 +19,7 @@ describe('CONVERSATION_POLICY 策略表', () => {
       autoReviewEarlierWordsWithinMs: null,
       restoreSkillsOnReopen: true,
       skillNotesOnUserMessage: true,
+      supportsGoal: true,
     })
   })
 
@@ -33,6 +34,7 @@ describe('CONVERSATION_POLICY 策略表', () => {
     expect(p.seedFromHistoryOnColdStart).toBe(true) // 联络跨重启续上同一条
     expect(p.visibleInList).toBe(true)
     expect(p.historyTree).toBe('main')
+    expect(p.supportsGoal).toBe(false)
   })
 
   it('watch：不累积、不回种（逐次失忆避免串味）、不进列表、独立 watch 树', () => {
@@ -50,6 +52,14 @@ describe('CONVERSATION_POLICY 策略表', () => {
     expect(p.seedFromHistoryOnColdStart).toBe(true) // 唤醒需要看用户最近活动做决策
     expect(p.visibleInList).toBe(false)
     expect(p.historyTree).toBe('watch') // 与 watch 同源，共用 watch 树
+    expect(p.supportsGoal).toBe(false)
+  })
+
+  it('supportsGoal 只开给 task', () => {
+    expect(conversationPolicy('task').supportsGoal).toBe(true)
+    expect(conversationPolicy('companion').supportsGoal).toBe(false)
+    expect(conversationPolicy('watch').supportsGoal).toBe(false)
+    expect(conversationPolicy('wakeup').supportsGoal).toBe(false)
   })
 
   it('重开时只有任务带回当时的技能；联络、关切、唤醒不按历史清单恢复', () => {

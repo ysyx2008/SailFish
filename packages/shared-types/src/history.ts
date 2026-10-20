@@ -2,7 +2,7 @@
  * 历史记录共享类型定义
  */
 
-import type { ConversationKind, TerminalType, TokenUsage } from './agent'
+import type { ConversationKind, GoalContract, TerminalType, TokenUsage } from './agent'
 
 export interface AgentStepRecord {
   id: string
@@ -27,6 +27,8 @@ export interface AgentStepRecord {
   toolResult?: string
   riskLevel?: string
   timestamp: number
+  /** 系统代发的步骤（如目标续跑），重开历史时也不当作用户气泡 */
+  systemInjected?: boolean
   /** Web 搜索结构化结果（web_search 工具专用） */
   webSearchResults?: import('./agent').WebSearchResultItem[]
   /** 工具执行成败标识，前端据此判断"失败的 tool_result 必须显示" */
@@ -125,6 +127,8 @@ export interface AgentRecord {
     summary: string
     timestamp: number
   }>
+  /** 任务会话上的目标契约。缺省（老记录 / 非任务）视为没有目标。 */
+  goal?: GoalContract
 }
 
 /** 输入区胶囊用的技能快照（不含外部工具包） */

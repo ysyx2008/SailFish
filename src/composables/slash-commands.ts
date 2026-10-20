@@ -1,10 +1,13 @@
+import { parseGoalHint, type GoalSlashAction } from '@shared/utils/goal-command'
+
 export interface SlashCommandDef {
-  id: 'compact'
+  id: 'compact' | 'goal'
   names: string[]
 }
 
 export const SLASH_COMMANDS: SlashCommandDef[] = [
-  { id: 'compact', names: ['compact', '压缩'] }
+  { id: 'compact', names: ['compact', '压缩'] },
+  { id: 'goal', names: ['goal'] }
 ]
 
 export interface ParsedSlash {
@@ -63,4 +66,16 @@ export function shouldShowSlashHint(text: string, defs: SlashCommandDef[] = SLAS
   if (!parsed) return false
   if (exactSlashCommand(parsed.name, defs)) return false
   return matchSlashCommands(parsed.name, defs).length > 0
+}
+
+// `/goal` 后面那串字的读法定义在 shared，桌面和命令行同用一份。
+export { parseGoalHint, type GoalSlashAction }
+
+/** 上墙可以带 `/goal`，挂到胶囊上的是后面那句目标正文。 */
+export function goalObjectiveFromUserText(text: string): string {
+  const slash = resolveExactSlash(text)
+  if (slash?.def.id !== 'goal') return text.trim()
+  const parsed = parseGoalHint(slash.hint)
+  if (parsed.kind === 'set' || parsed.kind === 'edit') return parsed.objective
+  return text.trim()
 }

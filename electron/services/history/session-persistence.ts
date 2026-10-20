@@ -56,6 +56,7 @@ export interface SessionMeta {
   titleLocked?: boolean
   approval?: AgentRecord['approval']
   assignedBy?: AgentRecord['assignedBy']
+  goal?: AgentRecord['goal']
   finalResult?: string
   duration: number
   status: AgentRecord['status']
@@ -115,6 +116,8 @@ function recordToMeta(record: AgentRecord, stepCount: number, messageCount: numb
   if (record.titleLocked) meta.titleLocked = true
   if (record.approval) meta.approval = record.approval
   if (record.assignedBy) meta.assignedBy = record.assignedBy
+  // 目标清掉时记录上就没有这一项；整份重写元数据不沿用旧的
+  if (record.goal) meta.goal = { ...record.goal }
   if (record.tokenUsage) meta.tokenUsage = record.tokenUsage
   if (record.artifacts) meta.artifacts = record.artifacts
   if (Array.isArray(record.loadedSkills)) meta.loadedSkills = [...record.loadedSkills]
@@ -142,6 +145,7 @@ function metaToRecord(meta: SessionMeta, steps: AgentStepRecord[], messages: Age
     titleLocked: meta.titleLocked,
     ...(isApprovalMode(meta.approval) ? { approval: meta.approval } : {}),
     ...(isAssignedBy(meta.assignedBy) ? { assignedBy: meta.assignedBy } : {}),
+    ...(meta.goal ? { goal: meta.goal } : {}),
     steps,
     messages,
     finalResult: meta.finalResult,

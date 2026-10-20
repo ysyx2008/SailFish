@@ -12,6 +12,8 @@ export interface TranscriptStep {
   toolArgs?: Record<string, unknown>
   toolResult?: string
   success?: boolean
+  /** 系统自己塞进来的一条（比如目标续跑的那一轮），不是用户说的话 */
+  systemInjected?: boolean
 }
 
 export interface ConfirmationViewInput {
@@ -87,6 +89,8 @@ export class CliTranscript {
 
   private activity = false
   private replyText = ''
+  /** 本轮的话从 replyText 的这一位开始 */
+  private turnStart = 0
   /** 刚用「联络说」打过的正文，紧跟着的同一句不再打第二遍 */
   private lastSpoken = ''
   private lastKind: 'none' | 'text' | 'tool' = 'none'
@@ -105,7 +109,17 @@ export class CliTranscript {
 
   push(step: TranscriptStep): void {
     if (!step?.id) return
-    if (step.type === 'final_result' || step.type === 'user_task' || step.type === 'proactive_notice') return
+    if (step.type === 'final_result' || step.type === 'proactive_notice') return
+    // 用户说的话终端里已经有了；系统自己起的一轮（目标续跑）留一行，看得出是在接着推
+    if (step.type === 'user_task') {
+      const line = step.systemInjected ? oneLine(step.content || '') : ''
+      if (line && !this.settled.has(step.id)) {
+        this.settled.add(step.id)
+        this.commitLine(this.dim(`· ${this.fit(line)}`))
+        this.lastKind = 'tool'
+      }
+      return
+    }
 
     if (step.type === 'message' || step.type === 'thinking') {
       this.onMessage(step)
@@ -152,6 +166,15 @@ export class CliTranscript {
   }
 
   finish(result: string): void {
+    try {
+      this.settleResult(result)
+    } finally {
+      // 下一轮从这里算起：只拿本轮已经打出来的话去比，不和更早几轮的话撞
+      this.turnStart = this.replyText.length
+    }
+  }
+
+  private settleResult(result: string): void {
     this.lastSpoken = ''
     if (this.skipResult) {
       this.skipResult = false
@@ -160,7 +183,7 @@ export class CliTranscript {
     }
     this.clearActivity()
     const visible = visibleReply(result || '')
-    const soFar = this.replyText.trim()
+    const soFar = this.replyText.slice(this.turnStart).trim()
     if (!visible) return
     if (!soFar) {
       this.writeChunk(visible.endsWith('\n') ? visible : visible + '\n')
@@ -168,7 +191,8 @@ export class CliTranscript {
       this.lastKind = 'text'
       return
     }
-    if (visible === soFar || soFar.endsWith(visible)) return
+    // 目标续跑会连着跑好几轮，返回的是第一轮的结论；它若已经在前面打过，不再重复
+    if (soFar.includes(visible)) return
     if (visible.startsWith(soFar)) {
       const rest = visible.slice(soFar.length).replace(/^\s+/, '')
       if (!rest) return

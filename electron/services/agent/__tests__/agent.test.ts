@@ -40,11 +40,13 @@ import type {
   AgentServices, 
   PromptOptions,
   AgentCallbacks,
-  AgentStep
+  AgentStep,
+  RunOptions
 } from '../types'
 import { TaskMemoryStore } from '../task-memory'
 import { Conversation, ConversationManager, ConversationStore } from '../../conversation'
 import { SUMMARY_MAX_OUTPUT_TOKENS } from '../../ai-request-budget'
+import { GoalContract } from '../goal/goal-contract'
 
 // ==================== Mock 实现 ====================
 
@@ -126,6 +128,25 @@ class TestAgent extends Agent {
   // 而不必真正启动 agent.run 流程
   public injectCurrentRun(run: any) {
     (this as any).currentRun = run
+  }
+
+  /** 假装这一轮开跑时目标在推进：这一轮花的算在它头上 */
+  public chargeRunToGoal(goalId?: string) {
+    (this as any)._goalChargeId = goalId
+  }
+
+  /** 假装这一轮是目标自动续跑（或用户开的头），中途还没人开过口 */
+  public startGoalRun(opts: { continuation: boolean }) {
+    (this as any)._goalContinuationThisRun = opts.continuation;
+    (this as any)._userSpokeThisGoalRun = false
+  }
+
+  public testToolExecutorConfig(run: any) {
+    return (this as any).createToolExecutorConfig(run)
+  }
+
+  public testProcessPendingUserMessages(run: any) {
+    return (this as any).processPendingUserMessages(run)
   }
 }
 
@@ -565,6 +586,59 @@ describe('Agent', () => {
       expect(run.pendingUserMessages).toHaveLength(1)
       expect(run.pendingUserMessages[0].message).toBe('方案A')
       expect(run.pendingUserMessages[0].silent).toBe(true)
+    })
+  })
+
+  // ==================== 目标：这一轮有没有人开口 ====================
+
+  describe('目标：这一轮有没有人开口（改目标的前提）', () => {
+    const runShell = (extra?: Record<string, unknown>) => ({
+      id: 'run-goal',
+      isRunning: true,
+      steps: [],
+      messages: [],
+      taskMessageLog: [],
+      pendingUserMessages: [] as Array<{ message: string; silent?: boolean }>,
+      context: createMockContext(),
+      ...extra,
+    })
+
+    it('用户开的头：有人开口', () => {
+      const a = new TestAgent(createMockServices())
+      a.startGoalRun({ continuation: false })
+      expect(a.testToolExecutorConfig(runShell()).hasUserWordsThisRun()).toBe(true)
+    })
+
+    it('自动续跑、中途没人说话：没人开口', () => {
+      const a = new TestAgent(createMockServices())
+      a.startGoalRun({ continuation: true })
+      expect(a.testToolExecutorConfig(runShell()).hasUserWordsThisRun()).toBe(false)
+    })
+
+    it('后台回执另起的一轮：不是用户开的头，没人开口', () => {
+      const a = new TestAgent(createMockServices())
+      a.startGoalRun({ continuation: false })
+      expect(a.testToolExecutorConfig(runShell({ internalNotice: true })).hasUserWordsThisRun()).toBe(false)
+    })
+
+    it('自动续跑中途用户插话之后：有人开口；静默消息不算', () => {
+      const a = new TestAgent(createMockServices())
+      a.startGoalRun({ continuation: true })
+      const silent = runShell({ pendingUserMessages: [{ message: '点选答题', silent: true }] })
+      a.testProcessPendingUserMessages(silent)
+      expect(a.testToolExecutorConfig(silent).hasUserWordsThisRun()).toBe(false)
+
+      const spoken = runShell({ pendingUserMessages: [{ message: '把目标改成 X' }] })
+      a.testProcessPendingUserMessages(spoken)
+      expect(a.testToolExecutorConfig(spoken).hasUserWordsThisRun()).toBe(true)
+    })
+
+    it('下一轮开跑时重新算：上一轮的插话不带过来', () => {
+      const a = new TestAgent(createMockServices())
+      a.startGoalRun({ continuation: true })
+      a.testProcessPendingUserMessages(runShell({ pendingUserMessages: [{ message: '改一下' }] }))
+      a.startGoalRun({ continuation: true })
+      expect(a.testToolExecutorConfig(runShell()).hasUserWordsThisRun()).toBe(false)
     })
   })
 
@@ -2936,5 +3010,193 @@ describe('每场任务的出身（谁派的）', () => {
     await agent.run('联络补一句', createMockContext(), { ledBy: 'companion' })
 
     expect(lastSaved(history)).not.toHaveProperty('assignedBy')
+  })
+})
+
+describe('Agent.appendGoalNotice', () => {
+  it('结束后的说明写进会话，不写进已收工的 run', () => {
+    const agent = new TestAgent(createMockServices())
+    agent.setAgentId('tab-1')
+    agent.ensureConversation({ terminalType: 'assistant', sessionId: 'sess_notice' })
+    const finished = { id: 'run1', isRunning: false, steps: [] as AgentStep[] }
+    agent.injectCurrentRun(finished)
+
+    agent.appendGoalNotice('目标已暂停。点继续才会再推进。')
+
+    expect(finished.steps).toHaveLength(0)
+    const steps = (agent as any)._conversation.steps as AgentStep[]
+    expect(steps.some(s => s.type === 'proactive_notice' && s.systemInjected && s.content.includes('已暂停'))).toBe(true)
+  })
+
+  it('还在跑时写进当前 run，等这一轮一起落盘', () => {
+    const agent = new TestAgent(createMockServices())
+    agent.setAgentId('tab-1')
+    agent.ensureConversation({ terminalType: 'assistant', sessionId: 'sess_notice2' })
+    const running = { id: 'run2', isRunning: true, steps: [] as AgentStep[] }
+    agent.injectCurrentRun(running)
+
+    agent.appendGoalNotice('目标已暂停。点继续才会再推进。')
+
+    expect(running.steps).toHaveLength(1)
+    expect(running.steps[0].systemInjected).toBe(true)
+    const steps = (agent as any)._conversation.steps as AgentStep[]
+    expect(steps.some(s => s.type === 'proactive_notice')).toBe(false)
+  })
+})
+
+describe('Agent goal visibility', () => {
+  it('会话还没建时，通知也带着刚挂上的目标', () => {
+    const agent = new TestAgent(createMockServices())
+    agent.setAgentId('tab-1')
+    const started = GoalContract.start('把测试跑绿')
+    if ('error' in started) throw new Error(started.error)
+
+    let notified: ReturnType<GoalContract['snapshot']> | undefined
+    agent.setGoalChangedListener((goal) => { notified = goal })
+    agent.setGoal(started)
+    agent.notifyGoalChanged()
+
+    expect(agent.getGoal()?.objective).toBe('把测试跑绿')
+    expect(notified?.objective).toBe('把测试跑绿')
+    expect(notified?.status).toBe('active')
+  })
+
+  it('推进中把这一轮已经报上来的 token 算进通知，不改落盘的账', () => {
+    const agent = new TestAgent(createMockServices())
+    agent.setAgentId('tab-1')
+    const started = GoalContract.start('把测试跑绿')
+    if ('error' in started) throw new Error(started.error)
+    agent.setGoal(started)
+
+    let notified: ReturnType<GoalContract['snapshot']> | undefined
+    agent.setGoalChangedListener((goal) => { notified = goal })
+    agent.chargeRunToGoal(started.goalId)
+    agent.injectCurrentRun({
+      id: 'run-live',
+      isRunning: true,
+      tokenUsage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 12_500 },
+    })
+    agent.notifyGoalChanged()
+
+    expect(agent.getGoal()?.tokensUsed).toBe(0)
+    expect(notified?.tokensUsed).toBe(12_500)
+
+    agent.injectCurrentRun({ id: 'run-live', isRunning: false, tokenUsage: { total_tokens: 12_500 } })
+    agent.notifyGoalChanged()
+    expect(notified?.tokensUsed).toBe(0)
+  })
+
+  it('这一轮不算在目标头上时（暂停期间随口聊的），通知里也不加', () => {
+    const agent = new TestAgent(createMockServices())
+    agent.setAgentId('tab-1')
+    const started = GoalContract.start('把测试跑绿')
+    if ('error' in started) throw new Error(started.error)
+    agent.setGoal(started)
+
+    let notified: ReturnType<GoalContract['snapshot']> | undefined
+    agent.setGoalChangedListener((goal) => { notified = goal })
+    agent.chargeRunToGoal(undefined)
+    agent.injectCurrentRun({
+      id: 'run-chat',
+      isRunning: true,
+      tokenUsage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 9_000 },
+    })
+    agent.notifyGoalChanged()
+
+    expect(notified?.tokensUsed).toBe(0)
+  })
+
+  it('这一轮里目标刚宣布达成：已经花的 token 和时间仍然算上，数字不倒退', () => {
+    const agent = new TestAgent(createMockServices())
+    agent.setAgentId('tab-1')
+    const started = GoalContract.start('把测试跑绿')
+    if ('error' in started) throw new Error(started.error)
+    agent.setGoal(started)
+
+    let notified: ReturnType<GoalContract['snapshot']> | undefined
+    agent.setGoalChangedListener((goal) => { notified = goal })
+    agent.chargeRunToGoal(started.goalId)
+    ;(agent as any)._runStartedAt = Date.now() - 40_000
+    agent.injectCurrentRun({
+      id: 'run-live',
+      isRunning: true,
+      tokenUsage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 470_000 },
+    })
+    started.markAchieved()
+    agent.notifyGoalChanged()
+
+    expect(notified?.status).toBe('achieved')
+    expect(notified?.tokensUsed).toBe(470_000)
+    expect(notified?.timeUsedSeconds).toBeGreaterThanOrEqual(40)
+  })
+})
+
+describe('Agent goal accounting', () => {
+  const runOnce = async (prepare: (goal: GoalContract) => void, options?: RunOptions) => {
+    const agent = new TestAgent(createMockServices())
+    agent.setAgentId('tab-1')
+    const started = GoalContract.start('把测试跑绿')
+    if ('error' in started) throw new Error(started.error)
+    agent.setGoal(started)
+    prepare(started)
+
+    const aiService = agent.exposeServices().aiService as unknown as ReturnType<typeof createMockAiService>
+    aiService.chatWithToolsStream.mockImplementation(
+      (_messages, _tools, onChunk, _onToolCall, onDone) => {
+        onChunk('好')
+        onDone({
+          content: '好',
+          tool_calls: undefined,
+          usage: { prompt_tokens: 900, completion_tokens: 100, total_tokens: 1000 },
+        })
+        return Promise.resolve()
+      }
+    )
+    await agent.run('go', createMockContext(), options)
+    return { outcome: agent.getLastRunOutcome(), goal: started }
+  }
+
+  it('开跑时目标在推进：这一轮的用量记在它头上', async () => {
+    const { outcome, goal } = await runOnce(() => {})
+    expect(outcome?.goalId).toBe(goal.goalId)
+    expect(outcome?.tokenDelta).toBe(1000)
+  })
+
+  it('开跑时目标已暂停：这一轮不算在它头上', async () => {
+    const { outcome } = await runOnce(goal => { goal.pause() })
+    expect(outcome?.goalId).toBeUndefined()
+    expect(outcome?.tokenDelta).toBe(1000)
+  })
+
+  it('续跑和预算用尽后的收尾那一轮，仍算在目标头上', async () => {
+    const { outcome, goal } = await runOnce(g => { g.accountUsage({ expectedGoalId: g.goalId, tokenDelta: 1, timeDeltaSeconds: 0 }) }, { goalContinuation: true })
+    expect(outcome?.goalId).toBe(goal.goalId)
+  })
+
+  it('这一轮带了开头说明：紧跟在系统塞进来的那一轮后面上墙一行小字，不冒用户气泡', async () => {
+    const steps: AgentStep[] = []
+    await runOnce(() => {}, {
+      goalContinuation: true,
+      openingNotice: '已继续推进目标。',
+      callbacks: { onStep: (_runId, step) => { steps.push(step) } },
+    })
+
+    const types = steps.map(s => s.type)
+    const task = types.indexOf('user_task')
+    const notice = types.indexOf('proactive_notice')
+    expect(task).toBeGreaterThanOrEqual(0)
+    expect(notice).toBe(task + 1)
+    expect(steps[task].systemInjected).toBe(true)
+    expect(steps[notice]).toMatchObject({ content: '已继续推进目标。', systemInjected: true })
+  })
+
+  it('没有开头说明的续跑：不多出小字', async () => {
+    const steps: AgentStep[] = []
+    await runOnce(() => {}, {
+      goalContinuation: true,
+      callbacks: { onStep: (_runId, step) => { steps.push(step) } },
+    })
+
+    expect(steps.some(s => s.type === 'proactive_notice')).toBe(false)
   })
 })

@@ -207,6 +207,14 @@ export interface ToolExecutorConfig {
   noteHostOperation?: (hostId: string, meta?: { toolCallId?: string }) => void
   /** 任务监督门面（manage_tasks 工具使用；仅联络 Agent 注册该工具） */
   taskSupervisor?: import('../task-supervisor').TaskSupervisor
+  /** 当前会话是否允许挂目标 */
+  supportsGoal?: () => boolean
+  getGoal?: () => import('../goal/goal-contract').GoalContract | undefined
+  setGoal?: (goal: import('../goal/goal-contract').GoalContract) => void
+  persistGoal?: () => void
+  notifyGoalChanged?: () => void
+  /** 这一轮是用户开的头，或中途有用户开口；纯自动续跑、没人说话的轮次为 false */
+  hasUserWordsThisRun?: () => boolean
 }
 
 /** 常见图片扩展名（AI Vision 模型可直接处理的格式） */

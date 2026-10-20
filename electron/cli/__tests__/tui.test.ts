@@ -106,6 +106,13 @@ describe('parseSlash', () => {
     expect(parseSlash('/nope')).toEqual({ name: 'unknown', arg: 'nope' })
   })
 
+  it('/goal 的后面是原话，首尾的引号不去掉', () => {
+    expect(parseSlash('/goal')).toEqual({ name: 'goal', arg: '' })
+    expect(parseSlash('/goal 把测试跑绿')).toEqual({ name: 'goal', arg: '把测试跑绿' })
+    expect(parseSlash('/goal "把 a 目录整理好"')).toEqual({ name: 'goal', arg: '"把 a 目录整理好"' })
+    expect(parseSlash('/goal pause')).toEqual({ name: 'goal', arg: 'pause' })
+  })
+
   it('路径不是命令', () => {
     expect(parseSlash('/Users/yushen/a.txt')).toBeNull()
     expect(parseSlash('看一下')).toBeNull()

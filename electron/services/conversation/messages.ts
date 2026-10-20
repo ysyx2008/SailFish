@@ -106,6 +106,7 @@ export function stepRecordToStep(s: AgentStepRecord): AgentStep {
     toolResult: s.toolResult,
     riskLevel: s.riskLevel as RiskLevel | undefined,
     timestamp: s.timestamp,
+    systemInjected: s.systemInjected,
     webSearchResults: s.webSearchResults,
     success: s.success,
     askingStatus: s.askingStatus,

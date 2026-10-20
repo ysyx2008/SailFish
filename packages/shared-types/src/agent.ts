@@ -55,6 +55,37 @@ export function inferConversationKind(agentKey?: string): ConversationKind {
   return 'task'
 }
 
+/**
+ * 任务会话上的目标状态。
+ * - active：推进中，空闲时可续跑
+ * - paused：用户暂停（含点停止）
+ * - blocked：同一处连续卡死，或碰到没法再试的错误
+ * - usage_limited：模型厂商额度/限流
+ * - budget_limited：目标自己的 token 预算用尽（终态）
+ * - achieved：已达成（终态）
+ */
+export type GoalStatus =
+  | 'active'
+  | 'paused'
+  | 'blocked'
+  | 'usage_limited'
+  | 'budget_limited'
+  | 'achieved'
+
+/** 挂在一条任务会话上的目标契约（随会话落盘） */
+export interface GoalContract {
+  goalId: string
+  objective: string
+  status: GoalStatus
+  tokenBudget?: number
+  tokensUsed: number
+  timeUsedSeconds: number
+  createdAt: number
+  updatedAt: number
+  /** fork 出来的会话继承目标但不自动开跑 */
+  continuationDeferred?: boolean
+}
+
 /** Agent 执行模式：strict=所有命令需确认，relaxed=仅危险命令需确认，free=全自动 */
 export type ExecutionMode = 'strict' | 'relaxed' | 'free'
 
@@ -496,6 +527,11 @@ export interface AgentStep {
   toolResult?: string
   riskLevel?: RiskLevel
   timestamp: number
+  /**
+   * 系统代发的步骤（如目标续跑），不是用户亲手发的。
+   * 前端不当作用户气泡；模型侧仍走这条对话。
+   */
+  systemInjected?: boolean
   isStreaming?: boolean
   plan?: AgentPlan
   progress?: StepProgress

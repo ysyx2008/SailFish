@@ -166,6 +166,7 @@ Agent 有四种存在方式，对应四类**互斥**的会话（`kind`）。把�
 - **关键标识**：`AgentRecord.agentKey` 区分常驻命名 Agent（`__companion__` / `__watch__` 前缀 / `__wakeup__`）与普通 tab Agent；联络历史恢复、Watch 上下文、侧栏过滤都依赖它。
 - **身份 vs 运行时绑定 vs 形态**：会话身份 = `id`(sessionId) + `kind`，**不可变**；形态 = `terminalType`(local/ssh/assistant) + ssh 的 `sshHost`，会话创建时确定、**不可变**；`agentKey`（当前哪个 tab/实例在跑）是**可变的运行时绑定**。
 - **会话漫游（限同形态）**：用户点开旧会话续聊——同一个 `sessionId` 继续、改由当前 tab 的 Agent 跑、`agentKey` 更新但 `terminalType` 不变、id 与历史保持一条线，**不自动 fork**。**跨形态**（local↔ssh↔assistant）续聊不漫游，走"从历史创建任务"（避免把 ssh 历史的命令/工具名带进本地形态造成幻觉）；用户**手动 fork** 另起一聊（联络→任务亦然：新建 `kind=task` 会话、种子/拷贝起头、原线只读保留）。
+- **任务目标（2026-08-21）**：只有任务会话能挂一个会自己推进的目标。用户用斜杠命令 `/goal` 设下后，空闲时自动续跑，直到达成、停滞、额度受限或预算用尽。关掉 App 不续跑；点停止等于暂停。联络 / 关切 / 唤醒不挂目标。输入框上方有状态胶囊。斜杠命令是通用入口，`/help` 与 `/goal` 都走同一套，只认整条输入开头的精确命令名。
 
 #### 联络的上下文设计（多渠道 · 常驻 · 主动消息）
 
@@ -190,6 +191,7 @@ Agent 有四种存在方式，对应四类**互斥**的会话（`kind`）。把�
 - **装机命令**：macOS 可在「设置 → 数据管理」安装 `sailfish` 到 `~/.local/bin`（VS Code 式薄壳）。打包态经 `ELECTRON_RUN_AS_NODE` 加载 `dist-electron/cli.js`；开发态指向仓库 `electron/cli/main.js`
 - **用法**：`npm run sailfish -- "任务说明"` 或安装后 `sailfish "任务说明"` / `sailfish <command>`（`npm run sft` / `cli` 为别名）
 - **测试**：`bash electron/cli/test-cli.sh`（12 个功能区覆盖，含 Watch & Sensor）
+- **目标（`/goal`，2026-10-20）**：命令行里同样在对话里写 `/goal 目标正文`（也可 `edit / pause / resume / clear`），续跑用的就是后端的目标推进，终端只负责解析、确认、每轮一行与收工一句；Ctrl+C = 暂停；没有交互终端时不替人答确认。解析与展示规则在 `shared/utils/goal-command.ts` / `goal-view.ts`（桌面同用）。端到端：`node scripts/cli-e2e/goal.mjs`（真起命令行进程 + 脚本化假模型；`E2E_SHOW=1` 看终端真实输出）
 
 ### 服务实例化
 - 服务在 `main.ts` 中直接实例化，部分使用工厂函数（如 `getKnowledgeService()`）
