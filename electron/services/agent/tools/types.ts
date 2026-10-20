@@ -213,6 +213,8 @@ export interface ToolExecutorConfig {
   setGoal?: (goal: import('../goal/goal-contract').GoalContract) => void
   persistGoal?: () => void
   notifyGoalChanged?: () => void
+  /** 这一轮是用户开的头，或中途有用户开口；纯自动续跑、没人说话的轮次为 false */
+  hasUserWordsThisRun?: () => boolean
 }
 
 /** 常见图片扩展名（AI Vision 模型可直接处理的格式） */

@@ -528,6 +528,28 @@ function getGoalTools(): ToolDefinition[] {
         streamDisplay: { titleKey: 'goal.tool_update', titleField: 'status' }
       }
     } as ToolDefinitionWithMeta,
+    {
+      type: 'function',
+      function: {
+        name: 'edit_goal',
+        description: `改写当前目标的正文，目标本身、状态和已花的用量都不变。只有用户在对话里明确要求改目标时才能调用。
+自动续跑且这一轮没有人开口时调用会被拒绝；已达成或预算用尽的目标也不能改。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            objective: {
+              type: 'string',
+              description: '改写后的完整目标正文，要写得能验收'
+            }
+          },
+          required: ['objective']
+        }
+      },
+      _meta: {
+        allowedForSubAgent: false,
+        streamDisplay: { titleKey: 'goal.tool_edit', titleField: 'objective' }
+      }
+    } as ToolDefinitionWithMeta,
   ]
 }
 

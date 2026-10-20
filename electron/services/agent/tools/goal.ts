@@ -95,6 +95,33 @@ export function updateGoal(args: Record<string, unknown>, executor: ToolExecutor
   return ok(t('goal.tool_marked_blocked', { reason }))
 }
 
+export function editGoal(args: Record<string, unknown>, executor: ToolExecutorConfig): ToolResult {
+  const blocked = requireGoalSupport(executor)
+  if (blocked) return deny(blocked)
+
+  const goal = executor.getGoal?.()
+  if (!goal) return deny(t('goal.tool_none'))
+
+  if (!executor.hasUserWordsThisRun?.()) return deny(t('goal.tool_edit_needs_user'))
+
+  const objective = typeof args.objective === 'string' ? args.objective.trim() : ''
+  if (!objective) return deny(t('goal.tool_empty_objective'))
+  if (objective === goal.objective) return ok(t('goal.tool_edit_unchanged'))
+
+  const result = goal.editObjective(objective)
+  if (!result.ok) {
+    return deny(goal.status === 'achieved' ? t('goal.tool_edit_achieved') : t('goal.tool_edit_budget_limited'))
+  }
+
+  persist(executor)
+  executor.addStep({
+    type: 'proactive_notice',
+    content: t('goal.notice_objective_updated', { objective: goal.objective }),
+    systemInjected: true,
+  })
+  return ok(t('goal.tool_objective_updated', { objective: goal.objective }))
+}
+
 export function formatGoalForModel(goal: GoalSnapshot): string {
   const budget = goal.tokenBudget !== undefined
     ? `${goal.tokensUsed}/${goal.tokenBudget}`

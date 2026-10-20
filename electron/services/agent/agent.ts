@@ -394,6 +394,8 @@ export abstract class Agent {
   private _onGoalChanged?: (goal: GoalSnapshot | undefined) => void
   private _runStartedAt = 0
   private _goalContinuationThisRun = false
+  /** 自动续跑的这一轮中途有用户开口（续跑本身没人说话，不算） */
+  private _userSpokeThisGoalRun = false
   /** 这一轮花的算在哪个目标头上（开跑时定下）；没有就是不算 */
   private _goalChargeId?: string
   private _lastContext?: AgentContext
@@ -1811,6 +1813,7 @@ export abstract class Agent {
     this._runStartedAt = Date.now()
     this._lastRunOutcome = null
     this._goalContinuationThisRun = options?.goalContinuation === true
+    this._userSpokeThisGoalRun = false
     // 开跑时目标在推进（或这就是它的续跑/收尾），这一轮花的算在它头上；暂停期间随口聊的不算
     const chargeable = this._isSubAgent ? undefined : this.getGoal()
     this._goalChargeId = chargeable && (chargeable.status === 'active' || options?.goalContinuation === true)
@@ -5962,6 +5965,9 @@ export abstract class Agent {
       notifyGoalChanged: () => {
         this.notifyGoalChanged()
       },
+      // 用户开的头，或这一轮中途用户开了口；自动续跑、后台回执另起的轮次没人说话
+      hasUserWordsThisRun: () => this._userSpokeThisGoalRun
+        || (!this._goalContinuationThisRun && !run.internalNotice),
       getToolOutputBudget: (currentTokensOverride?: number) => {
         const contextLength = this._contextWindow.getContextLength()
         // 锚点 + 本轮新增：同一批工具连续写入时，只看上轮锚点会让每个工具
@@ -6150,6 +6156,7 @@ export abstract class Agent {
     run.taskMessageLog.push({ role: 'user', content: combinedText, _systemInjected: true })
 
     const heardFromUser = run.pendingUserMessages.some(pending => !pending.silent)
+    if (heardFromUser) this._userSpokeThisGoalRun = true
     if (heardFromUser && !this._isSubAgent) this._userAwaitsReply = true
     if (heardFromUser && this.currentPlan && !this.currentPlan.paused && this.currentPlan.steps.some(s => s.status === 'pending')) {
       const planHintMsg: AiMessage = { role: 'user', content: t('agent.user_supplement_with_plan'), _systemInjected: true }

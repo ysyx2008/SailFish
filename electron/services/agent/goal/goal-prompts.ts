@@ -37,16 +37,18 @@ export function buildGoalSystemSection(goal: GoalSnapshot): string {
     '- 同一处障碍连续三轮都过不去，才能调用 update_goal(status=blocked)。难、慢、不确定、还没做完，都不算停滞。',
     '- 不要自己暂停、恢复、清除目标，也不要给自己加预算。这些归用户。',
     '- 用户没明确要求时，不要调用 create_goal。',
+    '- 目标正文只在用户于对话里明确要求修改时，才能用 edit_goal 改；自动续跑且这一轮没有人开口时，调用会被拒绝。',
   ].join('\n')
 }
 
-export function buildContinuationPrompt(goal: GoalSnapshot): string {
+export function buildContinuationPrompt(goal: GoalSnapshot, opts?: { reopened?: boolean }): string {
   const budgetLine = goal.tokenBudget !== undefined
     ? `已用 ${goal.tokensUsed} / 预算 ${goal.tokenBudget} tokens。`
     : `已用 ${goal.tokensUsed} tokens。`
 
   return [
     '[系统·目标续跑] 用户没有新消息。请继续推进当前目标，不要把这段文字当成用户刚才说的话。',
+    ...(opts?.reopened ? ['', '这个目标之前被标成达成，用户点了「继续」，把它重新打开了。'] : []),
     '',
     `<goal_objective>`,
     escapeGoalText(goal.objective),

@@ -145,6 +145,133 @@ describe('GoalRuntime 一轮收场后的记账', () => {
   })
 })
 
+describe('GoalRuntime 重新打开已达成的目标', () => {
+  function reopenWith(goal: GoalContract, rounds: number) {
+    const prompts: string[] = []
+    const outcome: AgentRunOutcome = {
+      aborted: false,
+      failed: false,
+      usageLimited: false,
+      unretryable: false,
+      tokenDelta: 0,
+      durationSeconds: 0,
+    }
+    const agent = {
+      getGoal: () => goal,
+      getConversationKind: () => 'task',
+      getLastRunOutcome: () => ({ ...outcome }),
+      appendGoalNotice: () => {},
+      hasQueuedUserInput: () => false,
+      isRunning: () => false,
+    } as unknown as Agent
+    const runtime = new GoalRuntime({
+      persist: () => {},
+      notify: () => {},
+      runAgent: async (_agent, message) => {
+        prompts.push(message)
+        if (prompts.length >= rounds) goal.markAchieved()
+        return ''
+      },
+    })
+    return { runtime, agent, prompts }
+  }
+
+  it('点继续：同一个目标回到推进中，第一轮被告知是重新打开的，用量保留', async () => {
+    const goal = startGoal('全面测试goal功能')
+    goal.accountUsage({ expectedGoalId: goal.goalId, tokenDelta: 4_000, timeDeltaSeconds: 30 })
+    goal.markAchieved()
+    const { runtime, agent, prompts } = reopenWith(goal, 1)
+
+    const result = await runtime.resumeAndContinue('tab-1', agent, {} as AgentContext, {})
+
+    expect(result.ok).toBe(true)
+    expect(prompts).toHaveLength(1)
+    expect(prompts[0]).toContain('重新打开')
+    expect(prompts[0]).toContain('全面测试goal功能')
+    expect(goal.tokensUsed).toBe(4_000)
+  })
+
+  it('只有紧接着那一轮提重新打开，之后的续跑回到平常的说法', async () => {
+    const goal = startGoal()
+    goal.markAchieved()
+    const { runtime, agent, prompts } = reopenWith(goal, 2)
+
+    await runtime.resumeAndContinue('tab-1', agent, {} as AgentContext, {})
+
+    expect(prompts).toHaveLength(2)
+    expect(prompts[0]).toContain('重新打开')
+    expect(prompts[1]).not.toContain('重新打开')
+  })
+
+  it('点继续时有人正在说话、第一轮没跑成：重新打开的提示留到真正发出的那一轮', async () => {
+    const goal = startGoal()
+    goal.markAchieved()
+    const prompts: string[] = []
+    let queued = true
+    const agent = {
+      getGoal: () => goal,
+      getConversationKind: () => 'task',
+      getLastRunOutcome: () => ({ aborted: false, failed: false, usageLimited: false, unretryable: false, tokenDelta: 0, durationSeconds: 0 }),
+      appendGoalNotice: () => {},
+      hasQueuedUserInput: () => queued,
+      isRunning: () => false,
+    } as unknown as Agent
+    const runtime = new GoalRuntime({
+      persist: () => {},
+      notify: () => {},
+      runAgent: async (_agent, message) => {
+        prompts.push(message)
+        goal.markAchieved()
+        return ''
+      },
+    })
+
+    await runtime.resumeAndContinue('tab-1', agent, {} as AgentContext, {})
+    expect(prompts).toHaveLength(0)
+    expect(goal.status).toBe('active')
+
+    queued = false
+    await runtime.afterUserTurn('tab-1', agent, {} as AgentContext, {})
+    expect(prompts).toHaveLength(1)
+    expect(prompts[0]).toContain('重新打开')
+  })
+
+  it('分叉出来的目标点继续：用户亲手点的，盖过「先别自己跑」', async () => {
+    const goal = startGoal()
+    goal.markAchieved()
+    goal.deferContinuation()
+    const { runtime, agent, prompts } = reopenWith(goal, 1)
+
+    await runtime.resumeAndContinue('tab-1', agent, {} as AgentContext, {})
+
+    expect(prompts).toHaveLength(1)
+    expect(goal.continuationDeferred).toBe(false)
+  })
+
+  it('预算已经花完的已达成目标点继续：拒绝，不再跑一轮', async () => {
+    const goal = startGoal('活', 100)
+    goal.markAchieved()
+    goal.accountUsage({ expectedGoalId: goal.goalId, tokenDelta: 150, timeDeltaSeconds: 1 })
+    const { runtime, agent, prompts } = reopenWith(goal, 1)
+
+    const result = await runtime.resumeAndContinue('tab-1', agent, {} as AgentContext, {})
+
+    expect(result).toEqual({ ok: false, error: 'budget_exhausted' })
+    expect(prompts).toHaveLength(0)
+    expect(goal.status).toBe('achieved')
+  })
+
+  it('从暂停点继续，不提重新打开', async () => {
+    const goal = startGoal()
+    goal.pause()
+    const { runtime, agent, prompts } = reopenWith(goal, 1)
+
+    await runtime.resumeAndContinue('tab-1', agent, {} as AgentContext, {})
+
+    expect(prompts[0]).not.toContain('重新打开')
+  })
+})
+
 describe('agentSupportsGoal', () => {
   it('is true for ordinary task keys', () => {
     expect(agentSupportsGoal('tab-1')).toBe(true)

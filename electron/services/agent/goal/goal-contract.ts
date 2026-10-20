@@ -16,7 +16,8 @@ const GOAL_STATUSES: readonly GoalStatus[] = [
   'achieved',
 ]
 
-const RESUMABLE: ReadonlySet<GoalStatus> = new Set(['paused', 'blocked', 'usage_limited'])
+/** 已达成的也能重新打开：秘书报得太早时，用户点继续接着推 */
+const RESUMABLE: ReadonlySet<GoalStatus> = new Set(['paused', 'blocked', 'usage_limited', 'achieved'])
 const TERMINAL: ReadonlySet<GoalStatus> = new Set(['achieved', 'budget_limited'])
 
 export type GoalMutationResult =
@@ -85,6 +86,10 @@ export class GoalContract {
     return TERMINAL.has(this.data.status)
   }
 
+  budgetExhausted(): boolean {
+    return this.data.tokenBudget !== undefined && this.data.tokensUsed >= this.data.tokenBudget
+  }
+
   canContinue(): boolean {
     return this.data.status === 'active' && !this.continuationDeferred
   }
@@ -97,6 +102,8 @@ export class GoalContract {
 
   resume(now = Date.now()): GoalMutationResult {
     if (!RESUMABLE.has(this.data.status)) return { ok: false, error: 'not_resumable' }
+    // 达成的那一轮是在「已达成」状态下记的账，可能已经超过预算；这时重新打开会绕过预算硬停
+    if (this.data.status === 'achieved' && this.budgetExhausted()) return { ok: false, error: 'budget_exhausted' }
     this.data = { ...this.data, status: 'active', updatedAt: now }
     return { ok: true }
   }
@@ -121,11 +128,12 @@ export class GoalContract {
     return { ok: true }
   }
 
-  editObjective(objective: string, now = Date.now()): GoalMutationResult {
+  /** 改正文不动 updatedAt：它是上次结算的时刻，界面据此推算这一轮已经走了多久 */
+  editObjective(objective: string): GoalMutationResult {
     const text = objective.trim()
     if (!text) return { ok: false, error: 'empty_objective' }
     if (this.isTerminal()) return { ok: false, error: 'terminal' }
-    this.data = { ...this.data, objective: text, updatedAt: now }
+    this.data = { ...this.data, objective: text }
     return { ok: true }
   }
 

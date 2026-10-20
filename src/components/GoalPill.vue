@@ -102,7 +102,11 @@ const budgetRatio = computed(() => {
 const canPause = computed(() => liveGoal.value?.status === 'active')
 const canResume = computed(() => {
   const status = liveGoal.value?.status
-  return status === 'paused' || status === 'blocked' || status === 'usage_limited'
+  if (status === 'paused' || status === 'blocked' || status === 'usage_limited') return true
+  // 已达成的可以重新打开；预算已经花完的不行（后端同样拒绝）
+  const current = liveGoal.value
+  return status === 'achieved'
+    && !(current?.tokenBudget !== undefined && current.tokensUsed >= current.tokenBudget)
 })
 
 const action = () => ({

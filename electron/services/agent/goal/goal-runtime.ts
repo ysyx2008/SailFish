@@ -53,6 +53,8 @@ export class GoalRuntime {
   private driving = new Set<string>()
   /** 已经算过账的那一轮：外层出错后又走一遍收尾时，同一轮不记第二次 */
   private readonly settled = new WeakSet<AgentRunOutcome>()
+  /** 用户刚把已达成的目标重新打开、还没来得及发出第一轮续跑：agentKey → 目标 id */
+  private readonly reopenedGoals = new Map<string, string>()
 
   constructor(private readonly host: GoalRuntimeHost) {}
 
@@ -102,8 +104,12 @@ export class GoalRuntime {
   ): Promise<{ ok: boolean; error?: string }> {
     const goal = agent.getGoal()
     if (!goal) return { ok: false, error: 'no_goal' }
+    const reopened = goal.status === 'achieved'
     const resumed = goal.resume()
     if (!resumed.ok) return { ok: false, error: resumed.error }
+    // 用户亲手点的继续，盖过「分叉后先别自己跑」
+    goal.clearContinuationDeferral()
+    if (reopened) this.reopenedGoals.set(agentKey, goal.goalId)
     this.host.persist(agent)
     this.host.notify(agentKey, goal.snapshot())
 
@@ -178,9 +184,12 @@ export class GoalRuntime {
       const needsWrapUp = goal.status === 'budget_limited' && !wrapUpDone
       if (!goal.canContinue() && !needsWrapUp) return
 
+      // 重新打开的提示只给真正发出去的第一轮；那一轮没跑成（有人插话、被占用）就留到下一次
+      const reopened = this.reopenedGoals.get(agentKey) === goal.goalId
       const prompt = needsWrapUp
         ? buildBudgetWrapUpPrompt(goal.snapshot())
-        : buildContinuationPrompt(goal.snapshot())
+        : buildContinuationPrompt(goal.snapshot(), { reopened })
+      this.reopenedGoals.delete(agentKey)
 
       try {
         await this.host.runAgent(agent, prompt, context, {

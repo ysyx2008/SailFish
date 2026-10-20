@@ -31,7 +31,7 @@ import { executeWebSearch } from './web-search'
 import { executeWebFetch } from './web-fetch'
 import { listSshSessionsTool, managePaneTool } from './split-pane'
 import { listWorkbenchArtifactsTool, manageWorkbenchArtifactsTool } from './workbench'
-import { getGoal, createGoal, updateGoal } from './goal'
+import { getGoal, createGoal, updateGoal, editGoal } from './goal'
 
 // 重新导出类型
 export type { ToolExecutorConfig, AgentConfig, ToolResult, ErrorCategory } from './types'
@@ -252,6 +252,8 @@ async function dispatchTool(
       return createGoal(args, executor)
     case 'update_goal':
       return updateGoal(args, executor)
+    case 'edit_goal':
+      return editGoal(args, executor)
 
     case 'talk_to_user':
       return messageUser(args, executor)

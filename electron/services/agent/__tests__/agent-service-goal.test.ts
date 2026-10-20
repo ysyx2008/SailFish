@@ -65,7 +65,8 @@ describe('AgentService 读取目标', () => {
     }
     const service = serviceWith(agent, stored)
     // 查的是历史里的另一场：Agent 里没有这场的目标，只剩落盘那份
-    vi.spyOn(service as never, 'resolveGoalAgent' as never).mockReturnValue(undefined as never)
+    const resolveSpy = vi.spyOn(service as unknown as { resolveGoalAgent: () => unknown }, 'resolveGoalAgent')
+    resolveSpy.mockReturnValue(undefined)
 
     const read = service.getGoal('tab-1', 'sess_old')
     expect(read?.goalId).toBe(stored.goalId)

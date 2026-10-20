@@ -133,6 +133,20 @@ class TestAgent extends Agent {
   public chargeRunToGoal(goalId?: string) {
     (this as any)._goalChargeId = goalId
   }
+
+  /** 假装这一轮是目标自动续跑（或用户开的头），中途还没人开过口 */
+  public startGoalRun(opts: { continuation: boolean }) {
+    (this as any)._goalContinuationThisRun = opts.continuation;
+    (this as any)._userSpokeThisGoalRun = false
+  }
+
+  public testToolExecutorConfig(run: any) {
+    return (this as any).createToolExecutorConfig(run)
+  }
+
+  public testProcessPendingUserMessages(run: any) {
+    return (this as any).processPendingUserMessages(run)
+  }
 }
 
 // Mock AI 服务
@@ -571,6 +585,59 @@ describe('Agent', () => {
       expect(run.pendingUserMessages).toHaveLength(1)
       expect(run.pendingUserMessages[0].message).toBe('方案A')
       expect(run.pendingUserMessages[0].silent).toBe(true)
+    })
+  })
+
+  // ==================== 目标：这一轮有没有人开口 ====================
+
+  describe('目标：这一轮有没有人开口（改目标的前提）', () => {
+    const runShell = (extra?: Record<string, unknown>) => ({
+      id: 'run-goal',
+      isRunning: true,
+      steps: [],
+      messages: [],
+      taskMessageLog: [],
+      pendingUserMessages: [] as Array<{ message: string; silent?: boolean }>,
+      context: createMockContext(),
+      ...extra,
+    })
+
+    it('用户开的头：有人开口', () => {
+      const a = new TestAgent(createMockServices())
+      a.startGoalRun({ continuation: false })
+      expect(a.testToolExecutorConfig(runShell()).hasUserWordsThisRun()).toBe(true)
+    })
+
+    it('自动续跑、中途没人说话：没人开口', () => {
+      const a = new TestAgent(createMockServices())
+      a.startGoalRun({ continuation: true })
+      expect(a.testToolExecutorConfig(runShell()).hasUserWordsThisRun()).toBe(false)
+    })
+
+    it('后台回执另起的一轮：不是用户开的头，没人开口', () => {
+      const a = new TestAgent(createMockServices())
+      a.startGoalRun({ continuation: false })
+      expect(a.testToolExecutorConfig(runShell({ internalNotice: true })).hasUserWordsThisRun()).toBe(false)
+    })
+
+    it('自动续跑中途用户插话之后：有人开口；静默消息不算', () => {
+      const a = new TestAgent(createMockServices())
+      a.startGoalRun({ continuation: true })
+      const silent = runShell({ pendingUserMessages: [{ message: '点选答题', silent: true }] })
+      a.testProcessPendingUserMessages(silent)
+      expect(a.testToolExecutorConfig(silent).hasUserWordsThisRun()).toBe(false)
+
+      const spoken = runShell({ pendingUserMessages: [{ message: '把目标改成 X' }] })
+      a.testProcessPendingUserMessages(spoken)
+      expect(a.testToolExecutorConfig(spoken).hasUserWordsThisRun()).toBe(true)
+    })
+
+    it('下一轮开跑时重新算：上一轮的插话不带过来', () => {
+      const a = new TestAgent(createMockServices())
+      a.startGoalRun({ continuation: true })
+      a.testProcessPendingUserMessages(runShell({ pendingUserMessages: [{ message: '改一下' }] }))
+      a.startGoalRun({ continuation: true })
+      expect(a.testToolExecutorConfig(runShell()).hasUserWordsThisRun()).toBe(false)
     })
   })
 
