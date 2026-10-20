@@ -163,19 +163,28 @@ function toApiRequestError(err: unknown, statusCode?: number, headers?: Record<s
   const error = (err instanceof Error ? err : new Error(String(err))) as ApiRequestError
   error.statusCode = statusCode
   error.apiErrorCode = normalizeApiErrorCode(apiErrorCode)
-  if (statusCode === 429 && headers?.['retry-after']) {
-    const raw = String(headers['retry-after'])
-    const seconds = Number(raw)
-    if (!isNaN(seconds) && seconds > 0) {
-      error.retryAfter = seconds * 1000
-    } else {
-      const date = Date.parse(raw)
-      if (!isNaN(date)) {
-        error.retryAfter = Math.max(1000, date - Date.now())
-      }
-    }
+  if (statusCode === 429) {
+    error.retryAfter = parseRetryAfterMs(headers)
   }
   return error
+}
+
+function parseRetryAfterMs(headers?: Record<string, string | string[] | undefined>): number | undefined {
+  const header = headers?.['retry-after']
+  if (!header) return undefined
+  const raw = String(header)
+  const seconds = Number(raw)
+  if (!isNaN(seconds) && seconds > 0) return seconds * 1000
+  const date = Date.parse(raw)
+  return isNaN(date) ? undefined : Math.max(1000, date - Date.now())
+}
+
+/** 这次失败是不是「接口嫌太快」：等一等就能过的那种，不是欠费、额度用尽这类等也没用的。 */
+function isThrottleSignal(statusCode: number | undefined, apiErrorCode: string | undefined): boolean {
+  if (statusCode === 529) return true
+  return statusCode === 429
+    && !isAccountBillingError(apiErrorCode, statusCode)
+    && !isNoRetryBusinessCode(apiErrorCode)
 }
 
 /**
@@ -602,6 +611,10 @@ export interface ChatStreamOptions {
   toolChoice?: 'auto' | 'none' | 'required'
   /** 思考过程的增量。只给调用方看，不混进对用户的正文流 */
   onReasoning?: (delta: string) => void
+  /** 在模型请求缓冲池里排哪一档；不传按当面等的算，不排队 */
+  bufferPriority?: ModelRequestPriority
+  /** 在缓冲池里排队等名额：开始等 true，拿到或放弃 false */
+  onBufferWait?: (waiting: boolean) => void
 }
 
 import type { AiModelType, AiProfile, FetchedAiModel } from '@shared/types'
@@ -609,6 +622,12 @@ export type { AiModelType, AiProfile, FetchedAiModel }
 
 export { DEFAULT_MAX_OUTPUT_TOKENS } from './ai-request-budget'
 import { resolveRequestBudget } from './ai-request-budget'
+import {
+  getModelRequestBuffer,
+  modelRequestKey,
+  type ModelRequestPermit,
+  type ModelRequestPriority,
+} from './model-request-buffer'
 
 function asPositiveInt(value: unknown): number | undefined {
   const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
@@ -1814,8 +1833,25 @@ export class AiService {
   /**
    * 发送 HTTP 请求（带自动重试：网络错误 / 429 / 5xx 均自动退避重试）
    */
-  private makeRequest<T>(profile: AiProfile, body: object, signal?: AbortSignal): Promise<T> {
-    return withApiRetry(() => this.makeRequestOnce<T>(profile, body, signal))
+  private async makeRequest<T>(profile: AiProfile, body: object, signal?: AbortSignal): Promise<T> {
+    const permit = await getModelRequestBuffer().acquire(modelRequestKey(profile), 'urgent')
+    try {
+      return await withApiRetry(async () => {
+        try {
+          const result = await this.makeRequestOnce<T>(profile, body, signal)
+          permit.reportSuccess()
+          return result
+        } catch (err) {
+          const apiErr = err as ApiRequestError
+          if (isThrottleSignal(apiErr.statusCode, apiErr.apiErrorCode)) {
+            permit.reportThrottled(apiErr.statusCode === 429 ? apiErr.retryAfter : undefined)
+          }
+          throw err
+        }
+      })
+    } finally {
+      permit.release()
+    }
   }
 
   /**
@@ -1841,15 +1877,18 @@ export class AiService {
     const isAnthropic = isAnthropicApi(profile)
     const streamStartTime = Date.now()
     log.info(`ChatStream request: model=${profile.model}, messages=${messages.length}`)
+    const permit = await getModelRequestBuffer().acquire(modelRequestKey(profile), 'urgent')
 
     const originalOnDone = onDone
     const originalOnError = onError
     onDone = () => {
+      permit.release()
       const elapsed = ((Date.now() - streamStartTime) / 1000).toFixed(1)
       log.info(`ChatStream done: model=${profile.model}, duration=${elapsed}s`)
       originalOnDone()
     }
     onError = (error: string) => {
+      permit.release()
       const elapsed = ((Date.now() - streamStartTime) / 1000).toFixed(1)
       log.error(`ChatStream failed: model=${profile.model}, duration=${elapsed}s, error=${error}`)
       originalOnError(error)
@@ -2018,6 +2057,7 @@ export class AiService {
       }, AI_TIMEOUT.TOTAL)
 
       req = httpModule.request(options, (res) => {
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) permit.reportSuccess()
         // 开始接收响应，启动空闲超时
         resetIdleTimeout()
 
@@ -2035,16 +2075,9 @@ export class AiService {
               complete(() => onError(t('error.context_length_exceeded')))
               return
             }
-            // 解析 Retry-After header
-            let retryAfterMs: number | undefined
-            const retryAfterHeader = res.headers['retry-after']
-            if (retryAfterHeader) {
-              const seconds = Number(retryAfterHeader)
-              if (!isNaN(seconds) && seconds > 0) retryAfterMs = seconds * 1000
-              else {
-                const date = Date.parse(String(retryAfterHeader))
-                if (!isNaN(date)) retryAfterMs = Math.max(1000, date - Date.now())
-              }
+            const retryAfterMs = parseRetryAfterMs(res.headers)
+            if (isThrottleSignal(res.statusCode, parsed.code)) {
+              permit.reportThrottled(res.statusCode === 429 ? retryAfterMs : undefined)
             }
             if (!tryRetry(parsed.message, res.statusCode, retryAfterMs, parsed.code)) {
               const friendly = translateApiBusinessError(res.statusCode, parsed.code, profile.model)
@@ -2476,6 +2509,13 @@ export class AiService {
     let rateLimitRetryCount = 0
     // 5xx 服务端错误重试计数器（独立于网络错误重试）
     let serverErrorRetryCount = 0
+    // 缓冲池名额：一次请求同一时刻最多占一个；撞限流等重试时先放掉。换模型仍记在起始那一档上
+    const bufferKey = modelRequestKey(profile)
+    let permit: ModelRequestPermit | undefined
+    const releasePermit = () => {
+      permit?.release()
+      permit = undefined
+    }
 
     // 收集的数据
     let content = ''
@@ -2500,6 +2540,7 @@ export class AiService {
       clearTimeout(totalTimeoutId)
       clearTimeout(idleTimeoutId)
       this.abortControllers.delete(reqId)
+      releasePermit()
       fn()
     }
 
@@ -2727,6 +2768,7 @@ export class AiService {
       req = httpModule.request(options, (res) => {
         if (isStale()) return
         if (res.statusCode) streamOptions?.onHttpStatus?.(res.statusCode)
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) permit?.reportSuccess()
         // 开始接收响应，启动空闲超时
         resetIdleTimeout()
 
@@ -2753,6 +2795,9 @@ export class AiService {
             const parsed = parseApiError(errorData)
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
             log.error(`Request HTTP error: model=${profile.model}, status=${res.statusCode}, duration=${elapsed}s, error=${parsed.message.slice(0, 200)}`)
+            if (isThrottleSignal(res.statusCode, parsed.code)) {
+              permit?.reportThrottled(res.statusCode === 429 ? parseRetryAfterMs(res.headers) : undefined)
+            }
             if (
               res.statusCode === 429
               && !streamOptions?.disableRetry
@@ -2784,7 +2829,8 @@ export class AiService {
               getAiDebugService().logResponseError(reqId, `429 Rate Limited - retry ${rateLimitRetryCount}/${AI_RETRY.RATE_LIMIT_MAX_RETRIES} in ${retryAfterSec}s`)
               pendingRetryInfo = { attempt: rateLimitRetryCount, max: AI_RETRY.RATE_LIMIT_MAX_RETRIES, delayMs: retryAfterMs, reason: 'rate_limit', statusCode: 429 }
               resetForRetry()
-              scheduleRetry(doRequest, retryAfterMs)
+              releasePermit()
+              scheduleRetry(sendWithPermit, retryAfterMs)
             } else if (isContextLengthApiFailure(parsed.code, parsed.message)) {
               // 已经换过模型才继续换：避免大窗口切到小窗口后卡死。原模型对话太长不换。
               if (triedFailoverIds.size > 1 && tryModelFailover('retries_exhausted')) {
@@ -3157,8 +3203,35 @@ export class AiService {
     }
     }  // end of doRequest
 
+    const sendWithPermit = () => {
+      if (settled) return
+      if (permit) {
+        void doRequest()
+        return
+      }
+      getModelRequestBuffer().acquire(bufferKey, streamOptions?.bufferPriority ?? 'urgent', {
+        signal: abortController.signal,
+        onWait: streamOptions?.onBufferWait,
+      }).then((granted) => {
+        if (settled) {
+          granted.release()
+          return
+        }
+        permit = granted
+        void doRequest()
+      }, () => {
+        getAiDebugService().logResponseDone(reqId, { finishReason: 'aborted' })
+        complete(() => onDone({
+          content: undefined,
+          tool_calls: undefined,
+          finish_reason: 'stop',
+          aborted: true
+        }))
+      })
+    }
+
     // 开始执行请求
-    doRequest()
+    sendWithPermit()
   }
 
   /**
