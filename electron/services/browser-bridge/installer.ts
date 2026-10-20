@@ -654,10 +654,6 @@ export async function installBrowserBridge(options?: {
 
   await fs.promises.mkdir(hostDest, { recursive: true })
 
-  const electronExe = process.execPath
-  const gatewayFile = path.join(root, 'gateway.json')
-  writeHostEnvScripts(hostDest, electronExe, gatewayFile)
-
   const manifestPath = path.join(hostDest, `${BROWSER_BRIDGE_NATIVE_HOST}.json`)
   const browsers: BrowserBridgeBrowser[] = ['chrome', 'edge', 'firefox']
   if (!writeBridgePointer()) {
@@ -673,6 +669,11 @@ export async function installBrowserBridge(options?: {
       errors,
     }
   }
+
+  // 占到连接之后才改中转脚本。先写的话，没占上也会把还在用的那份指到本实例。
+  const electronExe = process.execPath
+  const gatewayFile = path.join(root, 'gateway.json')
+  writeHostEnvScripts(hostDest, electronExe, gatewayFile)
 
   const hostPath = resolveManifestHostPath(hostDest)
   const chromiumManifest = buildChromiumNativeHostManifest(hostPath, BROWSER_BRIDGE_CHROMIUM_EXTENSION_IDS)
