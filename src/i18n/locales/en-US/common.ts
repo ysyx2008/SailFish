@@ -234,6 +234,10 @@ export default {
 
   // Common buttons and actions
   common: {
+    secretInput: {
+      show: 'Show key',
+      hide: 'Hide key',
+    },
     save: 'Save',
     saving: 'Saving...',
     cancel: 'Cancel',

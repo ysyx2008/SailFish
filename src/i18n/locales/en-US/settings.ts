@@ -462,8 +462,6 @@ export default {
     apiUrlPlaceholder: 'http://10.0.1.100:8080/v1/chat/completions',
     apiKey: 'API Key',
     apiKeyPlaceholder: 'sk-... (optional for local deployment)',
-    showApiKey: 'Show API Key',
-    hideApiKey: 'Hide API Key',
     apiKeyNotRequired: 'Most API services require a key to work (except local deployments like Ollama).',
     modelRecommendation: '',
     model: 'Model Name',

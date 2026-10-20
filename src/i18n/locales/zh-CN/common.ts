@@ -234,6 +234,10 @@ export default {
 
   // 通用按钮和操作
   common: {
+    secretInput: {
+      show: '显示密钥',
+      hide: '隐藏密钥',
+    },
     save: '保存',
     saving: '保存中...',
     cancel: '取消',
