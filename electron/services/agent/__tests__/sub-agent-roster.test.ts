@@ -308,6 +308,24 @@ describe('waitUntil', () => {
     expect(woke).toBe(true)
     roster.abortAll()
   })
+
+  it('主人接着跑前稍等敲门：情况变了（比如用户说话）一叫醒就不再等', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 5000 })
+    roster.spawn(
+      [{ name: 'slow', description: 'slow', prompt: 'slow' }],
+      spawnDeps(roster, () => stubChild({ delayMs: 10_000 }))
+    )
+    let onlyKnocks = true
+    let settled = false
+    const waiting = roster.settleKnocks(new AbortController().signal, () => onlyKnocks).then(() => { settled = true })
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(settled).toBe(false)
+    onlyKnocks = false
+    roster.wake()
+    await waiting
+    expect(settled).toBe(true)
+    roster.abortAll()
+  })
 })
 
 describe('开局带多少对话', () => {

@@ -1089,6 +1089,7 @@ export abstract class Agent {
           hasLiveChildren: () =>
             (this._subAgentRoster?.hasLive() ?? false) || this._backgroundWatches.hasPending(),
           waitForChildrenOrKnock: () => this.waitWhileHeld(run),
+          settlePending: () => this.letKnocksSettle(run),
           isAborted: () => run.aborted,
         })
       } finally {
@@ -3628,6 +3629,7 @@ export abstract class Agent {
               if (run.pendingUserMessages.length > 0) {
                 this.retainReplyForNextRound(run, lastResponse)
                 lastResponse = null
+                await this.letKnocksSettle(run)
                 continue
               }
               
@@ -3651,6 +3653,7 @@ export abstract class Agent {
             if (run.pendingUserMessages.length > 0) {
               this.retainReplyForNextRound(run, lastResponse)
               lastResponse = null
+              await this.letKnocksSettle(run)
               continue
             }
             
@@ -5811,8 +5814,16 @@ export abstract class Agent {
   protected injectSubAgentKnock(message: string): void {
     const run = this.currentRun
     if (!run?.isRunning) return
-    run.pendingUserMessages.push({ message, silent: true })
+    run.pendingUserMessages.push({ message, silent: true, subAgentKnock: true })
     this.wakeHold()
+  }
+
+  /** 待处理的只有敲门、还有伙计在干：稍等一会儿把陆续回来的一起领，免得每回来一个就开口一次。用户说话、按停立刻结束 */
+  private async letKnocksSettle(run: AgentRun): Promise<void> {
+    const signal = run.abortController?.signal
+    const onlyKnocks = () => run.pendingUserMessages.every(p => p.subAgentKnock)
+    if (!this._subAgentRoster || !signal || !onlyKnocks()) return
+    await this._subAgentRoster.settleKnocks(signal, onlyKnocks)
   }
 
   /** 欠着的后台工作被清账、却没有结果送来时（比如开跑失败），叫醒在等的这一轮重新看一遍还要不要等 */

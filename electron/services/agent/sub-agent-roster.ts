@@ -154,6 +154,11 @@ export class SubAgentRoster {
     })
   }
 
+  /** 已经有人敲过门：再等一小会儿把陆续回来的一起领。没人在干了、或 stillApplies 不成立就不等。 */
+  settleKnocks(signal: AbortSignal, stillApplies: () => boolean): Promise<void> {
+    return this.settle(signal, () => this.hasLive() && stillApplies())
+  }
+
   hasLive(): boolean {
     for (const child of this.children.values()) {
       if (LIVE.has(child.status)) return true

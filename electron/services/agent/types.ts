@@ -150,6 +150,8 @@ export interface PendingUserMessage {
   silent?: boolean
   /** 后台命令结束的通知：给模型看，不上墙，也不要在收场时当成用户的下一句排进队列 */
   backgroundNotice?: boolean
+  /** 伙计的敲门 */
+  subAgentKnock?: boolean
   /** 派出去的任务交回的回执：上墙为回执步骤；这一轮没来得及收，收场后另起一轮送回 */
   taskReceipt?: boolean
   /** 回执没来得及收、挪到另起的一轮时用的全文（尾巴换成「用户不在这一轮里」那段） */
