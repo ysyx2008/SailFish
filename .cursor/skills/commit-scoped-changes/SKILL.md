@@ -1,6 +1,6 @@
 ---
 name: commit-scoped-changes
-description: When committing or staging changes, only include files related to the current task or conversation; do not stage or commit unrelated modifications. Before committing, update docs/ideas.md when the change matches an existing idea. Use when a stage of work is done and should be committed (agents commit on their own without waiting to be asked), when the user asks to commit, stage, 提交, or when preparing to run git add/commit.
+description: When committing or staging changes, only include files related to the current task or conversation; do not stage or commit unrelated modifications. Before committing, update docs/ideas.md when the change matches an existing idea. Use when a stage of work is done and checked (committing is the agent's job), when the user asks to commit, stage, 提交, or when preparing to run git add/commit.
 ---
 
 # 只提交当前相关修改
