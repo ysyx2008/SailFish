@@ -272,11 +272,13 @@ export default {
       useModelKey: {
         zhipu: 'Using the Zhipu key from model settings. Leave this blank unless you want a different key.',
         kimi: 'Using the Kimi key from model settings. Leave this blank unless you want a different key.',
+        deepseek: 'Using the DeepSeek key from model settings. Leave this blank unless you want a different key.',
       },
       providers: {
         bocha: 'Domestic search with strong Chinese results. This is the default.',
         zhipu: 'Domestic search, separate from the chat model. Leave the tier unchanged to use the cheaper basic engine.',
         kimi: 'Domestic search, separate from the chat model. Basic returns titles and snippets; Pro returns the passages most relevant to the question.',
+        deepseek: 'Domestic search, separate from the chat model. Billed per successful request; searches with no results are free. There is only one tier.',
         tavily: 'Search built for AI agents. Servers are outside China.',
         jina: 'Search plus page reading, returned as Markdown. Servers are outside China.',
         google: 'Google’s official search. Needs an API key and a Search Engine ID. 100 free queries a day. Access from China needs your own network setup.',

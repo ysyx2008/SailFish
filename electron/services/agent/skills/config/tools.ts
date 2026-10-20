@@ -450,10 +450,10 @@ Key 不会回显。`,
       name: 'config_web_search',
       description: `管理旗鱼的联网搜索（换当前服务商、开关、给某一家填或清掉密钥、改档位）。不会整表覆盖，改一家不影响其他家。不能新增或删除服务商。
 
-**provider**：bocha（博查）/ zhipu（智谱）/ kimi（Kimi）/ tavily / jina / google。改密钥、档位或换当前使用的那家时必填。
+**provider**：bocha（博查）/ zhipu（智谱）/ kimi（Kimi）/ deepseek（DeepSeek）/ tavily / jina / google。改密钥、档位或换当前使用的那家时必填。
 **setCurrent=true**：把 provider 设为当前使用的搜索引擎。
 **enabled**：联网搜索总开关。只想开关时可以不填 provider。搜索关着时，只换服务商不会自动打开。
-**apiKey**：写入这家的搜索密钥。留空字符串表示清掉单独填的密钥（智谱、Kimi 会回到沿用模型密钥）。省略则保持原密钥。
+**apiKey**：写入这家的搜索密钥。留空字符串表示清掉单独填的密钥（智谱、Kimi、DeepSeek 会回到沿用模型密钥）。省略则保持原密钥。
 **engine**：仅智谱。search_std / search_pro / search_pro_sogou / search_pro_quark。留空恢复默认 search_std。
 **tier**：仅 Kimi。basic / pro。留空恢复默认 basic。
 **cx**：仅 Google，搜索引擎编号。
@@ -464,7 +464,7 @@ Key 不会回显。`,
         properties: {
           provider: {
             type: 'string',
-            enum: ['bocha', 'zhipu', 'kimi', 'tavily', 'jina', 'google'],
+            enum: ['bocha', 'zhipu', 'kimi', 'deepseek', 'tavily', 'jina', 'google'],
             description: '要改的服务商',
           },
           setCurrent: { type: 'boolean', description: '把这一家设为当前使用的搜索引擎' },

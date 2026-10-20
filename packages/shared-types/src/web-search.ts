@@ -2,7 +2,7 @@
 
 import type { AiProfile } from './ai'
 
-export type WebSearchProviderId = 'tavily' | 'jina' | 'bocha' | 'zhipu' | 'kimi' | 'google'
+export type WebSearchProviderId = 'tavily' | 'jina' | 'bocha' | 'zhipu' | 'kimi' | 'deepseek' | 'google'
 
 /**
  * 这些搜索和对话模型共用同一把开放平台密钥。
@@ -11,6 +11,7 @@ export type WebSearchProviderId = 'tavily' | 'jina' | 'bocha' | 'zhipu' | 'kimi'
 const WEB_SEARCH_MODEL_HOSTS: Partial<Record<WebSearchProviderId, readonly string[]>> = {
   zhipu: ['open.bigmodel.cn'],
   kimi: ['api.moonshot.cn'],
+  deepseek: ['api.deepseek.com'],
 }
 
 /** 搜索没单独填密钥时，用已经配好的同厂商模型密钥。当前正在用的模型优先。 */
@@ -110,6 +111,12 @@ export const WEB_SEARCH_PROVIDERS: {
         ],
       },
     ],
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    requiresApiKey: true,
+    description: 'Domestic web search, separate from the chat model and billed per successful request. Shares the key of the DeepSeek chat model.',
   },
   { id: 'tavily', name: 'Tavily', requiresApiKey: true, description: 'Best AI agent search experience' },
   { id: 'jina', name: 'Jina', requiresApiKey: true, description: 'Search + URL reader, returns Markdown' },

@@ -414,6 +414,7 @@ const webSearchKeyUrls: Record<string, string> = {
   bocha: 'https://open.bochaai.com/api-keys',
   zhipu: 'https://open.bigmodel.cn/apikey/platform',
   kimi: 'https://platform.kimi.com/console/api-keys',
+  deepseek: 'https://platform.deepseek.com/api_keys',
   jina: 'https://jina.ai/api-dashboard/key-manager',
   tavily: 'https://app.tavily.com/home',
   google: 'https://developers.google.com/custom-search/v1/introduction',

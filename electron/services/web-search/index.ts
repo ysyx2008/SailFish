@@ -11,6 +11,7 @@ import { createLogger } from '../../utils/logger'
 import { BochaProvider } from './providers/bocha'
 import { ZhipuProvider } from './providers/zhipu'
 import { KimiProvider } from './providers/kimi'
+import { DeepSeekProvider } from './providers/deepseek'
 import { JinaProvider } from './providers/jina'
 import { TavilyProvider } from './providers/tavily'
 import { GoogleProvider } from './providers/google'
@@ -49,7 +50,7 @@ export function getSettings(): WebSearchSettings {
   return { ...currentSettings }
 }
 
-/** 获取指定 provider 的 API Key。搜索没单独填时，智谱和 Kimi 沿用已配置的模型密钥。 */
+/** 获取指定 provider 的 API Key。搜索没单独填时，智谱、Kimi、DeepSeek 沿用已配置的模型密钥。 */
 export function getApiKey(providerId?: string): string {
   const id = providerId || currentSettings.providerId
   const own = currentSettings.apiKeys?.[id as WebSearchProviderId]?.trim() || ''
@@ -147,6 +148,7 @@ export async function initWebSearch(settings: WebSearchSettings): Promise<void> 
     () => getApiKey('kimi'),
     () => getApiExtra('kimi', 'tier'),
   ))
+  registerProvider(new DeepSeekProvider(() => getApiKey('deepseek')))
   registerProvider(new JinaProvider(() => getApiKey('jina')))
   registerProvider(new TavilyProvider(() => getApiKey('tavily')))
   registerProvider(new GoogleProvider(
