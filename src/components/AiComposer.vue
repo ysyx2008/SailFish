@@ -7,6 +7,7 @@ import { useMentions } from '../composables/useMentions'
 import {
   formatSlashInvocation,
   matchSlashCommands,
+  parseGoalHint,
   parseLeadingSlash,
   primarySlashName,
   resolveExactSlash,
@@ -14,7 +15,6 @@ import {
   type SlashCommandDef
 } from '../composables/slash-commands'
 import { decorateShortcut, formatAccelerator, resolveComposerChord } from '../utils/shortcut'
-import GoalPill from './GoalPill.vue'
 import { toast } from '../composables/useToast'
 import { useComposerQuoteStore } from '../stores/composer-quote'
 import { useConversationSkillsStore, type ConversationSkillChip } from '../stores/conversation-skills'
@@ -102,7 +102,7 @@ const props = defineProps<{
   abortAgent: () => void
   ttsIsSpeaking: boolean
   ttsStop: () => void
-  submitMessage: (message: string, options?: { workbenchContext?: import('@shared/types').WorkbenchContext; enqueue?: boolean }) => void | Promise<void>
+  submitMessage: (message: string, options?: { workbenchContext?: import('@shared/types').WorkbenchContext; enqueue?: boolean; armGoal?: boolean }) => void | Promise<void>
   submitEmptyMessage: () => void | Promise<void>
   followUpQueue?: { id: string; message: string; editing?: boolean; failed?: { reason: string } }[]
   isEditingFollowUp?: boolean
@@ -122,11 +122,13 @@ const props = defineProps<{
     | { ok: true; freedTokens: number }
     | { ok: false; reason: 'running' | 'empty' | 'failed' }
   >
+  onGoalSlash?: (hint: string) => void | Promise<void>
   supportsGoal?: boolean
   goalAgentKey?: string
   terminalType?: TerminalType
   sessionId?: string
   sshHost?: string
+  resumeGoal?: () => void | Promise<void>
   /** 嵌入欢迎页等非面板场景：去掉顶部分割线，使用独立圆角容器 */
   embedded?: boolean
   /** 文档铺满：同一套输入，换成浮在文档上的薄胶囊 */
@@ -992,16 +994,6 @@ const runSlashCommand = async (def: SlashCommandDef, hint?: string) => {
   }
 }
 
-const {
-  showMenu: showSlashMenu,
-  suggestions: slashSuggestions,
-  selectedIndex: slashSelectedIndex,
-  refreshMenu: refreshSlashMenu,
-  applySuggestion: applySlashSuggestion,
-  handleKeyDown: handleSlashKeyDown,
-  tryHandle: tryHandleSlash,
-} = useSlashCommands(inputText)
-
 const focusInput = () => {
   mentionInputEl.value?.focus()
 }
@@ -1455,6 +1447,25 @@ const handleSend = async (opts?: { enqueue?: boolean }) => {
 
   const rawInput = serializeChipText(inputText.value).trim()
   const exactSlash = !isEditingFollowUp.value ? resolveExactSlash(rawInput) : null
+  if (exactSlash?.def.id === 'goal') {
+    const parsed = parseGoalHint(exactSlash.hint)
+    if (props.onGoalSlash) {
+      inputText.value = ''
+      void pickRandomPlaceholder()
+      props.clearTabError()
+      await props.onGoalSlash(exactSlash.hint)
+      return
+    }
+    if (parsed.kind === 'set') {
+      inputText.value = ''
+      void pickRandomPlaceholder()
+      props.clearTabError()
+      await props.submitMessage(formatSlashInvocation(exactSlash.def, exactSlash.hint), { armGoal: true })
+      return
+    }
+    toast.info(parsed.kind === 'status' ? t('goal.noneHint') : t('goal.onlyTask'))
+    return
+  }
   if (exactSlash) {
     const commandText = formatSlashInvocation(exactSlash.def, exactSlash.hint)
     if (opts?.enqueue) {
@@ -1822,11 +1833,6 @@ const handleSendClick = (event: MouseEvent) => {
       'composer-root-overlay-filled': overlay && hasComposerAttachments
     }"
   >
-  <GoalPill
-    v-if="supportsGoal"
-    :agent-key="goalAgentKey || currentTabId"
-    :session-id="sessionId"
-  />
   <div
     v-if="followUpItems.length > 0"
     class="follow-up-queue"
@@ -1962,6 +1968,7 @@ const handleSendClick = (event: MouseEvent) => {
   </div>
 
   <div class="ai-input" :class="{ 'ai-input-embedded': embedded, 'ai-input-overlay': overlay, 'ai-input-editing-follow-up': isEditingFollowUp }">
+    <slot name="goal" />
     <div
       v-if="!overlay && contextStats.tokenEstimate > 0"
       ref="contextMiniEl"
@@ -4239,6 +4246,13 @@ const handleSendClick = (event: MouseEvent) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.mention-cmd-hint {
+  margin-left: 8px;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .mention-desc {

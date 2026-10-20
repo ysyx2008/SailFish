@@ -65,3 +65,34 @@ export function shouldShowSlashHint(text: string, defs: SlashCommandDef[] = SLAS
   if (exactSlashCommand(parsed.name, defs)) return false
   return matchSlashCommands(parsed.name, defs).length > 0
 }
+
+export type GoalSlashAction =
+  | { kind: 'status' }
+  | { kind: 'pause' }
+  | { kind: 'resume' }
+  | { kind: 'clear' }
+  | { kind: 'edit'; objective: string }
+  | { kind: 'set'; objective: string }
+
+/** 上墙可以带 `/goal`，挂到胶囊上的是后面那句目标正文。 */
+export function goalObjectiveFromUserText(text: string): string {
+  const slash = resolveExactSlash(text)
+  if (slash?.def.id !== 'goal') return text.trim()
+  const parsed = parseGoalHint(slash.hint)
+  if (parsed.kind === 'set' || parsed.kind === 'edit') return parsed.objective
+  return text.trim()
+}
+
+/**
+ * `/goal` 后面的字：空是看状态；单独一个 pause / resume / clear 是管理命令；`edit` 后面跟新正文；
+ * 其余都当新目标（以 clear、pause 开头的一句话是目标正文，不是命令）。
+ */
+export function parseGoalHint(hint: string): GoalSlashAction {
+  const trimmed = hint.trim()
+  if (!trimmed) return { kind: 'status' }
+  const [verb, ...tail] = trimmed.split(/\s+/)
+  const rest = tail.join(' ').trim()
+  if (!rest && (verb === 'pause' || verb === 'resume' || verb === 'clear')) return { kind: verb }
+  if (verb === 'edit') return { kind: 'edit', objective: rest }
+  return { kind: 'set', objective: trimmed }
+}

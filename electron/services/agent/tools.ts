@@ -470,6 +470,7 @@ function getGoalTools(): ToolDefinition[] {
         parameters: { type: 'object', properties: {} }
       },
       _meta: {
+        allowedForSubAgent: false,
         streamDisplay: { titleKey: 'goal.tool_get' }
       }
     } as ToolDefinitionWithMeta,
@@ -495,6 +496,7 @@ function getGoalTools(): ToolDefinition[] {
         }
       },
       _meta: {
+        allowedForSubAgent: false,
         streamDisplay: { titleKey: 'goal.tool_create', titleField: 'objective' }
       }
     } as ToolDefinitionWithMeta,
@@ -515,13 +517,14 @@ function getGoalTools(): ToolDefinition[] {
             },
             reason: {
               type: 'string',
-              description: '标停滞时必填：卡在哪、已经试过什么'
+              description: '达成时写证据；停滞时写卡在哪、已经试过什么'
             }
           },
-          required: ['status']
+          required: ['status', 'reason']
         }
       },
       _meta: {
+        allowedForSubAgent: false,
         streamDisplay: { titleKey: 'goal.tool_update', titleField: 'status' }
       }
     } as ToolDefinitionWithMeta,

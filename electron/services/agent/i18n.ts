@@ -1910,6 +1910,12 @@ const translations = {
     'goal.tool_blocked_reason_required': '标停滞时必须说明卡在哪。',
     'goal.tool_marked_achieved': '已标记目标达成。',
     'goal.tool_marked_blocked': '已标记目标停滞：{reason}',
+    'goal.tool_complete_evidence_required': '标达成时必须写下证据。',
+    'goal.notice_paused': '目标已暂停。点继续才会再推进。',
+    'goal.notice_blocked': '目标停滞了，需要你看一眼才能继续。',
+    'goal.notice_usage_limited': '模型额度不够了，目标先停在这里。额度恢复后可以继续。',
+    'goal.notice_budget_limited': '这次目标的 token 预算用完了。加预算或清掉目标后再说。',
+    'goal.notice_achieved': '目标已达成。',
   },
   'en-US': {
     // Tool names
@@ -3810,6 +3816,12 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'goal.tool_blocked_reason_required': 'When marking blocked, say what is stuck.',
     'goal.tool_marked_achieved': 'Goal marked achieved.',
     'goal.tool_marked_blocked': 'Goal marked blocked: {reason}',
+    'goal.tool_complete_evidence_required': 'Marking complete requires evidence.',
+    'goal.notice_paused': 'Goal paused. Resume it when you want it to continue.',
+    'goal.notice_blocked': 'Goal is stuck and needs you before it can continue.',
+    'goal.notice_usage_limited': 'Model usage ran out, so the goal stopped. Resume after quota returns.',
+    'goal.notice_budget_limited': 'This goal used up its token budget. Add budget or clear it.',
+    'goal.notice_achieved': 'Goal achieved.',
   }
 } as const
 

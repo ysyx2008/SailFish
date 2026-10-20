@@ -3,15 +3,21 @@ import { GoalContract } from '../../goal/goal-contract'
 import { createGoal, getGoal, updateGoal } from '../goal'
 import type { ToolExecutorConfig } from '../types'
 
-function mockExecutor(opts?: { goal?: GoalContract; supports?: boolean }): ToolExecutorConfig {
+function mockExecutor(opts?: { goal?: GoalContract; supports?: boolean }): ToolExecutorConfig & { notices: Array<Record<string, unknown>> } {
   let goal = opts?.goal
+  const notices: Array<Record<string, unknown>> = []
   return {
     supportsGoal: () => opts?.supports !== false,
     getGoal: () => goal,
     setGoal: (next) => { goal = next },
     persistGoal: () => {},
     notifyGoalChanged: () => {},
-  } as ToolExecutorConfig
+    addStep: (step) => {
+      notices.push(step)
+      return { id: 'notice', type: 'proactive_notice', content: '', timestamp: 0, ...step }
+    },
+    notices,
+  } as ToolExecutorConfig & { notices: Array<Record<string, unknown>> }
 }
 
 describe('goal tools', () => {
@@ -36,11 +42,13 @@ describe('goal tools', () => {
     expect(result.success).toBe(false)
   })
 
-  it('update_goal complete', () => {
+  it('update_goal complete needs evidence', () => {
     const executor = mockExecutor({ goal: GoalContract.start('做完') as GoalContract })
-    const result = updateGoal({ status: 'complete' }, executor)
+    expect(updateGoal({ status: 'complete' }, executor).success).toBe(false)
+    const result = updateGoal({ status: 'complete', reason: '测试已绿，见 vitest 输出' }, executor)
     expect(result.success).toBe(true)
     expect(executor.getGoal?.()?.status).toBe('achieved')
+    expect(executor.notices[0]?.systemInjected).toBe(true)
   })
 
   it('update_goal blocked needs a reason', () => {
@@ -49,6 +57,7 @@ describe('goal tools', () => {
     const result = updateGoal({ status: 'blocked', reason: '同一处连续三轮过不去' }, executor)
     expect(result.success).toBe(true)
     expect(executor.getGoal?.()?.status).toBe('blocked')
+    expect(executor.notices[0]?.systemInjected).toBe(true)
   })
 
   it('refuses on conversations that cannot have a goal', () => {

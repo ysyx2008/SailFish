@@ -5,10 +5,10 @@
 import type { GoalContract as GoalSnapshot } from '@shared/types'
 import { conversationPolicy } from '../../conversation/policy'
 import { inferConversationKind } from '@shared/types'
-import { t } from '../i18n'
+import { t, type TranslationKey } from '../i18n'
 import { buildBudgetWrapUpPrompt, buildContinuationPrompt } from './goal-prompts'
 import type { Agent } from '../agent'
-import type { AgentContext, RunOptions } from '../types'
+import type { AgentContext, AgentRunOutcome, RunOptions } from '../types'
 
 export type GoalRunOutcome = {
   aborted: boolean
@@ -51,6 +51,8 @@ export function agentSupportsGoal(agentKey: string, kind?: import('@shared/types
 
 export class GoalRuntime {
   private driving = new Set<string>()
+  /** 已经算过账的那一轮：外层出错后又走一遍收尾时，同一轮不记第二次 */
+  private readonly settled = new WeakSet<AgentRunOutcome>()
 
   constructor(private readonly host: GoalRuntimeHost) {}
 
@@ -58,6 +60,7 @@ export class GoalRuntime {
     const goal = agent.getGoal()
     if (!goal || goal.status !== 'active') return
     goal.pause()
+    agent.appendGoalNotice(t('goal.notice_paused'))
     this.host.persist(agent)
     this.host.notify(agentKey, goal.snapshot())
   }
@@ -84,6 +87,7 @@ export class GoalRuntime {
       this.host.notify(agentKey, agent.getGoal()?.snapshot())
 
       if (opts?.continueIfIdle === false) return
+      if (agent.hasQueuedUserInput()) return
       await this.continueWhileIdle(agentKey, agent, context, runOptions)
     } finally {
       this.driving.delete(agentKey)
@@ -119,33 +123,42 @@ export class GoalRuntime {
     const goal = agent.getGoal()
     const outcome = agent.getLastRunOutcome()
     if (!goal || !outcome) return
+    if (this.settled.has(outcome)) return
+    this.settled.add(outcome)
+    const prev = goal.status
 
-    if (outcome.aborted) {
-      if (goal.status === 'active') goal.pause()
-      return
-    }
-
-    if (outcome.failed) {
-      if (goal.status !== 'active') return
-      if (outcome.usageLimited) {
-        goal.markUsageLimited()
-        return
-      }
-      if (outcome.unretryable) {
-        goal.markBlocked()
-        return
-      }
-      // 普通失败不自动停滞，留给下一轮或用户
-      return
-    }
-
-    if (goal.status === 'active') {
+    // 这一轮花的先记账：不论它怎么收的场（达成、被按停、出错），都是为这个目标花的
+    if (outcome.goalId) {
       goal.accountUsage({
-        expectedGoalId: goal.goalId,
+        expectedGoalId: outcome.goalId,
         tokenDelta: outcome.tokenDelta,
         timeDeltaSeconds: outcome.durationSeconds,
       })
     }
+
+    if (outcome.aborted) {
+      if (goal.status === 'active') goal.pause()
+    } else if (outcome.failed && goal.status === 'active') {
+      if (outcome.usageLimited) {
+        goal.markUsageLimited()
+      } else if (outcome.unretryable) {
+        goal.markBlocked()
+      }
+    }
+    this.announceStatusChange(agent, prev, goal.status)
+  }
+
+  private announceStatusChange(agent: Agent, prev: GoalSnapshot['status'], next: GoalSnapshot['status']): void {
+    if (prev === next) return
+    const notices: Partial<Record<GoalSnapshot['status'], TranslationKey>> = {
+      paused: 'goal.notice_paused',
+      blocked: 'goal.notice_blocked',
+      usage_limited: 'goal.notice_usage_limited',
+      budget_limited: 'goal.notice_budget_limited',
+      achieved: 'goal.notice_achieved',
+    }
+    const key = notices[next]
+    if (key) agent.appendGoalNotice(t(key))
   }
 
   private async continueWhileIdle(
@@ -158,6 +171,7 @@ export class GoalRuntime {
 
     while (true) {
       if (agent.isRunning()) return
+      if (agent.hasQueuedUserInput()) return
       const goal = agent.getGoal()
       if (!goal) return
 
@@ -184,7 +198,8 @@ export class GoalRuntime {
       this.host.notify(agentKey, agent.getGoal()?.snapshot())
 
       if (needsWrapUp) return
-      if (agent.getLastRunOutcome()?.aborted) return
+      const outcome = agent.getLastRunOutcome()
+      if (outcome?.aborted || outcome?.failed) return
     }
   }
 }

@@ -812,10 +812,17 @@ interface Window {
         tokenBudget?: number
         replace?: boolean
       }) => Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>
-      pause: (agentKey: string) => Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>
-      resume: (input: { agentKey: string; profileId?: string }) => Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>
-      clear: (agentKey: string) => Promise<{ ok: true } | { ok: false; error: string }>
-      edit: (agentKey: string, objective: string) => Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>
+      pause: (input: { agentKey: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }) => Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>
+      resume: (input: {
+        agentKey: string
+        sessionId?: string
+        terminalType?: TerminalType
+        sshHost?: string
+        context?: import('@shared/types').AgentContext
+        profileId?: string
+      }) => Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>
+      clear: (input: { agentKey: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }) => Promise<{ ok: true } | { ok: false; error: string }>
+      edit: (input: { agentKey: string; objective: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }) => Promise<{ ok: true; goal: import('@shared/types').GoalContract } | { ok: false; error: string }>
       onUpdated: (callback: (data: { agentKey: string; goal?: import('@shared/types').GoalContract }) => void) => () => void
     }
     allowlist: {

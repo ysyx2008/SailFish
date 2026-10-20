@@ -73,6 +73,21 @@ describe('GoalContract', () => {
     expect(goal.status).toBe('budget_limited')
   })
 
+  it('记账不挑状态：达成、暂停之后收尾那一轮也记上，且不会因此改状态', () => {
+    const achieved = mustStart('活', { tokenBudget: 100 })
+    achieved.markAchieved(2)
+    expect(achieved.accountUsage({ expectedGoalId: achieved.goalId, tokenDelta: 150, timeDeltaSeconds: 30 }).ok).toBe(true)
+    expect(achieved.tokensUsed).toBe(150)
+    expect(achieved.timeUsedSeconds).toBe(30)
+    expect(achieved.status).toBe('achieved')
+
+    const paused = mustStart('活')
+    paused.pause(2)
+    expect(paused.accountUsage({ expectedGoalId: paused.goalId, tokenDelta: 7, timeDeltaSeconds: 1 }).ok).toBe(true)
+    expect(paused.tokensUsed).toBe(7)
+    expect(paused.status).toBe('paused')
+  })
+
   it('编辑目标文本不清空用量，终态不能改', () => {
     const goal = mustStart('旧目标', { tokenBudget: 80 })
     goal.accountUsage({ expectedGoalId: goal.goalId, tokenDelta: 15, timeDeltaSeconds: 2 })

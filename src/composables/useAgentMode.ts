@@ -25,7 +25,9 @@ import { estimateMessageStepVirtualSize } from '../utils/thinking-block'
 import { resolveWorkbenchAgentPrompt, resolveWorkbenchKind } from '../workbench'
 import { showConfirm, showAlert } from './useConfirm'
 import { toast } from './useToast'
-import { resolveExactSlash } from './slash-commands'
+import { exactSlashCommand, formatSlashInvocation, parseGoalHint, resolveExactSlash } from './slash-commands'
+import { liveGoalOfAny, rememberLiveGoalFor, revealLiveGoal } from './goal/live'
+import { goalClearNeedsConfirm } from './goal/clear'
 import { formatAccelerator } from '../utils/shortcut'
 import { toIpcPlain } from '../utils/ipc-plain'
 import { coalescePendingHandoff, decideFollowUpDrain, mergePendingIntoQueue, optimisticPlaceholderConfirmedBy, turnFailureAlreadyVisible, withFailedAtHead, withRetried } from './follow-up-drain'
@@ -91,6 +93,7 @@ export interface AgentTaskGroup {
   isProactive?: boolean
   isOnboarding?: boolean
   isReceipt?: boolean
+  isSystemInjected?: boolean
 }
 
 export interface FollowUpQueueItem {
@@ -137,7 +140,7 @@ function describeSendFailure(error: unknown, ipcFailedText: string, unknownText:
 
 export interface VirtualItem {
   id: string
-  type: 'user_task' | 'step' | 'final_result' | 'proactive_message' | 'proactive_notice' | 'confirm' | 'waiting_input' | 'folded_turn' | 'time_marker'
+  type: 'user_task' | 'step' | 'final_result' | 'proactive_message' | 'proactive_notice' | 'goal_notice' | 'confirm' | 'waiting_input' | 'folded_turn' | 'time_marker'
   /** 联络时间标记对应的时刻 */
   timestamp?: number
   group?: AgentTaskGroup
@@ -283,6 +286,7 @@ export function useAgentMode(
   let cleanupSecureInputListener: (() => void) | null = null
   let cleanupCompleteListener: (() => void) | null = null
   let cleanupErrorListener: (() => void) | null = null
+  let cleanupGoalListener: (() => void) | null = null
 
   // 获取当前 tab（基于固定的 tabId）
   const currentTab = computed(() => {
@@ -1161,7 +1165,7 @@ export function useAgentMode(
         continue
       }
 
-      if (!group.isOnboarding && !group.isReceipt) {
+      if (!group.isOnboarding && !group.isReceipt && !group.isSystemInjected) {
         items.push({ id: `user_${group.id}`, type: 'user_task', group, size: 60 })
       }
 
@@ -1183,6 +1187,9 @@ export function useAgentMode(
         const toStepItem = (ref: ProcessStepRef<AgentStep>, isFirst: boolean): VirtualItem => {
           const { step, part } = ref
           if (step.type === 'proactive_notice') {
+            if (step.systemInjected) {
+              return { id: step.id, type: 'goal_notice', step, group, size: 36 }
+            }
             return { id: step.id, type: 'proactive_notice', step, group, size: 80 }
           }
           const size = step.type === 'message'
@@ -1292,6 +1299,8 @@ export function useAgentMode(
       workbenchContext?: WorkbenchContext
       enqueue?: boolean
       queuedPayload?: FollowUpQueueItem
+      /** 目标已经挂好，这句只是上墙的那句话（带着 `/goal`）：照常开跑，不再当成新命令重设一遍 */
+      goalArmed?: boolean
     }
   ) => {
     const queued = options?.queuedPayload
@@ -1468,7 +1477,7 @@ export function useAgentMode(
       return
     }
 
-    if (compactSlash?.def.id === 'goal') {
+    if (compactSlash?.def.id === 'goal' && !options?.goalArmed) {
       if (!queued) inputText.value = ''
       await handleGoalSlash(compactSlash.hint)
       return
@@ -1749,9 +1758,8 @@ export function useAgentMode(
       terminalType: tab.type,
       sshHost: tab.sshConfig?.host,
     }
-    const [verb, ...tail] = hint.trim() ? hint.trim().split(/\s+/) : []
-    const rest = tail.join(' ').trim()
-    if (!verb) {
+    const parsed = parseGoalHint(hint)
+    if (parsed.kind === 'status') {
       const current = await window.electronAPI.goal.get(agentKey, action.sessionId)
       toast.info(current ? t('goal.statusLine', {
         status: t(`goal.status.${current.status}`),
@@ -1760,40 +1768,62 @@ export function useAgentMode(
       }) : t('goal.noneHint'))
       return
     }
-    if (verb === 'pause') {
-      const result = await window.electronAPI.goal.pause(agentKey)
-      toast[result.ok ? 'success' : 'error'](result.ok ? t('goal.paused') : t('goal.actionFailed'))
+    if (parsed.kind === 'pause') {
+      const result = await window.electronAPI.goal.pause(action)
+      if (result.ok) {
+        rememberLiveGoalFor([agentKey, tab.id], result.goal)
+        toast.success(t('goal.paused'))
+      } else {
+        toast.error(t('goal.actionFailed'))
+      }
       return
     }
-    if (verb === 'resume') {
-      const result = await window.electronAPI.goal.resume({ agentKey, profileId: configStore.activeAiProfileId })
-      toast[result.ok ? 'success' : 'error'](result.ok ? t('goal.resumed') : t('goal.actionFailed'))
+    if (parsed.kind === 'resume') {
+      const result = await window.electronAPI.goal.resume({ ...action, profileId: configStore.activeAiProfileId })
+      if (result.ok) {
+        rememberLiveGoalFor([agentKey, tab.id], result.goal)
+        toast.success(t('goal.resumed'))
+      } else {
+        toast.error(t('goal.actionFailed'))
+      }
       return
     }
-    if (verb === 'clear') {
-      const ok = await showConfirm({
-        title: t('goal.clear'),
-        message: t('goal.clearConfirm'),
-        type: 'danger',
-        confirmText: t('goal.clear'),
-        cancelText: t('common.cancel'),
-      })
-      if (!ok) return
-      const result = await window.electronAPI.goal.clear(agentKey)
-      toast[result.ok ? 'success' : 'error'](result.ok ? t('goal.cleared') : t('goal.actionFailed'))
+    if (parsed.kind === 'clear') {
+      if (goalClearNeedsConfirm(liveGoalOfAny([agentKey, tab.id]))) {
+        const ok = await showConfirm({
+          title: t('goal.clear'),
+          message: t('goal.clearConfirm'),
+          type: 'danger',
+          confirmText: t('goal.clear'),
+          cancelText: t('common.cancel'),
+        })
+        if (!ok) return
+      }
+      const result = await window.electronAPI.goal.clear(action)
+      if (result.ok) {
+        rememberLiveGoalFor([agentKey, tab.id], null)
+        toast.success(t('goal.cleared'))
+      } else {
+        toast.error(t('goal.actionFailed'))
+      }
       return
     }
-    if (verb === 'edit') {
-      if (!rest) {
+    if (parsed.kind === 'edit') {
+      if (!parsed.objective) {
         toast.warning(t('goal.editNeedText'))
         return
       }
-      const result = await window.electronAPI.goal.edit(agentKey, rest)
-      toast[result.ok ? 'success' : 'error'](result.ok ? t('goal.edited') : t('goal.actionFailed'))
+      const result = await window.electronAPI.goal.edit({ ...action, objective: parsed.objective })
+      if (result.ok) {
+        rememberLiveGoalFor([agentKey, tab.id], result.goal)
+        toast.success(t('goal.edited'))
+      } else {
+        toast.error(t('goal.actionFailed'))
+      }
       return
     }
 
-    const objective = hint.trim()
+    const objective = parsed.objective
     const existing = await window.electronAPI.goal.get(agentKey, action.sessionId)
     let replace = false
     if (existing && existing.status !== 'achieved' && existing.status !== 'budget_limited') {
@@ -1814,7 +1844,11 @@ export function useAgentMode(
       toast.error(t('goal.setFailed'))
       return
     }
-    await runAgent(objective)
+    rememberLiveGoalFor([agentKey, tab.id, tab.agentId].filter((key): key is string => !!key), result.goal)
+    terminalStore.setAgentGoal(tab.id, result.goal)
+    revealLiveGoal(agentKey)
+    const goalDef = exactSlashCommand('goal')
+    await runAgent(goalDef ? formatSlashInvocation(goalDef, objective) : `/goal ${objective}`, { goalArmed: true })
   }
 
   const compactContext = async (hint?: string): Promise<
@@ -2353,6 +2387,70 @@ export function useAgentMode(
     }
   }
 
+  const resumeActiveGoal = async () => {
+    const tabId = currentTabId.value
+    if (!tabId) return
+    const tab = currentTab.value
+    const isAssistantMode = tab?.type === 'assistant'
+    const agentKey = isAssistantMode ? tab?.agentId : tabId
+    if (!agentKey) return
+
+    const action = {
+      agentKey,
+      sessionId: agentState.value?.sessionId,
+      terminalType: (tab?.type || 'assistant') as TerminalType,
+      sshHost: tab?.sshConfig?.host,
+      profileId: activeProfileId.value || undefined,
+    }
+
+    if (isAgentRunning.value) {
+      await window.electronAPI.goal.resume(action)
+      return
+    }
+
+    const hostedContext = isAssistantMode ? terminalStore.getAgentContext(tabId) : null
+    const hostedPtyId = tab && isAssistantMode ? terminalStore.getActivePtyId(tab) : undefined
+    const context = isAssistantMode
+      ? {
+          mode: (hostedContext?.mode === 'split' && (hostedContext.panes?.length ?? 0) > 1)
+            ? 'split' as const
+            : 'single' as const,
+          terminalOutput: hostedContext?.terminalOutput ?? [],
+          systemInfo: hostedContext?.systemInfo ?? getLocalSystemInfo(),
+          terminalType: 'assistant' as const,
+          sessionId: agentState.value?.sessionId,
+          sessionStartTime: agentState.value?.sessionStartTime,
+          ...(hostedPtyId ? { ptyId: hostedPtyId } : {}),
+        }
+      : terminalStore.getAgentContext(tabId)
+
+    if (!isAssistantMode && !context) return
+
+    const workbenchPrompt = tab
+      ? resolveWorkbenchAgentPrompt(resolveWorkbenchKind(tab), tab)
+      : undefined
+
+    terminalStore.setAgentRunning(tabId, true, agentKey)
+    try {
+      const result = await window.electronAPI.goal.resume({
+        ...action,
+        context: {
+          ...(context as AgentContext),
+          sessionId: agentState.value?.sessionId,
+          sessionStartTime: agentState.value?.sessionStartTime,
+          sshHost: tab?.sshConfig?.host,
+          ...(workbenchPrompt ? { workbenchPrompt } : {}),
+        },
+      })
+      if (!result.ok) {
+        terminalStore.setAgentRunning(tabId, false, agentKey)
+      }
+    } catch (error) {
+      log.error('恢复目标失败:', error)
+      terminalStore.setAgentRunning(tabId, false, agentKey)
+    }
+  }
+
   // 发送 Agent 回复（用于用户点击选项快速回复）
   const sendAgentReply = async (message: string) => {
     if (!message.trim() || !currentTabId.value) return
@@ -2582,6 +2680,19 @@ export function useAgentMode(
       }
     })
 
+    cleanupGoalListener = window.electronAPI.goal?.onUpdated((payload) => {
+      if (!payload.goal) return
+      if (!isEventForThisTab(payload.agentKey, payload.agentKey)) return
+      const tab = currentTab.value
+      if (!tab || !currentTabId.value) return
+      rememberLiveGoalFor(
+        [payload.agentKey, tab.id, tab.agentId].filter((key): key is string => !!key),
+        payload.goal
+      )
+      terminalStore.setAgentGoal(currentTabId.value, payload.goal)
+      revealLiveGoal(payload.agentKey)
+    })
+
     // 监听错误
     cleanupErrorListener = window.electronAPI.agent.onError((data: { agentId: string; ptyId?: string; error: string }) => {
       const foundTabId = resolveTabIdForAgentEvent(data.agentId, data.ptyId)
@@ -2638,6 +2749,10 @@ export function useAgentMode(
     if (cleanupErrorListener) {
       cleanupErrorListener()
       cleanupErrorListener = null
+    }
+    if (cleanupGoalListener) {
+      cleanupGoalListener()
+      cleanupGoalListener = null
     }
   }
 
@@ -3028,6 +3143,8 @@ export function useAgentMode(
     toggleProcessFold,
     runAgent,
     compactContext,
+    handleGoalSlash,
+    resumeActiveGoal,
     abortAgent,
     followUpQueueView,
     retryFollowUp,

@@ -474,6 +474,8 @@ export interface AgentRunOutcome {
   unretryable: boolean
   tokenDelta: number
   durationSeconds: number
+  /** 这一轮花的算在哪个目标头上；开跑时没有推进中的目标就没有 */
+  goalId?: string
 }
 
 export interface PromptOptions {

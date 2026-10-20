@@ -55,6 +55,7 @@ export interface PendingComposerHandoff {
   message: string
   images: PendingImage[]
   skillIds?: string[]
+  armGoal?: boolean
 }
 
 export type ShellType = 'powershell' | 'cmd' | 'bash' | 'zsh' | 'sh' | 'unknown'
@@ -85,7 +86,7 @@ export type {
   PendingConfirmation,
 } from '@shared/types'
 
-import type { TerminalType, AgentStep, AgentContextBar, PendingConfirmation, RemoteChannel, AttachmentInfo, AgentRecord, AgentRunningEvent, ApprovalMode, AssignedBy } from '@shared/types'
+import type { TerminalType, AgentStep, AgentContextBar, PendingConfirmation, RemoteChannel, AttachmentInfo, AgentRecord, AgentRunningEvent, ApprovalMode, AssignedBy, GoalContract } from '@shared/types'
 import { COMPANION_AGENT_KEY, deriveContextBarFromSteps, inferConversationKind } from '@shared/types'
 import { isWorkbenchAvailable } from '../workbench/registry'
 
@@ -109,6 +110,8 @@ export interface AgentState {
   approval?: ApprovalMode
   /** 这场任务是谁派的（目前只有联络）；缺省 = 用户自己开的。侧栏实时会话行据此标出身 */
   assignedBy?: AssignedBy
+  /** 这场任务挂着的目标；界面胶囊和空闲续跑都看它 */
+  goal?: GoalContract
   steps: AgentStep[]
   /**
    * 会话级上下文栏快照（后端 onContextBar 推送）。
@@ -3017,6 +3020,16 @@ export const useTerminalStore = defineStore('terminal', () => {
     tabs.value = [...tabs.value]
   }
 
+  function setAgentGoal(tabId: string, goal?: GoalContract | null): void {
+    const tab = tabs.value.find(t => t.id === tabId)
+    if (!tab) return
+    const next = { ...(tab.agentState ?? { isRunning: false, steps: [] }) }
+    if (goal) next.goal = goal
+    else delete next.goal
+    tab.agentState = next
+    tabs.value = [...tabs.value]
+  }
+
   function setAgentPendingSecureInput(
     tabId: string,
     request: (import('@shared/types').PendingSecureInput & { ptyId?: string }) | undefined
@@ -3259,6 +3272,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       toolResult?: string
       riskLevel?: string
       timestamp: number
+      systemInjected?: boolean
       webSearchResults?: import('@shared/types').WebSearchResultItem[]
       success?: boolean
       askingStatus?: AgentStep['askingStatus']
@@ -3273,6 +3287,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     userDismissedSkills?: string[]
     approval?: ApprovalMode
     assignedBy?: AssignedBy
+    goal?: GoalContract
   }): void {
     const tab = tabs.value.find(t => t.id === tabId)
     if (!tab) return
@@ -3291,6 +3306,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       toolResult: s.toolResult,
       riskLevel: s.riskLevel as RiskLevel | undefined,
       timestamp: s.timestamp,
+      systemInjected: s.systemInjected,
       webSearchResults: s.webSearchResults,
       success: s.success,
       askingStatus: s.askingStatus,
@@ -3327,6 +3343,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       ...(record.title?.trim() ? { title: record.title.trim() } : {}),
       ...(record.approval ? { approval: record.approval } : {}),
       ...(record.assignedBy ? { assignedBy: record.assignedBy } : {}),
+      ...(record.goal ? { goal: record.goal } : {}),
       steps: steps,
       contextBar: deriveContextBarFromSteps(steps),
       loadedFromHistory: true
@@ -4204,6 +4221,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     removeAgentStep,
     setAgentContextBar,
     setAgentPendingConfirm,
+    setAgentGoal,
     finalizeAgentRunState,
     setAgentPendingSecureInput,
     clearAgentState,

@@ -182,6 +182,7 @@ const confirmBtnClass = computed(() => {
                 type="button"
                 class="btn"
                 :class="confirmBtnClass"
+                data-testid="confirm-ok"
                 :disabled="!canConfirm"
                 @click="handleConfirm"
               >

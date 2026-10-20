@@ -17,6 +17,9 @@ import { useComposerQuoteStore } from '../stores/composer-quote'
 import AgentPlanView from './AgentPlanView.vue'
 import AssignedByHint from './AssignedByHint.vue'
 import AiComposer from './AiComposer.vue'
+import GoalPill from './GoalPill.vue'
+import { rememberLiveGoalFor, revealLiveGoal } from '../composables/goal/live'
+import { goalObjectiveFromUserText } from '../composables/slash-commands'
 import DropOverlay from './DropOverlay.vue'
 import AiProfileSelect from './AiProfileSelect.vue'
 import ApprovalModeSelect from './ApprovalModeSelect.vue'
@@ -122,6 +125,16 @@ const isCompanionTab = computed(() => {
 const currentAssignedBy = computed(() =>
   terminalStore.tabs.find(t => t.id === props.tabId)?.agentState?.assignedBy
 )
+const currentTaskTab = computed(() => terminalStore.tabs.find(t => t.id === props.tabId))
+const goalAgentKey = computed(() => {
+  const tab = currentTaskTab.value
+  if (tab?.type === 'assistant') return tab.agentId || props.tabId
+  return props.tabId
+})
+const goalAliasKeys = computed(() => {
+  const tab = currentTaskTab.value
+  return [...new Set([props.tabId, tab?.agentId].filter((key): key is string => !!key))]
+})
 
 // 步骤行模板：列表里平铺一份，折叠行内部再用一份，作用域不变
 const [DefineStepRow, ReuseStepRow] = createReusableTemplate<{ item: VirtualItem }>()
@@ -705,6 +718,7 @@ const {
   flattenedItems,
   toggleProcessFold,
   runAgent,
+  resumeActiveGoal,
   abortAgent,
   followUpQueueView,
   isEditingFollowUp,
@@ -746,6 +760,7 @@ const {
   ttsIsSpeaking,
   ttsStop,
   compactContext,
+  handleGoalSlash,
 } = useAgentMode(
   messagesRef,
   async () => {
@@ -1574,7 +1589,45 @@ watch(
       }
       void finishWelcomeSkills()
     }
-    void runAgent(handoff.message)
+    if (handoff.armGoal && tab?.agentId) {
+      const objective = goalObjectiveFromUserText(handoff.message)
+      const draft = {
+        goalId: `pending:${tab.id}`,
+        objective,
+        status: 'active' as const,
+        tokensUsed: 0,
+        timeUsedSeconds: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      rememberLiveGoalFor([tab.agentId, tab.id], draft)
+      terminalStore.setAgentGoal(tab.id, draft)
+      revealLiveGoal(tab.agentId)
+      let armedOk = false
+      try {
+        const armed = await window.electronAPI.goal?.set({
+          agentKey: tab.agentId,
+          objective,
+          terminalType: 'assistant',
+        })
+        if (armed?.ok) {
+          armedOk = true
+          rememberLiveGoalFor([tab.agentId, tab.id], armed.goal)
+          terminalStore.setAgentGoal(tab.id, armed.goal)
+        }
+      } catch {
+        armedOk = false
+      }
+      if (!armedOk) {
+        // 没挂上：先摆出来的草稿目标收回，免得留一个后端并不存在的「推进中」
+        rememberLiveGoalFor([tab.agentId, tab.id], null)
+        terminalStore.setAgentGoal(tab.id, undefined)
+        toast.error(t('goal.setFailed'))
+      }
+    } else if (handoff.armGoal && tab) {
+      terminalStore.setAgentGoal(tab.id, undefined)
+    }
+    void runAgent(handoff.message, handoff.armGoal ? { goalArmed: true } : undefined)
   },
   { immediate: true }
 )
@@ -3109,6 +3162,10 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                 </div>
               </div>
 
+              <div v-else-if="item.type === 'goal_notice'" class="goal-notice">
+                {{ item.step?.content }}
+              </div>
+
               <!-- 用户任务 -->
               <div v-else-if="item.type === 'user_task'" class="message user">
                 <div class="message-wrapper">
@@ -3256,7 +3313,6 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         </div>
       </div>
 
-
       <div v-if="peek && peekSurface === 'needs-you'" class="ai-peek-needs-you">
         <ReuseConfirmRow v-if="pendingConfirm" />
         <ReuseSecureRow v-if="pendingSecureInput" />
@@ -3341,6 +3397,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         :submit-message="handleComposerSubmit"
         :submit-empty-message="handleComposerEmptySubmit"
         :compact-context="compactContext"
+        :on-goal-slash="handleGoalSlash"
         :follow-up-queue="followUpQueueView"
         :is-editing-follow-up="isEditingFollowUp"
         :remove-follow-up="removeFollowUp"
@@ -3353,11 +3410,23 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         :consume-workbench-context="props.consumeWorkbenchContext"
         :overlay="peek"
         :supports-goal="!isCompanionTab"
-        :goal-agent-key="isStandaloneAssistant ? (terminalStore.tabs.find(t => t.id === currentTabId)?.agentId || currentTabId) : currentTabId"
+        :goal-agent-key="goalAgentKey"
         :terminal-type="terminalStore.tabs.find(t => t.id === currentTabId)?.type || 'assistant'"
         :session-id="terminalStore.tabs.find(t => t.id === currentTabId)?.agentState?.sessionId"
         :ssh-host="terminalStore.tabs.find(t => t.id === currentTabId)?.sshConfig?.host"
       >
+        <template #goal>
+          <GoalPill
+            v-if="!isCompanionTab"
+            :agent-key="goalAgentKey"
+            :alias-keys="goalAliasKeys"
+            :session-id="currentTaskTab?.agentState?.sessionId"
+            :terminal-type="currentTaskTab?.type || 'assistant'"
+            :ssh-host="currentTaskTab?.sshConfig?.host"
+            :seed-goal="currentTaskTab?.agentState?.goal"
+            :resume-goal="resumeActiveGoal"
+          />
+        </template>
         <template #footer-left>
           <AiProfileSelect
             v-if="aiProfiles.length > 0"
@@ -4365,6 +4434,14 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
 .message.assistant {
   display: flex;
   justify-content: flex-start;
+}
+
+.goal-notice {
+  margin: 10px 20px;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--text-muted, #888);
 }
 
 .standalone-mode .message.assistant {

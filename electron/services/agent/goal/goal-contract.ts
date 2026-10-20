@@ -59,6 +59,16 @@ export class GoalContract {
     return snapshot ? new GoalContract(snapshot) : null
   }
 
+  /**
+   * 从落盘的记录接回来：此刻没有任何一轮在跑（重启、重新打开历史），
+   * 推进中的目标回到已暂停，等用户点继续才动。
+   */
+  static fromStored(raw: unknown): GoalContract | null {
+    const goal = GoalContract.fromJSON(raw)
+    if (goal?.status === 'active') goal.pause()
+    return goal
+  }
+
   snapshot(): GoalSnapshot {
     return { ...this.data }
   }
@@ -143,8 +153,9 @@ export class GoalContract {
   }
 
   /**
-   * 结算本轮用量。goalId 对不上则不记账（避免记到已被替换的目标上）。
-   * 仅推进中的目标记账；触顶则转预算停机。
+   * 结算一轮用量。goalId 对不上则不记账（避免记到已被替换的目标上）。
+   * 这一轮不论怎么收的场（达成、停滞、被按停、出错）都是为这个目标花的，一律记上；
+   * 只有推进中的目标才会因此触顶转预算停机。
    */
   accountUsage(input: {
     expectedGoalId: string
@@ -153,20 +164,21 @@ export class GoalContract {
     now?: number
   }): GoalMutationResult {
     if (input.expectedGoalId !== this.data.goalId) return { ok: false, error: 'goal_id_mismatch' }
-    if (this.data.status !== 'active') return { ok: false, error: 'not_active' }
 
     const tokenDelta = Number.isFinite(input.tokenDelta) ? Math.max(0, Math.floor(input.tokenDelta)) : 0
     const timeDelta = Number.isFinite(input.timeDeltaSeconds) ? Math.max(0, Math.floor(input.timeDeltaSeconds)) : 0
     const tokensUsed = this.data.tokensUsed + tokenDelta
     const timeUsedSeconds = this.data.timeUsedSeconds + timeDelta
     const now = input.now ?? Date.now()
-    const hitBudget = this.data.tokenBudget !== undefined && tokensUsed >= this.data.tokenBudget
+    const hitBudget = this.data.status === 'active'
+      && this.data.tokenBudget !== undefined
+      && tokensUsed >= this.data.tokenBudget
 
     this.data = {
       ...this.data,
       tokensUsed,
       timeUsedSeconds,
-      status: hitBudget ? 'budget_limited' : 'active',
+      status: hitBudget ? 'budget_limited' : this.data.status,
       updatedAt: now,
     }
     return { ok: true }

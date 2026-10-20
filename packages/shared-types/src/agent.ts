@@ -527,6 +527,11 @@ export interface AgentStep {
   toolResult?: string
   riskLevel?: RiskLevel
   timestamp: number
+  /**
+   * 系统代发的步骤（如目标续跑），不是用户亲手发的。
+   * 前端不当作用户气泡；模型侧仍走这条对话。
+   */
+  systemInjected?: boolean
   isStreaming?: boolean
   plan?: AgentPlan
   progress?: StepProgress

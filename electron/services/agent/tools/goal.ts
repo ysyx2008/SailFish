@@ -76,9 +76,11 @@ export function updateGoal(args: Record<string, unknown>, executor: ToolExecutor
   const reason = typeof args.reason === 'string' ? args.reason.trim() : ''
 
   if (status === 'complete') {
+    if (!reason) return deny(t('goal.tool_complete_evidence_required'))
     const result = goal.markAchieved()
     if (!result.ok) return deny(t('goal.tool_not_active'))
     persist(executor)
+    executor.addStep({ type: 'proactive_notice', content: t('goal.notice_achieved'), systemInjected: true })
     return ok(t('goal.tool_marked_achieved'))
   }
 
@@ -89,6 +91,7 @@ export function updateGoal(args: Record<string, unknown>, executor: ToolExecutor
   const result = goal.markBlocked()
   if (!result.ok) return deny(t('goal.tool_not_active'))
   persist(executor)
+  executor.addStep({ type: 'proactive_notice', content: t('goal.notice_blocked'), systemInjected: true })
   return ok(t('goal.tool_marked_blocked', { reason }))
 }
 

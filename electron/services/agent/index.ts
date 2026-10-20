@@ -36,7 +36,7 @@ import { ConversationStore, ConversationManager, Companion, Conversation } from 
 import { CompanionSeedPicker, createThinkingFeed, type CompanionPickReply } from '../conversation/companion-seed'
 import { assessCommandRisk, analyzeCommand } from './risk-assessor'
 import type { CommandHandlingInfo } from './risk-assessor'
-import { setConfigService as setI18nConfigService } from './i18n'
+import { setConfigService as setI18nConfigService, t } from './i18n'
 import { getTerminalStateService } from '../terminal-state.service'
 import { getKnowledgeService } from '../knowledge'
 import { createLogger } from '../../utils/logger'
@@ -1206,11 +1206,12 @@ export class AgentService {
   }
 
   getGoal(agentKey: string, sessionId?: string): GoalSnapshot | undefined {
-    const agent = this.getAgent(agentKey)
+    const agent = this.resolveGoalAgent({ agentKey, sessionId })
     const live = agent?.getGoal()?.snapshot()
     if (live) return live
     if (!sessionId) return undefined
-    return this.services.conversationManager?.getRecord(sessionId)?.goal
+    const stored = this.services.conversationManager?.getRecord(sessionId)?.goal
+    return GoalContract.fromStored(stored)?.snapshot()
   }
 
   setGoal(input: {
@@ -1225,9 +1226,8 @@ export class AgentService {
     if (!agentSupportsGoal(input.agentKey)) {
       return { ok: false, error: 'not_supported' }
     }
-    const agent = this.getOrCreateAgent(input.agentKey)
-    this.hydrateConversation(agent, input)
-    if (!agent.supportsGoal()) {
+    const agent = this.resolveGoalAgent(input)
+    if (!agent || !agent.supportsGoal()) {
       return { ok: false, error: 'not_supported' }
     }
 
@@ -1245,12 +1245,19 @@ export class AgentService {
     return { ok: true, goal: started.snapshot() }
   }
 
-  pauseGoal(agentKey: string): { ok: true; goal: GoalSnapshot } | { ok: false; error: string } {
-    const agent = this.getAgent(agentKey)
+  pauseGoal(input: { agentKey: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }): { ok: true; goal: GoalSnapshot } | { ok: false; error: string } {
+    const agent = this.resolveGoalAgent(input)
     const goal = agent?.getGoal()
     if (!agent || !goal) return { ok: false, error: 'no_goal' }
+    if (agent.isRunning()) {
+      this.abort(input.agentKey)
+      const paused = agent.getGoal()
+      if (!paused) return { ok: false, error: 'no_goal' }
+      return { ok: true, goal: paused.snapshot() }
+    }
     const result = goal.pause()
     if (!result.ok) return { ok: false, error: result.error }
+    agent.appendGoalNotice(t('goal.notice_paused'))
     agent.persistConversation()
     agent.notifyGoalChanged()
     return { ok: true, goal: goal.snapshot() }
@@ -1258,17 +1265,25 @@ export class AgentService {
 
   async resumeGoal(input: {
     agentKey: string
+    sessionId?: string
+    terminalType?: TerminalType
+    sshHost?: string
     context?: AgentContext
     profileId?: string
   }): Promise<{ ok: true; goal: GoalSnapshot } | { ok: false; error: string }> {
-    const agent = this.getAgent(input.agentKey)
+    const agent = this.resolveGoalAgent(input)
     const goal = agent?.getGoal()
     if (!agent || !goal) return { ok: false, error: 'no_goal' }
-    const context = input.context ?? agent.getLastContext()
+    const context = input.context ?? agent.buildResumeContext()
     if (!context) return { ok: false, error: 'no_context' }
+    const resumeContext: AgentContext = {
+      ...context,
+      sessionId: context.sessionId ?? agent.getSessionId(),
+      sshHost: context.sshHost ?? input.sshHost,
+    }
     agent.setHoldComplete(true)
     try {
-      const result = await this.goalRuntime.resumeAndContinue(input.agentKey, agent, context, {
+      const result = await this.goalRuntime.resumeAndContinue(input.agentKey, agent, resumeContext, {
         profileId: input.profileId,
       })
       if (!result.ok) return { ok: false, error: result.error ?? 'resume_failed' }
@@ -1278,40 +1293,49 @@ export class AgentService {
     }
   }
 
-  clearGoal(agentKey: string): { ok: true } | { ok: false; error: string } {
-    const agent = this.getAgent(agentKey)
+  clearGoal(input: { agentKey: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }): { ok: true } | { ok: false; error: string } {
+    const agent = this.resolveGoalAgent(input)
     if (!agent?.getGoal()) return { ok: false, error: 'no_goal' }
+    if (agent.isRunning()) {
+      this.abort(input.agentKey)
+    }
     agent.clearGoal()
     agent.persistConversation()
     agent.notifyGoalChanged()
     return { ok: true }
   }
 
-  editGoal(agentKey: string, objective: string): { ok: true; goal: GoalSnapshot } | { ok: false; error: string } {
-    const agent = this.getAgent(agentKey)
+  editGoal(input: { agentKey: string; objective: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }): { ok: true; goal: GoalSnapshot } | { ok: false; error: string } {
+    const agent = this.resolveGoalAgent(input)
     const goal = agent?.getGoal()
     if (!agent || !goal) return { ok: false, error: 'no_goal' }
-    const result = goal.editObjective(objective)
+    const result = goal.editObjective(input.objective)
     if (!result.ok) return { ok: false, error: result.error }
     agent.persistConversation()
     agent.notifyGoalChanged()
     return { ok: true, goal: goal.snapshot() }
   }
 
-  private hydrateConversation(agent: SailFish, input: {
-    terminalType: TerminalType
+  private resolveGoalAgent(input: {
+    agentKey: string
     sessionId?: string
+    terminalType?: TerminalType
     sshHost?: string
-  }): void {
-    if (agent.getSessionId()) return
-    const record = input.sessionId
-      ? this.services.conversationManager?.getRecord(input.sessionId)
-      : undefined
+  }): SailFish | undefined {
+    if (!input.agentKey || !agentSupportsGoal(input.agentKey)) return undefined
+    const agent = this.getOrCreateAgent(input.agentKey)
+    const liveSession = agent.getSessionId()
+    const sessionId = input.sessionId || liveSession
+    if (!sessionId) return agent
+    // 正在跑的这场不能被别场的记录换掉：问的是别场，这个 Agent 就不是它
+    if (agent.isRunning() && liveSession && sessionId !== liveSession) return undefined
+    const record = this.services.conversationManager?.getRecord(sessionId)
     agent.ensureConversation({
-      terminalType: input.terminalType,
-      sessionId: input.sessionId,
-      sshHost: input.sshHost,
+      terminalType: input.terminalType ?? record?.terminalType ?? 'assistant',
+      sessionId,
+      sshHost: input.sshHost ?? record?.sshHost,
       record,
     })
+    return agent
   }
 }

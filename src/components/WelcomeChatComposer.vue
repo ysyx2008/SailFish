@@ -18,6 +18,8 @@ import { useSpeechRecognition, SPEECH_PACK_NOT_INSTALLED } from '../composables/
 import { planComposerPaste, ingestComposerAttachments } from '../composables/useComposerPaste'
 import { showConfirm } from '../composables/useConfirm'
 import { toast } from '../composables/useToast'
+import { exactSlashCommand, formatSlashInvocation, goalObjectiveFromUserText, parseGoalHint } from '../composables/slash-commands'
+import { rememberLiveGoalFor, revealLiveGoal } from '../composables/goal/live'
 
 const props = defineProps<{
   /** 欢迎页是否为当前主界面（切到 tab 时为 false，用于禁用全局 PTT 监听） */
@@ -354,7 +356,18 @@ const restoreWelcomeComposerDraft = () => {
 
 const noop = () => {}
 
-const handleComposerSubmit = async (message: string) => {
+const handleGoalSlash = async (hint: string) => {
+  const parsed = parseGoalHint(hint)
+  if (parsed.kind === 'set') {
+    const goalDef = exactSlashCommand('goal')
+    const wall = goalDef ? formatSlashInvocation(goalDef, parsed.objective) : `/goal ${parsed.objective}`
+    await handleComposerSubmit(wall, { armGoal: true })
+    return
+  }
+  toast.info(parsed.kind === 'status' ? t('goal.noneHint') : t('goal.onlyTask'))
+}
+
+const handleComposerSubmit = async (message: string, options?: { armGoal?: boolean }) => {
   if (!(await guardVisionBeforeSend())) return
   await ensurePendingImagePaths()
 
@@ -363,13 +376,31 @@ const handleComposerSubmit = async (message: string) => {
   clearImages()
   terminalStore.clearWelcomeComposerDraft()
   const tabId = terminalStore.createAssistantTab({ activate: false })
+  if (options?.armGoal) {
+    const tab = terminalStore.tabs.find(t => t.id === tabId)
+    const draft = {
+      goalId: `pending:${tabId}`,
+      objective: goalObjectiveFromUserText(message),
+      status: 'active' as const,
+      tokensUsed: 0,
+      timeUsedSeconds: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+    terminalStore.setAgentGoal(tabId, draft)
+    if (tab?.agentId) {
+      rememberLiveGoalFor([tab.agentId, tabId], draft)
+      revealLiveGoal(tab.agentId)
+    }
+  }
   terminalStore.transferUploadedDocs(WELCOME_COMPOSER_TAB_ID, tabId)
   const { useConversationSkillsStore } = await import('../stores/conversation-skills')
   const skillChips = useConversationSkillsStore().transferWelcomeSkills(tabId)
   terminalStore.setPendingComposerHandoff(tabId, {
     message,
     images: imagesSnapshot,
-    skillIds: skillChips.map(s => s.id)
+    skillIds: skillChips.map(s => s.id),
+    armGoal: options?.armGoal
   })
   terminalStore.markAssistantSkipOnboarding(tabId)
   terminalStore.focusHubConversation(tabId)
@@ -421,6 +452,7 @@ onUnmounted(() => {
 <template>
   <div
     class="welcome-chat-composer"
+    data-testid="welcome-composer"
     :class="{ 'has-attachments': hasComposerAttachments }"
   >
     <AiComposer
@@ -460,6 +492,7 @@ onUnmounted(() => {
       :tts-is-speaking="false"
       :tts-stop="noop"
       :submit-message="handleComposerSubmit"
+      :on-goal-slash="handleGoalSlash"
       :submit-empty-message="noop"
       :clear-tab-error="noop"
     >

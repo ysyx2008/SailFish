@@ -2054,6 +2054,7 @@ app.whenReady().then(async () => {
 
     // 后端 init 才加载 Agent/终端原生模块与远程会话栈（首屏不触发）
     const { ptyService, sshService, agentService } = await rt()
+    void wireGoalUpdates()
     await ensureSftpProgressBridge(agentRuntimeDeps())
     schedulerService = await ensureSchedulerService()
     sensorService = await ensureSensorService()
@@ -4613,28 +4614,35 @@ ipcMain.handle('goal:set', async (_event, input: {
   return agentService.setGoal(input)
 })
 
-ipcMain.handle('goal:pause', async (_event, agentKey: string) => {
+ipcMain.handle('goal:pause', async (_event, input: { agentKey: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }) => {
   await wireGoalUpdates()
   const { agentService } = await rt()
-  return agentService.pauseGoal(agentKey)
+  return agentService.pauseGoal(input)
 })
 
-ipcMain.handle('goal:resume', async (_event, input: { agentKey: string; profileId?: string }) => {
+ipcMain.handle('goal:resume', async (_event, input: {
+  agentKey: string
+  sessionId?: string
+  terminalType?: TerminalType
+  sshHost?: string
+  context?: import('./services/agent/types').AgentContext
+  profileId?: string
+}) => {
   await wireGoalUpdates()
   const { agentService } = await rt()
   return agentService.resumeGoal(input)
 })
 
-ipcMain.handle('goal:clear', async (_event, agentKey: string) => {
+ipcMain.handle('goal:clear', async (_event, input: { agentKey: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }) => {
   await wireGoalUpdates()
   const { agentService } = await rt()
-  return agentService.clearGoal(agentKey)
+  return agentService.clearGoal(input)
 })
 
-ipcMain.handle('goal:edit', async (_event, agentKey: string, objective: string) => {
+ipcMain.handle('goal:edit', async (_event, input: { agentKey: string; objective: string; sessionId?: string; terminalType?: TerminalType; sshHost?: string }) => {
   await wireGoalUpdates()
   const { agentService } = await rt()
-  return agentService.editGoal(agentKey, objective)
+  return agentService.editGoal(input)
 })
 
 ipcMain.handle('agent:fork', async (_event, opts: {

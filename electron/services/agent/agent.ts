@@ -60,6 +60,7 @@ import {
   type VisibleConversationSkill,
   type GoalContract as GoalSnapshot,
 } from '@shared/types'
+import { GoalContract } from './goal/goal-contract'
 import { classifyGoalError, agentSupportsGoal } from './goal/goal-runtime'
 import { buildGoalSystemSection } from './goal/goal-prompts'
 import { estimateTextTokens } from './token-estimate'
@@ -393,7 +394,10 @@ export abstract class Agent {
   private _onGoalChanged?: (goal: GoalSnapshot | undefined) => void
   private _runStartedAt = 0
   private _goalContinuationThisRun = false
+  /** 这一轮花的算在哪个目标头上（开跑时定下）；没有就是不算 */
+  private _goalChargeId?: string
   private _lastContext?: AgentContext
+  private _pendingGoal?: GoalContract
 
   // ===== 会话状态委托视图：唯一真相源是 _conversation，以下 getter 只读转发 =====
   /** 会话 ID */
@@ -1807,6 +1811,11 @@ export abstract class Agent {
     this._runStartedAt = Date.now()
     this._lastRunOutcome = null
     this._goalContinuationThisRun = options?.goalContinuation === true
+    // 开跑时目标在推进（或这就是它的续跑/收尾），这一轮花的算在它头上；暂停期间随口聊的不算
+    const chargeable = this._isSubAgent ? undefined : this.getGoal()
+    this._goalChargeId = chargeable && (chargeable.status === 'active' || options?.goalContinuation === true)
+      ? chargeable.goalId
+      : undefined
     this._lastContext = context
 
     const run: AgentRun = {
@@ -1901,6 +1910,10 @@ export abstract class Agent {
       }
     }
 
+    if (this.attachPendingGoal()) {
+      this.notifyGoalChanged()
+    }
+
     // 开跑先于第一句上墙：界面没开着这场时据此先认领出来，第一句才有地方落
     this.callbacks?.onStart?.(
       this._agentId ?? run.id,
@@ -1924,7 +1937,8 @@ export abstract class Agent {
         content: displayMessage,
         images: options?.goalContinuation ? undefined : context.previewImages || context.images,
         docPreviewImages: options?.goalContinuation ? undefined : (context.docPreviewImages?.length ? context.docPreviewImages : undefined),
-        attachments: options?.goalContinuation ? undefined : context.attachments
+        attachments: options?.goalContinuation ? undefined : context.attachments,
+        systemInjected: options?.goalContinuation ? true : undefined,
       })
     } else if (run.noticeKind === 'task_receipt') {
       this.addStep({ type: 'task_receipt', content: run.noticeDisplay ?? message })
@@ -2214,6 +2228,7 @@ export abstract class Agent {
       unretryable: classified.unretryable,
       tokenDelta: run.tokenUsage?.total_tokens ?? 0,
       durationSeconds: Math.max(0, Math.round((Date.now() - this._runStartedAt) / 1000)),
+      goalId: this._goalChargeId,
     }
 
     // 提交本次 run 到会话聚合根：补最终回复 → 存工作记忆 → 刷新 cache 前缀 → 累积 transcript / token
@@ -2371,15 +2386,28 @@ export abstract class Agent {
     return this._conversation?.kind
   }
 
-  getGoal(): import('./goal/goal-contract').GoalContract | undefined {
-    return this._conversation?.goal
+  getGoal(): GoalContract | undefined {
+    return this._conversation?.goal ?? this._pendingGoal
   }
 
-  setGoal(goal: import('./goal/goal-contract').GoalContract): void {
-    this._conversation?.setGoal(goal)
+  setGoal(goal: GoalContract): void {
+    if (this._conversation) {
+      this._conversation.setGoal(goal)
+      this._pendingGoal = undefined
+      return
+    }
+    this._pendingGoal = goal
+  }
+
+  private attachPendingGoal(): boolean {
+    if (!this._pendingGoal || !this._conversation || this._conversation.goal) return false
+    this._conversation.setGoal(this._pendingGoal)
+    this._pendingGoal = undefined
+    return true
   }
 
   clearGoal(): void {
+    this._pendingGoal = undefined
     this._conversation?.clearGoal()
   }
 
@@ -2393,9 +2421,22 @@ export abstract class Agent {
     sshHost?: string
     record?: AgentRecord
   }): Conversation {
-    if (this._conversation) return this._conversation
+    if (this._conversation && opts.record && opts.sessionId && this._conversation.id !== opts.sessionId) {
+      this._conversation = Conversation.fromRecord(opts.record, { taskMemory: this.taskMemory })
+      this.attachPendingGoal()
+      return this._conversation
+    }
+    if (this._conversation) {
+      if (!this._conversation.goal && opts.record?.goal) {
+        const restored = GoalContract.fromStored(opts.record.goal)
+        if (restored) this._conversation.setGoal(restored)
+      }
+      this.attachPendingGoal()
+      return this._conversation
+    }
     if (opts.record) {
       this._conversation = Conversation.fromRecord(opts.record, { taskMemory: this.taskMemory })
+      this.attachPendingGoal()
       return this._conversation
     }
     this._conversation = Conversation.create(
@@ -2403,6 +2444,7 @@ export abstract class Agent {
       { id: opts.sessionId, sshHost: opts.sshHost },
       { taskMemory: this.taskMemory }
     )
+    this.attachPendingGoal()
     return this._conversation
   }
 
@@ -2436,7 +2478,32 @@ export abstract class Agent {
   }
 
   notifyGoalChanged(): void {
-    this._onGoalChanged?.(this._conversation?.goal?.snapshot())
+    const goal = this.getGoal()
+    this._onGoalChanged?.(goal ? this.withLiveSpend(goal.snapshot()) : undefined)
+  }
+
+  /**
+   * 这一轮还没结算：已经花掉的先算上，界面上的数字才不用等收场才跳。
+   * 账本本身只在收场时记，这里只改发给界面的那一份。
+   */
+  private withLiveSpend(snapshot: GoalSnapshot): GoalSnapshot {
+    const run = this.currentRun
+    if (!run?.isRunning || this._goalChargeId !== snapshot.goalId) return snapshot
+    const liveTokens = run.tokenUsage?.total_tokens ?? 0
+    // 推进中时界面自己从 updatedAt 往后数时间；已经不在推进（刚宣布达成、刚被按停）才补上这一轮到现在的时间
+    const liveSeconds = snapshot.status === 'active'
+      ? 0
+      : Math.max(0, Math.round((Date.now() - this._runStartedAt) / 1000))
+    return {
+      ...snapshot,
+      tokensUsed: snapshot.tokensUsed + liveTokens,
+      timeUsedSeconds: snapshot.timeUsedSeconds + liveSeconds,
+    }
+  }
+
+  private notifyGoalLiveUsage(): void {
+    if (this._isSubAgent || !this.supportsGoal() || !this.getGoal()) return
+    this.notifyGoalChanged()
   }
 
   supportsGoal(): boolean {
@@ -2445,6 +2512,45 @@ export abstract class Agent {
 
   getLastContext(): AgentContext | undefined {
     return this._lastContext
+  }
+
+  hasQueuedUserInput(): boolean {
+    if (this.preRunUserMessages.length > 0) return true
+    if (this._heldComplete?.pending.length) return true
+    return (this.currentRun?.pendingUserMessages.some(item => !item.silent) ?? false)
+  }
+
+  appendGoalNotice(content: string): void {
+    // 一轮结束后 currentRun 还在，但已经 commit 过——再写入 run.steps 不会进会话。
+    if (this.currentRun?.isRunning) {
+      this.addStep({ type: 'proactive_notice', content, systemInjected: true })
+      return
+    }
+    const step: AgentStep = {
+      id: this.generateId(),
+      type: 'proactive_notice',
+      content,
+      timestamp: Date.now(),
+      systemInjected: true,
+    }
+    this._conversation?.appendTranscriptStep(step)
+    this.callbacks?.onStep?.(this.currentRun?.id || '', step)
+  }
+
+  buildResumeContext(): AgentContext | undefined {
+    if (this._lastContext) return this._lastContext
+    if (!this._conversation) return undefined
+    return {
+      terminalType: this._conversation.terminalType,
+      sshHost: this._conversation.sshHost,
+      sessionId: this._conversation.id,
+      sessionStartTime: this._conversation.createdAt,
+      terminalOutput: [],
+      systemInfo: {
+        os: process.platform,
+        shell: process.env.SHELL || '',
+      },
+    }
   }
 
   /**
@@ -2673,6 +2779,7 @@ export abstract class Agent {
     this._conversation = undefined
     this._armedApproval = undefined
     this._armedAssignedBy = undefined
+    this._pendingGoal = undefined
     this._lastStatsProfileId = undefined
     this._contextBar = {}
     this.resetConsumedUsage()
@@ -2704,6 +2811,7 @@ export abstract class Agent {
     this._conversation = undefined
     this._armedApproval = undefined
     this._armedAssignedBy = undefined
+    this._pendingGoal = undefined
     this._lastStatsProfileId = undefined
     this._contextBar = {}
     this.resetConsumedUsage()
@@ -2908,6 +3016,7 @@ export abstract class Agent {
       unretryable: classified.unretryable,
       tokenDelta: run.tokenUsage?.total_tokens ?? 0,
       durationSeconds: Math.max(0, Math.round((Date.now() - this._runStartedAt) / 1000)),
+      goalId: this._goalChargeId,
     }
 
     this.callbacks?.onError?.(run.id, errorMessage, { aborted: run.aborted })
@@ -4517,6 +4626,7 @@ export abstract class Agent {
             }
             this.commitPendingUsage(result.usage)
             this._conversation?.recordPromptUsage(requestMessageCount, result.usage.prompt_tokens)
+            this.notifyGoalLiveUsage()
           } else {
             this.commitPendingUsage()
           }
@@ -5842,9 +5952,9 @@ export abstract class Agent {
       },
       getCurrentPtyId: () => run.ptyId,
       supportsGoal: () => this.supportsGoal(),
-      getGoal: () => this._conversation?.goal,
+      getGoal: () => this.getGoal(),
       setGoal: (goal) => {
-        this._conversation?.setGoal(goal)
+        this.setGoal(goal)
       },
       persistGoal: () => {
         this.saveSessionToHistory()
@@ -6453,6 +6563,7 @@ export abstract class Agent {
       run.tokenUsage.cache_miss_tokens = (run.tokenUsage.cache_miss_tokens || 0) + usage.cache_miss_tokens
     }
     this.addConsumedUsage(usage)
+    this.notifyGoalLiveUsage()
   }
   
   /**

@@ -33,6 +33,7 @@ function serviceCapturingResolver() {
   let resolver: RunOptions['cwdResolver']
   vi.spyOn(service, 'getOrCreateAgent').mockReturnValue({
     updateConfig: vi.fn(),
+    getGoal: vi.fn().mockReturnValue(undefined),
     run: vi.fn(async (_msg: string, _ctx: AgentContext, options?: RunOptions) => {
       resolver = options?.cwdResolver
       return 'ok'

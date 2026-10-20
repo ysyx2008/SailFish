@@ -27,6 +27,8 @@ export interface AgentStepRecord {
   toolResult?: string
   riskLevel?: string
   timestamp: number
+  /** 系统代发的步骤（如目标续跑），重开历史时也不当作用户气泡 */
+  systemInjected?: boolean
   /** Web 搜索结构化结果（web_search 工具专用） */
   webSearchResults?: import('./agent').WebSearchResultItem[]
   /** 工具执行成败标识，前端据此判断"失败的 tool_result 必须显示" */

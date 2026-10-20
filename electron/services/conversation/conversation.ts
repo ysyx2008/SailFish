@@ -289,7 +289,7 @@ export class Conversation {
     if (record.titleLocked) this._titleLocked = true
     this.adoptApproval(record.approval)
     this.adoptAssignedBy(record.assignedBy)
-    this._goal = GoalContract.fromJSON(record.goal) ?? undefined
+    this._goal = GoalContract.fromStored(record.goal) ?? undefined
   }
 
   /** 从记录接回审批方式：已经定了的不覆盖 */
@@ -1250,6 +1250,11 @@ export class Conversation {
     this._dirty = true
   }
 
+  appendTranscriptStep(step: AgentStep): void {
+    this._steps.push(step)
+    this._dirty = true
+  }
+
   /** 会话内用户完整轮次（user_task，不含中途追加） */
   get userTaskCount(): number {
     return this._steps.filter(s => s.type === 'user_task').length
@@ -1402,6 +1407,7 @@ export class Conversation {
       toolResult: s.toolResult,
       riskLevel: s.riskLevel,
       timestamp: s.timestamp,
+      systemInjected: s.systemInjected,
       webSearchResults: s.webSearchResults,
       success: s.success,
       askingStatus: s.askingStatus,
