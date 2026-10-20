@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Sparkles, Settings } from 'lucide-vue-next'
 import { useBuiltinSkillText } from '../composables/useBuiltinSkillText'
+import { sortSkillsByName } from '@sailfish/shared-types'
 
 interface SkillItem {
   id: string
@@ -60,8 +61,9 @@ function matches(skill: SkillItem): boolean {
     || skill.id.toLowerCase().includes(query.value)
 }
 
-const visibleBuiltin = computed(() => builtinSkills.value.filter(matches))
-const visibleUser = computed(() => userSkills.value.filter(matches))
+// 两组各按眼前看到的名字拼音排
+const visibleBuiltin = computed(() => sortSkillsByName(builtinSkills.value.filter(matches), localizedName))
+const visibleUser = computed(() => sortSkillsByName(userSkills.value.filter(matches), localizedName))
 const hasVisible = computed(() => visibleBuiltin.value.length + visibleUser.value.length > 0)
 
 const loadAll = async () => {

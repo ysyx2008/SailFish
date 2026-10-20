@@ -7,6 +7,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { createLogger } from '../utils/logger'
 import { listSkillEnvNames } from './credential.service'
+import { sortSkillsByName } from '@sailfish/shared-types'
 
 const log = createLogger('UserSkill')
 
@@ -258,14 +259,14 @@ export class UserSkillService {
       log.error('Error scanning skills directory:', error)
     }
 
-    // 按名称排序
-    skills.sort((a, b) => a.name.localeCompare(b.name))
+    // 按名称拼音排序（前后端、命令行同一把尺，见 skill-order）
+    const sorted = sortSkillsByName(skills, s => s.name)
     
     // 缓存结果
-    this.cachedSkills = skills
+    this.cachedSkills = sorted
     
-    log.info(`Scanned ${skills.length} skills`)
-    return skills
+    log.info(`Scanned ${sorted.length} skills`)
+    return sorted
   }
 
   /**

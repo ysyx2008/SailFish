@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { RefreshCw, FolderOpen, Eye, X, Download, Trash2, ArrowUpCircle, Search, Star } from 'lucide-vue-next'
 import { showConfirm, showAlert } from '../../composables/useConfirm'
 import { useBuiltinSkillText } from '../../composables/useBuiltinSkillText'
+import { sortSkillsByName } from '@sailfish/shared-types'
 import { oemResolved } from '@shared/oem-resolve'
 
 const props = defineProps<{
@@ -169,6 +170,10 @@ const enabledCount = computed(() =>
   builtinSkills.value.filter(s => s.enabled).length +
   skills.value.filter(s => s.enabled).length
 )
+
+// 内置和我的技能按眼前看到的名字拼音排；技能市场不排，保持市场自己的顺序（代表推荐程度）
+const sortedBuiltinSkills = computed(() => sortSkillsByName(builtinSkills.value, localizedBuiltinSkillName))
+const sortedUserSkills = computed(() => sortSkillsByName(skills.value, s => s.name))
 
 const featuredSkills = computed(() => marketSkills.value.filter(s => s.featured))
 
@@ -501,7 +506,7 @@ watch(() => props.pendingInstallSkillId, (newId) => {
         <p class="section-desc">{{ t('skillSettings.builtinSkillsDesc') }}</p>
         <div class="skill-list">
           <div
-            v-for="skill in builtinSkills"
+            v-for="skill in sortedBuiltinSkills"
             :key="'builtin-' + skill.id"
             class="skill-item"
             :class="{ disabled: !skill.enabled }"
@@ -545,7 +550,7 @@ watch(() => props.pendingInstallSkillId, (newId) => {
 
         <div class="skill-list">
           <div
-            v-for="skill in skills"
+            v-for="skill in sortedUserSkills"
             :key="skill.id"
             class="skill-item"
             :class="{ disabled: !skill.enabled }"

@@ -6,7 +6,7 @@ import { ref, computed, type Ref, type ComputedRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
 import type { ParsedDocument } from '../stores/terminal'
-import { toUserSkillId } from '@sailfish/shared-types'
+import { sortSkillsByName, toUserSkillId } from '@sailfish/shared-types'
 import { useBuiltinSkillText } from './useBuiltinSkillText'
 
 // @ 命令类型
@@ -48,14 +48,6 @@ export interface FileInfo {
   path: string
   isDirectory: boolean
   size?: number
-}
-
-// 技能按名字排：中文按拼音、英文按字母（与应用里其他列表同为 zh-CN 排法），另外让数字按大小比
-const skillNameCollator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
-
-/** 技能列表的顺序。名字一样（连大小写差异也算）时按 id 定，保证每次开面板顺序都一样 */
-function compareSkillsByName(a: { label: string; id: string }, b: { label: string; id: string }): number {
-  return skillNameCollator.compare(a.label, b.label) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 }
 
 export function useMentions(
@@ -480,31 +472,35 @@ export function useMentions(
       const matches = (name: string, id: string, description: string) =>
         !q || name.toLowerCase().includes(q) || id.toLowerCase().includes(q) || description.toLowerCase().includes(q)
       // 内置技能显示界面语言下的名字和简介（和设置页一致）；搜索也按眼前看到的
-      const builtinItems = builtins
-        .filter(s => s.enabled)
-        .map(s => ({ id: s.id, name: builtinSkillName(s), description: builtinSkillDescription(s) }))
-        .filter(s => matches(s.name, s.id, s.description))
-        .map(s => ({
-          type: 'skill' as MentionType,
-          id: s.id,
-          label: s.name,
-          value: s.id,
-          icon: '✨',
-          description: s.description
-        }))
-        .sort(compareSkillsByName)
-      const userItems = userSkills
-        .filter(s => s.enabled)
-        .filter(s => matches(s.name, s.id, s.description))
-        .map(s => ({
-          type: 'skill' as MentionType,
-          id: toUserSkillId(s.id),
-          label: s.name,
-          value: toUserSkillId(s.id),
-          icon: '✨',
-          description: s.description
-        }))
-        .sort(compareSkillsByName)
+      const builtinItems = sortSkillsByName(
+        builtins
+          .filter(s => s.enabled)
+          .map(s => ({ id: s.id, name: builtinSkillName(s), description: builtinSkillDescription(s) }))
+          .filter(s => matches(s.name, s.id, s.description))
+          .map(s => ({
+            type: 'skill' as MentionType,
+            id: s.id,
+            label: s.name,
+            value: s.id,
+            icon: '✨',
+            description: s.description
+          })),
+        s => s.label
+      )
+      const userItems = sortSkillsByName(
+        userSkills
+          .filter(s => s.enabled)
+          .filter(s => matches(s.name, s.id, s.description))
+          .map(s => ({
+            type: 'skill' as MentionType,
+            id: toUserSkillId(s.id),
+            label: s.name,
+            value: toUserSkillId(s.id),
+            icon: '✨',
+            description: s.description
+          })),
+        s => s.label
+      )
       // 加号 / 星标打开的面板要能逛全，不设上限；@ 是边打字边挑，列太长反而难选
       // （先排好再截，@ 里取到的是排在前面的那些）
       const all = [...userItems, ...builtinItems]
