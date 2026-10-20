@@ -3,7 +3,7 @@
  *
  * 没被限流就逐步放开；被限流就收窄窗口、整组先缓一缓，缓完只放一个探路，
  * 探路成功才接着放。当面等的请求不排队，只计数、参与限流判断。
- * 详见 docs/plans/2026-10-20-sub-agent-scale-design.md §3.2。
+ * 详见 docs/plans/done-2026-10-20-sub-agent-scale-design.md §3.2。
  */
 import { createHash } from 'crypto'
 
