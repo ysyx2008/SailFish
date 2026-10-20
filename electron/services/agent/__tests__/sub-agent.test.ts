@@ -43,7 +43,7 @@ vi.mock('../../web-search/index', () => ({
 }))
 
 import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent } from '../tools/sub-agent'
-import { SubAgentRoster, type ChildAgentHandle } from '../sub-agent-roster'
+import { MAX_LIVE_CHILDREN, SubAgentRoster, type ChildAgentHandle } from '../sub-agent-roster'
 import type { ToolExecutorConfig, AgentConfig } from '../tools/types'
 import type { AgentContext } from '../types'
 import type { AgentStep } from '@shared/types'
@@ -145,6 +145,29 @@ describe('dispatch_agents 异步派出', () => {
     await roster.waitUntil(undefined, new AbortController().signal)
     expect(roster.hasLive()).toBe(false)
     expect(roster.list()[0].result).toBe('配置在 /etc')
+  })
+
+  it('回执说清现在没做完几个、还能派几个', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, () => stubChild('ok', 200))
+    const result = await dispatchSubAgents({
+      tasks: Array.from({ length: 12 }, (_, i) => ({ description: `第 ${i} 个`, prompt: '干活' }))
+    }, defaultConfig, executor)
+    expect(result.success).toBe(true)
+    expect(result.output).toContain(`现在没做完的共 12 个，还能再派 ${MAX_LIVE_CHILDREN - 12} 个`)
+    roster.abortAll()
+  })
+
+  it('超过保险丝整批不派，并把上限和余量告诉秘书', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, () => stubChild('ok', 200))
+    const result = await dispatchSubAgents({
+      tasks: Array.from({ length: MAX_LIVE_CHILDREN + 1 }, (_, i) => ({ description: `第 ${i} 个`, prompt: '干活' }))
+    }, defaultConfig, executor)
+    expect(result.success).toBe(false)
+    expect(result.error).toContain(String(MAX_LIVE_CHILDREN))
+    expect(result.error).toContain(`这次要派 ${MAX_LIVE_CHILDREN + 1} 个`)
+    expect(roster.list()).toHaveLength(0)
   })
 
   it('followup / interrupt 走花名册', async () => {

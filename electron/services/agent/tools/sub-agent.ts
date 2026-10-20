@@ -9,7 +9,7 @@ import type { ToolDefinition } from '../../ai.service'
 import type { AgentContext } from '../types'
 import { getDefaultShell, getLocalOS } from '../../../utils/platform'
 import { getMetaByName } from '../tool-metadata'
-import type { ChildSnapshot, RosterSpawnDeps } from '../sub-agent-roster'
+import { MAX_LIVE_CHILDREN, type ChildSnapshot, type RosterSpawnDeps, type SubAgentRoster } from '../sub-agent-roster'
 import { parseForkTurns, sanitizeParentMessages, type ForkTurns } from '../sanitize-parent-messages'
 import type { ToolExecutorConfig, ToolResult, AgentConfig } from './types'
 import { getAgentTools, filterSubAgentTools } from '../tools'
@@ -19,7 +19,6 @@ import { createLogger } from '../../../utils/logger'
 import { t } from '../i18n'
 
 const log = createLogger('SubAgent')
-const DEFAULT_MAX_CONCURRENT = 5
 const MAX_RESULT_LENGTH = 8000
 
 function archiveLongResult(taskId: string, text: string, artifactDir: string): string {
@@ -95,9 +94,12 @@ function formatKnock(child: ChildSnapshot): string {
   })
 }
 
-function formatSpawned(names: string[], snapshots: ChildSnapshot[]): string {
+function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubAgentRoster): string {
   const lines = snapshots.map(c => `- ${c.name}：${c.description}`)
-  return t('dispatch.spawned', { count: names.length, list: lines.join('\n') })
+  return [
+    t('dispatch.spawned', { count: names.length, list: lines.join('\n') }),
+    t('dispatch.capacity', { live: roster.liveCount(), room: roster.room() }),
+  ].join('\n')
 }
 
 function spawnDeps(
@@ -164,8 +166,17 @@ export async function dispatchSubAgents(
   if (!rawTasks || !Array.isArray(rawTasks) || rawTasks.length === 0) {
     return { success: false, output: '', error: 'tasks 参数必须是非空数组，每项包含 description 和 prompt' }
   }
-  if (rawTasks.length > 10) {
-    return { success: false, output: '', error: '一次最多 dispatch 10 个子任务' }
+  if (rawTasks.length > roster.room()) {
+    return {
+      success: false,
+      output: '',
+      error: t('dispatch.over_fuse', {
+        max: MAX_LIVE_CHILDREN,
+        live: roster.liveCount(),
+        room: roster.room(),
+        count: rawTasks.length,
+      }),
+    }
   }
   const parsedTasks: Array<{ name?: string; description: string; prompt: string; forkTurns: ForkTurns }> = []
   for (let i = 0; i < rawTasks.length; i++) {
@@ -185,12 +196,11 @@ export async function dispatchSubAgents(
     })
   }
 
-  const maxConcurrent = Math.min(Math.max(1, Number(args.max_concurrent) || DEFAULT_MAX_CONCURRENT), 10)
   const progressStep = executor.addStep({
     type: 'tool_call',
     content: t('dispatch.running', { count: rawTasks.length }),
     toolName: 'dispatch_agents',
-    toolArgs: { tasks: rawTasks.map(task => ({ name: task.name, description: task.description })), max_concurrent: maxConcurrent },
+    toolArgs: { tasks: rawTasks.map(task => ({ name: task.name, description: task.description })) },
     riskLevel: 'safe',
     success: true,
     subAgents: []
@@ -201,7 +211,6 @@ export async function dispatchSubAgents(
   if ('error' in deps) {
     return { success: false, output: '', error: deps.error }
   }
-  deps.maxConcurrent = maxConcurrent
 
   const names = roster.spawn(parsedTasks, deps)
 
@@ -220,7 +229,7 @@ export async function dispatchSubAgents(
   log.info(`Dispatched ${names.length} sub-agents: ${names.join(', ')}`)
   return {
     success: true,
-    output: formatSpawned(names, snapshots)
+    output: formatSpawned(names, snapshots, roster)
   }
 }
 

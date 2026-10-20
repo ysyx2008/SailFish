@@ -20,7 +20,15 @@ describe('CONVERSATION_POLICY 策略表', () => {
       restoreSkillsOnReopen: true,
       skillNotesOnUserMessage: true,
       supportsGoal: true,
+      modelRequestPriority: 'urgent',
     })
+  })
+
+  it('模型请求：任务和联络有人当面等不排队，关切和唤醒在后台排队', () => {
+    expect(conversationPolicy('task').modelRequestPriority).toBe('urgent')
+    expect(conversationPolicy('companion').modelRequestPriority).toBe('urgent')
+    expect(conversationPolicy('watch').modelRequestPriority).toBe('queued')
+    expect(conversationPolicy('wakeup').modelRequestPriority).toBe('queued')
   })
 
   it('替我审批认早先的话：任务看整场，联络只往回看 24 小时', () => {

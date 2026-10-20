@@ -141,3 +141,22 @@ describe('AI 请求经过缓冲池', () => {
     expect(getModelRequestBuffer().snapshot(key)).toMatchObject({ inFlight: 0, queued: 0 })
   }, 10_000)
 })
+
+describe('被限流时重试几次可以调', () => {
+  it('只给 1 次时，第二回被限流就报错，不按默认的 5 次', async () => {
+    const { ai, key } = serviceFor('impatient-model')
+    const throttled = { status: 429, headers: { 'Retry-After': '1' } }
+    scripts.set('impatient-model', [throttled, throttled, okReply()])
+    const result = await run(ai, { rateLimitMaxRetries: 1 })
+    expect(result.error).toBeTruthy()
+    expect(getModelRequestBuffer().snapshot(key)).toMatchObject({ inFlight: 0, queued: 0 })
+  }, 10_000)
+
+  it('多给几次时，连着被限流两回也能做完', async () => {
+    const { ai } = serviceFor('patient-model')
+    const throttled = { status: 429, headers: { 'Retry-After': '1' } }
+    scripts.set('patient-model', [throttled, throttled, okReply()])
+    const result = await run(ai, { rateLimitMaxRetries: 20 })
+    expect(result.done?.content).toBe('ok')
+  }, 15_000)
+})

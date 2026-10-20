@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { runUntilIdle } from '../run-until-idle'
-import { SubAgentRoster, allocateChildName, summarizeArgs, type ChildAgentHandle } from '../sub-agent-roster'
+import { MAX_LIVE_CHILDREN, SubAgentRoster, allocateChildName, summarizeArgs, type ChildAgentHandle } from '../sub-agent-roster'
 import type { AgentContext, AgentStep } from '../types'
 import type { AiMessage } from '../../ai.service'
 
@@ -172,7 +172,7 @@ describe('waitUntil', () => {
         { name: '读包', description: '读包', prompt: '读 package.json' },
         { name: '读说明', description: '读说明', prompt: '读 README' },
       ],
-      { ...spawnDeps(roster, () => kids.shift()!), maxConcurrent: 2 }
+      spawnDeps(roster, () => kids.shift()!)
     )
 
     const started = Date.now()
@@ -192,7 +192,7 @@ describe('waitUntil', () => {
         { name: '读包', description: '读包', prompt: '读 package.json' },
         { name: '读说明', description: '读说明', prompt: '读 README' },
       ],
-      { ...spawnDeps(roster, () => kids.shift()!), maxConcurrent: 2 }
+      spawnDeps(roster, () => kids.shift()!)
     )
 
     const started = Date.now()
@@ -212,7 +212,7 @@ describe('waitUntil', () => {
         { name: '读包', description: '读包', prompt: '读 package.json' },
         { name: '读说明', description: '读说明', prompt: '读 README' },
       ],
-      { ...spawnDeps(roster, () => kids.shift()!), maxConcurrent: 2 }
+      spawnDeps(roster, () => kids.shift()!)
     )
 
     await roster.waitForNews(['读包', '读说明'], new AbortController().signal)
@@ -221,6 +221,30 @@ describe('waitUntil', () => {
     expect(Date.now() - started).toBeGreaterThanOrEqual(50)
     expect(second.every(c => c.status === 'completed')).toBe(true)
     expect(roster.hasLive()).toBe(false)
+  })
+
+  it('派出的伙计全部立刻开工，不排队', () => {
+    const roster = new SubAgentRoster()
+    const tasks = Array.from({ length: 30 }, (_, i) => ({ name: `w${i}`, description: `第 ${i} 个`, prompt: '干活' }))
+    roster.spawn(tasks, spawnDeps(roster, () => stubChild({ delayMs: 1000 })))
+    expect(roster.list().every(c => c.status === 'running')).toBe(true)
+    expect(roster.liveCount()).toBe(30)
+    expect(roster.room()).toBe(MAX_LIVE_CHILDREN - 30)
+    roster.abortAll()
+  })
+
+  it('超过保险丝时整批不收，已经在干的不受影响', () => {
+    const roster = new SubAgentRoster()
+    const deps = spawnDeps(roster, () => stubChild({ delayMs: 1000 }))
+    const first = Array.from({ length: MAX_LIVE_CHILDREN - 5 }, (_, i) => ({ name: `a${i}`, description: 'a', prompt: '干活' }))
+    roster.spawn(first, deps)
+    const tooMany = Array.from({ length: 6 }, (_, i) => ({ name: `b${i}`, description: 'b', prompt: '干活' }))
+    expect(() => roster.spawn(tooMany, deps)).toThrow(RangeError)
+    expect(roster.liveCount()).toBe(MAX_LIVE_CHILDREN - 5)
+    expect(roster.get('b0')).toBeUndefined()
+    roster.spawn(tooMany.slice(0, 5), deps)
+    expect(roster.room()).toBe(0)
+    roster.abortAll()
   })
 
   it('敲门已经在队列里时立刻返回，不重等', async () => {

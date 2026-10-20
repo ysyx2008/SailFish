@@ -9,6 +9,7 @@
  */
 
 import type { AiMessage, ToolCall, ChatWithToolsResult, ToolDefinition, RetryInfo, AiModelFailoverNotice, TokenUsageInfo } from '../ai.service'
+import type { ModelRequestPriority } from '../model-request-buffer'
 import { StreamingToolExecutor } from './streaming-tool-executor'
 import type { AgentRecord } from '../history.service'
 import type {
@@ -132,6 +133,9 @@ import {
 
 const log = createLogger('Agent')
 
+/** 伙计在后台干活，没人当面等：被限流时多等几轮（约一刻钟），慢一点比失败好 */
+const SUB_AGENT_RATE_LIMIT_RETRIES = 20
+
 /**
  * 去除流式输出中因 API 代理重复发送 reasoning_content 而产生的连续相同思考块。
  * 仅移除内容完全相同的相邻 <details> 块，保留不同的块。
@@ -219,6 +223,8 @@ export abstract class Agent {
 
   /** 伙计：关掉落盘 / 侧栏 / L2 / L3 / 诞生引导 */
   private _isSubAgent = false
+  /** 伙计已经发出过模型请求：之后的请求在缓冲池里排在新伙计前面 */
+  private _subAgentHasRequested = false
 
   /** 伙计的确认交给主人这场：问你和替你放行都留在正在看的这场 */
   private _confirmationHost?: Agent
@@ -500,6 +506,16 @@ export abstract class Agent {
 
   isSubAgent(): boolean {
     return this._isSubAgent
+  }
+
+  /** 这一次模型请求在缓冲池里排哪一档。伙计头一回排在后面，之后接着发的排前面，趁缓存还热。 */
+  private takeModelRequestPriority(): ModelRequestPriority {
+    if (!this._isSubAgent) {
+      return conversationPolicy(inferConversationKind(this._agentId)).modelRequestPriority
+    }
+    if (this._subAgentHasRequested) return 'continuing'
+    this._subAgentHasRequested = true
+    return 'queued'
   }
 
   /**
@@ -4947,6 +4963,10 @@ export abstract class Agent {
             const agentKey = this._agentId || run.id
             this.callbacks?.onModelFailover?.(agentKey, notice)
           }
+        },
+        {
+          bufferPriority: this.takeModelRequestPriority(),
+          rateLimitMaxRetries: this._isSubAgent ? SUB_AGENT_RATE_LIMIT_RETRIES : undefined,
         },
       )
     })

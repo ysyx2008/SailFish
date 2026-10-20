@@ -615,6 +615,8 @@ export interface ChatStreamOptions {
   bufferPriority?: ModelRequestPriority
   /** 在缓冲池里排队等名额：开始等 true，拿到或放弃 false */
   onBufferWait?: (waiting: boolean) => void
+  /** 被限流（429）时最多重试几次；不传用默认的 5 次。不影响网络错误和 5xx 的重试 */
+  rateLimitMaxRetries?: number
 }
 
 import type { AiModelType, AiProfile, FetchedAiModel } from '@shared/types'
@@ -2507,6 +2509,7 @@ export class AiService {
     let retryCount = 0
     // Rate limit 重试计数器（独立于网络错误重试）
     let rateLimitRetryCount = 0
+    const rateLimitMaxRetries = streamOptions?.rateLimitMaxRetries ?? AI_RETRY.RATE_LIMIT_MAX_RETRIES
     // 5xx 服务端错误重试计数器（独立于网络错误重试）
     let serverErrorRetryCount = 0
     // 缓冲池名额：一次请求同一时刻最多占一个；撞限流等重试时先放掉。换模型仍记在起始那一档上
@@ -2803,7 +2806,7 @@ export class AiService {
               && !streamOptions?.disableRetry
               && !isAccountBillingError(parsed.code, res.statusCode)
               && !isNoRetryBusinessCode(parsed.code)
-              && rateLimitRetryCount < AI_RETRY.RATE_LIMIT_MAX_RETRIES
+              && rateLimitRetryCount < rateLimitMaxRetries
             ) {
               // Rate limit: 优先 Retry-After header，否则指数退避 + jitter
               rateLimitRetryCount++
@@ -2821,13 +2824,13 @@ export class AiService {
                 }
               }
               const retryAfterSec = (retryAfterMs / 1000).toFixed(0)
-              log.warn(`Rate limited (429), retrying in ${retryAfterSec}s (${rateLimitRetryCount}/${AI_RETRY.RATE_LIMIT_MAX_RETRIES})`)
+              log.warn(`Rate limited (429), retrying in ${retryAfterSec}s (${rateLimitRetryCount}/${rateLimitMaxRetries})`)
               closeOpenReasoningBlock()
               if (!onRetry) {
-                onChunk(`⚠️ ${t('error.rate_limited', { seconds: retryAfterSec, attempt: String(rateLimitRetryCount), max: String(AI_RETRY.RATE_LIMIT_MAX_RETRIES) })}\n`)
+                onChunk(`⚠️ ${t('error.rate_limited', { seconds: retryAfterSec, attempt: String(rateLimitRetryCount), max: String(rateLimitMaxRetries) })}\n`)
               }
-              getAiDebugService().logResponseError(reqId, `429 Rate Limited - retry ${rateLimitRetryCount}/${AI_RETRY.RATE_LIMIT_MAX_RETRIES} in ${retryAfterSec}s`)
-              pendingRetryInfo = { attempt: rateLimitRetryCount, max: AI_RETRY.RATE_LIMIT_MAX_RETRIES, delayMs: retryAfterMs, reason: 'rate_limit', statusCode: 429 }
+              getAiDebugService().logResponseError(reqId, `429 Rate Limited - retry ${rateLimitRetryCount}/${rateLimitMaxRetries} in ${retryAfterSec}s`)
+              pendingRetryInfo = { attempt: rateLimitRetryCount, max: rateLimitMaxRetries, delayMs: retryAfterMs, reason: 'rate_limit', statusCode: 429 }
               resetForRetry()
               releasePermit()
               scheduleRetry(sendWithPermit, retryAfterMs)

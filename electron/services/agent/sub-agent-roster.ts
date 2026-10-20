@@ -46,7 +46,6 @@ export interface RosterSpawnDeps {
   sanitize: (messages: AiMessage[]) => AiMessage[]
   formatKnock: (child: ChildSnapshot) => string
   archiveResult?: (name: string, text: string) => string
-  maxConcurrent?: number
   /**
    * 这一批派出的名字。spawn 在刷新进度前写入。
    * 进度回调只该更新这几位，后一批不能把前一张卡片刷成整场花名册。
@@ -58,11 +57,12 @@ interface ChildSlot extends ChildSnapshot {
   handle?: ChildAgentHandle
   runPromise?: Promise<void>
   forkTurns: ForkTurns
-  /** 派出这一位时的依赖。排队开工也得用它，不能被后一批的进度卡片接走。 */
-  launchDeps: RosterSpawnDeps
 }
 
 const LIVE: ReadonlySet<ChildStatus> = new Set(['pending', 'running'])
+
+/** 一场任务里同时没做完的伙计最多这么多个。只防失控，不管该派几个。 */
+export const MAX_LIVE_CHILDREN = 200
 
 export function allocateChildName(description: string, used: Set<string>, explicit?: string): string {
   const raw = (explicit || description || 'worker').trim()
@@ -96,7 +96,6 @@ export function childToSubAgentResult(child: ChildSnapshot): SubAgentResult {
 export class SubAgentRoster {
   private children = new Map<string, ChildSlot>()
   private waiters: Array<() => void> = []
-  private startQueued?: () => void
   /** 还没被 waitForNews 领走的敲门，按先后排队。 */
   private unreadNews: string[] = []
 
@@ -115,6 +114,19 @@ export class SubAgentRoster {
       if (LIVE.has(child.status)) return true
     }
     return false
+  }
+
+  liveCount(): number {
+    let n = 0
+    for (const child of this.children.values()) {
+      if (LIVE.has(child.status)) n++
+    }
+    return n
+  }
+
+  /** 保险丝之内还能再派几个。 */
+  room(): number {
+    return Math.max(0, MAX_LIVE_CHILDREN - this.liveCount())
   }
 
   list(): ChildSnapshot[] {
@@ -205,10 +217,13 @@ export class SubAgentRoster {
     })
   }
 
+  /** 全部立刻开工。超过保险丝整批不收，调用方应先看 room()。 */
   spawn(tasks: SpawnTask[], deps: RosterSpawnDeps): string[] {
+    if (tasks.length > this.room()) {
+      throw new RangeError(`伙计超过上限：没做完的 ${this.liveCount()} 个，还能派 ${this.room()} 个，这次要 ${tasks.length} 个`)
+    }
     const used = new Set(this.children.keys())
     const names: string[] = []
-    const maxConcurrent = Math.min(Math.max(1, deps.maxConcurrent ?? 5), 10)
 
     for (const task of tasks) {
       const name = allocateChildName(task.description, used, task.name)
@@ -220,7 +235,6 @@ export class SubAgentRoster {
         status: 'pending',
         steps: [],
         forkTurns: task.forkTurns ?? { kind: 'all' },
-        launchDeps: deps,
       })
       names.push(name)
     }
@@ -229,17 +243,9 @@ export class SubAgentRoster {
     }
     deps.onProgress(this.list())
 
-    const startNext = () => {
-      if (deps.isParentAborted()) return
-      const running = [...this.children.values()].filter(c => c.status === 'running').length
-      if (running >= maxConcurrent) return
-      const next = [...this.children.values()].find(c => c.status === 'pending' && !c.runPromise)
-      if (!next) return
-      this.startChild(next.name, next.launchDeps)
-      startNext()
+    if (!deps.isParentAborted()) {
+      for (const name of names) this.startChild(name, deps)
     }
-    this.startQueued = startNext
-    startNext()
     return names
   }
 
@@ -366,7 +372,6 @@ export class SubAgentRoster {
     deps.knock(deps.formatKnock(snapshotOf(slot)))
     this.enqueueNews(slot.name)
     this.wake()
-    this.startQueued?.()
   }
 }
 

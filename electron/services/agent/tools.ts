@@ -24,6 +24,7 @@ export type { ToolDefinition }
 import type { TerminalType, RemoteChannel } from '@shared/types'
 import { ASSISTANT_WORKBENCH_AGENT_TOOLS } from '@sailfish/workbench-assistant/agent-tools'
 import { getAllTerminalTools } from './skills/terminal/tools'
+import { MAX_LIVE_CHILDREN } from './sub-agent-roster'
 
 /** @deprecated Use TerminalType from @shared/types */
 export type AgentMode = TerminalType
@@ -1182,7 +1183,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       type: 'function',
       function: {
         name: 'dispatch_agents',
-        description: `派出这场任务里的同事（伙计）并行干活。立刻返回每个人的名字。`,
+        description: `派出这场任务里的同事（伙计）并行干活，派出的都立刻开工。立刻返回每个人的名字。一场任务里没做完的伙计最多 ${MAX_LIVE_CHILDREN} 个，这次要派的加上没做完的超过这个数时，整批不派。`,
         parameters: {
           type: 'object',
           properties: {
@@ -1201,11 +1202,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
                 },
                 required: ['description', 'prompt']
               },
-              description: '子任务列表（1-10 个）'
-            },
-            max_concurrent: {
-              type: 'number',
-              description: '最大同时开工数（默认 5，范围 1-10）'
+              description: '子任务列表'
             }
           },
           required: ['tasks']
