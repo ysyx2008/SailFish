@@ -105,6 +105,7 @@ const translations = {
     'error.transcribeFailed': '转录失败',
     'error.invalidAccount': '无效的账户信息',
     'error.credentialsNotFound': '未找到保存的凭据，请重新编辑账户并输入密码',
+    'error.wechatHeldByOtherInstance': '这个微信已经在另一个旗鱼里连着了。同一个微信同一时间只能连在一个旗鱼里；要换到这一个，请先退出另一个，再点连接。如果另一个其实已经退出了，等一分钟再试。',
 
     // 成功消息
     'msg.connectSuccess': '连接成功',
@@ -229,6 +230,7 @@ const translations = {
     'error.transcribeFailed': 'Transcription failed',
     'error.invalidAccount': 'Invalid account information',
     'error.credentialsNotFound': 'Saved credentials not found. Please edit the account and enter the password again',
+    'error.wechatHeldByOtherInstance': 'This WeChat is already connected in another SailFish. One WeChat can only be connected in one SailFish at a time; to use it here, quit the other one first, then connect. If the other one has already quit, try again in a minute.',
 
     'msg.connectSuccess': 'Connected successfully',
     'msg.connectOk': 'Connection is OK',

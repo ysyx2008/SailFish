@@ -1,3 +1,5 @@
+import * as fs from 'fs'
+import * as path from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // vi.mock 调用会被 hoist 到文件顶部，引用的变量必须用 vi.hoisted。
@@ -19,6 +21,8 @@ const mocks = vi.hoisted(() => {
     assertSessionActive: vi.fn(),
     downloadAndDecryptBuffer: vi.fn(),
     downloadPlainCdnBuffer: vi.fn(),
+    notifyStop: vi.fn(),
+    clearContextTokensForAccount: vi.fn(),
     StreamingMarkdownFilter: MockStreamingMarkdownFilter,
   }
 })
@@ -46,7 +50,7 @@ vi.mock('../im/wechat/api/api', () => ({
   sendTyping: mocks.sendTyping,
   getConfig: mocks.getConfig,
   notifyStart: vi.fn().mockResolvedValue({ ret: 0 }),
-  notifyStop: vi.fn().mockResolvedValue({ ret: 0 }),
+  notifyStop: mocks.notifyStop,
 }))
 vi.mock('../im/wechat/api/config-cache', () => ({
   WeixinConfigManager: class {
@@ -73,7 +77,7 @@ vi.mock('../im/wechat/messaging/inbound', async (importOriginal) => {
     ...actual,
     setContextToken: vi.fn(),
     restoreContextTokens: vi.fn(),
-    clearContextTokensForAccount: vi.fn(),
+    clearContextTokensForAccount: mocks.clearContextTokensForAccount,
   }
 })
 
@@ -100,6 +104,9 @@ describe('WeChatAdapter', () => {
     invalidateUserMock.mockReset()
     getUpdatesMock.mockReset()
     downloadAndDecryptBufferMock.mockReset()
+    mocks.notifyStop.mockReset()
+    mocks.notifyStop.mockResolvedValue({ ret: 0 })
+    mocks.clearContextTokensForAccount.mockReset()
     sendMessageWeixinMock.mockResolvedValue({ messageId: 'cid-1' })
     sendWeixinMediaFileMock.mockResolvedValue({ messageId: 'cid-2' })
     sendTypingMock.mockResolvedValue(undefined)
@@ -462,5 +469,109 @@ describe('WeChatAdapter', () => {
 
     releasePoll?.()
     await adapter.stop()
+  })
+
+  describe('同一个微信只让先到的实例连', () => {
+    const STATE_DIR = '/tmp/sf-wechat-adapter-test-state'
+    const lockPathFor = (accountKey: string) =>
+      path.join(STATE_DIR, 'openclaw-weixin', 'accounts', `${accountKey}.lock`)
+    const lockPath = lockPathFor('sf-wechat-tok')
+
+    /** 模拟本机另一个还活着的旗鱼实例（用父进程的进程号充当「另一个活着的进程」）。 */
+    function plantForeignHolder(file = lockPath, pid = process.ppid) {
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      fs.writeFileSync(file, JSON.stringify({ owner: 'other-instance', pid, startedAt: Date.now() }))
+    }
+
+    beforeEach(() => {
+      fs.rmSync(lockPath, { force: true, recursive: true })
+      // 长轮询一直挂着，不制造空转
+      getUpdatesMock.mockImplementation(() => new Promise(() => {}))
+    })
+    afterEach(() => {
+      fs.rmSync(lockPath, { force: true, recursive: true })
+      fs.rmSync(lockPathFor('sf-wechat-other-account-12'), { force: true })
+    })
+
+    it('另一个旗鱼已经连着时：不连、不拉消息，并用人话说明原因', async () => {
+      plantForeignHolder()
+      const adapter = new WeChatAdapter({ token: 'tok' } as any)
+
+      await expect(adapter.start()).rejects.toThrow(/另一个旗鱼里连着/)
+
+      expect(getUpdatesMock).not.toHaveBeenCalled()
+      expect(adapter.isConnected()).toBe(false)
+    })
+
+    it('没连上的实例退出时：不告诉微信下线、不清回信凭据、不动先到那个的租约', async () => {
+      plantForeignHolder()
+      const adapter = new WeChatAdapter({ token: 'tok' } as any)
+      await adapter.start().catch(() => {})
+
+      await adapter.stop()
+
+      expect(mocks.notifyStop).not.toHaveBeenCalled()
+      expect(mocks.clearContextTokensForAccount).not.toHaveBeenCalled()
+      expect(JSON.parse(fs.readFileSync(lockPath, 'utf-8')).owner).toBe('other-instance')
+    })
+
+    it('连着的实例退出时：告诉微信下线并交还，之后别的实例能连上', async () => {
+      const first = new WeChatAdapter({ token: 'tok' } as any)
+      await first.start()
+      expect(fs.existsSync(lockPath)).toBe(true)
+
+      await first.stop()
+
+      expect(mocks.notifyStop).toHaveBeenCalledTimes(1)
+      expect(mocks.clearContextTokensForAccount).toHaveBeenCalledTimes(1)
+      expect(fs.existsSync(lockPath)).toBe(false)
+
+      const next = new WeChatAdapter({ token: 'tok' } as any)
+      await expect(next.start()).resolves.toBeUndefined()
+      await next.stop()
+    })
+
+    it('心跳之间租约已被别人接走：本实例退出时不告诉微信下线、不清回信凭据', async () => {
+      const adapter = new WeChatAdapter({ token: 'tok' } as any)
+      await adapter.start()
+      // 租约在下一次心跳之前就被另一个实例换成了它的
+      fs.writeFileSync(lockPath, JSON.stringify({ owner: 'other-instance', pid: process.ppid, startedAt: Date.now() }))
+
+      await adapter.stop()
+
+      expect(mocks.notifyStop).not.toHaveBeenCalled()
+      expect(mocks.clearContextTokensForAccount).not.toHaveBeenCalled()
+      expect(JSON.parse(fs.readFileSync(lockPath, 'utf-8')).owner).toBe('other-instance')
+    })
+
+    it('租约文件读写不了（权限等）：不挡着微信连接', async () => {
+      // 把租约文件的位置占成一个目录：读它会报 EISDIR，属于意料之外的 IO 错误
+      fs.mkdirSync(lockPath, { recursive: true })
+      const adapter = new WeChatAdapter({ token: 'tok' } as any)
+
+      await expect(adapter.start()).resolves.toBeUndefined()
+      expect(adapter.isConnected()).toBe(true)
+
+      await adapter.stop()
+      fs.rmSync(lockPath, { recursive: true, force: true })
+    })
+
+    it('先到的实例崩了（进程已不在）：新来的直接连上，不用清任何文件', async () => {
+      plantForeignHolder(lockPath, 2_147_483_646)
+      const adapter = new WeChatAdapter({ token: 'tok' } as any)
+
+      await expect(adapter.start()).resolves.toBeUndefined()
+
+      await adapter.stop()
+    })
+
+    it('换了微信账号互不相干', async () => {
+      plantForeignHolder()
+      const adapter = new WeChatAdapter({ token: 'other-account-1234' } as any)
+
+      await expect(adapter.start()).resolves.toBeUndefined()
+
+      await adapter.stop()
+    })
   })
 })
