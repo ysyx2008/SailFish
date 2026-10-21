@@ -48,6 +48,7 @@ const translations = {
     'dialog.configResetMessage':
       '应用配置已损坏且没有可用备份。损坏文件已另行备份，应用将使用空配置启动。请重新配置 AI、SSH、即时通讯等必要项。',
     'dialog.configRecoveryOk': '知道了',
+    'dialog.wechatHeldTitle': '微信没连上',
     'filter.allFiles': '所有文件',
     'filter.xshellFiles': 'Xshell 会话文件',
 
@@ -175,6 +176,7 @@ const translations = {
     'dialog.configResetMessage':
       'App settings were damaged and no usable backup was found. The damaged file was backed up separately, and the app started with empty defaults. Please reconfigure AI, SSH, messaging, and other required items.',
     'dialog.configRecoveryOk': 'Got it',
+    'dialog.wechatHeldTitle': 'WeChat did not connect',
     'filter.allFiles': 'All Files',
     'filter.xshellFiles': 'Xshell Session Files',
 

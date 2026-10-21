@@ -38,12 +38,14 @@ import { FeishuAdapter } from './feishu-adapter'
 import { SlackAdapter } from './slack-adapter'
 import { TelegramAdapter } from './telegram-adapter'
 import { WeComAdapter } from './wecom-adapter'
-import { WeChatAdapter } from './wechat-adapter'
+import { WeChatAdapter, WeChatHeldByOtherInstanceError } from './wechat-adapter'
 import { IMAGE_MIME_TYPES, VISION_IMAGE_EXTENSIONS } from '../agent/tools/types'
 import { getDocumentParserService, type ParsedDocument } from '../document-parser.service'
 import { getConfigService } from '../config.service'
 import { t } from '../agent/i18n'
+import { t as mainT } from '../../i18n/main-i18n'
 import { createLogger } from '../../utils/logger'
+import { dialog, BrowserWindow } from 'electron'
 import path from 'path'
 import fs from 'fs'
 
@@ -1058,8 +1060,24 @@ export class IMService {
     } catch (err: any) {
       log.error('WeChat start failed:', err)
       this.wechatAdapter = null
-      return { success: false, error: err.message || 'Failed to connect' }
+      const message = err?.message || 'Failed to connect'
+      if (err instanceof WeChatHeldByOtherInstanceError) this.alertWeChatHeld(message)
+      return { success: false, error: message }
     }
+  }
+
+  /** 同一个微信被另一个旗鱼占着时弹出对话框。不挡住调用方返回。 */
+  private alertWeChatHeld(message: string): void {
+    const options = {
+      type: 'warning' as const,
+      title: mainT('dialog.wechatHeldTitle'),
+      message,
+      buttons: [mainT('dialog.configRecoveryOk')],
+      noLink: true,
+    }
+    const win = BrowserWindow.getAllWindows().find(w => !w.isDestroyed())
+    void (win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options))
+      .catch((e) => log.warn('WeChat held dialog failed:', e))
   }
 
   async stopWeChat(): Promise<void> {
