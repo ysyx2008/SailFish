@@ -877,6 +877,7 @@ export default {
     skillOn: 'On',
     skillTotal: '{n} total',
     skillHintToggle: 'toggle',
+    skillHintSpace: 'space',
     skillHintClose: 'close',
     noResults: 'No results found',
     navigate: 'Navigate',

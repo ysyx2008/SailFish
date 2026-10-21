@@ -289,6 +289,16 @@ describe('内置技能显示界面语言下的名字（和设置页一致）', (
     expect(mentions.suggestions.value.map(s => s.id)).toEqual(['excel'])
   })
 
+  it('界面是英文时，不拿中文原名的拼音来对', async () => {
+    englishUi()
+    const { mentions } = setup()
+    mentions.openSkillMenu()
+    await flush()
+    mentions.setSkillSearch('chuli')
+    await flush()
+    expect(mentions.suggestions.value).toEqual([])
+  })
+
   it('排序按译名排，不按中文原名', async () => {
     messages['skillSettings.builtinSkillNames.word'] = 'Apple Notes'
     messages['skillSettings.builtinSkillNames.excel'] = 'Zebra Sheets'
@@ -301,5 +311,55 @@ describe('内置技能显示界面语言下的名字（和设置页一致）', (
     mentions.openSkillMenu()
     await flush()
     expect(mentions.suggestions.value.map(s => s.id)).toEqual(['word', 'excel'])
+  })
+})
+
+describe('按标题和简介的拼音搜', () => {
+  const jd: SkillRow = { id: 'cart', name: '京东购物助手', description: '下单付款', enabled: true }
+
+  async function search(q: string) {
+    userList.mockResolvedValue([jd])
+    builtinList.mockResolvedValue([])
+    const { mentions } = setup()
+    mentions.openSkillMenu()
+    await flush()
+    mentions.setSkillSearch(q)
+    await flush()
+    return mentions.suggestions.value.map(s => s.id)
+  }
+
+  it('全拼、声母、从中间一个字起都能找到，标识里没有这些字母', async () => {
+    for (const q of ['jingdong', 'gouwu', 'gw', ' jingdong']) {
+      expect(await search(q), q).toEqual(['user:cart'])
+    }
+  })
+
+  it('跳过中间的字不算；简介的拼音也能找到，标题里没有这些字', async () => {
+    expect(await search('jz')).toEqual([])
+    expect(await search('jdzs')).toEqual([])
+    expect(await search('fukuan')).toEqual(['user:cart'])
+
+    userList.mockResolvedValue([{ id: 'foo', name: 'Foo 技能', description: '表格读写', enabled: true }])
+    builtinList.mockResolvedValue([])
+    const { mentions } = setup()
+    mentions.openSkillMenu()
+    await flush()
+    mentions.setSkillSearch('biao')
+    await flush()
+    expect(mentions.suggestions.value.map(s => s.id)).toEqual(['user:foo'])
+    mentions.setSkillSearch('表格')
+    await flush()
+    expect(mentions.suggestions.value.map(s => s.id)).toEqual(['user:foo'])
+  })
+
+  it('没译名时，按眼前的中文名拼音搜', async () => {
+    userList.mockResolvedValue([])
+    builtinList.mockResolvedValue([EXCEL])
+    const { mentions } = setup()
+    mentions.openSkillMenu()
+    await flush()
+    mentions.setSkillSearch('chuli')
+    await flush()
+    expect(mentions.suggestions.value.map(s => s.id)).toEqual(['excel'])
   })
 })

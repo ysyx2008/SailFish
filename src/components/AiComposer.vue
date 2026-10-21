@@ -38,6 +38,12 @@ import { useHoverTip, BUTTON_HOVER_TIP_DELAY_MS } from '../composables/useHoverT
 import { useOutputTokenRate } from '../composables/useOutputTokenRate'
 import { isSameSkillId, isUserSkillId } from '@sailfish/shared-types'
 import { isFlowArrowKey, moveInFlow, type TileBox } from '../composables/skill-flow-nav'
+import {
+  skillListKeyAction,
+  skillSearchKeyAction,
+  stepSkillIndex,
+  type SkillPickerKey,
+} from '../composables/skill-picker-keys'
 
 interface ContextStats {
   tokenEstimate: number
@@ -1139,31 +1145,145 @@ function onStandaloneSkillSearch(event: Event) {
   setSkillSearch((event.target as HTMLInputElement).value)
 }
 
+function moveSkillHighlight(key: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight') {
+  skillKeyboardNav.value = true
+  setMentionSelectedIndex(moveInFlow(mentionSelectedIndex.value, key, skillTileBoxes()))
+}
+
+function toggleHighlightedSkill() {
+  if (isMentionLoading.value) return
+  const suggestion = mentionSuggestions.value[mentionSelectedIndex.value]
+  if (suggestion) selectSuggestion(suggestion)
+}
+
+function pickerKey(event: KeyboardEvent): SkillPickerKey {
+  return {
+    key: event.key,
+    shiftKey: event.shiftKey,
+    metaKey: event.metaKey,
+    ctrlKey: event.ctrlKey,
+    altKey: event.altKey,
+    repeat: event.repeat,
+    isComposing: event.isComposing || event.keyCode === 229,
+  }
+}
+
+function focusSkillList() {
+  const list = mentionListEl.value
+  if (!list) return
+  skillKeyboardNav.value = true
+  list.focus({ preventScroll: true })
+  list.querySelector<HTMLElement>(`.mention-item[data-index="${mentionSelectedIndex.value}"]`)
+    ?.scrollIntoView({ block: 'nearest' })
+}
+
+function focusSkillSearch() {
+  skillMenuSearchEl.value?.focus()
+}
+
+/** 人在列表上接着打字：把这一下写进搜索框，焦点也回去，面板不收 */
+function typeIntoSkillSearch(key: string) {
+  const current = mentionSearchQuery.value
+  setSkillSearch(key === 'Backspace' ? current.slice(0, -1) : current + key)
+  focusSkillSearch()
+  nextTick(() => {
+    const input = skillMenuSearchEl.value
+    if (!input) return
+    const end = input.value.length
+    input.setSelectionRange(end, end)
+  })
+}
+
 function handleSkillSearchKeyDown(event: KeyboardEvent) {
-  // 拼音候选框开着时，方向键 / 回车 / Esc 是输入法的，不是列表的
-  if (event.isComposing || event.keyCode === 229) return
-  if (event.key === 'Escape') {
+  const action = skillSearchKeyAction(pickerKey(event), {
+    count: mentionSuggestions.value.length,
+    query: mentionSearchQuery.value,
+    loading: isMentionLoading.value,
+  })
+  if (action === 'close') {
     event.preventDefault()
     closeMentionMenuAndFocusInput()
     return
   }
-  // Tab 照常把焦点移走（面板随之收起），不拿来开关技能
-  if (event.key === 'Tab') return
-  // 结果还在加载：眼前看不到目标，回车不能去改技能
-  if (isMentionLoading.value && event.key === 'Enter') {
+  if (action === 'swallow') {
     event.preventDefault()
     return
   }
-  if (isFlowArrowKey(event.key)) {
-    const horizontal = event.key === 'ArrowLeft' || event.key === 'ArrowRight'
-    // 搜索框里已经打了字时，左右留给改字
-    if (horizontal && mentionSearchQuery.value) return
+  if (action === 'to-list') {
     event.preventDefault()
+    focusSkillList()
+    return
+  }
+  if (action === 'toggle') {
+    event.preventDefault()
+    toggleHighlightedSkill()
+    return
+  }
+  if (action === 'move' && isFlowArrowKey(event.key)) {
+    event.preventDefault()
+    moveSkillHighlight(event.key)
+  }
+}
+
+function handleSkillListKeyDown(event: KeyboardEvent) {
+  const action = skillListKeyAction(pickerKey(event), {
+    index: mentionSelectedIndex.value,
+    count: mentionSuggestions.value.length,
+    loading: isMentionLoading.value,
+  })
+  if (action == null) return
+  event.preventDefault()
+  if (action === 'close') {
+    closeMentionMenuAndFocusInput()
+    return
+  }
+  if (action === 'back-to-search') {
+    focusSkillSearch()
+    return
+  }
+  if (action === 'toggle') {
+    toggleHighlightedSkill()
+    return
+  }
+  if (action === 'type') {
+    typeIntoSkillSearch(event.key)
+    return
+  }
+  if (action === 'next' || action === 'prev') {
     skillKeyboardNav.value = true
-    setMentionSelectedIndex(moveInFlow(mentionSelectedIndex.value, event.key, skillTileBoxes()))
+    setMentionSelectedIndex(stepSkillIndex(
+      mentionSelectedIndex.value,
+      mentionSuggestions.value.length,
+      action === 'next' ? 1 : -1,
+    ))
     return
   }
-  handleMentionKeyDown(event)
+  if (action === 'move' && isFlowArrowKey(event.key)) {
+    moveSkillHighlight(event.key)
+  }
+}
+
+/**
+ * 点在面板里面不收起。
+ * 点到技能上，键盘焦点落到列表，接着按 Tab / 空格。
+ * 点搜索框装饰或底部简介，焦点留在原来的地方。滚动条照常拖。
+ */
+function onSkillPickerMouseDown(event: MouseEvent) {
+  if (!skillMenuStandalone.value) return
+  const target = event.target
+  if (!(target instanceof Element)) return
+  if (target.closest('input')) return
+  const list = mentionListEl.value
+  if (list && (target === list || list.contains(target))) {
+    const onScrollbar = target === list && (event.offsetX > list.clientWidth || event.offsetY > list.clientHeight)
+    if (onScrollbar) return
+    // 点到技能上，接下来的 Tab / 空格作用在列表上。描边仍只在用键盘走的时候出现。
+    if (target.closest('.skill-pill')) list.focus({ preventScroll: true })
+    else event.preventDefault()
+    return
+  }
+  event.preventDefault()
+  if (target.closest('.skill-picker-search')) focusSkillSearch()
 }
 
 /** 每个技能标签此刻在屏幕上的位置（按序号排；上下键要找隔壁一行里最近的那个） */
@@ -1347,7 +1467,7 @@ const handleInputBlur = () => {
 }
 
 const selectSuggestion = (suggestion: typeof mentionSuggestions.value[0]) => {
-  // 技能列表是多选：点一个不收起，焦点留在搜索框，接着点下一个
+  // 技能列表是多选：点一个不收起，接着选下一个
   const keepOpen = skillMenuStandalone.value
   doSelectSuggestion(suggestion)
   if (!keepOpen) nextTick(focusInput)
@@ -2182,6 +2302,7 @@ const handleSendClick = (event: MouseEvent) => {
         class="mention-menu"
         :class="{ 'place-below': mentionMenuBelow, 'is-skill-picker': skillMenuStandalone }"
         :style="mentionMenuStyle"
+        @mousedown="onSkillPickerMouseDown"
       >
         <div v-if="mentionMenuType === null" class="mention-menu-header">
           {{ t('mentions.selectCommand') }}
@@ -2196,6 +2317,7 @@ const handleSendClick = (event: MouseEvent) => {
             :placeholder="t('mentions.searchSkills')"
             @input="onStandaloneSkillSearch"
             @keydown="handleSkillSearchKeyDown"
+            @focus="skillKeyboardNav = false"
             @blur="handleInputBlur"
           />
           <span v-if="mentionSuggestions.length > 0" class="skill-picker-count">
@@ -2231,8 +2353,9 @@ const handleSendClick = (event: MouseEvent) => {
             class="mention-list skill-picker-body"
             role="listbox"
             aria-multiselectable="true"
-            tabindex="-1"
-            @focus="skillMenuSearchEl?.focus()"
+            tabindex="0"
+            @keydown="handleSkillListKeyDown"
+            @blur="handleInputBlur"
             @scroll="updateMentionListOverflow"
           >
             <section
@@ -2300,7 +2423,7 @@ const handleSendClick = (event: MouseEvent) => {
             </template>
           </div>
           <div class="skill-picker-keys">
-            <span><kbd>↵</kbd>{{ t('mentions.skillHintToggle') }}</span>
+            <span><kbd>↵</kbd><kbd>{{ t('mentions.skillHintSpace') }}</kbd>{{ t('mentions.skillHintToggle') }}</span>
             <span><kbd>esc</kbd>{{ t('mentions.skillHintClose') }}</span>
           </div>
         </div>
@@ -4059,6 +4182,7 @@ const handleSendClick = (event: MouseEvent) => {
 
 .skill-picker-body {
   padding: 2px 16px 10px;
+  outline: none;
 }
 
 .skill-group-head {

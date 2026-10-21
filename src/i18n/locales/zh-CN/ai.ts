@@ -878,6 +878,7 @@ export default {
     skillOn: '已开',
     skillTotal: '共 {n}',
     skillHintToggle: '开 / 关',
+    skillHintSpace: '空格',
     skillHintClose: '收起',
     noResults: '无匹配结果',
     navigate: '导航',

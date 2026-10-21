@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { Sparkles, Settings } from 'lucide-vue-next'
 import { useBuiltinSkillText } from '../composables/useBuiltinSkillText'
 import { sortSkillsByName } from '@sailfish/shared-types'
+import { skillTextMatchesQuery } from '../utils/skill-text-match'
 
 interface SkillItem {
   id: string
@@ -57,7 +58,8 @@ const query = computed(() => searchQuery.value.trim().toLowerCase())
 
 function matches(skill: SkillItem): boolean {
   if (!query.value) return true
-  return localizedName(skill).toLowerCase().includes(query.value)
+  return skillTextMatchesQuery(localizedName(skill), query.value)
+    || skillTextMatchesQuery(localizedDetail(skill), query.value)
     || skill.id.toLowerCase().includes(query.value)
 }
 
