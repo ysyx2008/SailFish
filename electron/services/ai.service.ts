@@ -801,21 +801,21 @@ export function validateProfileForRequest(
   profile: AiProfile | null | undefined,
 ): ProfileValidationResult {
   if (!profile) {
-    return { ok: false, code: 'NO_PROFILE', message: 'No AI profile configured' }
+    return { ok: false, code: 'NO_PROFILE', message: t('error.watch_no_profile') }
   }
   const apiUrl = typeof profile.apiUrl === 'string' ? profile.apiUrl.trim() : ''
   if (!apiUrl) {
-    return { ok: false, code: 'MISSING_API_URL', message: 'AI profile apiUrl is empty' }
+    return { ok: false, code: 'MISSING_API_URL', message: t('error.watch_profile_no_url') }
   }
   try {
     // eslint-disable-next-line no-new
     new URL(apiUrl)
   } catch {
-    return { ok: false, code: 'INVALID_API_URL', message: 'AI profile apiUrl is not a valid URL' }
+    return { ok: false, code: 'INVALID_API_URL', message: t('error.watch_profile_bad_url') }
   }
   const model = typeof profile.model === 'string' ? profile.model.trim() : ''
   if (!model) {
-    return { ok: false, code: 'MISSING_MODEL', message: 'AI profile model is empty' }
+    return { ok: false, code: 'MISSING_MODEL', message: t('error.watch_profile_no_model') }
   }
   return { ok: true, profile }
 }

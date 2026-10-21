@@ -38,6 +38,7 @@ import type { AgentService } from '../agent'
 import type { AgentContext, AgentCallbacks, AgentStep } from '../agent/types'
 import type { AiService } from '../ai.service'
 import { resolveAiProfile, validateProfileForRequest } from '../ai.service'
+import { t } from '../agent/i18n'
 import type { SensorService } from '../sensor'
 import type { HistoryService } from '../history.service'
 import { isWatchAgentKey, watchAgentKeyFor, WAKEUP_AGENT_KEY } from '@shared/types'
@@ -366,7 +367,7 @@ export class WatchService {
   async triggerWatch(id: string): Promise<WatchExecutionResult> {
     const watch = this.store.get(id)
     if (!watch) {
-      return { success: false, output: '', error: 'Watch not found', duration: 0 }
+      return { success: false, output: '', error: t('error.watch_not_found'), duration: 0 }
     }
 
     // 唤醒关切：通过 drain 事件池触发，使其能看到池中积累的事件（或空 batch 做例行检查）
@@ -376,7 +377,7 @@ export class WatchService {
     }
 
     if (this.isWatchBusy(id)) {
-      return { success: false, output: '', error: 'Watch already running', duration: 0, skipped: true, skipReason: 'already_running' }
+      return { success: false, output: '', error: t('error.watch_already_running'), duration: 0, skipped: true, skipReason: 'already_running' }
     }
 
     const event: SensorEvent = {
@@ -526,7 +527,7 @@ export class WatchService {
       if (!this.isRunning) {
         this.releaseSlot()
         return {
-          success: false, output: '', error: 'WatchService stopped', duration: 0,
+          success: false, output: '', error: t('error.watch_stopped'), duration: 0,
           skipped: true, skipReason: 'stopped'
         }
       }
@@ -549,7 +550,7 @@ export class WatchService {
 
   private async executeWatch(watch: WatchDefinition, event: SensorEvent): Promise<WatchExecutionResult> {
     if (!this.config) {
-      return { success: false, output: '', error: 'WatchService not initialized', duration: 0 }
+      return { success: false, output: '', error: t('error.watch_not_ready'), duration: 0 }
     }
 
     const startTime = Date.now()
@@ -665,7 +666,7 @@ export class WatchService {
           watch, enhancedPrompt, isSilent, isWakeup, agentSessionId
         ),
         timeoutMs,
-        `Watch timeout (${timeoutSec}s)`,
+        t('error.watch_timeout', { seconds: timeoutSec }),
       )
     } catch (error) {
       try { this.config.agentService.abort(agentId) } catch { /* ignore */ }
@@ -721,7 +722,7 @@ export class WatchService {
     agentSessionId?: string
   ): Promise<WatchExecutionResult> {
     if (!this.config?.agentService) {
-      return { success: false, output: '', error: 'Agent service not available', duration: 0 }
+      return { success: false, output: '', error: t('error.watch_no_agent'), duration: 0 }
     }
 
     const startTime = Date.now()
@@ -1170,7 +1171,9 @@ export class WatchService {
         }
       }
       const remainSec = Math.ceil((state.openUntil - Date.now()) / 1000)
-      return `circuit_open (${state.lastClass}, retry in ${remainSec}s)`
+      return remainSec >= 60
+        ? t('error.watch_circuit_open_minutes', { n: Math.ceil(remainSec / 60) })
+        : t('error.watch_circuit_open_seconds', { n: remainSec })
     }
     return null
   }
