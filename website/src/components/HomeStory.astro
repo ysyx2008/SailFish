@@ -8,7 +8,7 @@ interface Props {
 
 const { lang = defaultLanguage } = Astro.props;
 const t = useTranslations(lang);
-const sections = [t.story.task, t.story.legion, t.story.companion, t.story.handsOn, t.story.memory];
+const sections = [t.story.task, t.story.companion, t.story.handsOn, t.story.memory, t.story.legion];
 ---
 
 <section class="home-story" id="how-it-works" aria-label={t.nav.features}>
