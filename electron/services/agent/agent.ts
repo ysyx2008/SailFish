@@ -3075,7 +3075,8 @@ export abstract class Agent {
     // 逐任务状态清零（如「主动压缩压不动」的判定）——ContextWindowManager 跨 run 复用
     this._contextWindow.resetForNewRun()
 
-    if (this._isSubAgent && this._seedMessages.length > 0) {
+    // 伙计的系统提示不带知识库和过往对话，冷启动的召回对它是白做；几百人同时开工还会压垮嵌入模型
+    if (this._isSubAgent && !this._previousRunMessages?.length) {
       await cwdReady
       this.buildSubAgentOpening(run, message)
       return
@@ -3165,12 +3166,13 @@ export abstract class Agent {
     })
     // 过往对话有专门一节时，知识库这边只给文档，同一条不出现两遍
     const recallsConversationsSeparately = message.trim().length >= 5
-    const knowledgeResultPromise = run.internalNotice
+    const skipRecall = run.internalNotice || this._isSubAgent
+    const knowledgeResultPromise = skipRecall
       ? Promise.resolve({ context: '', enabled: false, conversationHistory: [] as KnowledgeContextResult['conversationHistory'] })
       : this.loadKnowledgeContextWithTimeout(message, sessionHostId, !recallsConversationsSeparately)
 
     const L3_RECALL_TIMEOUT_MS = 2000
-    const recallPromise: Promise<KnowledgeContextResult['conversationHistory']> = run.internalNotice
+    const recallPromise: Promise<KnowledgeContextResult['conversationHistory']> = skipRecall
       ? Promise.resolve([])
       : (() => {
       const ks = getKnowledgeService()

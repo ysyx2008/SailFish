@@ -6,6 +6,9 @@
  * 详见 docs/plans/done-2026-10-20-sub-agent-scale-design.md §3.2。
  */
 import { createHash } from 'crypto'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('ModelBuffer')
 
 /**
  * urgent：用户当面等的，不排队。
@@ -123,6 +126,7 @@ class BufferGroup {
   constructor(
     private readonly tuning: ModelRequestBufferTuning,
     private readonly clock: BufferClock,
+    private readonly label: string,
   ) {
     this.window = tuning.initialWindow
   }
@@ -162,6 +166,7 @@ class BufferGroup {
 
   onSuccess(permit: ModelRequestPermit): void {
     if (permit.generation !== this.generation) return
+    const wasRecovering = this.recovering
     this.recovering = false
     this.probeOutstanding = false
     this.consecutiveThrottles = 0
@@ -174,11 +179,15 @@ class BufferGroup {
         this.steadySuccesses = 0
       }
     }
+    if (wasRecovering) {
+      log.info(`${this.label} 恢复放行：窗口 ${this.window}，在途 ${this.inFlight}，排队 ${this.queuedCount()}`)
+    }
     this.pump()
   }
 
   onThrottled(permit: ModelRequestPermit, retryAfterMs?: number): void {
     if (permit.generation !== this.generation) return
+    const previousWindow = this.window
     this.generation++
     this.window = Math.max(1, Math.floor(this.window / 2))
     this.fastGrowth = false
@@ -194,6 +203,10 @@ class BufferGroup {
       ? Math.min(this.tuning.retryAfterMaxMs, retryAfterMs)
       : backoff
     this.pausedUntil = Math.max(this.pausedUntil, this.clock.now() + pause)
+    log.info(
+      `${this.label} 被限流：窗口 ${previousWindow}→${this.window}，暂停 ${(pause / 1000).toFixed(1)}s`
+      + `（连续第 ${this.consecutiveThrottles} 次${retryAfterMs ? '，接口给了等待时间' : ''}），在途 ${this.inFlight}，排队 ${this.queuedCount()}`,
+    )
     this.pump()
   }
 
@@ -287,7 +300,7 @@ export class ModelRequestBuffer {
   private group(key: string): BufferGroup {
     let group = this.groups.get(key)
     if (!group) {
-      group = new BufferGroup(this.tuning, this.clock)
+      group = new BufferGroup(this.tuning, this.clock, bufferLabel(key))
       this.groups.set(key, group)
     }
     return group
@@ -298,6 +311,18 @@ export class ModelRequestBuffer {
 export function modelRequestKey(profile: { apiUrl?: string; apiKey?: string; model?: string }): string {
   const keyDigest = createHash('sha256').update(profile.apiKey ?? '').digest('hex').slice(0, 16)
   return `${(profile.apiUrl ?? '').trim()}|${keyDigest}|${(profile.model ?? '').trim()}`
+}
+
+/** 日志里只露模型和接口主机，不带密钥摘要 */
+function bufferLabel(key: string): string {
+  const [apiUrl = '', , model = ''] = key.split('|')
+  let host = ''
+  try {
+    host = new URL(apiUrl).host
+  } catch {
+    // 解析不出主机就不写，免得把地址里的参数带进日志
+  }
+  return `[${model || '?'}@${host || '?'}]`
 }
 
 let shared: ModelRequestBuffer | undefined

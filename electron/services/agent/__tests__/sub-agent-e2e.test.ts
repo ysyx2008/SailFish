@@ -32,11 +32,14 @@ vi.mock('../../im/im.service', () => ({
   getIMService: vi.fn().mockReturnValue(null)
 }))
 
+let knowledgeEnabled = false
+const recallQueries: string[] = []
+
 vi.mock('../../knowledge', () => ({
   getKnowledgeService: () => ({
-    isEnabled: () => false,
-    searchConversations: async () => [],
-    buildContext: async () => '',
+    isEnabled: () => knowledgeEnabled,
+    searchConversations: async (query: string) => { recallQueries.push(query); return [] },
+    buildContext: async (query: string) => { recallQueries.push(query); return '' },
   })
 }))
 
@@ -204,6 +207,8 @@ describe('子智能体端到端（真实 SailFish.run）', () => {
     llmCalls = []
     reviewPrompts = []
     reviewSeesUserWords = null
+    knowledgeEnabled = false
+    recallQueries.length = 0
     for (const file of victims.splice(0)) fs.rmSync(file, { force: true })
   })
   afterEach(() => {
@@ -574,6 +579,36 @@ describe('子智能体端到端（真实 SailFish.run）', () => {
     const opening = allMessageText(childCalls[0].messages as Array<{ role?: string; content?: unknown }>)
     expect(opening).toContain('只回报 name 和 version')
     expect(opening).not.toContain('列出 test 脚本')
+  })
+
+  it('知识库开着：不带对话派出的伙计开工不去翻知识库和过往对话', async () => {
+    knowledgeEnabled = true
+    const CHILD_PROMPT = '伙计专用的一句吩咐：只回报 name'
+    const services = makeServices(({ isChild, parentIndex, messages }) => {
+      if (isChild) return { content: 'NAME_ONLY' }
+      if (parentIndex === 0) {
+        return {
+          tool_calls: [tc('dispatch_agents', {
+            tasks: [
+              { name: '甲', description: '读包', prompt: CHILD_PROMPT, fork_turns: 'none' },
+              { name: '乙', description: '读包', prompt: CHILD_PROMPT, fork_turns: 'none' },
+            ]
+          })]
+        }
+      }
+      const text = allMessageText(messages as Array<{ content?: unknown }>)
+      if (text.includes('NAME_ONLY')) return { content: '收到 NAME_ONLY' }
+      return { content: '先等他们' }
+    })
+    attachHistory(services, new HistoryService())
+    const parent = new SailFish(services)
+    parent.setAgentId('e2e-no-recall')
+    parent.updateConfig({ executionMode: 'free' })
+
+    const result = await parent.run('派两个人去读包，回来汇总', ctx())
+    expect(result).toContain('NAME_ONLY')
+    expect(recallQueries.some(q => q.includes('派两个人去读包'))).toBe(true)
+    expect(recallQueries.some(q => q.includes(CHILD_PROMPT))).toBe(false)
   })
 
   it('最近 1 轮派出时，伙计开局看不见更早那轮', async () => {
