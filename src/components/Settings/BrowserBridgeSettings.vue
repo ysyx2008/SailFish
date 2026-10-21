@@ -133,10 +133,11 @@ function flashLoadReady(family: BrowserFamily) {
 
 async function refreshStatus() {
   checking.value = true
-  errorMsg.value = ''
   try {
     status.value = await window.electronAPI.browserBridge.getStatus()
     autoFocusBrowser()
+    const held = status.value.install?.heldNotice?.message
+    if (held) errorMsg.value = held
   } catch (e) {
     errorMsg.value = e instanceof Error ? e.message : String(e)
   } finally {

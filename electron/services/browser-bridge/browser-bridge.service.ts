@@ -54,6 +54,8 @@ export class BrowserBridgeService {
   private hosts = new Map<net.Socket, HostConnection>()
   private pending = new Map<string, PendingRequest>()
   private lastInstall: BrowserBridgeInstallStatus | null = null
+  /** 另一个程序占着浏览器连接时留给界面的说明；自己占上之后清掉。 */
+  private heldNotice: BrowserBridgeInstallStatus['heldNotice'] | null = null
   private started = false
   /** 防止 init 与 installIfNeeded 并发双重 listen */
   private startPromise: Promise<void> | null = null
@@ -127,7 +129,7 @@ export class BrowserBridgeService {
       'utf8',
     )
     try {
-      writeBridgePointer()
+      if (writeBridgePointer()) this.heldNotice = null
     } catch (error) {
       log.warn('Failed to update bridge pointer:', error)
     }
@@ -139,6 +141,8 @@ export class BrowserBridgeService {
     }
     this.persistGateway()
     this.lastInstall = await installBrowserBridge(options)
+    this.heldNotice = this.lastInstall.heldNotice ?? null
+    if (this.heldNotice) this.notifyHeld(this.heldNotice)
     if (this.lastInstall.errors.length) {
       log.warn('Browser bridge install completed with errors:', this.lastInstall.errors)
     } else {
@@ -217,7 +221,7 @@ export class BrowserBridgeService {
       this.persistGateway()
     }
     const detected = detectInstallStatus()
-    if (detected) this.lastInstall = detected
+    if (detected) this.lastInstall = this.withHeldNotice(detected)
     return this.buildStatus()
   }
 
@@ -436,6 +440,16 @@ export class BrowserBridgeService {
     this.pending.delete(result.id)
     if (result.success) pending.resolve(result.data)
     else pending.reject(new Error(result.error || 'Browser bridge command failed'))
+  }
+
+  private withHeldNotice(status: BrowserBridgeInstallStatus): BrowserBridgeInstallStatus {
+    if (!this.heldNotice) return status
+    return { ...status, errors: [this.heldNotice.message], heldNotice: this.heldNotice }
+  }
+
+  private notifyHeld(notice: NonNullable<BrowserBridgeInstallStatus['heldNotice']>): void {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return
+    this.mainWindow.webContents.send('browserBridge:held', notice)
   }
 
   private notifyConnectionsChanged(): void {

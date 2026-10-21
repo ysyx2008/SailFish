@@ -128,12 +128,20 @@ export interface BrowserBridgePingResult {
   hostPermissionsGranted?: boolean
 }
 
+/** 浏览器连接被另一个还开着的程序占着时，给人看的说明。 */
+export interface BrowserBridgeHeldNotice {
+  title: string
+  message: string
+}
+
 export interface BrowserBridgeInstallStatus {
   chromiumExtensionPath: string
   firefoxExtensionPath: string
   nativeHostManifestPath: string
   registeredBrowsers: BrowserBridgeBrowser[]
   errors: string[]
+  /** 没被占着时不带。 */
+  heldNotice?: BrowserBridgeHeldNotice
 }
 
 export interface BrowserBridgeConnection {

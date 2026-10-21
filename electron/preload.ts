@@ -4077,6 +4077,13 @@ const electronAPI = {
         ipcRenderer.removeListener('browserBridge:connectionsChanged', handler)
       }
     },
+    onHeld: (callback: (data: { title: string; message: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { title: string; message: string }) => callback(data)
+      ipcRenderer.on('browserBridge:held', handler)
+      return () => {
+        ipcRenderer.removeListener('browserBridge:held', handler)
+      }
+    },
   }
 }
 

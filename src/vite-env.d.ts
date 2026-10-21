@@ -2740,6 +2740,7 @@ interface Window {
       onConnectionsChanged: (
         callback: (status: import('@shared/types/browser-bridge').BrowserBridgeStatus) => void
       ) => () => void
+      onHeld: (callback: (data: { title: string; message: string }) => void) => () => void
     }
     // 羁绊（Bond）
     bond: {

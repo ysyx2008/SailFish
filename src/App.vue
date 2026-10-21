@@ -488,6 +488,8 @@ let cleanupGatewayRemoteTask: (() => void) | null = null
 let cleanupImConnectionChange: (() => void) | null = null
 let cleanupImSendFailure: (() => void) | null = null
 let cleanupWeChatHeld: (() => void) | null = null
+let cleanupBrowserBridgeHeld: (() => void) | null = null
+let heldNoticeQueue: Promise<void> = Promise.resolve()
 let cleanupAiProfileFallback: (() => void) | null = null
 let cleanupRunTask: (() => void) | null = null
 let cleanupInstallSkill: (() => void) | null = null
@@ -501,6 +503,14 @@ let cleanupAgentNeedConfirmGlobal: (() => void) | null = null
 let cleanupAgentConfirmResolvedGlobal: (() => void) | null = null
 let cleanupFullScreenChange: (() => void) | null = null
 
+function showHeldNotice(title: string, message: string) {
+  heldNoticeQueue = heldNoticeQueue.then(() => showConfirm({
+    title,
+    message,
+    type: 'warning',
+    showCancel: false,
+  })).then(() => {})
+}
 
 onMounted(async () => {
   // 注册全局快捷键
@@ -512,15 +522,14 @@ onMounted(async () => {
   initSplitPaneHandler()
   initWorkbenchHandler()
 
-  // 微信被另一个旗鱼占着：启动自动连接可能早于后面的 await，先订上
+  // 微信 / 浏览器助手被别人占着：启动时就可能发生，先于后面的 await 订上。两个一起到就排队，不互相盖掉。
   cleanupWeChatHeld = window.electronAPI.im.onWeChatHeld((data) => {
     if (!data?.message) return
-    void showConfirm({
-      title: data.title || t('settings.im.wechat'),
-      message: data.message,
-      type: 'warning',
-      showCancel: false,
-    })
+    showHeldNotice(data.title || t('settings.im.wechat'), data.message)
+  })
+  cleanupBrowserBridgeHeld = window.electronAPI.browserBridge.onHeld((data) => {
+    if (!data?.message) return
+    showHeldNotice(data.title || t('conn.browserBridge'), data.message)
   })
 
   // ── 知识库 / 启动进度：必须最先订阅，绝不能被弹窗 await 堵住 ──────────────
@@ -1652,6 +1661,7 @@ onUnmounted(() => {
   cleanupImConnectionChange?.()
   cleanupImSendFailure?.()
   cleanupWeChatHeld?.()
+  cleanupBrowserBridgeHeld?.()
   cleanupAiProfileFallback?.()
   cleanupRunTask?.()
   cleanupInstallSkill?.()

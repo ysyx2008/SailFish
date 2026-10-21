@@ -49,6 +49,7 @@ const translations = {
       '应用配置已损坏且没有可用备份。损坏文件已另行备份，应用将使用空配置启动。请重新配置 AI、SSH、即时通讯等必要项。',
     'dialog.configRecoveryOk': '知道了',
     'dialog.wechatHeldTitle': '微信没连上',
+    'dialog.browserBridgeHeldTitle': '浏览器助手没连上',
     'filter.allFiles': '所有文件',
     'filter.xshellFiles': 'Xshell 会话文件',
 
@@ -107,6 +108,8 @@ const translations = {
     'error.invalidAccount': '无效的账户信息',
     'error.credentialsNotFound': '未找到保存的凭据，请重新编辑账户并输入密码',
     'error.wechatHeldByOtherInstance': '这个微信已经在另一个旗鱼里连着了。\n同一个微信同一时间只能连在一个旗鱼里；\n要换到这一个，请先退出另一个，再点连接。\n如果另一个其实已经退出了，等一分钟再试。',
+    'error.browserBridgeHeld': '浏览器助手正被「{name}」用着。\n同一时间只能有一个程序连着它；\n要换到这一个，请先退出另一个。',
+    'error.browserBridgeHeldUnknown': '浏览器助手正被另一个已打开的程序用着。\n同一时间只能有一个程序连着它；\n要换到这一个，请先退出另一个。',
 
     // 成功消息
     'msg.connectSuccess': '连接成功',
@@ -177,6 +180,7 @@ const translations = {
       'App settings were damaged and no usable backup was found. The damaged file was backed up separately, and the app started with empty defaults. Please reconfigure AI, SSH, messaging, and other required items.',
     'dialog.configRecoveryOk': 'Got it',
     'dialog.wechatHeldTitle': 'WeChat did not connect',
+    'dialog.browserBridgeHeldTitle': 'Browser assistant did not connect',
     'filter.allFiles': 'All Files',
     'filter.xshellFiles': 'Xshell Session Files',
 
@@ -233,6 +237,8 @@ const translations = {
     'error.invalidAccount': 'Invalid account information',
     'error.credentialsNotFound': 'Saved credentials not found. Please edit the account and enter the password again',
     'error.wechatHeldByOtherInstance': 'This WeChat is already connected in another SailFish.\nOne WeChat can only be connected in one SailFish at a time.\nTo use it here, quit the other one first, then connect.\nIf the other one has already quit, try again in a minute.',
+    'error.browserBridgeHeld': 'The browser assistant is in use by "{name}".\nOnly one program can use it at a time.\nTo use it here, quit the other one first.',
+    'error.browserBridgeHeldUnknown': 'The browser assistant is in use by another open program.\nOnly one program can use it at a time.\nTo use it here, quit the other one first.',
 
     'msg.connectSuccess': 'Connected successfully',
     'msg.connectOk': 'Connection is OK',

@@ -11,6 +11,7 @@ import {
   type BrowserBridgeInstallStatus,
 } from '@shared/types/browser-bridge'
 import { createLogger } from '../../utils/logger'
+import { t } from '../../i18n/main-i18n'
 import { oemResolved } from '@shared/oem-resolve'
 import { oemConfig } from '@shared/oem-runtime'
 
@@ -658,15 +659,20 @@ export async function installBrowserBridge(options?: {
   const browsers: BrowserBridgeBrowser[] = ['chrome', 'edge', 'firefox']
   if (!writeBridgePointer()) {
     const name = foreignHolder()?.holderName?.trim()
-    errors.push(name
-      ? `浏览器连接正由「${name}」占用，本程序不会抢占。`
-      : '浏览器连接已被其他正在运行的程序占用，本程序不会抢占。')
+    const heldNotice = {
+      title: t('dialog.browserBridgeHeldTitle'),
+      message: name
+        ? t('error.browserBridgeHeld', { name })
+        : t('error.browserBridgeHeldUnknown'),
+    }
+    errors.push(heldNotice.message)
     return {
       chromiumExtensionPath: chromiumDest,
       firefoxExtensionPath: firefoxDest,
       nativeHostManifestPath: manifestPath,
       registeredBrowsers,
       errors,
+      heldNotice,
     }
   }
 

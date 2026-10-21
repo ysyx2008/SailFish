@@ -90,6 +90,9 @@ describe('installBrowserBridge relay scripts', () => {
 
     const status = await installBrowserBridge()
 
+    expect(status.heldNotice?.title).toBe('浏览器助手没连上')
+    expect(status.heldNotice?.message).toContain('装好的旗鱼')
+    expect(status.heldNotice?.message).toContain('\n')
     expect(status.errors.some((error) => error.includes('装好的旗鱼'))).toBe(true)
     expect(relaySnapshot()).toEqual(before)
     const pointer = JSON.parse(fs.readFileSync(path.join(home, '.sailfish-browser-bridge.json'), 'utf8')) as { pid?: number }
