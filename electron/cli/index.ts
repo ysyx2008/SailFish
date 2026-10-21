@@ -22,6 +22,7 @@ import { cliLaunch } from './launch'
 import { composeLine, parseSlash, pathExists, taskFromCompose } from './compose'
 import { CliGoalCommand } from './goal-command'
 import { createTuiSession, type TuiSession } from './tui-session'
+import { trustSystemCertificates } from '../utils/system-ca'
 
 /** 对话进行时，内部日志留在文件里，不再插进回复。 */
 function quietConsole(): () => void {
@@ -2876,8 +2877,10 @@ async function disposeCliKnowledge(): Promise<void> {
 }
 
 async function runCli(): Promise<void> {
+  const systemCaNote = trustSystemCertificates()
   const config = new ConfigService()
   initLogging(config.getLogLevel())
+  log[systemCaNote.level](systemCaNote.message)
 
   const args = process.argv.slice(2)
   const launch = cliLaunch(args, Boolean(process.stdin.isTTY && process.stdout.isTTY))

@@ -20,6 +20,9 @@ import { isOemFeatureEnabled } from '@shared/oem-features'
 import { startCrashReporter, initCrashDiagnostics, recordMainProcessError, getCrashRecorder, markCleanExit } from './services/diagnostics/collector'
 import { getDiagnosticsService } from './services/diagnostics/diagnostics.service'
 import { CrashNotifier } from './services/diagnostics/notifier'
+import { trustSystemCertificates } from './utils/system-ca'
+
+const systemCaNote = trustSystemCertificates()
 
 /**
  * 展开路径开头的 `~` 为用户 home 目录。支持 `~`、`~/...`、`~\...`（兼容 Windows）。
@@ -644,6 +647,7 @@ aiService.onProfileFallback((notice) => {
 })
 setMainI18nConfig(configService)
 initLogging(configService.getLogLevel())
+log[systemCaNote.level](systemCaNote.message)
 
 // 崩溃提示：崩溃后主动找用户，而不是等他翻设置页（没人会去点）
 const crashNotifier = new CrashNotifier({
