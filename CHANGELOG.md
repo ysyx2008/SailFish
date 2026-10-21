@@ -2,18 +2,29 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v11.14.0 (2026-10-18) (Latest)
+## v11.15.0 (2026-10-21) (Latest)
 
-> Reach can manage tasks: work is handed off as its own task, and confirmations and results return to Reach before you are told. The secretary menu also adds Contacts and Memory, the knowledge base can be organized in folders, and files in the input sit inside the sentence.
+> A task can carry a goal that it keeps working toward on its own; assistants can work in large batches at the same time; Reach can hand work off as tasks; Contacts and Memory join the secretary menu; and the knowledge base can be organized in folders.
 
 ### New Features
-- 🎯 **Reach can manage tasks**: Work can be handed off as its own task. You can check how it is going, give further instructions, or stop it. For tasks Reach assigned, confirmations and results return to Reach first, and Reach decides whether to tell you
+- 🎯 **Task goals (/goal)**: Write a goal in a task and the secretary works toward it turn after turn, until it is met, it gets stuck and needs you, or the usage limit is reached. A status bar above the input shows the goal, its state, elapsed time, and usage; a goal that has been met can be continued. It also works on the command line
+- 🎯 **Assistants can work in large batches at the same time**: The secretary decides how many to send (up to 200 unfinished in one task), and they all start right away. Progress for dozens of assistants collapses into one line, results are saved as files with a single overview, and requests slow down automatically when the model rate-limits them
+- 🎯 **Reach can manage tasks**: Work can be handed off as its own task. You can check how it is going, give further instructions, stop it, or delete it. After sending out a task, Reach waits for the result and carries on in the same turn; confirmations and results return to Reach first, and Reach decides whether to tell you. Tasks sent out by Reach are marked in the sidebar, and the top of the conversation says who sent them
 - 🎯 **Contacts**: View, search, and edit them in the secretary menu, including an address and how to reach someone. People mentioned in the conversation are recognized
 - 🎯 **Memory**: View and edit memory in the secretary menu; Settings keeps only the related options. The entry about you stays at the top. After an upgrade, the former “You” page under Awaken is folded in
 - 🎯 **Knowledge base folders**: Browse, create, rename, and delete folders. The secretary can search by name and help organize them
 - 🎯 **File chips**: A file in the input sits inside the text and stays in place after it is sent. You can open it, undo adding it, and undo removing it
+- 🎯 **DeepSeek web search**: Choose it under Settings → Speech & Search. It is billed per successful search, and searches with no results are free. If you have already entered a DeepSeek key for a model, search does not ask for it again
+- 🎯 **Search skills by pinyin**: Pinyin of both the title and the description matches. In the search box, Tab moves through the list and Space turns a skill on or off. Skill lists are sorted by pinyin everywhere
+- 🎯 **Readable command-line output**: You can see what it said and what it did, and it asks only when it needs a decision from you
 
 ### Improvements
+- ⚡ **First-run setup matches the main window**: Mistral is no longer listed in Settings or setup. Existing configurations are unaffected and can still be reached through Custom
+- ⚡ **One style for key fields**: When hidden, the first 3 and last 4 characters show; clicking in selects everything, and the key can be shown or hidden. This applies to model, search, and speech-synthesis settings
+- ⚡ **Default models use current official names**: DeepSeek, Gemini, Zhipu, Doubao, and Grok. Setup decides what is already configured by service address
+- ⚡ **The input keeps a single plus button at the bottom**: Skills can be selected together and are shown in groups. In the English interface, skills show translated names and descriptions
+- ⚡ **Long-running commands are no longer ended by default**: Before, anything running longer than an hour was stopped, including services meant to stay up. A command can also be sent to the background without waiting
+- ⚡ **With two SailFish windows open, only the one that started first connects to WeChat**, so messages are no longer received and answered twice
 - ⚡ **Repeating events**: An end date or a number of occurrences can be set
 - ⚡ **Approval is kept per conversation**: A change here applies only to this conversation. New conversations still use the default in Settings
 - ⚡ **A task receipt collapses to one line**: What is actually said to you still appears as usual
@@ -25,6 +36,16 @@ All notable changes to SailFish will be documented in this file.
 - ⚡ **Without a GPU, the knowledge base uses the CPU**: It still works when there is no discrete graphics processor
 
 ### Bug Fixes
+- 🐛 **Model requests no longer fail certificate checks on networks that re-sign HTTPS**; if a check still fails, the reason is shown and the request is not retried over and over
+- 🐛 **Calendar events and todos are read back after saving**, so a change the server did not apply is no longer reported as done
+- 🐛 **File line counts match `wc -l`**: A file ending in a newline no longer gets an extra line, and an empty file is reported as empty
+- 🐛 **When a watch does not run, the message follows the interface language** and states only the reason
+- 🐛 **Conversation steps and knowledge documents no longer show internal IDs**; they show a name or what was done
+- 🐛 **Keys in connector addresses are no longer written to logs or error messages**
+- 🐛 **When the rest of a plan is waiting on you, it no longer asks again and rewrites the same reply**; a paused plan is marked “Paused”
+- 🐛 **While waiting for assistants, card progress is no longer counted as a new message**
+- 🐛 **Undoing the removal of several file chips restores all of them**
+- 🐛 **Streaming a very long piece of content no longer gets slower and slower**
 - 🐛 **The installed app can read PDFs**
 - 🐛 **PDF text follows the page layout**, so columns no longer come out of order
 - 🐛 **A full backup no longer includes the window cache**
@@ -42,6 +63,10 @@ All notable changes to SailFish will be documented in this file.
 - 🐛 **Reopening the control panel still shows a backup in progress**
 - 🐛 **Saving Markdown no longer repeats that there is nothing to save**
 - 🐛 **The new-conversation entry no longer shows an unread mark twice**
+
+## v11.14.0 (2026-10-18)
+
+> Not released; its contents are included in v11.15.0.
 
 ## v11.13.1 (2026-10-02)
 

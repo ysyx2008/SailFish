@@ -52,7 +52,7 @@ SailFish isn't a chatbot waiting for commands. It's a **personal secretary** liv
 
 | Entry | Relationship | Character |
 |-------|--------------|-----------|
-| **Tasks** | You delegate specific work | One-off, parallel, isolated; the desktop mainstay. Queue the next message while a task is still running |
+| **Tasks** | You delegate specific work | One-off, parallel, isolated; the desktop mainstay. Queue the next message while a task is still running; a task can carry a goal it keeps working toward on its own |
 | **Reach** | Your ongoing relationship | Always-on, multi-channel; your secretary can reach out first; work can be handed off as its own task |
 
 Tasks come first on desktop. All IM channels flow into one Reach line — not a different bot each time.
@@ -74,7 +74,7 @@ The window is three columns: new chat, Reach, Terminal, and recent conversations
 | Feature | Description |
 |---------|-------------|
 | 🖥️ **Local & SSH Terminal** | Operates your machine and remote servers; an SSH session can also work on local files and commands; split panes can mix local and multiple hosts; reconnects after a drop |
-| 👥 **Sub-agents** | Dispatch several at once; they report back and you can follow up |
+| 👥 **Sub-agents** | Dispatch them in large batches at once; they report back and you can follow up |
 | 📁 **File Manager** | Dual-pane local and remote files, drag-and-drop transfer |
 | 🌐 **Browser Bridge** | Control the Chrome / Edge / Firefox you already have open — logins preserved |
 | 📦 **Artifacts** | WYSIWYG Markdown, live HTML/URL preview, screenshot follow-ups, send to phone; Word / Excel / PDF / WPS open in place |
