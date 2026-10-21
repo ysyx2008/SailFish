@@ -15,6 +15,7 @@ import {
   type BrowserBridgeStatus,
 } from '@shared/types/browser-bridge'
 import { createLogger } from '../../utils/logger'
+import { ChunkTextDecoder } from '../../utils/encoding'
 import { getBridgeRoot, getExtensionGuideUrls, installBrowserBridge, detectInstallStatus, uninstallBrowserBridge, writeBridgePointer, releaseBridgePointer } from './installer'
 import { openBrowserInternalUrl } from './browser-launcher'
 import {
@@ -385,15 +386,21 @@ export class BrowserBridgeService {
 
   private handleConnection(socket: net.Socket): void {
     let buffer = ''
-    socket.on('data', (chunk) => {
-      buffer += chunk.toString('utf8')
+    const text = new ChunkTextDecoder('utf-8')
+    const drain = () => {
       const parsed = parseGatewayLines(buffer)
       buffer = parsed.rest
       for (const message of parsed.messages) {
         this.handleGatewayMessage(socket, message)
       }
+    }
+    socket.on('data', (chunk: Buffer) => {
+      buffer += text.push(chunk)
+      drain()
     })
     socket.on('close', () => {
+      buffer += text.end()
+      drain()
       const hadHost = this.hosts.has(socket)
       this.hosts.delete(socket)
       if (hadHost) this.notifyConnectionsChanged()

@@ -11,6 +11,7 @@
  * 但再也无法被回收，只能等应用内存耗尽。
  */
 import * as fs from 'fs'
+import { ChunkTextDecoder } from '../../utils/encoding'
 
 export interface WorkerProcessLike {
   postMessage(message: unknown): void
@@ -80,16 +81,20 @@ export class UtilityWorkerSession {
 
     proc.on('message', (message: any) => this.onMessage(message))
 
-    proc.stdout?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString().trim()
-      if (text) this.log.info('[worker]', text)
-    })
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString().trim()
-      if (text) this.log.warn('[worker]', text)
-    })
+    const stdoutText = new ChunkTextDecoder('utf-8')
+    const stderrText = new ChunkTextDecoder('utf-8')
+    const writeLog = (decoder: ChunkTextDecoder, chunk: Buffer | undefined, warn: boolean) => {
+      const text = (chunk ? decoder.push(chunk) : decoder.end()).trim()
+      if (!text) return
+      if (warn) this.log.warn('[worker]', text)
+      else this.log.info('[worker]', text)
+    }
+    proc.stdout?.on('data', (chunk: Buffer) => writeLog(stdoutText, chunk, false))
+    proc.stderr?.on('data', (chunk: Buffer) => writeLog(stderrText, chunk, true))
 
     proc.on('exit', (code: number | null) => {
+      writeLog(stdoutText, undefined, false)
+      writeLog(stderrText, undefined, true)
       this.proc = null
       this.rejectAllPending(new Error(`${this.label} worker exited with code ${code}`))
       for (const listener of this.exitListeners) {

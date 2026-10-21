@@ -8,6 +8,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import { app, utilityProcess, UtilityProcess } from 'electron'
 import { createLogger } from '../../utils/logger'
+import { ChunkTextDecoder } from '../../utils/encoding'
 import {
   getPackStatus,
   getResolvedModelPaths,
@@ -272,17 +273,25 @@ function startWorker(): void {
     }
   })
 
-  // 处理 Worker 输出
-  worker.stdout?.on('data', (data) => {
-    log.info('[Worker]', data.toString().trim())
+  // 处理 Worker 输出。一段可能停在字中间。
+  const stdoutText = new ChunkTextDecoder('utf-8')
+  const stderrText = new ChunkTextDecoder('utf-8')
+  worker.stdout?.on('data', (data: Buffer) => {
+    const text = stdoutText.push(data).trim()
+    if (text) log.info('[Worker]', text)
   })
 
-  worker.stderr?.on('data', (data) => {
-    log.error('[Worker]', data.toString().trim())
+  worker.stderr?.on('data', (data: Buffer) => {
+    const text = stderrText.push(data).trim()
+    if (text) log.error('[Worker]', text)
   })
 
   // 处理 Worker 退出
   worker.on('exit', (code) => {
+    const outRest = stdoutText.end().trim()
+    const errRest = stderrText.end().trim()
+    if (outRest) log.info('[Worker]', outRest)
+    if (errRest) log.error('[Worker]', errRest)
     log.info('Worker exited with code:', code)
     worker = null
     isInitialized = false

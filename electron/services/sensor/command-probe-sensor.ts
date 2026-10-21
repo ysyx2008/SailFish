@@ -11,6 +11,7 @@ import { createHash } from 'crypto'
 import type { Sensor, SensorEvent, EventBus } from './types'
 import { createLogger } from '../../utils/logger'
 import { resolveDefaultShell, getShellSpawnArgs } from '../../utils/shell'
+import { ChunkTextDecoder } from '../../utils/encoding'
 
 const log = createLogger('CommandProbeSensor')
 
@@ -257,14 +258,22 @@ export class CommandProbeSensor implements Sensor {
         env,
         windowsHide: true,
       })
+      const stdoutText = new ChunkTextDecoder()
+      const stderrText = new ChunkTextDecoder()
+      const takeOutput = () => {
+        stdout += stdoutText.end()
+        stderr += stderrText.end()
+        if (stdout.length > MAX_OUTPUT_BYTES) stdout = stdout.slice(0, MAX_OUTPUT_BYTES)
+        if (stderr.length > MAX_OUTPUT_BYTES * 0.1) stderr = stderr.slice(0, Math.floor(MAX_OUTPUT_BYTES * 0.1))
+      }
       child.stdout?.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString('utf8')
+        stdout += stdoutText.push(chunk)
         if (stdout.length > MAX_OUTPUT_BYTES) {
           stdout = stdout.slice(0, MAX_OUTPUT_BYTES)
         }
       })
       child.stderr?.on('data', (chunk: Buffer) => {
-        stderr += chunk.toString('utf8')
+        stderr += stderrText.push(chunk)
         if (stderr.length > MAX_OUTPUT_BYTES * 0.1) {
           stderr = stderr.slice(0, Math.floor(MAX_OUTPUT_BYTES * 0.1))
         }
@@ -272,10 +281,12 @@ export class CommandProbeSensor implements Sensor {
       child.on('error', (err) => {
         stderr += `\n[probe spawn error] ${err.message}`
         exitCode = 1
+        takeOutput()
         finalize()
       })
-      child.on('exit', (code, signal) => {
+      child.on('close', (code, signal) => {
         exitCode = code ?? (signal ? 1 : 0)
+        takeOutput()
         finalize()
       })
 
@@ -284,6 +295,7 @@ export class CommandProbeSensor implements Sensor {
         try { child.kill('SIGTERM') } catch { /* 已退出 */ }
         setTimeout(() => {
           try { child.kill('SIGKILL') } catch { /* 已退出 */ }
+          takeOutput()
           finalize()
         }, 500)
       }, COMMAND_TIMEOUT_MS)

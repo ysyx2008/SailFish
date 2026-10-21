@@ -9,6 +9,7 @@ import type { PtyOptions, PtyCreateResult } from '@shared/types'
 import { createLogger } from '../utils/logger'
 import { resolveDefaultShell, inferShellKind, quoteForShell } from '../utils/shell'
 import { appendCappedTerminalOutput } from '../utils/terminal-output-sanitize'
+import { ChunkTextDecoder } from '../utils/encoding'
 
 export type { PtyOptions, PtyCreateResult }
 
@@ -185,6 +186,9 @@ export class PtyService {
       useRawData: needManualEncoding
     }
 
+    // Windows 上非 UTF-8 时拿到的是原始字节，半个字留到下一段
+    const rawText = needManualEncoding ? new ChunkTextDecoder(encoding) : null
+
     // 监听数据输出
     ptyProcess.onData((data: string | Buffer) => {
       // 如果已销毁，不再触发回调
@@ -192,12 +196,12 @@ export class PtyService {
       
       // 处理编码
       let str: string
-      if (instance.useRawData && Buffer.isBuffer(data)) {
-        // Windows 上使用 iconv-lite 解码
-        str = iconv.decode(data, instance.encoding)
+      if (rawText && Buffer.isBuffer(data)) {
+        str = rawText.push(data)
       } else {
         str = data as string
       }
+      if (!str) return
       
       instance.dataCallbacks.forEach(callback => {
         try {
@@ -210,6 +214,12 @@ export class PtyService {
 
     // 监听退出
     ptyProcess.onExit(({ exitCode }) => {
+      const rest = rawText?.end()
+      if (rest && !instance.disposed) {
+        instance.dataCallbacks.forEach(callback => {
+          try { callback(rest) } catch { /* 忽略回调错误 */ }
+        })
+      }
       log.info(
         `PTY exited: id=${id}, code=${exitCode}, shell=${shell}, kind=${resolved.kind}, disposed=${instance.disposed}`
       )

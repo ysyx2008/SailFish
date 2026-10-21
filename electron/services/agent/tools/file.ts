@@ -11,7 +11,7 @@ import { getFileSearchService } from '../../file-search.service'
 import { getDocumentParserService } from '../../document-parser.service'
 import { getConfigService } from '../../config.service'
 import iconv from 'iconv-lite'
-import { decodeBuffer, detectEncoding } from '../../../utils/encoding'
+import { ChunkTextDecoder, decodeBuffer, detectEncoding } from '../../../utils/encoding'
 import { createLogger } from '../../../utils/logger'
 import { categorizeError, getErrorRecoverySuggestion, truncateFromEnd, truncateSandwichWithNotice, formatFileSize } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
@@ -1529,7 +1529,7 @@ ${hint}`
           fs.readSync(fd, buffer, 0, sampleSize, 0)
           fs.closeSync(fd)
           
-          const sample = decodeBuffer(buffer, true).content
+          const sample = new ChunkTextDecoder().push(buffer)
           const sampleLines = sample.split('\n')
           const avgLineLength = sample.length / sampleLines.length
           totalLines = Math.floor(fileSize / avgLineLength)
