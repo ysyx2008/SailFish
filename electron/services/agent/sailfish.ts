@@ -14,10 +14,10 @@ import type {
   AgentServices,
   PromptOptions
 } from './types'
-import { getAgentTools, filterUnattendedTools, filterSubAgentTools, AgentMode } from './tools'
+import { getAgentTools, filterUnattendedTools, filterSubAgentTools, filterTeamMemberTools, AgentMode } from './tools'
 import type { ToolExecutorConfig } from './tools/types'
 import type { AgentRun } from './types'
-import type { ChildAgentHandle } from './sub-agent-roster'
+import type { ChildAgentHandle, TeamSeat } from './sub-agent-roster'
 import { COMPANION_WORKBENCH_AGENT_TOOLS } from '@sailfish/workbench-companion/agent-tools'
 import { COMPANION_AGENT_KEY } from '@shared/types'
 import { PromptBuilder } from './prompt-builder'
@@ -38,6 +38,8 @@ export class SailFish extends Agent {
   readonly ptyId?: string
   
   private _personalitySkillLoaded = false
+  /** 专家团里的专家才有 */
+  private _teamSeat?: TeamSeat
   
   constructor(services: AgentServices, ptyId?: string) {
     super(services)
@@ -84,7 +86,13 @@ export class SailFish extends Agent {
     const raw = this.collectToolCatalog()
     const unattended = this.currentRun?.context?.unattended
     const afterUnattended = unattended ? filterUnattendedTools(raw) : raw
-    return this.isSubAgent() ? filterSubAgentTools(afterUnattended) : afterUnattended
+    const forTeam = filterTeamMemberTools(afterUnattended, !!this._teamSeat)
+    return this.isSubAgent() ? filterSubAgentTools(forTeam) : forTeam
+  }
+
+  /** 进专家团：之后看得到、用得了在群里说话的工具 */
+  joinTeam(seat: TeamSeat): void {
+    this._teamSeat = seat
   }
 
   protected collectToolCatalog() {
@@ -132,6 +140,7 @@ export class SailFish extends Agent {
     return {
       ...config,
       createChildAgent: (name) => this.spawnChild(name),
+      teamSeat: this._teamSeat,
     }
   }
 

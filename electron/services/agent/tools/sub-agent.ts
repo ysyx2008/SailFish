@@ -18,6 +18,8 @@ import { truncateFromEnd, truncateFromEndWithNotice } from './utils'
 import { getScratchPath } from './file'
 import { createLogger } from '../../../utils/logger'
 import { t } from '../i18n'
+import type { ExpertTeam } from '../expert-team'
+import { createTeamTexts, expertOpening, formatTranscript } from './expert-team-text'
 
 const log = createLogger('SubAgent')
 /** 直接带回对话的结果：各人上限乘这一轮派过的人数，大致不超过这个预算 */
@@ -59,6 +61,10 @@ export class SubAgentWorkspace {
   private readonly dir: string
   readonly overviewPath: string
   private readonly results = new Map<string, { chars: number; file?: string }>()
+  /** 每个群聊文件写到第几条 */
+  private readonly transcriptCounts = new Map<string, number>()
+  /** 团名对应的群聊文件名 */
+  private readonly transcriptFiles = new Map<string, string>()
 
   constructor(dir = buildArtifactDir()) {
     this.dir = dir
@@ -88,10 +94,35 @@ export class SubAgentWorkspace {
       t('dispatch.overview_header'),
       ...children.map(c => {
         const kept = this.results.get(c.name)
-        return [c.name, statusLabel(c.status), kept ? String(kept.chars) : '-', kept?.file ?? '-', c.description].join(' | ')
+        const who = [c.role, c.team && `「${c.team}」`].filter(Boolean).join(' ')
+        const task = who ? `[${who}] ${c.description}` : c.description
+        return [c.name, statusLabel(c.status), kept ? String(kept.chars) : '-', kept?.file ?? '-', task].join(' | ')
       }),
     ]
     this.write('overview.md', lines.join('\n') + '\n')
+  }
+
+  teamTranscriptPath(team: ExpertTeam): string {
+    return path.join(this.dir, this.teamTranscriptFile(team))
+  }
+
+  /** 群里有新消息才重写 */
+  writeTeamTranscript(team: ExpertTeam): void {
+    const count = team.messageCount()
+    if (this.transcriptCounts.get(team.name) === count) return
+    if (this.write(this.teamTranscriptFile(team), formatTranscript(team))) this.transcriptCounts.set(team.name, count)
+  }
+
+  /** 一个团一个文件名：团名去掉不能进文件名的字符、截短，撞了加序号（不分大小写） */
+  private teamTranscriptFile(team: ExpertTeam): string {
+    const known = this.transcriptFiles.get(team.name)
+    if (known) return known
+    const safe = team.name.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'team'
+    const taken = new Set([...this.transcriptFiles.values()].map(f => f.toLowerCase()))
+    let file = `team-${safe}.md`
+    for (let i = 2; taken.has(file.toLowerCase()); i++) file = `team-${safe}-${i}.md`
+    this.transcriptFiles.set(team.name, file)
+    return file
   }
 
   private write(fileName: string, content: string): string | undefined {
@@ -109,7 +140,7 @@ export class SubAgentWorkspace {
 
 const workspaces = new WeakMap<SubAgentRoster, SubAgentWorkspace>()
 
-function workspaceOf(roster: SubAgentRoster): SubAgentWorkspace {
+export function workspaceOf(roster: SubAgentRoster): SubAgentWorkspace {
   let workspace = workspaces.get(roster)
   if (!workspace) {
     workspace = new SubAgentWorkspace()
@@ -150,6 +181,7 @@ export function toSubAgentContext(parent: AgentContext): AgentContext {
 }
 
 function formatKnock(child: ChildSnapshot): string {
+  if (child.role) return formatExpertKnock(child, child.role)
   if (child.status === 'completed') {
     return t('dispatch.knock_done', {
       name: child.name,
@@ -170,6 +202,13 @@ function formatKnock(child: ChildSnapshot): string {
   })
 }
 
+function formatExpertKnock(child: ChildSnapshot, role: string): string {
+  const base = { name: child.name, role, description: child.description }
+  if (child.status === 'completed') return t('expert.knock_done', { ...base, result: child.result || '(no output)' })
+  if (child.status === 'interrupted') return t('expert.knock_interrupted', base)
+  return t('expert.knock_fail', { ...base, error: child.error || 'Unknown error' })
+}
+
 function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubAgentRoster): string {
   const lines = snapshots.map(c => `- ${c.name}：${c.description}`)
   return [
@@ -183,7 +222,7 @@ function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubA
  * 推给界面、随会话落盘的那份：步骤只留工具名、对象、状态，不带工具输出；
  * 结果只带直接带回的那段（超长时里面有文件位置）。
  */
-function toSubAgentView(c: ChildSnapshot): SubAgentResult {
+export function toSubAgentView(c: ChildSnapshot): SubAgentResult {
   return {
     id: c.name,
     name: c.name,
@@ -229,7 +268,7 @@ class ProgressThrottle {
   }
 }
 
-function spawnDeps(
+export function spawnDeps(
   executor: ToolExecutorConfig,
   progressStepId: string,
   ownedNames?: Set<string>
@@ -241,6 +280,7 @@ function spawnDeps(
     const children = roster.list()
     const visible = ownedNames ? children.filter(c => ownedNames.has(c.name)) : children
     executor.updateStep(progressStepId, { subAgents: visible.map(toSubAgentView) })
+    for (const team of roster.listTeams()) workspace.writeTeamTranscript(team)
   })
   const createChild = executor.createChildAgent
   if (!createChild) return { error: 'dispatch_agents 需要能创建伙计（内部错误）' }
@@ -254,8 +294,11 @@ function spawnDeps(
     knock: (message) => {
       progress.flush()
       workspace.writeOverview(roster.list())
+      for (const team of roster.listTeams()) workspace.writeTeamTranscript(team)
       executor.knockParent?.(message)
     },
+    openingFor: expertOpening,
+    teamTexts: createTeamTexts(team => workspace.teamTranscriptPath(team)),
     onProgress: () => progress.schedule(),
     ownedNames,
     isParentAborted: () => executor.isAborted(),
@@ -477,12 +520,15 @@ export async function interruptAgent(args: Record<string, unknown>, executor: To
   return { success: true, output: t('dispatch.interrupt_ok', { name }) }
 }
 
-export function denyIfParentOnly(executor: ToolExecutorConfig, toolName: string): ToolResult | null {
-  if (!executor.isSubAgent) return null
+/** 工具不给这位用时硬拦：仅主人可用的不给伙计，只给专家团成员的不给团外 */
+export function denyIfNotForThisAgent(executor: ToolExecutorConfig, toolName: string): ToolResult | null {
   const catalog = executor.getToolCatalog?.()
   if (!catalog) return null
   const meta = getMetaByName(catalog, toolName)
-  if (meta?.allowedForSubAgent === false) {
+  if (meta?.onlyForTeamMember && !executor.teamSeat) {
+    return { success: false, output: '', error: t('expert.say_denied') }
+  }
+  if (executor.isSubAgent && meta?.allowedForSubAgent === false) {
     return { success: false, output: '', error: t('dispatch.tool_denied') }
   }
   return null

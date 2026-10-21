@@ -28,7 +28,7 @@ vi.mock('../../web-search/index', () => ({
 import { describe, it, expect, vi } from 'vitest'
 import * as os from 'os'
 import { getAgentTools, filterSubAgentTools } from '../tools'
-import { getSubAgentTools, toSubAgentContext, denyIfParentOnly } from '../tools/sub-agent'
+import { getSubAgentTools, toSubAgentContext, denyIfNotForThisAgent } from '../tools/sub-agent'
 import type { AgentContext } from '../types'
 import type { ToolExecutorConfig } from '../tools/types'
 import { getLocalOS } from '../../../utils/platform'
@@ -96,10 +96,10 @@ describe('伙计工具面', () => {
     const catalog = getAgentTools(undefined, { mode: 'local' })
     const asChild = { isSubAgent: true, getToolCatalog: () => catalog } as unknown as ToolExecutorConfig
     const asParent = { isSubAgent: false, getToolCatalog: () => catalog } as unknown as ToolExecutorConfig
-    expect(denyIfParentOnly(asChild, 'execute_command')?.success).toBe(false)
-    expect(denyIfParentOnly(asChild, 'send_control_key')?.success).toBe(false)
-    expect(denyIfParentOnly(asChild, 'read_file')).toBeNull()
-    expect(denyIfParentOnly(asParent, 'execute_command')).toBeNull()
+    expect(denyIfNotForThisAgent(asChild, 'execute_command')?.success).toBe(false)
+    expect(denyIfNotForThisAgent(asChild, 'send_control_key')?.success).toBe(false)
+    expect(denyIfNotForThisAgent(asChild, 'read_file')).toBeNull()
+    expect(denyIfNotForThisAgent(asParent, 'execute_command')).toBeNull()
   })
 
   it('主人自己的终端工具不受影响', () => {

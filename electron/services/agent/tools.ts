@@ -25,6 +25,7 @@ import type { TerminalType, RemoteChannel } from '@shared/types'
 import { ASSISTANT_WORKBENCH_AGENT_TOOLS } from '@sailfish/workbench-assistant/agent-tools'
 import { getAllTerminalTools } from './skills/terminal/tools'
 import { MAX_LIVE_CHILDREN } from './sub-agent-roster'
+import { MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER, WAKES_PER_CHECKPOINT } from './expert-team'
 
 const SUB_AGENT_NAME_DESCRIPTION = '能反映出他在干什么的短名字，让用户一眼看懂（如「读 nginx 配置」）。不要用人名、编号或跟任务无关的代号。可选，不填则从任务简述生成'
 const FORK_TURNS_DESCRIPTION = '带多少对话。默认 all。none=不带，all=全带，正整数字符串（如 1、3）=只带最近几轮。'
@@ -131,6 +132,11 @@ export interface ToolMeta {
   allowedForSubAgent?: boolean
 
   /**
+   * 只给专家团里的专家。主人、伙计、不组团的专家都看不到，执行时也会硬拦。
+   */
+  onlyForTeamMember?: boolean
+
+  /**
    * 伙计看到的工具说明。处境和主人不同时写这一份，避免共用说明骗人。
    */
   descriptionForSubAgent?: string
@@ -216,6 +222,33 @@ function dispatchAgentsPrefix(args: Record<string, unknown>): string | null {
   const count = tasks.length + batchItems.length
   if (count === 0) return null
   return t('dispatch.running', { count })
+}
+
+/**
+ * dispatch_experts 的预卡片渲染，与 tools/expert.ts 执行器 addStep 的 content 对齐（expertDispatchTitle）。
+ */
+function dispatchExpertsPrefix(args: Record<string, unknown>): string | null {
+  const experts = Array.isArray(args.experts) ? args.experts : []
+  if (experts.length === 0) return null
+  return expertDispatchTitle(experts.length, typeof args.team === 'string' ? args.team : undefined)
+}
+
+export function expertDispatchTitle(count: number, team?: string): string {
+  const name = team?.trim()
+  return name ? t('expert.running_team', { team: name, count }) : t('expert.running', { count })
+}
+
+function dispatchExpertsCharCount(args: Record<string, unknown>): number {
+  const experts = Array.isArray(args.experts) ? args.experts : []
+  let chars = 0
+  for (const entry of experts) {
+    if (!entry || typeof entry !== 'object') continue
+    const rec = entry as { prompt?: unknown; description?: unknown; role?: unknown }
+    for (const field of [rec.prompt, rec.description, rec.role]) {
+      if (typeof field === 'string') chars += field.length
+    }
+  }
+  return chars
 }
 
 /**
@@ -1314,6 +1347,62 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
         streamDisplay: { titleKey: 'tool.interrupt_agent', titleField: 'name' }
       }
     } as ToolDefinitionWithMeta,
+    {
+      type: 'function',
+      function: {
+        name: 'dispatch_experts',
+        description: `派出专家，派出的都立刻开工，立刻返回每位专家的名字。不带 team 时各干各的，干完来敲门，和伙计一样。带 team 时这一次派的专家组成专家团：在一个群里说话、点名交接，你是组长；整个专家团停下来、有人点名组长、有人失败、或者专家互相叫醒又满了 ${WAKES_PER_CHECKPOINT} 次时，你会收到敲门。再交代、等待、打断和伙计一样用 followup_agent / wait_agents / interrupt_agent。专家和伙计合起来，一场任务里没做完的最多 ${MAX_LIVE_CHILDREN} 个。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            experts: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  role: { type: 'string', description: '专家角色：哪方面的专家，几个字（如「测试专家」「数据库性能专家」），跟名字一起显示给用户' },
+                  name: { type: 'string', description: `${SUB_AGENT_NAME_DESCRIPTION}。不能叫「${TEAM_LEADER}」` },
+                  description: { type: 'string', description: '一句话简述（用于进度展示，组团时也写进团员名单）' },
+                  prompt: { type: 'string', description: '详细指令' }
+                },
+                required: ['role', 'description', 'prompt']
+              },
+              description: '至少 1 位'
+            },
+            team: { type: 'string', description: `团名。带上就让这一次派的专家组成专家团，一个团 ${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位；不带就各干各的` },
+            fork_turns: { type: 'string', description: `${FORK_TURNS_DESCRIPTION}这一次派的人共用。` }
+          },
+          required: ['experts']
+        }
+      },
+      _meta: {
+        supportedModes: ['local', 'assistant'],
+        allowedForSubAgent: false,
+        streamDisplay: {
+          customRender: dispatchExpertsPrefix,
+          customProgress: dispatchExpertsCharCount
+        }
+      }
+    } as ToolDefinitionWithMeta,
+    {
+      type: 'function',
+      function: {
+        name: 'team_say',
+        description: `在专家团的群里说一句。群里的话全团都看得见，用户也看得见。to 写要谁接手（专家名字，或「${TEAM_LEADER}」）：被点到的专家会接着干，他正忙着就等手上这一步走完再看；点到组长，组长会收到。不写 to 就只是告知，不叫醒任何人。专家之间互相叫醒每满 ${WAKES_PER_CHECKPOINT} 次会停下来等组长看过，这期间点名只记在群里、先不叫醒人。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            to: { type: 'array', items: { type: 'string' }, description: `要谁接手：专家名字，或「${TEAM_LEADER}」。可以为空` },
+            message: { type: 'string', description: '要说的话' }
+          },
+          required: ['message']
+        }
+      },
+      _meta: {
+        onlyForTeamMember: true,
+        streamDisplay: { titleKey: 'tool.team_say' }
+      }
+    } as ToolDefinitionWithMeta,
     // ==================== 分屏管理（仅终端 Agent 可用） ====================
     {
       type: 'function',
@@ -1553,6 +1642,14 @@ export function filterUnattendedTools(tools: readonly ToolDefinition[]): ToolDef
   return tools.filter(
     tool => !(tool as ToolDefinitionWithMeta)._meta?.lifecycle?.blocksUntilUserInput
   )
+}
+
+/**
+ * 只给专家团成员的工具：不在专家团里就去掉。只看元数据，不认工具名。
+ */
+export function filterTeamMemberTools(tools: readonly ToolDefinition[], inTeam: boolean): ToolDefinition[] {
+  if (inTeam) return [...tools]
+  return tools.filter(tool => !(tool as ToolDefinitionWithMeta)._meta?.onlyForTeamMember)
 }
 
 /**

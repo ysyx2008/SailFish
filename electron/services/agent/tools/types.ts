@@ -196,6 +196,8 @@ export interface ToolExecutorConfig {
   getParentMessages?: () => import('../../ai.service').AiMessage[]
   /** 伙计完成时敲门 */
   knockParent?: (message: string) => void
+  /** 专家团成员在团里的座位（只有专家团里的专家有） */
+  teamSeat?: import('../sub-agent-roster').TeamSeat
   /** 未按听众过滤的工具目录，供硬拦 */
   getToolCatalog?: () => import('../../ai.service').ToolDefinition[]
   /** 创建不进会话表的伙计实例 */

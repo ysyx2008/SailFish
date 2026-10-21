@@ -20,6 +20,7 @@ import { wrapCompositionSection } from './context-composition'
 import { t } from './i18n'
 import { formatRecalledConversations, type RecalledConversation } from '../knowledge/conversation-index'
 import { buildGoalSystemSection } from './goal/goal-prompts'
+import { WAKES_PER_CHECKPOINT } from './expert-team'
 
 const log = createLogger('PromptBuilder')
 const IDENTITY_FILENAME = 'IDENTITY.md'
@@ -928,6 +929,12 @@ export class PromptBuilder {
       '- 完成后会敲门汇报。用 `followup_agent` 再交代（他还在跑就先记下，等当前操作走完再消化）、`wait_agents` 等下一条敲门（不重复正文）、`interrupt_agent` 打断',
       '- 只有下一步被挡住了才 `wait_agents`。不要派出就干等',
       '- 硬墙被拦是系统限制，接到失败后由你决定怎么做',
+      '',
+      '**专家**（`dispatch_experts`）：',
+      '- 伙计是分头干活的人手；专家带着某方面的专长来。活要从某个专业角度做（比如安全审查、数据库性能），派专家。分头就能做完的同类活照旧派伙计',
+      '- 每位专家有一个专家角色：他是哪方面的专家，几个字，比如「产品专家」「测试专家」「数据库性能专家」，跟名字一起显示给用户。专长要展开讲的写进他的指令里',
+      '- 派出的几位专家要来回交接时（比如产品、开发、测试一起做一个功能），带上 team，让他们组成专家团；各看各的就够的（比如几位专家从不同角度各审一遍），不必组团。不组团的专家和伙计一样，干完来敲门',
+      `- 组团时你是组长。专家在群里说话、点名交接，被点到的人接着干。专家干完一段不逐个来敲门；整个专家团停下来、有人点名组长、有人失败、或者专家互相叫醒又满了 ${WAKES_PER_CHECKPOINT} 次，才会来敲门。满 ${WAKES_PER_CHECKPOINT} 次后专家再点名先不叫醒人，你在群里说一句（\`followup_agent\` 对任一专家）就重新数 ${WAKES_PER_CHECKPOINT} 次，并叫醒这期间被点到的人。你用 \`followup_agent\` 对专家说的话也会记进群里`,
     ].join('\n')
   }
 
