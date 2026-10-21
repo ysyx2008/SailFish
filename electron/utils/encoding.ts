@@ -189,23 +189,157 @@ function incompleteUtf8TailLength(buf: Buffer): number {
   return 0
 }
 
+function isUtf8Encoding(encoding: string): boolean {
+  const e = encoding.toLowerCase().replace(/[^a-z0-9]/g, '')
+  return e === 'utf8'
+}
+
+/** 双字节编码（GBK、Big5）：末尾落单的前导字节先留下。 */
+function dbcs2Tail(buf: Buffer): number {
+  let i = 0
+  while (i < buf.length) {
+    const b = buf[i]
+    if (b <= 0x7f) {
+      i++
+      continue
+    }
+    if (b >= 0x81 && b <= 0xfe) {
+      if (i + 1 >= buf.length) return 1
+      i += 2
+      continue
+    }
+    i++
+  }
+  return 0
+}
+
+/** GB18030 还有四字节形式：第二字节在 0x30–0x39。 */
+function gb18030Tail(buf: Buffer): number {
+  let i = 0
+  while (i < buf.length) {
+    const b = buf[i]
+    if (b <= 0x7f) {
+      i++
+      continue
+    }
+    if (b < 0x81 || b > 0xfe) {
+      i++
+      continue
+    }
+    if (i + 1 >= buf.length) return buf.length - i
+    const second = buf[i + 1]
+    const width = second >= 0x30 && second <= 0x39 ? 4 : 2
+    if (i + width > buf.length) return buf.length - i
+    i += width
+  }
+  return 0
+}
+
+function shiftJisTail(buf: Buffer): number {
+  let i = 0
+  while (i < buf.length) {
+    const b = buf[i]
+    if (b <= 0x7f || (b >= 0xa1 && b <= 0xdf)) {
+      i++
+      continue
+    }
+    if ((b >= 0x81 && b <= 0x9f) || (b >= 0xe0 && b <= 0xfc)) {
+      if (i + 1 >= buf.length) return 1
+      i += 2
+      continue
+    }
+    i++
+  }
+  return 0
+}
+
+function eucJpTail(buf: Buffer): number {
+  let i = 0
+  while (i < buf.length) {
+    const b = buf[i]
+    if (b <= 0x7f) {
+      i++
+      continue
+    }
+    if (b === 0x8e) {
+      if (i + 1 >= buf.length) return 1
+      i += 2
+      continue
+    }
+    if (b === 0x8f) {
+      if (i + 2 >= buf.length) return buf.length - i
+      i += 3
+      continue
+    }
+    if (b >= 0xa1 && b <= 0xfe) {
+      if (i + 1 >= buf.length) return 1
+      i += 2
+      continue
+    }
+    i++
+  }
+  return 0
+}
+
+function eucKrTail(buf: Buffer): number {
+  let i = 0
+  while (i < buf.length) {
+    const b = buf[i]
+    if (b <= 0x7f) {
+      i++
+      continue
+    }
+    if (b >= 0xa1 && b <= 0xfe) {
+      if (i + 1 >= buf.length) return 1
+      i += 2
+      continue
+    }
+    i++
+  }
+  return 0
+}
+
+function multibyteTailLength(buf: Buffer, encoding: string): number {
+  const e = encoding.toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (e === 'utf8') return incompleteUtf8TailLength(buf)
+  if (e === 'gb18030') return gb18030Tail(buf)
+  if (e === 'gbk' || e === 'gb2312' || e === 'cp936' || e === 'big5' || e === 'cp950') return dbcs2Tail(buf)
+  if (e === 'shiftjis' || e === 'sjis' || e === 'cp932') return shiftJisTail(buf)
+  if (e === 'eucjp') return eucJpTail(buf)
+  if (e === 'euckr' || e === 'cp949') return eucKrTail(buf)
+  return 0
+}
+
+function decodeEncoded(buf: Buffer, encoding: string): string {
+  if (buf.length === 0) return ''
+  if (isUtf8Encoding(encoding)) {
+    const start = (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) ? 3 : 0
+    return buf.toString('utf-8', start)
+  }
+  return iconv.decode(buf, encoding)
+}
+
 /**
  * 一段一段到来的字节。汉字占多个字节，段的边界可能落在字中间。
  * 没写完的字先留下，下一段补齐再解码。两股独立的输出各用一个，不能混用。
+ *
+ * 不传编码时：能对上 UTF-8 就按 UTF-8，否则按系统编码。
+ * 传了编码就按那个编码，远程终端和 Windows 终端用这个。
  */
 export class ChunkTextDecoder {
   private tail: Buffer = Buffer.alloc(0)
 
+  constructor(private readonly encoding?: string) {}
+
   push(chunk: Buffer): string {
     const buf = this.tail.length === 0 ? chunk : Buffer.concat([this.tail, chunk])
-    const tailLen = incompleteUtf8TailLength(buf)
+    const { encoding, tailLen } = this.plan(buf)
     if (tailLen === 0) {
       this.tail = Buffer.alloc(0)
-      return buf.length === 0 ? '' : decodeBuffer(buf).content
+      return decodeEncoded(buf, encoding)
     }
     this.tail = Buffer.from(buf.subarray(buf.length - tailLen))
-    const complete = buf.subarray(0, buf.length - tailLen)
-    return complete.length === 0 ? '' : decodeBuffer(complete).content
+    return decodeEncoded(buf.subarray(0, buf.length - tailLen), encoding)
   }
 
   /** 流结束。剩下的半个字不再有后续，按整段解码。 */
@@ -213,6 +347,22 @@ export class ChunkTextDecoder {
     if (this.tail.length === 0) return ''
     const rest = this.tail
     this.tail = Buffer.alloc(0)
-    return decodeBuffer(rest).content
+    return decodeEncoded(rest, this.plan(rest).encoding)
+  }
+
+  private plan(buf: Buffer): { encoding: string, tailLen: number } {
+    if (this.encoding && !isUtf8Encoding(this.encoding)) {
+      return { encoding: this.encoding, tailLen: multibyteTailLength(buf, this.encoding) }
+    }
+    const utf8Tail = incompleteUtf8TailLength(buf)
+    if (utf8Tail > 0 || isValidUtf8(buf)) {
+      return { encoding: 'utf-8', tailLen: utf8Tail }
+    }
+    if (this.encoding && isUtf8Encoding(this.encoding)) {
+      return { encoding: 'utf-8', tailLen: 0 }
+    }
+    const system = getSystemEncoding()
+    if (isUtf8Encoding(system)) return { encoding: 'utf-8', tailLen: 0 }
+    return { encoding: system, tailLen: multibyteTailLength(buf, system) }
   }
 }

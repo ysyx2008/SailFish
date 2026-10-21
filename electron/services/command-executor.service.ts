@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from 'child_process'
 import * as os from 'os'
 import stripAnsi from 'strip-ansi'
 import { resolveDefaultShell, getShellSpawnArgs } from '../utils/shell'
+import { ChunkTextDecoder } from '../utils/encoding'
 
 export interface CommandResult {
   output: string
@@ -56,20 +57,25 @@ export class CommandExecutorService {
 
       let output = ''
       let errorOutput = ''
+      const stdoutText = new ChunkTextDecoder()
+      const stderrText = new ChunkTextDecoder()
+      const flush = () => {
+        output += stdoutText.end()
+        errorOutput += stderrText.end()
+      }
 
-      // 收集 stdout
       proc.stdout?.on('data', (data: Buffer) => {
-        output += data.toString()
+        output += stdoutText.push(data)
       })
 
-      // 收集 stderr
       proc.stderr?.on('data', (data: Buffer) => {
-        errorOutput += data.toString()
+        errorOutput += stderrText.push(data)
       })
 
       // 设置超时
       const timeoutId = setTimeout(() => {
         proc.kill('SIGTERM')
+        flush()
         this.executions.delete(id)
         resolve({
           output: output + errorOutput,
@@ -91,6 +97,7 @@ export class CommandExecutorService {
       // 进程结束
       proc.on('close', (code) => {
         clearTimeout(timeoutId)
+        flush()
         this.executions.delete(id)
 
         // 合并输出，优先显示 stdout，如果为空则显示 stderr

@@ -26,6 +26,7 @@ import * as crypto from 'crypto'
 import type { ExecutionMode } from '@shared/types'
 import { WebChatService, VISIBLE_STEP_TYPES } from './web-chat.service'
 import { createLogger } from '../utils/logger'
+import { ChunkTextDecoder } from '../utils/encoding'
 import { getWatchStore } from './watch/store'
 import { getEventBus } from './sensor/event-bus'
 import type { HttpRouteEntry } from './plugin/types'
@@ -717,8 +718,10 @@ export class GatewayService {
   private readBody(req: http.IncomingMessage): Promise<any | null> {
     return new Promise((resolve) => {
       let body = ''
-      req.on('data', (chunk: Buffer) => { body += chunk.toString() })
+      const text = new ChunkTextDecoder('utf-8')
+      req.on('data', (chunk: Buffer) => { body += text.push(chunk) })
       req.on('end', () => {
+        body += text.end()
         try {
           resolve(body ? JSON.parse(body) : null)
         } catch {

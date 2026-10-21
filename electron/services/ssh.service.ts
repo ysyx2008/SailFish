@@ -11,6 +11,7 @@ import { SshConnectAttempt, SshConnectCancelledError, forceCloseClient } from '.
 import { requestLocalNetworkAccessIfDenied } from '../utils/local-network-permission'
 import { createLogger } from '../utils/logger'
 import { appendCappedTerminalOutput } from '../utils/terminal-output-sanitize'
+import { ChunkTextDecoder } from '../utils/encoding'
 import type { ExecuteInTerminalResult } from './pty.service'
 
 export type { JumpHostConfig, SshConfig, SshEncoding }
@@ -194,17 +195,13 @@ export class SshService {
 
             instance.stream = stream
 
-            // 监听数据（使用配置的编码解码）
-            stream.on('data', (data: Buffer) => {
-              let str: string
-              if (encoding === 'utf-8') {
-                str = data.toString('utf-8')
-              } else {
-                // 使用 iconv-lite 解码非 UTF-8 编码
-                str = iconv.decode(data, encoding)
-              }
-              instance.dataCallbacks.forEach(callback => callback(str))
-            })
+            // 监听数据。一段可能停在字中间，半个字留到下一段。
+            const text = new ChunkTextDecoder(encoding)
+            const emit = (value: string) => {
+              if (!value) return
+              instance.dataCallbacks.forEach(callback => callback(value))
+            }
+            stream.on('data', (data: Buffer) => emit(text.push(data)))
 
             // 监听关闭（reuseId 重连后旧 stream 的 close 可能晚到——只处理仍属于本 client 的实例）
             stream.on('close', () => {
@@ -213,6 +210,7 @@ export class SshService {
                 log.info(`${id} stream closed (stale/absent, ignore)`)
                 return
               }
+              emit(text.end())
               log.info(`${id} stream closed`)
               this.emitDisconnect({ id, reason: 'stream_closed' })
               client.end()
@@ -469,15 +467,12 @@ export class SshService {
               encoding
             }
 
-            stream.on('data', (data: Buffer) => {
-              let str: string
-              if (encoding === 'utf-8') {
-                str = data.toString('utf-8')
-              } else {
-                str = iconv.decode(data, encoding)
-              }
-              instance.dataCallbacks.forEach(callback => callback(str))
-            })
+            const text = new ChunkTextDecoder(encoding)
+            const emit = (value: string) => {
+              if (!value) return
+              instance.dataCallbacks.forEach(callback => callback(value))
+            }
+            stream.on('data', (data: Buffer) => emit(text.push(data)))
 
             stream.on('close', () => {
               const current = this.instances.get(id)
@@ -485,6 +480,7 @@ export class SshService {
                 log.info(`${id} JumpServer shell closed (stale/absent, ignore)`)
                 return
               }
+              emit(text.end())
               log.info(`${id} JumpServer shell closed`)
               this.emitDisconnect({ id, reason: 'stream_closed' })
               client.end()
@@ -705,17 +701,22 @@ export class SshService {
         
         let output = ''
         let resolved = false
+        const stdoutText = new ChunkTextDecoder(instance.encoding)
+        const stderrText = new ChunkTextDecoder(instance.encoding)
         
         stream.on('data', (data: Buffer) => {
-          output += data.toString()
+          output += stdoutText.push(data)
         })
         
         stream.stderr.on('data', (data: Buffer) => {
-          // 忽略 stderr，但记录日志
-          log.info('Probe stderr:', data.toString())
+          const text = stderrText.push(data)
+          if (text) log.info('Probe stderr:', text)
         })
         
         stream.on('close', () => {
+          output += stdoutText.end()
+          const errRest = stderrText.end()
+          if (errRest) log.info('Probe stderr:', errRest)
           if (!resolved) {
             resolved = true
             resolve(output.trim() || 'unknown')
@@ -977,16 +978,21 @@ export class SshService {
           return
         }
 
+        const stdoutText = new ChunkTextDecoder(instance.encoding)
+        const stderrText = new ChunkTextDecoder(instance.encoding)
         stream.on('data', (data: Buffer) => {
-          output += data.toString('utf-8')
+          output += stdoutText.push(data)
         })
 
         stream.stderr.on('data', (data: Buffer) => {
-          // 忽略 stderr，或者可以记录
-          log.info(`exec stderr: ${data.toString('utf-8')}`)
+          const text = stderrText.push(data)
+          if (text) log.info(`exec stderr: ${text}`)
         })
 
         stream.on('close', () => {
+          output += stdoutText.end()
+          const errRest = stderrText.end()
+          if (errRest) log.info(`exec stderr: ${errRest}`)
           clearTimeout(timer)
           if (!resolved) {
             resolved = true

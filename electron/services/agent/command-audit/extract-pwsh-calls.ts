@@ -8,6 +8,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { fileURLToPath } from 'url'
 import { resolveDefaultShell } from '../../../utils/shell'
+import { ChunkTextDecoder } from '../../../utils/encoding'
 import type { AuditedCall, AuditedRedirect, AuditContext } from './types'
 
 const PWSH_EXTRACT_SCRIPT = path.join(
@@ -55,18 +56,22 @@ function runPwshExtract(command: string): Promise<PwshExtractResult> {
 
     let stdout = ''
     let stderr = ''
+    const stdoutText = new ChunkTextDecoder('utf-8')
+    const stderrText = new ChunkTextDecoder('utf-8')
     const timer = setTimeout(() => {
       child.kill()
       reject(new Error('PowerShell AST parse timeout'))
     }, PARSE_TIMEOUT_MS)
 
-    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf8') })
-    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf8') })
+    child.stdout.on('data', (chunk: Buffer) => { stdout += stdoutText.push(chunk) })
+    child.stderr.on('data', (chunk: Buffer) => { stderr += stderrText.push(chunk) })
     child.on('error', (err) => {
       clearTimeout(timer)
       reject(err)
     })
     child.on('close', (code) => {
+      stdout += stdoutText.end()
+      stderr += stderrText.end()
       clearTimeout(timer)
       if (code !== 0 && code !== 1 && !stdout.trim()) {
         reject(new Error(stderr.trim() || `pwsh-extract exited with code ${code}`))
