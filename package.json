@@ -121,6 +121,7 @@
     "nodemailer": "^10.0.13",
     "pdf-parse": "^2.4.5",
     "pinia": "^2.1.7",
+    "pinyin-pro": "^3.29.5",
     "playwright-core": "^1.57.0",
     "pptxgenjs": "^4.0.1",
     "qrcode": "^1.5.4",

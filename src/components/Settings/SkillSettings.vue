@@ -5,6 +5,7 @@ import { RefreshCw, FolderOpen, Eye, X, Download, Trash2, ArrowUpCircle, Search,
 import { showConfirm, showAlert } from '../../composables/useConfirm'
 import { useBuiltinSkillText } from '../../composables/useBuiltinSkillText'
 import { sortSkillsByName } from '@sailfish/shared-types'
+import { skillTitleMatchesQuery } from '../../utils/skill-title-match'
 import { oemResolved } from '@shared/oem-resolve'
 
 const props = defineProps<{
@@ -185,9 +186,9 @@ const filteredSkills = computed(() => {
   }
 
   if (searchQuery.value.trim()) {
-    const q = searchQuery.value.toLowerCase()
+    const q = searchQuery.value.trim().toLowerCase()
     list = list.filter(s =>
-      s.name.toLowerCase().includes(q) ||
+      skillTitleMatchesQuery(s.name, q) ||
       s.description.toLowerCase().includes(q) ||
       s.id.toLowerCase().includes(q) ||
       s.tags?.some(t => t.toLowerCase().includes(q))
