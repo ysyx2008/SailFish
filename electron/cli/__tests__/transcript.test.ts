@@ -11,6 +11,7 @@ function capture(options: { tty?: boolean; verbose?: boolean; color?: boolean } 
   })
   return {
     transcript,
+    // eslint-disable-next-line no-control-regex -- 去掉终端颜色码
     text: () => out.replace(/\x1b\[[0-9;]*m/g, ''),
     raw: () => out,
   }

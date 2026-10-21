@@ -230,6 +230,7 @@ describe('计划没完成时的催促：问一次，不是循环', () => {
   }, 15000)
 
   it('追问之后用户插了话：算新的一段，之后模型再只回文字仍可再被追问一次', async () => {
+    // eslint-disable-next-line prefer-const -- 回调先引用、后赋值，不能提前定成 const
     let agent!: SailFish
     const { services, calls } = makeServices(({ index }) => {
       switch (index) {

@@ -182,6 +182,7 @@ describe('联络派完任务，这一轮等着任务回来', () => {
 
   it('派完先回一句，这一轮不收工；回执到了在同一轮里读到并回复，用户看得见', async () => {
     const timeline: string[] = []
+    // eslint-disable-next-line prefer-const -- 回调先引用、后赋值，不能提前定成 const
     let agent!: SailFish
     const { supervisor } = makeSupervisor(receipt => agent.deliverTaskReceipt(receipt, { fallbackContext: ctx() }))
     const services = makeServices(({ index, messages }) => {
@@ -230,6 +231,7 @@ describe('联络派完任务，这一轮等着任务回来', () => {
 
   it('等的时候用户插话：先回答，之后接着等；回执到了照样在这一轮里处理', async () => {
     const timeline: string[] = []
+    // eslint-disable-next-line prefer-const -- 回调先引用、后赋值，不能提前定成 const
     let agent!: SailFish
     const { supervisor } = makeSupervisor(receipt => agent.deliverTaskReceipt(receipt, { fallbackContext: ctx() }))
     const services = makeServices(({ index, messages }) => {
@@ -271,6 +273,7 @@ describe('联络派完任务，这一轮等着任务回来', () => {
 
   it('用户按停联络：任务不被停；任务之后做完，回执另起一轮送来（用户不在场的尾巴）', async () => {
     const seen: string[] = []
+    // eslint-disable-next-line prefer-const -- 回调先引用、后赋值，不能提前定成 const
     let agent!: SailFish
     const { supervisor, abort } = makeSupervisor(receipt => agent.deliverTaskReceipt(receipt, { fallbackContext: ctx() }))
     const services = makeServices(({ index, messages }) => {
@@ -308,6 +311,7 @@ describe('联络派完任务，这一轮等着任务回来', () => {
   }, 15000)
 
   it('任务根本没跑起来（开跑失败）：联络这一轮马上收工，不守着一张空等的卡等到下一个检查点', async () => {
+    // eslint-disable-next-line prefer-const -- 回调先引用、后赋值，不能提前定成 const
     let agent!: SailFish
     const { supervisor } = makeSupervisor(receipt => agent.deliverTaskReceipt(receipt, { fallbackContext: ctx() }), {
       say: async () => {

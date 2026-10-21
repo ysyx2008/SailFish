@@ -1973,6 +1973,7 @@ async function companionChat(args: string[]): Promise<void> {
   })
   let userLines: ReturnType<typeof listenForUserLines> | undefined
   /** 联络开始为任务等回执时记下，到上限不再等 */
+  // eslint-disable-next-line prefer-const -- 回调先引用、后赋值，不能提前定成 const
   let onStartedWaiting: (() => void) | undefined
 
   const callbacks = {

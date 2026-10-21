@@ -233,6 +233,7 @@ export class TuiSession {
     if (this.left) return
     this.left = true
     this.stdout.write(LEAVE_SCREEN)
+    // eslint-disable-next-line no-control-regex -- 去掉终端控制序列
     const text = flattenTerminalText(this.raw).replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
     if (text.trim()) this.stdout.write(text.endsWith('\n') ? text : text + '\n')
   }

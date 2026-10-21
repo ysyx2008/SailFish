@@ -236,6 +236,7 @@ export function feedComposer(state: Composer, chunk: string): { state: Composer;
 }
 
 export function visualWidth(text: string): number {
+  // eslint-disable-next-line no-control-regex -- 去掉终端控制序列
   const plain = text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
   let width = 0
   for (const ch of plain) width += widthOf(ch.codePointAt(0)!)
@@ -271,6 +272,7 @@ function wrapLine(line: string, cols: number): string[] {
   let i = 0
   while (i < line.length) {
     if (line[i] === '\x1b') {
+      // eslint-disable-next-line no-control-regex -- 认出终端控制序列
       const mark = /^\x1b\[[0-9;]*[A-Za-z]/.exec(line.slice(i))
       if (mark) {
         current += mark[0]

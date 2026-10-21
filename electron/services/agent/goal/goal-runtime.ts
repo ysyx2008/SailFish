@@ -175,7 +175,7 @@ export class GoalRuntime {
   ): Promise<void> {
     let wrapUpDone = false
 
-    while (true) {
+    for (;;) {
       if (agent.isRunning()) return
       if (agent.hasQueuedUserInput()) return
       const goal = agent.getGoal()
