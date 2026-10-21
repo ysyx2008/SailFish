@@ -131,7 +131,7 @@
 
 | 平台 | 要求 | 安装包 |
 |------|------|--------|
-| **macOS** | 10.15+，Intel 与 Apple Silicon | `.dmg`（按芯片选择 arm64 / x64） |
+| **macOS** | 13+，Intel 与 Apple Silicon | `.dmg`（按芯片选择 arm64 / x64） |
 | **Windows** | Windows 10 / 11，Server 2016+ | NSIS 安装包，另有 **ZIP 便携版** |
 
 Linux 桌面版暂不提供官方下载。Windows 上若安装程序无法运行（如部分 Server 2016），用 ZIP 解压即可。

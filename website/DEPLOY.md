@@ -7,7 +7,7 @@
 在 Windows 服务器上安装：
 
 1. **Git for Windows**: https://git-scm.com/download/win
-2. **Node.js 20+**: https://nodejs.org/
+2. **Node.js 24+**: https://nodejs.org/
 
 ## 🚀 部署方式
 

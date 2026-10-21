@@ -54,6 +54,6 @@ AI 也能主动找人（`talk_to_user` / Watch 通知）。它不是「专注产
 - **UI 与 prompt 一致**：联络不挂产出物面板，且 `resolveWorkbenchAgentPrompt('companion', …)`
   返回 `undefined`（不注入产出物面板能力 prompt）。两者必须保持一致——别只改一处。
 - **身份判断**用稳定常量 `'__companion__'`（见 `registry.ts COMPANION_AGENT_ID` / `stores/terminal.ts COMPANION_TAB_AGENT_ID`），不要用标题等脆弱匹配。
-- **talk_to_user 桌面呈现**：Watch/IM 主动消息经 `watch:proactive-message` 注入联络 tab；进行中任务延迟、完成后 flush；step 类型为 `proactive_notice`（非 `user_task`/`final_result`）。IM 触发 companion run 时须收到 `agent:running` 才能正确延迟（见 `agent/SPEC.md`、`im/SPEC.md`）。
+- **talk_to_user 桌面呈现**：Watch/IM 主动消息经 `watch:proactive-message` 注入联络 tab；进行中任务延迟、完成后 flush；step 类型为 `proactive_notice`（非 `user_task`/`final_result`）。IM 触发 companion run 时须收到 `agent:running` 才能正确延迟（见 `agent/SPEC.md`、`im/SPEC.md`）。窗口不在前面时，Mac 的程序坞图标会一直跳，直到回到这个窗口；Windows 是任务栏图标闪。这不靠系统通知，没有证书也能看见。系统通知仍会试一次，有证书时一起出现。
 - **后续扩展**：联络若长出专属界面能力，在 `CompanionWorkbench.vue` 加区域、在 `prompt.ts` 导出片段即可，无需动 assistant 工作台。
 - **空状态分流**：联络 tab 无历史消息时，欢迎说明走 `WelcomePanel.vue` 内的 `isCompanionTab` 分支（轻量居中：标题 + 多渠道/主动找你两点），不展示独立助手的能力网格/执行模式/注意事项，也不放示例 chips。`isCompanionTab` 由 AiPanel 按 `tab.agentId === COMPANION_AGENT_KEY` 派生传入，与 `resolveWorkbenchKind` 同源。

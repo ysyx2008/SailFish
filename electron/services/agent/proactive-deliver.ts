@@ -2,7 +2,7 @@
  * 主动消息投递管道
  *
  * 从 talk_to_user 提取的投递核心：IM 触达（如有最近联系人）→ 桌面联络线 IPC →
- * 窗口无焦点时系统通知 → 持久化到联络历史（proactive_notice，重启后可恢复）。
+ * 窗口无焦点时让程序坞/任务栏提醒，并试一次系统通知 → 持久化到联络历史（proactive_notice，重启后可恢复）。
  * talk_to_user（Agent 主动找人）与任务事件回流（TaskSupervisor）共用此管道，
  * 「联络线」是唯一的人机汇合点。
  *
@@ -95,8 +95,15 @@ export async function deliverProactiveMessage(
     log.debug('deliverProactiveMessage: app delivery failed:', e)
   }
 
-  // 窗口不存在或没有焦点时，发系统通知；点击通知时激活应用并展开对话
+  // 窗口不存在或没有焦点时：程序坞/任务栏跳一下（没证书也能看见），并试一次系统通知。
+  // 点击通知时激活应用并展开对话。
   if (!windowFocused) {
+    try {
+      const { attentionService } = require('../attention.service') as typeof import('../attention.service')
+      void attentionService.request()
+    } catch (e) {
+      log.debug('deliverProactiveMessage: dock/taskbar attention failed:', e)
+    }
     try {
       const electron = require('electron')
       const { Notification } = electron

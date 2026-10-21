@@ -137,7 +137,7 @@ export class LlmBenchService {
     })
 
     ipcMain.handle('llmBench:writeClipboard', async (_event, text: string) => {
-      clipboard.writeText(text)
+      await clipboard.writeText(text)
       return true
     })
 

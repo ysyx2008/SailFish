@@ -13,7 +13,7 @@ description: '在 macOS 或 Windows 上下载并安装旗鱼'
 
 | 平台 | 最低要求 |
 |------|---------|
-| macOS | 10.15 (Catalina) 及以上，支持 Intel 和 Apple Silicon |
+| macOS | 13 (Ventura) 及以上，支持 Intel 和 Apple Silicon |
 | Windows | Windows 10 / 11，Server 2016 及以上 |
 
 ## 下载

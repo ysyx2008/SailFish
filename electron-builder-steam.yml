@@ -93,6 +93,8 @@ nsis:
     - zh_CN
   language: 2052
 mac:
+  # Electron 44 起不再支持 macOS 12
+  minimumSystemVersion: "13.0"
   icon: resources/icon.icns
   target:
     - target: dmg

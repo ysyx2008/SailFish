@@ -279,7 +279,7 @@ class AiDebugService extends EventEmitter {
 
     // 写入剪贴板（主进程 clipboard 在调试窗口内更可靠）
     ipcMain.handle('aiDebug:writeClipboard', async (_event, text: string) => {
-      clipboard.writeText(text)
+      await clipboard.writeText(text)
       return true
     })
   }
