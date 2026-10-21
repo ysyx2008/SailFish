@@ -2,7 +2,7 @@
 import { runStartupMigrationIfNeeded, runStartupRestoreIfNeeded, getDataDirInfo, requestDataDirMigration, requestDataDirReset, requestFullRestore, isTargetNonEmpty } from './utils/bootstrap'
 import { getReviewLane } from './utils/review-lane'
 import { exportUserData, CopyCanceledError, validateBackupArchive } from './utils/data-backup'
-import { app, BrowserWindow, ipcMain, shell, dialog, session, Tray, Menu, nativeImage, nativeTheme, powerMonitor, clipboard, protocol, net } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, dialog, session, Tray, Menu, nativeImage, nativeTheme, powerMonitor, clipboard, protocol, net, ClipboardItem } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import type { GenericServerOptions, GithubOptions } from 'builder-util-runtime'
 import path, { join } from 'path'
@@ -2870,7 +2870,14 @@ ipcMain.handle('clipboard:writeImage', async (_event, payload: ArrayBuffer | Uin
   if (img.isEmpty()) {
     throw new Error('clipboard:writeImage received unrecognizable image buffer')
   }
-  clipboard.writeImage(img)
+  const png = img.toPNG()
+  const bytes = new Uint8Array(png.byteLength)
+  bytes.set(png)
+  await clipboard.write([
+    new ClipboardItem({
+      'image/png': new Blob([bytes], { type: 'image/png' }),
+    }),
+  ])
 })
 
 // PATH 环境变量状态

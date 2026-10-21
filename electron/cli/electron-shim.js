@@ -263,8 +263,18 @@ const nativeTheme = {
 }
 
 const clipboard = {
-  readText() { return '' },
-  writeText() {}
+  readText() { return Promise.resolve('') },
+  writeText() { return Promise.resolve() },
+  read() { return Promise.resolve([]) },
+  write() { return Promise.resolve() },
+  has() { return Promise.resolve(false) },
+  clear() {}
+}
+
+class ClipboardItem {
+  constructor(items) {
+    this.types = Object.keys(items || {})
+  }
 }
 
 const screen = {
@@ -300,6 +310,7 @@ module.exports = {
   session,
   nativeTheme,
   clipboard,
+  ClipboardItem,
   screen,
   globalShortcut,
   powerMonitor,
@@ -317,6 +328,7 @@ module.exports = {
     session,
     nativeTheme,
     clipboard,
+    ClipboardItem,
     screen,
     globalShortcut,
     powerMonitor

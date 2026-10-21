@@ -138,7 +138,7 @@ export class CrashNotifier {
 
   private async copySummary(win: BrowserWindow | undefined): Promise<void> {
     try {
-      clipboard.writeText(await this.deps.getSummaryText())
+      await clipboard.writeText(await this.deps.getSummaryText())
       // 复制要有回执：用户得知道自己已经拿到了、以及拿到的是什么
       await this.showBox(win, {
         type: 'info',

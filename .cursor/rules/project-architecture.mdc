@@ -14,7 +14,7 @@ SailFish（旗鱼）是一个私人 AI Agent 桌面应用。用户用自然语�
 
 | 层 | 技术 | 说明 |
 |---|---|---|
-| 桌面壳 | Electron 37 | 窗口管理、系统集成、IPC |
+| 桌面壳 | Electron 44 | 窗口管理、系统集成、IPC |
 | 前端 | Vue 3 + Pinia + xterm.js | UI、终端渲染、状态管理 |
 | 后端服务 | TypeScript (Node.js) | 业务逻辑核心 |
 | CLI | Node.js + tsx | 纯命令行模式，复用后端服务 |

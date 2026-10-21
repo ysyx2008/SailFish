@@ -692,7 +692,7 @@ export class MenuService {
       const group = links.qqGroup
       submenu.push({
         label: `${this.t('qqGroup')} (${group})`,
-        click: () => clipboard.writeText(group)
+        click: () => { void clipboard.writeText(group) }
       })
     }
     if (links.website) {
