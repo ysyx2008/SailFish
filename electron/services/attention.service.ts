@@ -13,7 +13,7 @@ const log = createLogger('attention')
  * 而主窗口不在前台焦点时，通过任务栏 / Dock 上的视觉提示提醒用户。
  *
  * 跨平台策略：
- * - macOS  : Dock badge 圆点
+ * - macOS  : 程序坞图标一直跳，直到回到窗口；另外试着加一颗圆点（圆点要通知权限，没签名时往往加不上）
  * - Windows: 任务栏图标闪烁 (flashFrame)
  * - Linux  : setBadgeCount(1)（仅在支持的桌面环境生效，如 Unity）
  *
@@ -23,6 +23,8 @@ class AttentionService {
   private mainWindow: BrowserWindow | null = null
   private active = false
   private permissionEnsured = false
+  /** macOS 程序坞持续跳动的编号，聚焦后取消 */
+  private bounceId: number | undefined
   /**
    * 自维护的窗口聚焦状态——不依赖每次 win.isFocused() 的实时返回。
    *
@@ -160,6 +162,8 @@ class AttentionService {
             log.warn('attention badge: dock.show failed:', e)
           }
         }
+        // 跳动不依赖通知权限，没签名时系统通知和圆点都出不来，靠它提醒
+        this.startDockBounce()
         // 圆点而非数字：我们不计数，只表达"有事情要看"
         app.dock?.setBadge('•')
         log.info('attention badge set (macOS dock)')
@@ -185,6 +189,7 @@ class AttentionService {
     const win = this.mainWindow
     try {
       if (process.platform === 'darwin') {
+        this.stopDockBounce()
         app.dock?.setBadge('')
       } else if (process.platform === 'win32') {
         if (win && !win.isDestroyed()) win.flashFrame(false)
@@ -193,6 +198,24 @@ class AttentionService {
       }
     } catch (e) {
       log.debug('attention.clear failed:', e)
+    }
+  }
+
+  /** 一直跳，直到窗口回到前面。已经在跳就不再另起一次。 */
+  private startDockBounce(): void {
+    if (this.bounceId != null) return
+    const id = app.dock?.bounce('critical')
+    if (typeof id === 'number' && id >= 0) this.bounceId = id
+  }
+
+  private stopDockBounce(): void {
+    if (this.bounceId == null) return
+    const id = this.bounceId
+    this.bounceId = undefined
+    try {
+      app.dock?.cancelBounce(id)
+    } catch (e) {
+      log.debug('cancelBounce failed:', e)
     }
   }
 }
