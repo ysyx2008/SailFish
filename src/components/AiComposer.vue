@@ -38,6 +38,7 @@ import { useHoverTip, BUTTON_HOVER_TIP_DELAY_MS } from '../composables/useHoverT
 import { useOutputTokenRate } from '../composables/useOutputTokenRate'
 import { isSameSkillId, isUserSkillId } from '@sailfish/shared-types'
 import { isFlowArrowKey, moveInFlow, type TileBox } from '../composables/skill-flow-nav'
+import { skillListKeyAction, tabMovesToSkillList } from '../composables/skill-picker-keys'
 
 interface ContextStats {
   tokenEstimate: number
@@ -1139,6 +1140,26 @@ function onStandaloneSkillSearch(event: Event) {
   setSkillSearch((event.target as HTMLInputElement).value)
 }
 
+function moveSkillHighlight(key: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight') {
+  skillKeyboardNav.value = true
+  setMentionSelectedIndex(moveInFlow(mentionSelectedIndex.value, key, skillTileBoxes()))
+}
+
+function toggleHighlightedSkill() {
+  if (isMentionLoading.value) return
+  const suggestion = mentionSuggestions.value[mentionSelectedIndex.value]
+  if (suggestion) selectSuggestion(suggestion)
+}
+
+function focusSkillList() {
+  const list = mentionListEl.value
+  if (!list) return
+  skillKeyboardNav.value = true
+  list.focus()
+  list.querySelector<HTMLElement>(`.mention-item[data-index="${mentionSelectedIndex.value}"]`)
+    ?.scrollIntoView({ block: 'nearest' })
+}
+
 function handleSkillSearchKeyDown(event: KeyboardEvent) {
   // 拼音候选框开着时，方向键 / 回车 / Esc 是输入法的，不是列表的
   if (event.isComposing || event.keyCode === 229) return
@@ -1147,7 +1168,15 @@ function handleSkillSearchKeyDown(event: KeyboardEvent) {
     closeMentionMenuAndFocusInput()
     return
   }
-  // Tab 照常把焦点移走（面板随之收起），不拿来开关技能
+  // Tab 把焦点交给下面的技能列表，面板不收。没有可去的技能时才让 Tab 离开、面板收起
+  if (tabMovesToSkillList(
+    { key: event.key, shiftKey: event.shiftKey, isComposing: event.isComposing },
+    mentionSuggestions.value.length > 0,
+  )) {
+    event.preventDefault()
+    focusSkillList()
+    return
+  }
   if (event.key === 'Tab') return
   // 结果还在加载：眼前看不到目标，回车不能去改技能
   if (isMentionLoading.value && event.key === 'Enter') {
@@ -1159,11 +1188,37 @@ function handleSkillSearchKeyDown(event: KeyboardEvent) {
     // 搜索框里已经打了字时，左右留给改字
     if (horizontal && mentionSearchQuery.value) return
     event.preventDefault()
-    skillKeyboardNav.value = true
-    setMentionSelectedIndex(moveInFlow(mentionSelectedIndex.value, event.key, skillTileBoxes()))
+    moveSkillHighlight(event.key)
     return
   }
   handleMentionKeyDown(event)
+}
+
+function handleSkillListKeyDown(event: KeyboardEvent) {
+  const action = skillListKeyAction({
+    key: event.key,
+    shiftKey: event.shiftKey,
+    isComposing: event.isComposing || event.keyCode === 229,
+  })
+  if (action === 'close') {
+    event.preventDefault()
+    closeMentionMenuAndFocusInput()
+    return
+  }
+  if (action === 'back-to-search') {
+    event.preventDefault()
+    skillMenuSearchEl.value?.focus()
+    return
+  }
+  if (action === 'toggle') {
+    event.preventDefault()
+    toggleHighlightedSkill()
+    return
+  }
+  if (action === 'move' && isFlowArrowKey(event.key)) {
+    event.preventDefault()
+    moveSkillHighlight(event.key)
+  }
 }
 
 /** 每个技能标签此刻在屏幕上的位置（按序号排；上下键要找隔壁一行里最近的那个） */
@@ -2231,8 +2286,10 @@ const handleSendClick = (event: MouseEvent) => {
             class="mention-list skill-picker-body"
             role="listbox"
             aria-multiselectable="true"
-            tabindex="-1"
-            @focus="skillMenuSearchEl?.focus()"
+            tabindex="0"
+            @keydown="handleSkillListKeyDown"
+            @focus="skillKeyboardNav = true"
+            @blur="handleInputBlur"
             @scroll="updateMentionListOverflow"
           >
             <section
@@ -2300,7 +2357,7 @@ const handleSendClick = (event: MouseEvent) => {
             </template>
           </div>
           <div class="skill-picker-keys">
-            <span><kbd>↵</kbd>{{ t('mentions.skillHintToggle') }}</span>
+            <span><kbd>↵</kbd><kbd>{{ t('mentions.skillHintSpace') }}</kbd>{{ t('mentions.skillHintToggle') }}</span>
             <span><kbd>esc</kbd>{{ t('mentions.skillHintClose') }}</span>
           </div>
         </div>
@@ -4059,6 +4116,7 @@ const handleSendClick = (event: MouseEvent) => {
 
 .skill-picker-body {
   padding: 2px 16px 10px;
+  outline: none;
 }
 
 .skill-group-head {
