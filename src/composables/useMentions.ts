@@ -7,7 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useTerminalStore } from '../stores/terminal'
 import type { ParsedDocument } from '../stores/terminal'
 import { sortSkillsByName, toUserSkillId } from '@sailfish/shared-types'
-import { skillTitleMatchesQuery } from '../utils/skill-title-match'
+import { skillTextMatchesQuery } from '../utils/skill-text-match'
 import { useBuiltinSkillText } from './useBuiltinSkillText'
 
 // @ 命令类型
@@ -471,8 +471,8 @@ export function useMentions(
       if (seq !== skillLoadSeq) return
       const q = query.trim().toLowerCase()
       const matches = (name: string, id: string, description: string) =>
-        !q || skillTitleMatchesQuery(name, q) || id.toLowerCase().includes(q) || description.toLowerCase().includes(q)
-      // 内置技能显示界面语言下的名字和简介（和设置页一致）；搜索按眼前看到的，标题的拼音也对得上
+        !q || skillTextMatchesQuery(name, q) || skillTextMatchesQuery(description, q) || id.toLowerCase().includes(q)
+      // 内置技能显示界面语言下的名字和简介（和设置页一致）；搜索按眼前看到的，标题和简介的拼音也对得上
       const builtinItems = sortSkillsByName(
         builtins
           .filter(s => s.enabled)

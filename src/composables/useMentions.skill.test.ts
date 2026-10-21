@@ -314,7 +314,7 @@ describe('内置技能显示界面语言下的名字（和设置页一致）', (
   })
 })
 
-describe('按标题的拼音搜', () => {
+describe('按标题和简介的拼音搜', () => {
   const jd: SkillRow = { id: 'cart', name: '京东购物助手', description: '下单付款', enabled: true }
 
   async function search(q: string) {
@@ -334,9 +334,10 @@ describe('按标题的拼音搜', () => {
     }
   })
 
-  it('跳过中间的字不算；简介里的字不按拼音搜', async () => {
+  it('跳过中间的字不算；简介的拼音也能找到，标题里没有这些字', async () => {
     expect(await search('jz')).toEqual([])
     expect(await search('jdzs')).toEqual([])
+    expect(await search('fukuan')).toEqual(['user:cart'])
 
     userList.mockResolvedValue([{ id: 'foo', name: 'Foo 技能', description: '表格读写', enabled: true }])
     builtinList.mockResolvedValue([])
@@ -345,7 +346,7 @@ describe('按标题的拼音搜', () => {
     await flush()
     mentions.setSkillSearch('biao')
     await flush()
-    expect(mentions.suggestions.value).toEqual([])
+    expect(mentions.suggestions.value.map(s => s.id)).toEqual(['user:foo'])
     mentions.setSkillSearch('表格')
     await flush()
     expect(mentions.suggestions.value.map(s => s.id)).toEqual(['user:foo'])
