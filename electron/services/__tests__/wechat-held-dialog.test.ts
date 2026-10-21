@@ -3,7 +3,6 @@ import { WeChatHeldByOtherInstanceError } from '../im/wechat-adapter'
 
 const harness = vi.hoisted(() => ({
   start: vi.fn(async () => {}),
-  showMessageBox: vi.fn(async () => ({ response: 0 })),
 }))
 
 vi.mock('electron', () => ({
@@ -13,10 +12,7 @@ vi.mock('electron', () => ({
     getVersion: () => '0',
     isPackaged: false,
   },
-  dialog: { showMessageBox: harness.showMessageBox },
-  BrowserWindow: {
-    getAllWindows: () => [{ isDestroyed: () => false }],
-  },
+  BrowserWindow: { getAllWindows: () => [] },
 }))
 
 vi.mock('../config.service', () => ({
@@ -42,31 +38,53 @@ vi.mock('../im/wechat-adapter', async () => {
 
 import { IMService } from '../im/im.service'
 
+function serviceWithDesktop() {
+  const sent: Array<{ channel: string; data: { title?: string; message?: string } }> = []
+  const svc = new IMService()
+  svc.setDependencies({
+    agentService: {} as never,
+    mainWindow: {
+      webContents: {
+        send: (channel: string, data: { title?: string; message?: string }) => {
+          sent.push({ channel, data })
+        },
+        isDestroyed: () => false,
+      },
+    },
+  })
+  return { svc, sent }
+}
+
 describe('微信被另一个旗鱼占着', () => {
   beforeEach(() => {
     harness.start.mockReset()
-    harness.showMessageBox.mockClear()
   })
 
-  it('弹出对话框，并把说明交给调用方', async () => {
+  it('让界面弹出说明，一句一行', async () => {
     harness.start.mockRejectedValue(new WeChatHeldByOtherInstanceError())
-    const result = await new IMService().startWeChat({ enabled: true, token: 'tok', baseUrl: '' })
+    const { svc, sent } = serviceWithDesktop()
+    const result = await svc.startWeChat({ enabled: true, token: 'tok', baseUrl: '' })
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('另一个旗鱼')
-    expect(harness.showMessageBox).toHaveBeenCalledTimes(1)
-    const options = harness.showMessageBox.mock.calls[0][1]
-    expect(options.message).toContain('另一个旗鱼')
-    expect(options.title).toBe('微信没连上')
-    expect(options.buttons).toEqual(['知道了'])
+    expect(sent).toHaveLength(1)
+    expect(sent[0].channel).toBe('im:wechatHeld')
+    expect(sent[0].data.title).toBe('微信没连上')
+    expect(sent[0].data.message).toBe(
+      '这个微信已经在另一个旗鱼里连着了。\n'
+      + '同一个微信同一时间只能连在一个旗鱼里；\n'
+      + '要换到这一个，请先退出另一个，再点连接。\n'
+      + '如果另一个其实已经退出了，等一分钟再试。',
+    )
   })
 
   it('别的连接失败不弹这个对话框', async () => {
     harness.start.mockRejectedValue(new Error('network down'))
-    const result = await new IMService().startWeChat({ enabled: true, token: 'tok', baseUrl: '' })
+    const { svc, sent } = serviceWithDesktop()
+    const result = await svc.startWeChat({ enabled: true, token: 'tok', baseUrl: '' })
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('network down')
-    expect(harness.showMessageBox).not.toHaveBeenCalled()
+    expect(sent).toHaveLength(0)
   })
 })

@@ -487,6 +487,7 @@ let cleanupGatewayRemoteTab: (() => void) | null = null
 let cleanupGatewayRemoteTask: (() => void) | null = null
 let cleanupImConnectionChange: (() => void) | null = null
 let cleanupImSendFailure: (() => void) | null = null
+let cleanupWeChatHeld: (() => void) | null = null
 let cleanupAiProfileFallback: (() => void) | null = null
 let cleanupRunTask: (() => void) | null = null
 let cleanupInstallSkill: (() => void) | null = null
@@ -510,6 +511,17 @@ onMounted(async () => {
   // 注册分屏反向 IPC 处理器（响应主进程 Agent 工具的分屏调用）
   initSplitPaneHandler()
   initWorkbenchHandler()
+
+  // 微信被另一个旗鱼占着：启动自动连接可能早于后面的 await，先订上
+  cleanupWeChatHeld = window.electronAPI.im.onWeChatHeld((data) => {
+    if (!data?.message) return
+    void showConfirm({
+      title: data.title || t('settings.im.wechat'),
+      message: data.message,
+      type: 'warning',
+      showCancel: false,
+    })
+  })
 
   // ── 知识库 / 启动进度：必须最先订阅，绝不能被弹窗 await 堵住 ──────────────
   // 后端常在 Vue mount 前后就开始 rebuild；若等确认框点完再监听会漏掉全部进度。
@@ -1639,6 +1651,7 @@ onUnmounted(() => {
   cleanupGatewayRemoteTask?.()
   cleanupImConnectionChange?.()
   cleanupImSendFailure?.()
+  cleanupWeChatHeld?.()
   cleanupAiProfileFallback?.()
   cleanupRunTask?.()
   cleanupInstallSkill?.()

@@ -45,7 +45,6 @@ import { getConfigService } from '../config.service'
 import { t } from '../agent/i18n'
 import { t as mainT } from '../../i18n/main-i18n'
 import { createLogger } from '../../utils/logger'
-import { dialog, BrowserWindow } from 'electron'
 import path from 'path'
 import fs from 'fs'
 
@@ -1066,18 +1065,12 @@ export class IMService {
     }
   }
 
-  /** 同一个微信被另一个旗鱼占着时弹出对话框。不挡住调用方返回。 */
+  /** 同一个微信被另一个旗鱼占着时，让界面弹出自己的对话框。 */
   private alertWeChatHeld(message: string): void {
-    const options = {
-      type: 'warning' as const,
+    this.sendToDesktop('im:wechatHeld', {
       title: mainT('dialog.wechatHeldTitle'),
       message,
-      buttons: [mainT('dialog.configRecoveryOk')],
-      noLink: true,
-    }
-    const win = BrowserWindow.getAllWindows().find(w => !w.isDestroyed())
-    void (win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options))
-      .catch((e) => log.warn('WeChat held dialog failed:', e))
+    })
   }
 
   async stopWeChat(): Promise<void> {

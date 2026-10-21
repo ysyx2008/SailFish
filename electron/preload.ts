@@ -3980,6 +3980,15 @@ const electronAPI = {
         ipcRenderer.removeListener('im:sendFailure', handler)
       }
     },
+
+    onWeChatHeld: (callback: (data: { title: string; message: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { title: string; message: string }) =>
+        callback(data)
+      ipcRenderer.on('im:wechatHeld', handler)
+      return () => {
+        ipcRenderer.removeListener('im:wechatHeld', handler)
+      }
+    },
   },
 
   feishuOAuth: {

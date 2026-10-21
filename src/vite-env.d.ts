@@ -2691,6 +2691,7 @@ interface Window {
       onConnectionChange: (callback: (data: { platform: string; connected: boolean }) => void) => () => void
       onWeChatLoginStatus: (callback: (status: WeChatLoginStatus) => void) => () => void
       onSendFailure: (callback: (data: { platform: string; userId?: string; userName?: string; reason?: string }) => void) => () => void
+      onWeChatHeld: (callback: (data: { title: string; message: string }) => void) => () => void
     }
 
     feishuOAuth: {
