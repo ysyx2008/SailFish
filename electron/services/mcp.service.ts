@@ -12,6 +12,7 @@ import type { ToolDefinitionWithMeta } from './agent/tools'
 import { formatMcpToolCallContent, resolveMcpToolDisplayLabel } from './mcp-tool-display'
 import { toMcpSkillId, parseMcpSkillId } from './mcp-progressive-constants'
 import { classifyMcpConnectError, type McpConnectErrorKind } from './mcp-connect-error'
+import { describeMcpEndpointForLog, scrubMcpEndpoint } from './mcp-endpoint-label'
 import { ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
 import { app } from 'electron'
@@ -141,7 +142,8 @@ export class McpService extends EventEmitter {
         }
         
         log.info(`Starting ${config.name} with command: ${config.command}`)
-        log.info(`Args: ${JSON.stringify(config.args)}`)
+        // 启动参数里常夹着密钥（--api-key …），内容不写日志，只记个数
+        log.info(`Args: ${config.args?.length ?? 0} (values not logged)`)
         log.info(`Custom env keys: ${Object.keys(config.env || {}).join(', ') || 'none'}`)
 
         // StdioClientTransport 会自动创建和管理子进程
@@ -156,14 +158,14 @@ export class McpService extends EventEmitter {
           throw new Error('sse 模式需要指定 url')
         }
 
-        log.info(`Connecting ${config.name} via SSE: ${config.url} (custom headers: ${Object.keys(config.headers || {}).join(', ') || 'none'})`)
+        log.info(`Connecting ${config.name} via SSE: ${describeMcpEndpointForLog(config.url)} (custom headers: ${Object.keys(config.headers || {}).join(', ') || 'none'})`)
         transport = new SSEClientTransport(new URL(config.url), buildHttpTransportOptions(config.headers))
       } else if (config.transport === 'http') {
         if (!config.url) {
           throw new Error('http 模式需要指定 url')
         }
 
-        log.info(`Connecting ${config.name} via Streamable HTTP: ${config.url} (custom headers: ${Object.keys(config.headers || {}).join(', ') || 'none'})`)
+        log.info(`Connecting ${config.name} via Streamable HTTP: ${describeMcpEndpointForLog(config.url)} (custom headers: ${Object.keys(config.headers || {}).join(', ') || 'none'})`)
         transport = new StreamableHTTPClientTransport(new URL(config.url), buildHttpTransportOptions(config.headers))
       } else {
         throw new Error(`不支持的传输类型: ${config.transport}`)
@@ -203,14 +205,17 @@ export class McpService extends EventEmitter {
         try { await transport.close() } catch { /* 连接失败时尽力关掉已拉起的 transport */ }
       }
       const classified = classifyMcpConnectError(error)
+      // 底层报错可能把整条地址（含密钥）原样写进文字：日志和界面上都只留简称
+      const message = scrubMcpEndpoint(classified.message, config.url)
       this.lastErrors.set(config.id, {
         name: config.name,
-        error: classified.message,
+        error: message,
         errorKind: classified.kind
       })
-      this.emit('error', { serverId: config.id, error: classified.message })
-      log.error(`Failed to connect to ${config.name}:`, error)
-      const wrapped = new Error(`连接 MCP 连接器 ${config.name} 失败: ${classified.message}`)
+      this.emit('error', { serverId: config.id, error: message })
+      const detail = error instanceof Error ? (error.stack ?? error.message) : String(error)
+      log.error(`Failed to connect to ${config.name}: ${scrubMcpEndpoint(detail, config.url)}`)
+      const wrapped = new Error(`连接 MCP 连接器 ${config.name} 失败: ${message}`)
       ;(wrapped as Error & { cause?: unknown }).cause = error
       throw wrapped
     }
