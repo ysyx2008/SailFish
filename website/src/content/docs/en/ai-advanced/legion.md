@@ -41,7 +41,7 @@ Helpers do the work, but they don't decide for you:
 - They can't send email, change your calendar, or create watches
 - They can't change the task's plan, and they don't touch the artifacts panel
 - They don't use terminal panes — their commands run in the background on this computer
-- They can't dispatch further helpers
+- They can't dispatch further helpers, and they can't pass messages to each other
 
 Actions that need your approval aren't asked on the helper's side. They come up in the conversation you're looking at, following the approval mode you chose (Strict / Relaxed / Free / Approve for me). For a more cautious setup, turn on "Extra ban: helpers cannot do high-risk actions" in Settings — high-risk actions are then blocked outright instead of asked.
 
@@ -49,8 +49,8 @@ Helpers aren't separate conversations either: they don't appear in Recent Conver
 
 ## What you'll see
 
-- A line in the conversation reading "Sending N colleagues" (the app's conversation view calls helpers "colleagues"). Progress is folded into that one line; expand it to see what each helper is doing.
-- Long results are saved as files, with only the key points and the location left in the conversation. There is also an overview with one line per helper: its status and where its result is.
+- A line in the conversation reading "Sending N colleagues" (the app's conversation view calls helpers "colleagues"). Progress is folded into a single summary line; expand it to see what each helper is doing.
+- Every helper's full result is saved as a file; when a result is long, only a short excerpt from its end and the file location are left in the conversation. There is also an overview with one line per helper: its status and where its result is.
 - Stop ends all helpers at once, and the secretary won't wrap up while any helper is still working.
 
 ## About cost
