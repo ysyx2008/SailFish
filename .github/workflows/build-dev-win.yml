@@ -21,13 +21,13 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
 
       - name: Cache models
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: resources/models
           key: models-${{ hashFiles('scripts/download-models.js', 'scripts/download-embedding-model.js', 'scripts/download-speech-model.js', 'scripts/download-punct-model.js') }}
@@ -57,7 +57,7 @@ jobs:
 
     steps:
       - name: Download artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: windows-dev
           path: artifacts
