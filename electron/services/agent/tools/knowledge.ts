@@ -13,6 +13,14 @@ import { isUserDataForbidden } from '../command-audit/userdata-guard'
 import { truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, ToolResult } from './types'
 
+/** 步骤卡片上给用户看的名字：目录加文件名。没有文件名时返回空，调用方只写「获取文档」。 */
+function visibleKnowledgeDocName(doc: { filename: string; folder?: string } | undefined): string {
+  const filename = doc?.filename?.trim() ?? ''
+  if (!filename) return ''
+  const folder = doc?.folder?.trim()
+  return folder ? `${folder}/${filename}` : filename
+}
+
 function clipLiteral(text: string): string {
   const max = 1000
   if (text.length <= max) return text
@@ -161,17 +169,19 @@ export async function getKnowledgeDoc(
     return { success: false, output: '', error: '缺少 doc_id 参数' }
   }
 
+  const knowledgeService = getKnowledgeService()
+  const doc = knowledgeService?.getDocument(docId)
+  const name = visibleKnowledgeDocName(doc)
+
   executor.addStep({
     type: 'tool_call',
-    content: t('knowledge.getting_doc', { id: docId }),
+    content: name ? `${t('knowledge.getting_doc')}: ${name}` : t('knowledge.getting_doc'),
     toolName: 'get_knowledge_doc',
     toolArgs: args,
     riskLevel: 'safe'
   })
 
   try {
-    const knowledgeService = getKnowledgeService()
-    
     if (!knowledgeService) {
       executor.addStep({
         type: 'tool_result',
@@ -181,12 +191,10 @@ export async function getKnowledgeDoc(
       return { success: false, output: '', error: t('error.knowledge_not_initialized') }
     }
 
-    const doc = knowledgeService.getDocument(docId)
-    
     if (!doc) {
       executor.addStep({
         type: 'tool_result',
-        content: t('knowledge.doc_not_found', { id: docId }),
+        content: t('knowledge.doc_not_found'),
         toolName: 'get_knowledge_doc'
       })
       return { success: false, output: '', error: `文档不存在: ${docId}` }
