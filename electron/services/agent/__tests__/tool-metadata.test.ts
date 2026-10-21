@@ -198,4 +198,34 @@ describe('tool-metadata helpers', () => {
       expect(isJsonStringFieldComplete(raw, 'path')).toBe(false)
     })
   })
+
+  describe('tryParsePartialJson', () => {
+    const bigTasks = (n: number) =>
+      '{"tasks": [' + Array.from({ length: n }, (_, i) =>
+        `{"description": "读第 ${i} 个文件", "prompt": "读 /repo/file-${i}.ts，用一句话说明它干什么"}`
+      ).join(', ')
+
+    it('嵌套数组里剥掉半截的键名后仍能解析', () => {
+      const parsed = tryParsePartialJson(bigTasks(3) + ', {"descri')
+      expect(parsed?.tasks).toHaveLength(4)
+      expect((parsed?.tasks as unknown[])[3]).toEqual({})
+    })
+
+    it('尾巴落在转义符中间时剥掉它再解析', () => {
+      expect(tryParsePartialJson('{"content": "abc\\')?.content).toBe('abc')
+      expect(tryParsePartialJson('{"content": "abc\\u4e')?.content).toBe('abc')
+    })
+
+    it('开头就坏掉的长参数很快放弃，不随长度平方变慢', () => {
+      const broken = '{"batch">\n<｜｜DSML｜｜: "none", ' + bigTasks(400).slice(1)
+      const started = performance.now()
+      for (let i = 0; i < 20; i++) expect(tryParsePartialJson(broken)).toBeNull()
+      expect(performance.now() - started).toBeLessThan(500)
+    })
+
+    it('几百个伙计的派活单流到一半也能解析', () => {
+      const parsed = tryParsePartialJson(bigTasks(400) + ', {"description": "读第')
+      expect((parsed?.tasks as unknown[]).length).toBe(401)
+    })
+  })
 })

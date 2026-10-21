@@ -6,10 +6,11 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import type { ToolDefinition } from '../../ai.service'
+import type { SubAgentResult } from '@shared/types'
 import type { AgentContext } from '../types'
 import { getDefaultShell, getLocalOS } from '../../../utils/platform'
 import { getMetaByName } from '../tool-metadata'
-import type { ChildSnapshot, RosterSpawnDeps } from '../sub-agent-roster'
+import { MAX_LIVE_CHILDREN, type ChildSnapshot, type RosterSpawnDeps, type SpawnTask, type SubAgentRoster } from '../sub-agent-roster'
 import { parseForkTurns, sanitizeParentMessages, type ForkTurns } from '../sanitize-parent-messages'
 import type { ToolExecutorConfig, ToolResult, AgentConfig } from './types'
 import { getAgentTools, filterSubAgentTools } from '../tools'
@@ -19,28 +20,102 @@ import { createLogger } from '../../../utils/logger'
 import { t } from '../i18n'
 
 const log = createLogger('SubAgent')
-const DEFAULT_MAX_CONCURRENT = 5
-const MAX_RESULT_LENGTH = 8000
-
-function archiveLongResult(taskId: string, text: string, artifactDir: string): string {
-  if (text.length <= MAX_RESULT_LENGTH) return text
-  try {
-    fs.mkdirSync(artifactDir, { recursive: true })
-    const filePath = path.join(artifactDir, `${taskId}.md`)
-    fs.writeFileSync(filePath, text, 'utf-8')
-    log.info(`Sub-agent [${taskId}] result archived to ${filePath} (${text.length} chars)`)
-    return truncateFromEndWithNotice(text, MAX_RESULT_LENGTH, (originalLength) =>
-      t('dispatch.result_archived', { total: originalLength, path: filePath }))
-  } catch (err) {
-    log.warn(`Sub-agent [${taskId}] failed to archive result, falling back to truncation: ${err}`)
-    return truncateFromEnd(text, MAX_RESULT_LENGTH)
-  }
-}
+/** 直接带回对话的结果：各人上限乘这一轮派过的人数，大致不超过这个预算 */
+const INLINE_RESULT_BUDGET = 40000
+const INLINE_RESULT_MAX = 8000
+const INLINE_RESULT_MIN = 1000
+/** 伙计进度推给界面最多约每秒 4 次 */
+const PROGRESS_INTERVAL_MS = 250
 
 function buildArtifactDir(): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   const nonce = Math.random().toString(36).slice(2, 6)
   return path.join(getScratchPath(), 'sub-agents', `${stamp}-${nonce}`)
+}
+
+function statusLabel(status: ChildSnapshot['status']): string {
+  switch (status) {
+    case 'completed': return t('dispatch.status_completed')
+    case 'interrupted': return t('dispatch.status_interrupted')
+    case 'failed': return t('dispatch.status_failed')
+    case 'pending': return t('dispatch.status_pending')
+    default: return t('dispatch.status_running')
+  }
+}
+
+/** 做完 / 在干 / 失败 / 已打断各几个 */
+function formatCounts(children: ChildSnapshot[]): string {
+  const count = (pred: (c: ChildSnapshot) => boolean) => children.filter(pred).length
+  return t('dispatch.counts', {
+    completed: count(c => c.status === 'completed'),
+    running: count(c => c.status === 'running' || c.status === 'pending'),
+    failed: count(c => c.status === 'failed'),
+    interrupted: count(c => c.status === 'interrupted'),
+  })
+}
+
+/** 这一轮伙计的落盘处：每人一份结果文件，再加一份总览，一人一行。 */
+export class SubAgentWorkspace {
+  private readonly dir: string
+  readonly overviewPath: string
+  private readonly results = new Map<string, { chars: number; file?: string }>()
+
+  constructor(dir = buildArtifactDir()) {
+    this.dir = dir
+    this.overviewPath = path.join(dir, 'overview.md')
+  }
+
+  /** 直接带回对话的字数上限：这一轮派得越多越紧 */
+  static inlineLimit(dispatched: number): number {
+    const share = Math.floor(INLINE_RESULT_BUDGET / Math.max(1, dispatched))
+    return Math.min(INLINE_RESULT_MAX, Math.max(INLINE_RESULT_MIN, share))
+  }
+
+  /** 全文落文件；返回带进对话的那份，超出上限只留尾部和文件位置 */
+  keepResult(name: string, text: string, dispatched: number): string {
+    const file = this.write(`${name}.md`, text)
+    this.results.set(name, { chars: text.length, file })
+    const limit = SubAgentWorkspace.inlineLimit(dispatched)
+    if (text.length <= limit) return text
+    if (!file) return truncateFromEnd(text, limit)
+    return truncateFromEndWithNotice(text, limit, (originalLength) =>
+      t('dispatch.result_archived', { total: originalLength, path: file }))
+  }
+
+  writeOverview(children: ChildSnapshot[]): void {
+    const lines = [
+      t('dispatch.overview_title', { total: children.length, counts: formatCounts(children) }),
+      t('dispatch.overview_header'),
+      ...children.map(c => {
+        const kept = this.results.get(c.name)
+        return [c.name, statusLabel(c.status), kept ? String(kept.chars) : '-', kept?.file ?? '-', c.description].join(' | ')
+      }),
+    ]
+    this.write('overview.md', lines.join('\n') + '\n')
+  }
+
+  private write(fileName: string, content: string): string | undefined {
+    const filePath = path.join(this.dir, fileName)
+    try {
+      fs.mkdirSync(this.dir, { recursive: true })
+      fs.writeFileSync(filePath, content, 'utf-8')
+      return filePath
+    } catch (err) {
+      log.warn(`Sub-agent workspace write failed (${filePath}): ${err}`)
+      return undefined
+    }
+  }
+}
+
+const workspaces = new WeakMap<SubAgentRoster, SubAgentWorkspace>()
+
+function workspaceOf(roster: SubAgentRoster): SubAgentWorkspace {
+  let workspace = workspaces.get(roster)
+  if (!workspace) {
+    workspace = new SubAgentWorkspace()
+    workspaces.set(roster, workspace)
+  }
+  return workspace
 }
 
 /** 伙计工具清单：按元数据过滤，不再分 read/write */
@@ -95,19 +170,78 @@ function formatKnock(child: ChildSnapshot): string {
   })
 }
 
-function formatSpawned(names: string[], snapshots: ChildSnapshot[]): string {
+function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubAgentRoster): string {
   const lines = snapshots.map(c => `- ${c.name}：${c.description}`)
-  return t('dispatch.spawned', { count: names.length, list: lines.join('\n') })
+  return [
+    t('dispatch.spawned', { count: names.length, list: lines.join('\n') }),
+    t('dispatch.capacity', { live: roster.liveCount(), room: roster.room() }),
+    t('dispatch.overview_at', { path: workspaceOf(roster).overviewPath }),
+  ].join('\n')
+}
+
+/**
+ * 推给界面、随会话落盘的那份：步骤只留工具名、对象、状态，不带工具输出；
+ * 结果只带直接带回的那段（超长时里面有文件位置）。
+ */
+function toSubAgentView(c: ChildSnapshot): SubAgentResult {
+  return {
+    id: c.name,
+    name: c.name,
+    description: c.description,
+    prompt: c.shownPrompt ?? c.prompt,
+    status: c.status,
+    result: c.result,
+    error: c.error,
+    steps: c.steps.map(({ id, tool, args, status }) => ({ id, tool, args, status })),
+    blockedReason: c.blockedReason,
+    waitingForModel: c.waitingForModel,
+  }
+}
+
+/** 伙计变化攒一下再推：最多每 PROGRESS_INTERVAL_MS 一次，最后一次变化一定会推出去 */
+class ProgressThrottle {
+  private timer?: ReturnType<typeof setTimeout>
+  private lastPushAt = 0
+  private dirty = false
+
+  constructor(private readonly push: () => void, private readonly intervalMs = PROGRESS_INTERVAL_MS) {}
+
+  schedule(): void {
+    this.dirty = true
+    if (this.timer) return
+    const wait = this.lastPushAt + this.intervalMs - Date.now()
+    if (wait <= 0) {
+      this.flush()
+      return
+    }
+    this.timer = setTimeout(() => this.flush(), wait)
+  }
+
+  flush(): void {
+    if (this.timer) {
+      clearTimeout(this.timer)
+      this.timer = undefined
+    }
+    if (!this.dirty) return
+    this.dirty = false
+    this.lastPushAt = Date.now()
+    this.push()
+  }
 }
 
 function spawnDeps(
   executor: ToolExecutorConfig,
   progressStepId: string,
-  artifactDir: string,
   ownedNames?: Set<string>
 ): RosterSpawnDeps | { error: string } {
   const roster = executor.getSubAgentRoster?.()
   if (!roster) return { error: 'dispatch_agents 需要主人花名册（内部错误）' }
+  const workspace = workspaceOf(roster)
+  const progress = new ProgressThrottle(() => {
+    const children = roster.list()
+    const visible = ownedNames ? children.filter(c => ownedNames.has(c.name)) : children
+    executor.updateStep(progressStepId, { subAgents: visible.map(toSubAgentView) })
+  })
   const createChild = executor.createChildAgent
   if (!createChild) return { error: 'dispatch_agents 需要能创建伙计（内部错误）' }
   const agentContext = executor.getAgentContext?.()
@@ -117,31 +251,86 @@ function spawnDeps(
     createChild,
     getParentMessages: () => executor.getParentMessages?.() ?? [],
     getParentContext: () => toSubAgentContext(executor.getAgentContext?.() ?? agentContext),
-    knock: (message) => executor.knockParent?.(message),
-    onProgress: (children) => {
-      const visible = ownedNames
-        ? children.filter(c => ownedNames.has(c.name))
-        : children
-      executor.updateStep(progressStepId, {
-        subAgents: visible.map(c => ({
-          id: c.name,
-          name: c.name,
-          description: c.description,
-          prompt: c.prompt,
-          status: c.status,
-          result: c.result,
-          error: c.error,
-          steps: c.steps,
-          blockedReason: c.blockedReason,
-        }))
-      })
+    knock: (message) => {
+      progress.flush()
+      workspace.writeOverview(roster.list())
+      executor.knockParent?.(message)
     },
+    onProgress: () => progress.schedule(),
     ownedNames,
     isParentAborted: () => executor.isAborted(),
     sanitize: sanitizeParentMessages,
     formatKnock,
-    archiveResult: (name, text) => archiveLongResult(name, text, artifactDir),
+    archiveResult: (name, text) => workspace.keepResult(name, text, roster.list().length),
   }
+}
+
+type ParsedSpawnTask = SpawnTask & { forkTurns: ForkTurns }
+
+function optionalName(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function isBatchArgs(value: unknown): value is { instruction: string } {
+  return !!value && typeof value === 'object' && typeof (value as { instruction?: unknown }).instruction === 'string'
+}
+
+/** tasks 每人一份指令；batch 一份共同指令加一批条目，交给伙计的是共同指令、换行、本条目。两种可同次混用。 */
+export function parseDispatchTasks(args: Record<string, unknown>): { tasks: ParsedSpawnTask[] } | { error: string } {
+  const tasks: ParsedSpawnTask[] = []
+  const rawTasks = args.tasks
+  const rawBatch = args.batch
+  if (rawTasks !== undefined && !Array.isArray(rawTasks)) {
+    return { error: 'tasks 必须是数组，每项包含 description 和 prompt' }
+  }
+  if (Array.isArray(rawTasks)) {
+    for (let i = 0; i < rawTasks.length; i++) {
+      const task = rawTasks[i] as Record<string, unknown> | undefined
+      if (typeof task?.prompt !== 'string' || task.prompt.trim() === '') {
+        return { error: `子任务 ${i + 1} 缺少 prompt（任务指令）` }
+      }
+      const forkTurns = parseForkTurns(task.fork_turns)
+      if ('error' in forkTurns) return { error: `子任务 ${i + 1}：${forkTurns.error}` }
+      tasks.push({
+        name: optionalName(task.name),
+        description: typeof task.description === 'string' && task.description ? task.description : 'task',
+        prompt: task.prompt,
+        forkTurns,
+      })
+    }
+  }
+  if (rawBatch !== undefined) {
+    const batch = rawBatch as Record<string, unknown> | null
+    if (!batch || typeof batch !== 'object' || Array.isArray(batch)) {
+      return { error: 'batch 必须是对象，包含 instruction 和 items' }
+    }
+    if (typeof batch.instruction !== 'string' || batch.instruction.trim() === '') {
+      return { error: 'batch 缺少 instruction（共同指令）' }
+    }
+    if (!Array.isArray(batch.items) || batch.items.length === 0) {
+      return { error: 'batch.items 必须是非空数组，每项包含 description 和 input' }
+    }
+    const forkTurns = parseForkTurns(batch.fork_turns)
+    if ('error' in forkTurns) return { error: `batch：${forkTurns.error}` }
+    for (let i = 0; i < batch.items.length; i++) {
+      const item = batch.items[i] as Record<string, unknown> | undefined
+      if (typeof item?.input !== 'string' || item.input.trim() === '') {
+        return { error: `batch 第 ${i + 1} 条缺少 input` }
+      }
+      const name = optionalName(item.name)
+      tasks.push({
+        name,
+        description: typeof item.description === 'string' && item.description ? item.description : (name ?? `${i + 1}`),
+        prompt: `${batch.instruction}\n${item.input}`,
+        shownPrompt: item.input,
+        forkTurns,
+      })
+    }
+  }
+  if (tasks.length === 0) {
+    return { error: 'tasks 和 batch 至少给一个，且不能为空' }
+  }
+  return { tasks }
 }
 
 export async function dispatchSubAgents(
@@ -155,72 +344,56 @@ export async function dispatchSubAgents(
     return { success: false, output: '', error: 'dispatch_agents 需要主人花名册（内部错误）' }
   }
 
-  const rawTasks = args.tasks as Array<{
-    name?: string
-    description: string
-    prompt: string
-    fork_turns?: unknown
-  }> | undefined
-  if (!rawTasks || !Array.isArray(rawTasks) || rawTasks.length === 0) {
-    return { success: false, output: '', error: 'tasks 参数必须是非空数组，每项包含 description 和 prompt' }
+  const parsed = parseDispatchTasks(args)
+  if ('error' in parsed) {
+    return { success: false, output: '', error: parsed.error }
   }
-  if (rawTasks.length > 10) {
-    return { success: false, output: '', error: '一次最多 dispatch 10 个子任务' }
-  }
-  const parsedTasks: Array<{ name?: string; description: string; prompt: string; forkTurns: ForkTurns }> = []
-  for (let i = 0; i < rawTasks.length; i++) {
-    const task = rawTasks[i]
-    if (!task?.prompt || typeof task.prompt !== 'string' || task.prompt.trim() === '') {
-      return { success: false, output: '', error: `子任务 ${i + 1} 缺少 prompt（任务指令）` }
+  const parsedTasks = parsed.tasks
+  if (parsedTasks.length > roster.room()) {
+    return {
+      success: false,
+      output: '',
+      error: t('dispatch.over_fuse', {
+        max: MAX_LIVE_CHILDREN,
+        live: roster.liveCount(),
+        room: roster.room(),
+        count: parsedTasks.length,
+      }),
     }
-    const forkTurns = parseForkTurns(task.fork_turns)
-    if ('error' in forkTurns) {
-      return { success: false, output: '', error: `子任务 ${i + 1}：${forkTurns.error}` }
-    }
-    parsedTasks.push({
-      name: typeof task.name === 'string' ? task.name : undefined,
-      description: task.description || 'task',
-      prompt: task.prompt,
-      forkTurns,
-    })
   }
 
-  const maxConcurrent = Math.min(Math.max(1, Number(args.max_concurrent) || DEFAULT_MAX_CONCURRENT), 10)
   const progressStep = executor.addStep({
     type: 'tool_call',
-    content: t('dispatch.running', { count: rawTasks.length }),
+    content: t('dispatch.running', { count: parsedTasks.length }),
     toolName: 'dispatch_agents',
-    toolArgs: { tasks: rawTasks.map(task => ({ name: task.name, description: task.description })), max_concurrent: maxConcurrent },
+    toolArgs: {
+      tasks: parsedTasks.map(task => ({ name: task.name, description: task.description })),
+      ...(isBatchArgs(args.batch) ? { batch: { instruction: args.batch.instruction } } : {}),
+    },
     riskLevel: 'safe',
     success: true,
     subAgents: []
   })
 
   const ownedNames = new Set<string>()
-  const deps = spawnDeps(executor, progressStep.id, buildArtifactDir(), ownedNames)
+  const deps = spawnDeps(executor, progressStep.id, ownedNames)
   if ('error' in deps) {
     return { success: false, output: '', error: deps.error }
   }
-  deps.maxConcurrent = maxConcurrent
 
   const names = roster.spawn(parsedTasks, deps)
+  workspaceOf(roster).writeOverview(roster.list())
 
   const snapshots = roster.list().filter(c => names.includes(c.name))
   executor.updateStep(progressStep.id, {
     content: t('dispatch.running', { count: names.length }),
-    subAgents: snapshots.map(c => ({
-      id: c.name,
-      name: c.name,
-      description: c.description,
-      prompt: c.prompt,
-      status: c.status,
-    }))
+    subAgents: snapshots.map(toSubAgentView),
   })
 
   log.info(`Dispatched ${names.length} sub-agents: ${names.join(', ')}`)
   return {
     success: true,
-    output: formatSpawned(names, snapshots)
+    output: formatSpawned(names, snapshots, roster)
   }
 }
 
@@ -240,7 +413,7 @@ export async function followupAgent(args: Record<string, unknown>, executor: Too
     success: true,
   })
 
-  const deps = spawnDeps(executor, progressStep.id, buildArtifactDir())
+  const deps = spawnDeps(executor, progressStep.id, new Set([name]))
   if ('error' in deps) return { success: false, output: '', error: deps.error }
 
   const result = roster.followup(name, message, deps)
@@ -265,35 +438,27 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
     ? AbortSignal.any([parentSignal, timeout])
     : timeout
 
-  const snapshots = await roster.waitForNews(names, signal)
+  const news = await roster.waitForNews(names, signal)
   if (executor.isAborted()) {
     return { success: false, output: '', error: t('error.operation_aborted') }
   }
+  if (news.targets.length === 0) {
+    return { success: true, output: t('dispatch.wait_empty') }
+  }
 
-  const stillLive = snapshots.some(c => c.status === 'pending' || c.status === 'running')
-  const noneLeft = snapshots.length === 0
-  const rosterLines = snapshots.map(c => {
-    const status = c.status === 'completed'
-      ? t('dispatch.status_completed')
-      : c.status === 'interrupted'
-        ? t('dispatch.status_interrupted')
-        : c.status === 'failed'
-          ? t('dispatch.status_failed')
-          : c.status === 'pending'
-            ? t('dispatch.status_pending')
-            : t('dispatch.status_running')
-    return `- ${c.name}：${status}`
-  })
-  const body = rosterLines.join('\n') || t('dispatch.wait_empty')
-  if (noneLeft) {
-    return { success: true, output: body }
-  }
-  if (stillLive && snapshots.every(c => c.status === 'pending' || c.status === 'running')) {
-    return { success: true, output: `${t('dispatch.wait_news_timeout', { seconds: timeoutSec })}\n${body}` }
-  }
+  const stillWorking = news.targets.some(c => c.status === 'pending' || c.status === 'running')
+  const headline = news.arrived.length > 0
+    ? t('dispatch.wait_arrived', { list: news.arrived.map(c => `${c.name}（${statusLabel(c.status)}）`).join('、') })
+    : stillWorking
+      ? t('dispatch.wait_news_timeout', { seconds: timeoutSec })
+      : t('dispatch.wait_all_done')
   return {
     success: true,
-    output: `${t('dispatch.wait_news')}\n${body}`
+    output: [
+      headline,
+      t('dispatch.wait_counts', { total: news.targets.length, counts: formatCounts(news.targets) }),
+      t('dispatch.overview_at', { path: workspaceOf(roster).overviewPath }),
+    ].join('\n'),
   }
 }
 
@@ -306,6 +471,7 @@ export async function interruptAgent(args: Record<string, unknown>, executor: To
   if (!result.ok) return { success: false, output: '', error: result.error }
   if (result.finalized) {
     const snap = roster.get(name)
+    workspaceOf(roster).writeOverview(roster.list())
     if (snap) executor.knockParent?.(formatKnock(snap))
   }
   return { success: true, output: t('dispatch.interrupt_ok', { name }) }

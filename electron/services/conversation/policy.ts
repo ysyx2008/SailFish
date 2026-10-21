@@ -11,6 +11,7 @@
  * 今天散在 agent.ts 的血泪 if-else（`_persistentNamedAgent` 回种 / wakeup 跳过 cache /
  * watch 独立历史树 / watch 不进列表）都应收敛成读这张表。
  */
+import type { ModelRequestPriority } from '../model-request-buffer'
 import type { ConversationKind } from '@shared/types'
 
 export interface ConversationPolicy {
@@ -106,17 +107,24 @@ export interface ConversationPolicy {
    * - companion/watch/wakeup=false：闲聊不该自己开工；关切/唤醒故意不连续记。
    */
   supportsGoal: boolean
+
+  /**
+   * 发往模型的请求在缓冲池里排哪一档。
+   * - task/companion=urgent：用户当面等，不排队。
+   * - watch/wakeup=queued：后台自己跑，晚一点不要紧，别挤掉当面的请求。
+   */
+  modelRequestPriority: Extract<ModelRequestPriority, 'urgent' | 'queued'>
 }
 
 /**
  * 四类会话的行为策略。
  *
- * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview | autoReviewEarlierWordsWithinMs | restoreSkillsOnReopen | skillNotesOnUserMessage | supportsGoal |
- * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|--------------------------------|-----------------------|-------------------------|--------------|
- * | task      | true        | false                      | true          | main        | false              | true               | null（整场）                    | true                  | true                    | true         |
- * | companion | true        | true                       | true          | main        | false              | true               | 24h                            | false                 | true                    | false        |
- * | watch     | false       | false                      | false         | watch       | false（预留）       | false              | null                           | false                 | false                   | false        |
- * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              | null                           | false                 | false                   | false        |
+ * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview | autoReviewEarlierWordsWithinMs | restoreSkillsOnReopen | skillNotesOnUserMessage | supportsGoal | modelRequestPriority |
+ * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|--------------------------------|-----------------------|-------------------------|--------------|----------------------|
+ * | task      | true        | false                      | true          | main        | false              | true               | null（整场）                    | true                  | true                    | true         | urgent               |
+ * | companion | true        | true                       | true          | main        | false              | true               | 24h                            | false                 | true                    | false        | urgent               |
+ * | watch     | false       | false                      | false         | watch       | false（预留）       | false              | null                           | false                 | false                   | false        | queued               |
+ * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              | null                           | false                 | false                   | false        | queued               |
  *
  * 注：wakeup 从 watch 中独立出来——关切是用户配置的一次性任务（prompt 自带指令，逐次失忆，
  * 避免 A 关切串味到 B），wakeup 是 Agent 自主循环（需要历史记忆辅助决策「该不该主动找人、
@@ -135,7 +143,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     autoReviewEarlierWordsWithinMs: null,
     restoreSkillsOnReopen: true,
     skillNotesOnUserMessage: true,
-    supportsGoal: true
+    supportsGoal: true,
+    modelRequestPriority: 'urgent'
   },
   companion: {
     accumulates: true,
@@ -147,7 +156,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     autoReviewEarlierWordsWithinMs: DAY_MS,
     restoreSkillsOnReopen: false,
     skillNotesOnUserMessage: true,
-    supportsGoal: false
+    supportsGoal: false,
+    modelRequestPriority: 'urgent'
   },
   watch: {
     accumulates: false,
@@ -159,7 +169,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     autoReviewEarlierWordsWithinMs: null,
     restoreSkillsOnReopen: false,
     skillNotesOnUserMessage: false,
-    supportsGoal: false
+    supportsGoal: false,
+    modelRequestPriority: 'queued'
   },
   wakeup: {
     accumulates: false,
@@ -171,7 +182,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     autoReviewEarlierWordsWithinMs: null,
     restoreSkillsOnReopen: false,
     skillNotesOnUserMessage: false,
-    supportsGoal: false
+    supportsGoal: false,
+    modelRequestPriority: 'queued'
   }
 }
 

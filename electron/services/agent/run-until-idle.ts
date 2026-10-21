@@ -7,11 +7,15 @@ export async function runUntilIdle(params: {
   hasPendingMessages: () => boolean
   hasLiveChildren: () => boolean
   waitForChildrenOrKnock: () => Promise<void>
+  /** 有待处理消息、接着跑之前：给陆续回来的伙计留一点时间一起进来 */
+  settlePending?: () => Promise<void>
   isAborted: () => boolean
 }): Promise<string> {
   let result = await params.executeLoop()
   while (!params.isAborted()) {
     if (params.hasPendingMessages()) {
+      await params.settlePending?.()
+      if (params.isAborted()) break
       result = await params.executeLoop()
       continue
     }

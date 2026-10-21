@@ -37,6 +37,7 @@ import {
   updateSessionApproval,
   updateSessionTitle,
   type ReadSessionOptions,
+  type SaveSessionOptions,
 } from './session-persistence'
 import { getDateString } from './date-util'
 import { AgentIndexLog } from './agent-index-log'
@@ -570,7 +571,7 @@ export class AgentRecordStore {
   /**
    * 保存 Agent 记录（支持更新：如果 id 相同则更新，否则追加）
    */
-  saveAgentRecord(record: AgentRecord): void {
+  saveAgentRecord(record: AgentRecord, options?: SaveSessionOptions): void {
     // pending 标题优先（生成早于首次 checkpoint）
     const pending = this.pendingTitles.get(record.id)
     if (pending) {
@@ -595,7 +596,7 @@ export class AgentRecordStore {
     this.stripRederivableCanvasContent(record)
 
     const store = this.storeForRecord(record)
-    saveSessionRecord(store.dir, record)
+    saveSessionRecord(store.dir, record, options)
     this.updateIndexEntryFor(store, record)
   }
 

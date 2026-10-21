@@ -150,6 +150,8 @@ export interface PendingUserMessage {
   silent?: boolean
   /** 后台命令结束的通知：给模型看，不上墙，也不要在收场时当成用户的下一句排进队列 */
   backgroundNotice?: boolean
+  /** 伙计的敲门 */
+  subAgentKnock?: boolean
   /** 派出去的任务交回的回执：上墙为回执步骤；这一轮没来得及收，收场后另起一轮送回 */
   taskReceipt?: boolean
   /** 回执没来得及收、挪到另起的一轮时用的全文（尾巴换成「用户不在这一轮里」那段） */
@@ -175,6 +177,9 @@ export interface AgentRun {
   pendingConfirmation?: PendingConfirmationInternal
   pendingSecureInput?: PendingSecureInputInternal
   pendingUserMessages: PendingUserMessage[]
+  /** 上次落盘的步骤。记录只追加，这些步骤原地改了，要整份重写才留得下 */
+  savedStepIds?: Set<string>
+  stepsEditedAfterSave?: boolean
   config: AgentConfig
   context: AgentContext  // 运行上下文
   // 实时终端输出缓冲区（Agent 运行期间收集）
@@ -314,6 +319,8 @@ export interface AgentCallbacks {
   onTextChunk?: (agentId: string, chunk: string) => void
   /** 当前对话因模型不可用已换到下一个（不改默认模型） */
   onModelFailover?: (agentId: string, notice: import('../ai.service').AiModelFailoverNotice) => void
+  /** 模型请求在缓冲池里排队：开始等 true，拿到名额或放弃 false。当面等的请求不排队，不会触发 */
+  onModelWait?: (agentId: string, waiting: boolean) => void
 }
 
 // 默认配置

@@ -42,8 +42,12 @@ vi.mock('../../web-search/index', () => ({
   getApiKey: () => '',
 }))
 
-import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent } from '../tools/sub-agent'
-import { SubAgentRoster, type ChildAgentHandle } from '../sub-agent-roster'
+import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
+import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, parseDispatchTasks, SubAgentWorkspace } from '../tools/sub-agent'
+import { getAgentTools } from '../tools'
+import { MAX_LIVE_CHILDREN, SubAgentRoster, type ChildAgentHandle } from '../sub-agent-roster'
 import type { ToolExecutorConfig, AgentConfig } from '../tools/types'
 import type { AgentContext } from '../types'
 import type { AgentStep } from '@shared/types'
@@ -147,6 +151,29 @@ describe('dispatch_agents 异步派出', () => {
     expect(roster.list()[0].result).toBe('配置在 /etc')
   })
 
+  it('回执说清现在没做完几个、还能派几个', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, () => stubChild('ok', 200))
+    const result = await dispatchSubAgents({
+      tasks: Array.from({ length: 12 }, (_, i) => ({ description: `第 ${i} 个`, prompt: '干活' }))
+    }, defaultConfig, executor)
+    expect(result.success).toBe(true)
+    expect(result.output).toContain(`现在没做完的共 12 个，还能再派 ${MAX_LIVE_CHILDREN - 12} 个`)
+    roster.abortAll()
+  })
+
+  it('超过保险丝整批不派，并把上限和余量告诉秘书', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, () => stubChild('ok', 200))
+    const result = await dispatchSubAgents({
+      tasks: Array.from({ length: MAX_LIVE_CHILDREN + 1 }, (_, i) => ({ description: `第 ${i} 个`, prompt: '干活' }))
+    }, defaultConfig, executor)
+    expect(result.success).toBe(false)
+    expect(result.error).toContain(String(MAX_LIVE_CHILDREN))
+    expect(result.error).toContain(`这次要派 ${MAX_LIVE_CHILDREN + 1} 个`)
+    expect(roster.list()).toHaveLength(0)
+  })
+
   it('followup / interrupt 走花名册', async () => {
     const roster = new SubAgentRoster()
     const child = stubChild('v1')
@@ -206,7 +233,7 @@ describe('dispatch_agents 异步派出', () => {
   })
 
   it('wait_agents 第一个人回来就返回，不把全文再报一遍', async () => {
-    const roster = new SubAgentRoster()
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
     const fast = stubChild('快的：name=SailFish', 20)
     const slow = stubChild('慢的：README 三句话', 80)
     const executor = createExecutor(roster, (name) => name === '读包' ? fast : slow)
@@ -221,11 +248,26 @@ describe('dispatch_agents 异步派出', () => {
     const waited = await waitAgents({ names: ['读包', '读说明'] }, executor)
     expect(Date.now() - started).toBeLessThan(150)
     expect(waited.success).toBe(true)
-    expect(waited.output).toMatch(/有新消息|There is an update/)
-    expect(waited.output).toContain('读包')
+    expect(waited.output).toContain('新到：读包（已完成）')
+    expect(waited.output).toContain('要等的 2 个里：做完 1 / 在干 1 / 失败 0 / 已打断 0')
     expect(waited.output).not.toContain('快的：name=SailFish')
     expect(waited.output).not.toContain('慢的：README')
     expect(roster.hasLive()).toBe(true)
+  })
+
+  it('wait_agents 人多时只报计数和新到的，不列全员', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, (name) => stubChild('ok', name === 'w0' ? 10 : 5000))
+    await dispatchSubAgents({
+      batch: { instruction: '干', items: Array.from({ length: 30 }, (_, i) => ({ name: `w${i}`, description: `w${i}`, input: `${i}` })) }
+    }, defaultConfig, executor)
+    const waited = await waitAgents({}, executor)
+    expect(waited.output.split('\n')).toHaveLength(3)
+    expect(waited.output).toContain('新到：w0（已完成）')
+    expect(waited.output).toContain('要等的 30 个里：做完 1 / 在干 29')
+    expect(waited.output).toContain('overview.md')
+    expect(waited.output).not.toContain('w17')
+    roster.abortAll()
   })
 
   it('fork_turns=none 时伙计开局不带这场对话', async () => {
@@ -306,5 +348,188 @@ describe('dispatch_agents 异步派出', () => {
     expect(result.success).toBe(false)
     expect(result.error).toMatch(/fork_turns/)
     expect(roster.hasLive()).toBe(false)
+  })
+})
+
+describe('两种写法', () => {
+  it('batch：每个条目一个伙计，指令是共同指令、换行、本条目', () => {
+    const parsed = parseDispatchTasks({
+      batch: {
+        instruction: '读这个文件，列出导出的函数',
+        items: [
+          { name: '读 a', description: '读 a.ts', input: 'src/a.ts' },
+          { description: '读 b.ts', input: 'src/b.ts' },
+        ],
+      },
+    })
+    if ('error' in parsed) throw new Error(parsed.error)
+    expect(parsed.tasks.map(t => t.prompt)).toEqual([
+      '读这个文件，列出导出的函数\nsrc/a.ts',
+      '读这个文件，列出导出的函数\nsrc/b.ts',
+    ])
+    expect(parsed.tasks[0].name).toBe('读 a')
+    expect(parsed.tasks[1].description).toBe('读 b.ts')
+  })
+
+  it('两种写法默认都全带对话；batch 的 fork_turns 这一批共用', () => {
+    const defaults = parseDispatchTasks({
+      tasks: [{ description: 'x', prompt: 'x' }],
+      batch: { instruction: '做', items: [{ description: 'y', input: 'y' }] },
+    })
+    if ('error' in defaults) throw new Error(defaults.error)
+    expect(defaults.tasks.map(t => t.forkTurns)).toEqual([{ kind: 'all' }, { kind: 'all' }])
+
+    const none = parseDispatchTasks({
+      batch: { instruction: '做', fork_turns: 'none', items: [{ description: 'a', input: 'a' }, { description: 'b', input: 'b' }] },
+    })
+    if ('error' in none) throw new Error(none.error)
+    expect(none.tasks.map(t => t.forkTurns.kind)).toEqual(['none', 'none'])
+  })
+
+  it('两个都没给、给了空的、缺共同指令或条目内容，都报错', () => {
+    expect(parseDispatchTasks({})).toHaveProperty('error')
+    expect(parseDispatchTasks({ tasks: [] })).toHaveProperty('error')
+    expect(parseDispatchTasks({ batch: { instruction: '', items: [{ description: 'a', input: 'a' }] } })).toHaveProperty('error')
+    expect(parseDispatchTasks({ batch: { instruction: '做', items: [] } })).toHaveProperty('error')
+    expect(parseDispatchTasks({ batch: { instruction: '做', items: [{ description: 'a' }] } })).toHaveProperty('error')
+  })
+
+  it('混用时一起派出，合起来算进保险丝', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, () => stubChild('ok', 200))
+    const ok = await dispatchSubAgents({
+      tasks: [{ name: '单独的', description: '单独的', prompt: '干' }],
+      batch: { instruction: '读', items: Array.from({ length: 3 }, (_, i) => ({ description: `条目 ${i}`, input: `${i}` })) },
+    }, defaultConfig, executor)
+    expect(ok.success).toBe(true)
+    expect(roster.liveCount()).toBe(4)
+
+    const over = await dispatchSubAgents({
+      tasks: [{ description: '再来', prompt: '干' }],
+      batch: { instruction: '读', items: Array.from({ length: MAX_LIVE_CHILDREN - 4 }, (_, i) => ({ description: `b${i}`, input: `${i}` })) },
+    }, defaultConfig, executor)
+    expect(over.success).toBe(false)
+    expect(roster.liveCount()).toBe(4)
+    roster.abortAll()
+  })
+
+  it('模型还在写参数时，预卡片人数把两种写法加在一起', () => {
+    const tool = getAgentTools(undefined, { mode: 'assistant' }).find(t => t.function.name === 'dispatch_agents') as any
+    const render = tool._meta.streamDisplay.customRender as (args: Record<string, unknown>) => string | null
+    expect(render({
+      tasks: [{ description: 'a', prompt: 'a' }],
+      batch: { instruction: '读', items: [{ description: 'b', input: 'b' }, { description: 'c', input: 'c' }] },
+    })).toBe('派出 3 个伙计')
+  })
+
+  it('工具说明里写着保险丝的数', () => {
+    const tool = getAgentTools(undefined, { mode: 'assistant' }).find(t => t.function.name === 'dispatch_agents')!
+    expect(tool.function.description).toContain(String(MAX_LIVE_CHILDREN))
+    expect(Object.keys((tool.function.parameters as { properties: object }).properties).sort()).toEqual(['batch', 'tasks'])
+  })
+})
+
+describe('结果落文件与总览', () => {
+  it('直接带回的字数随这一轮派的人数收紧，夹在 1000 到 8000 之间', () => {
+    expect(SubAgentWorkspace.inlineLimit(1)).toBe(8000)
+    expect(SubAgentWorkspace.inlineLimit(5)).toBe(8000)
+    expect(SubAgentWorkspace.inlineLimit(10)).toBe(4000)
+    expect(SubAgentWorkspace.inlineLimit(40)).toBe(1000)
+    expect(SubAgentWorkspace.inlineLimit(200)).toBe(1000)
+  })
+
+  it('结果全文都落文件；超出上限的对话里只留尾部和位置；总览一人一行', async () => {
+    const realFs = await vi.importActual<typeof import('fs')>('fs')
+    const dir = realFs.mkdtempSync(path.join(os.tmpdir(), 'sub-agent-ws-'))
+    const writes = new Map<string, string>()
+    vi.mocked(fs.writeFileSync).mockImplementation((file, data) => { writes.set(String(file), String(data)) })
+    try {
+      const ws = new SubAgentWorkspace(dir)
+      const short = ws.keepResult('短的', '三句话', 40)
+      const long = ws.keepResult('长的', 'x'.repeat(5000), 40)
+      expect(short).toBe('三句话')
+      expect(long.length).toBeLessThan(1500)
+      expect(long).toContain(path.join(dir, '长的.md'))
+      expect(writes.get(path.join(dir, '长的.md'))).toHaveLength(5000)
+
+      ws.writeOverview([
+        { name: '短的', description: '读 a', prompt: 'a', status: 'completed', steps: [] },
+        { name: '长的', description: '读 b', prompt: 'b', status: 'completed', steps: [] },
+        { name: '还在干', description: '读 c', prompt: 'c', status: 'running', steps: [] },
+      ])
+      const overview = writes.get(ws.overviewPath)!.trim().split('\n')
+      expect(overview[0]).toContain('共 3 个')
+      expect(overview).toHaveLength(5)
+      expect(overview[3]).toContain(`长的 | 已完成 | 5000 | ${path.join(dir, '长的.md')} | 读 b`)
+      expect(overview[4]).toContain('还在干 | 还在做 | - | - | 读 c')
+    } finally {
+      vi.mocked(fs.writeFileSync).mockReset()
+      realFs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('进度推给界面', () => {
+  function chattyChild(opts: { steps: number; waitFirst?: boolean }): ChildAgentHandle {
+    let running = false
+    return {
+      isRunning: () => running,
+      abort: () => { running = false; return true },
+      addUserMessage: () => true,
+      async run(_message, _context, options) {
+        running = true
+        const cb = options?.callbacks
+        if (opts.waitFirst) {
+          cb?.onModelWait?.('child', true)
+          await new Promise(r => setTimeout(r, 60))
+          cb?.onModelWait?.('child', false)
+        }
+        for (let i = 0; i < opts.steps; i++) {
+          cb?.onStep?.('child', { id: `t${i}`, type: 'tool_call', toolName: 'read_file', toolArgs: { path: `/f${i}` }, content: '', timestamp: 0 } as AgentStep)
+          cb?.onStep?.('child', { id: `t${i}`, type: 'tool_call', toolName: 'read_file', toolArgs: { path: `/f${i}` }, success: true, toolResult: 'x'.repeat(10_000), content: '', timestamp: 0 } as AgentStep)
+        }
+        await new Promise(r => setTimeout(r, 20))
+        running = false
+        return 'ok'
+      },
+    }
+  }
+
+  it('一批伙计的变化攒在一起推，最后的样子一定推出去，且不带工具输出', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, () => chattyChild({ steps: 20 }))
+    let pushes = 0
+    const update = executor.updateStep
+    executor.updateStep = (id, updates) => {
+      if (updates.subAgents) pushes++
+      update(id, updates)
+    }
+    await dispatchSubAgents({
+      batch: { instruction: '很长的共同指令'.repeat(50), items: Array.from({ length: 30 }, (_, i) => ({ name: `w${i}`, description: `w${i}`, input: `条目 ${i}` })) }
+    }, defaultConfig, executor)
+    await roster.waitUntil(undefined, new AbortController().signal)
+    await new Promise(r => setTimeout(r, 300))
+
+    // 30 人 × 40 次变化，不节流会推上千次
+    expect(pushes).toBeLessThan(80)
+    const step = (executor as any)._steps.find((s: AgentStep) => s.toolName === 'dispatch_agents') as AgentStep
+    expect(step.subAgents).toHaveLength(30)
+    expect(step.subAgents!.every(sa => sa.status === 'completed')).toBe(true)
+    expect(step.subAgents![0].steps).toHaveLength(20)
+    expect(step.subAgents![0].steps!.every(st => st.result === undefined)).toBe(true)
+    expect(step.subAgents![3].prompt).toBe('条目 3')
+    expect((step.toolArgs as { batch?: { instruction: string } }).batch?.instruction).toBe('很长的共同指令'.repeat(50))
+  })
+
+  it('伙计在排队等模型时卡片上看得出来，拿到名额后恢复', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, () => chattyChild({ steps: 1, waitFirst: true }))
+    await dispatchSubAgents({ tasks: [{ name: 'a', description: 'a', prompt: 'a' }] }, defaultConfig, executor)
+    await new Promise(r => setTimeout(r, 30))
+    const step = () => (executor as any)._steps.find((s: AgentStep) => s.toolName === 'dispatch_agents') as AgentStep
+    expect(step().subAgents![0].waitingForModel).toBe(true)
+    await roster.waitUntil(undefined, new AbortController().signal)
+    await new Promise(r => setTimeout(r, 300))
+    expect(step().subAgents![0].waitingForModel).toBeUndefined()
   })
 })

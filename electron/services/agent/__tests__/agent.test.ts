@@ -428,6 +428,28 @@ describe('Agent', () => {
       expect(steps[1].content).toBe('mid-stream supplement')
     })
 
+    it('伙计敲门不掐断主人正在等的模型回复，只排进待处理；用户补话仍会打断', () => {
+      const run = {
+        id: 'run-1',
+        isRunning: true,
+        executionPhase: 'thinking',
+        requestId: 'req-1',
+        pendingUserMessages: [] as unknown[],
+        steps: [],
+      }
+      agent.injectCurrentRun(run)
+      const abort = agent.exposeServices().aiService.abort as ReturnType<typeof vi.fn>
+      abort.mockClear()
+
+      ;(agent as any).injectSubAgentKnock('[伙计 a 完成]')
+      expect(abort).not.toHaveBeenCalled()
+      expect(run.pendingUserMessages).toHaveLength(1)
+
+      agent.addUserMessage('等一下，换个方向')
+      expect(abort).toHaveBeenCalledWith('req-1')
+      expect(run.pendingUserMessages).toHaveLength(2)
+    })
+
     it('should append supplement after completed steps', () => {
       agent.injectCurrentRun({
         id: 'run-1',
@@ -1517,6 +1539,26 @@ describe('Agent run method', () => {
       expect(onComplete).toHaveBeenCalled()
     })
 
+    it('收场时还没领的伙计敲门不交回界面当成用户要说的话', async () => {
+      const onComplete = vi.fn()
+      mockAiService.chatWithToolsStream.mockImplementation(
+        (_messages, _tools, onChunk, _onToolCall, onDone) => {
+          const run = (agent as any).currentRun
+          run.pendingUserMessages.push({ message: '[伙计 a 完成]', silent: true, subAgentKnock: true })
+          run.pendingUserMessages.push({ message: '用户排队的话' })
+          run.aborted = true
+          onChunk('x')
+          onDone({ content: 'x', tool_calls: undefined })
+          return Promise.resolve()
+        }
+      )
+      agent.setCallbacks({ onComplete })
+      await agent.run('Test task', createMockContext())
+      expect(onComplete).toHaveBeenCalled()
+      const handed = onComplete.mock.calls[0][2] as Array<{ message: string }>
+      expect(handed.map(m => m.message)).toEqual(['用户排队的话'])
+    })
+
     it('should call onError callback on failure', async () => {
       const onError = vi.fn()
       const errorMessage = 'Test error'
@@ -1830,6 +1872,49 @@ describe('Agent run method', () => {
         expect(s.canvasData?.filePath).toBe('/tmp/a.md')
         expect(s.canvasData?.contentFromFile).toBe(true)
       }
+    })
+
+    it('落过盘的步骤后来原地改了：收尾保存整份重写，没改过就照旧追加', async () => {
+      const saves: Array<{ options?: { forceRewrite?: boolean }; steps: any[] }> = []
+      const mockHistoryService = {
+        getAgentRecordById: vi.fn().mockReturnValue(undefined),
+        getRecentAgentRecords: vi.fn().mockReturnValue([]),
+        saveAgentRecord: vi.fn((r, options) => { saves.push({ options, steps: JSON.parse(JSON.stringify(r.steps)) }) }),
+        getAgentRecordStore: vi.fn(() => mockHistoryService)
+      }
+      const services = createMockServices({ historyService: mockHistoryService as any })
+      const agentWithHistory = new TestAgent(services)
+      let editInPlace = true
+      ;(services.aiService as any).chatWithToolsStream.mockImplementation(
+        (_m: any, _t: any, onChunk: any, _otc: any, onDone: any) => {
+          const run = (agentWithHistory as any).currentRun
+          const first = run.steps[0]
+          if (editInPlace) (agentWithHistory as any).updateStep(first.id, { content: `${first.content}（改过）` })
+          onChunk('Done'); onDone({ content: 'Done', tool_calls: undefined }); return Promise.resolve()
+        }
+      )
+
+      await agentWithHistory.run('Edit me', createMockContext({ sessionId: 'session_rewrite' }))
+      const final = saves[saves.length - 1]
+      expect(final.options?.forceRewrite).toBe(true)
+      expect(final.steps[0].content).toContain('（改过）')
+
+      saves.length = 0
+      ;(services.aiService as any).chatWithToolsStream.mockImplementationOnce(
+        (_m: any, _t: any, onChunk: any, _otc: any, onDone: any) => {
+          const run = (agentWithHistory as any).currentRun
+          const saved = run.steps.find((s: any) => run.savedStepIds?.has(s.id))
+          ;(agentWithHistory as any).removeStep(saved.id)
+          onChunk('Done'); onDone({ content: 'Done', tool_calls: undefined }); return Promise.resolve()
+        }
+      )
+      await agentWithHistory.run('Remove one', createMockContext({ sessionId: 'session_rewrite' }))
+      expect(saves[saves.length - 1].options?.forceRewrite).toBe(true)
+
+      editInPlace = false
+      saves.length = 0
+      await agentWithHistory.run('Again', createMockContext({ sessionId: 'session_rewrite' }))
+      expect(saves[saves.length - 1].options).toBeUndefined()
     })
 
     /**

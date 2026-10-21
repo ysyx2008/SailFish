@@ -18,6 +18,10 @@ export interface ChildSnapshot {
   steps: SubAgentToolStep[]
   tokensUsed?: TokenUsage
   blockedReason?: string
+  /** 这会儿在缓冲池里排队等模型 */
+  waitingForModel?: boolean
+  /** 界面上显示的那份指令；批量写法只显示条目部分，共同指令在派出的工具参数里 */
+  shownPrompt?: string
 }
 
 export interface ChildAgentHandle {
@@ -34,6 +38,7 @@ export interface SpawnTask {
   prompt: string
   /** 默认全带。none 不带对话，last N 只带最近几轮。 */
   forkTurns?: ForkTurns
+  shownPrompt?: string
 }
 
 export interface RosterSpawnDeps {
@@ -41,12 +46,12 @@ export interface RosterSpawnDeps {
   getParentMessages: () => AiMessage[]
   getParentContext: () => AgentContext
   knock: (message: string) => void
-  onProgress: (children: ChildSnapshot[]) => void
+  /** 有人变了；要看现状自己读 list()，调用很频繁，别在这里做重活 */
+  onProgress: () => void
   isParentAborted: () => boolean
   sanitize: (messages: AiMessage[]) => AiMessage[]
   formatKnock: (child: ChildSnapshot) => string
   archiveResult?: (name: string, text: string) => string
-  maxConcurrent?: number
   /**
    * 这一批派出的名字。spawn 在刷新进度前写入。
    * 进度回调只该更新这几位，后一批不能把前一张卡片刷成整场花名册。
@@ -58,11 +63,22 @@ interface ChildSlot extends ChildSnapshot {
   handle?: ChildAgentHandle
   runPromise?: Promise<void>
   forkTurns: ForkTurns
-  /** 派出这一位时的依赖。排队开工也得用它，不能被后一批的进度卡片接走。 */
-  launchDeps: RosterSpawnDeps
 }
 
 const LIVE: ReadonlySet<ChildStatus> = new Set(['pending', 'running'])
+
+/** 一场任务里同时没做完的伙计最多这么多个。只防失控，不管该派几个。 */
+export const MAX_LIVE_CHILDREN = 200
+
+/** 第一声敲门之后再等这么久，让陆续做完的一起进来，主人只被叫醒一次 */
+const KNOCK_SETTLE_MS = 1500
+
+export interface WaitNews {
+  /** 这次新到的，一次领走 */
+  arrived: ChildSnapshot[]
+  /** 等的那几位现在的样子 */
+  targets: ChildSnapshot[]
+}
 
 export function allocateChildName(description: string, used: Set<string>, explicit?: string): string {
   const raw = (explicit || description || 'worker').trim()
@@ -96,18 +112,51 @@ export function childToSubAgentResult(child: ChildSnapshot): SubAgentResult {
 export class SubAgentRoster {
   private children = new Map<string, ChildSlot>()
   private waiters: Array<() => void> = []
-  private startQueued?: () => void
   /** 还没被 waitForNews 领走的敲门，按先后排队。 */
   private unreadNews: string[] = []
+  private readonly knockSettleMs: number
+
+  constructor(options?: { knockSettleMs?: number }) {
+    this.knockSettleMs = options?.knockSettleMs ?? KNOCK_SETTLE_MS
+  }
 
   private enqueueNews(name: string): void {
     this.unreadNews.push(name)
   }
 
-  private takeUnread(targets: string[]): string | undefined {
-    const idx = this.unreadNews.findIndex(name => targets.includes(name))
-    if (idx < 0) return undefined
-    return this.unreadNews.splice(idx, 1)[0]
+  private hasUnread(targets: string[]): boolean {
+    return this.unreadNews.some(name => targets.includes(name))
+  }
+
+  private takeAllUnread(targets: string[]): string[] {
+    const taken = this.unreadNews.filter(name => targets.includes(name))
+    this.unreadNews = this.unreadNews.filter(name => !targets.includes(name))
+    return [...new Set(taken)]
+  }
+
+  /** 第一声敲门之后再等一小会儿，让陆续做完的一起进来；要等的都不在干了就不等。 */
+  private settle(signal: AbortSignal, stillWorking: () => boolean): Promise<void> {
+    if (this.knockSettleMs <= 0 || signal.aborted || !stillWorking()) return Promise.resolve()
+    return new Promise((resolve) => {
+      const finish = () => {
+        clearTimeout(timer)
+        signal.removeEventListener('abort', finish)
+        this.waiters = this.waiters.filter(w => w !== check)
+        resolve()
+      }
+      const check = () => {
+        if (!stillWorking()) finish()
+        else this.waiters.push(check)
+      }
+      const timer = setTimeout(finish, this.knockSettleMs)
+      signal.addEventListener('abort', finish, { once: true })
+      this.waiters.push(check)
+    })
+  }
+
+  /** 已经有人敲过门：再等一小会儿把陆续回来的一起领。没人在干了、或 stillApplies 不成立就不等。 */
+  settleKnocks(signal: AbortSignal, stillApplies: () => boolean): Promise<void> {
+    return this.settle(signal, () => this.hasLive() && stillApplies())
   }
 
   hasLive(): boolean {
@@ -115,6 +164,19 @@ export class SubAgentRoster {
       if (LIVE.has(child.status)) return true
     }
     return false
+  }
+
+  liveCount(): number {
+    let n = 0
+    for (const child of this.children.values()) {
+      if (LIVE.has(child.status)) n++
+    }
+    return n
+  }
+
+  /** 保险丝之内还能再派几个。 */
+  room(): number {
+    return Math.max(0, MAX_LIVE_CHILDREN - this.liveCount())
   }
 
   list(): ChildSnapshot[] {
@@ -135,8 +197,9 @@ export class SubAgentRoster {
     for (const wake of waiters) wake()
   }
 
-  waitForKnock(signal: AbortSignal): Promise<void> {
-    return new Promise((resolve) => {
+  /** 等到有人敲门、没人在干了或中止。把陆续回来的攒一攒，在主人接着跑之前做（见 settleKnocks），这里不再等 */
+  async waitForKnock(signal: AbortSignal): Promise<void> {
+    await new Promise<void>((resolve) => {
       if (!this.hasLive() || signal.aborted) {
         resolve()
         return
@@ -178,24 +241,22 @@ export class SubAgentRoster {
     })
   }
 
-  /** 等下一条还没领走的敲门，不是「只要有人已经做完」。 */
-  waitForNews(names: string[] | undefined, signal: AbortSignal): Promise<ChildSnapshot[]> {
+  /**
+   * 等下一批还没领走的敲门，不是「只要有人已经做完」。
+   * 第一声到了再稍等一会儿，然后把已经到的一次领走。
+   */
+  async waitForNews(names: string[] | undefined, signal: AbortSignal): Promise<WaitNews> {
     const targets = names?.length ? names : [...this.children.keys()]
-    const noneLeft = () => targets.every(name => {
+    const stillWorking = () => targets.some(name => {
       const child = this.children.get(name)
-      return !child || !LIVE.has(child.status)
+      return !!child && LIVE.has(child.status)
     })
-    const snapshots = () => targets.map(name => this.get(name)).filter((c): c is ChildSnapshot => !!c)
-    return new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       const check = () => {
-        if (signal.aborted) {
+        if (signal.aborted || this.hasUnread(targets) || !stillWorking()) {
           signal.removeEventListener('abort', check)
-          resolve(snapshots())
-          return
-        }
-        if (this.takeUnread(targets) || noneLeft()) {
-          signal.removeEventListener('abort', check)
-          resolve(snapshots())
+          this.waiters = this.waiters.filter(w => w !== check)
+          resolve()
           return
         }
         this.waiters.push(check)
@@ -203,12 +264,21 @@ export class SubAgentRoster {
       signal.addEventListener('abort', check)
       check()
     })
+    if (this.hasUnread(targets)) await this.settle(signal, stillWorking)
+    const arrived = this.takeAllUnread(targets)
+      .map(name => this.get(name))
+      .filter((c): c is ChildSnapshot => !!c)
+    const snapshots = targets.map(name => this.get(name)).filter((c): c is ChildSnapshot => !!c)
+    return { arrived, targets: snapshots }
   }
 
+  /** 全部立刻开工。超过保险丝整批不收，调用方应先看 room()。 */
   spawn(tasks: SpawnTask[], deps: RosterSpawnDeps): string[] {
+    if (tasks.length > this.room()) {
+      throw new RangeError(`伙计超过上限：没做完的 ${this.liveCount()} 个，还能派 ${this.room()} 个，这次要 ${tasks.length} 个`)
+    }
     const used = new Set(this.children.keys())
     const names: string[] = []
-    const maxConcurrent = Math.min(Math.max(1, deps.maxConcurrent ?? 5), 10)
 
     for (const task of tasks) {
       const name = allocateChildName(task.description, used, task.name)
@@ -217,29 +287,21 @@ export class SubAgentRoster {
         name,
         description: task.description || name,
         prompt: task.prompt,
+        shownPrompt: task.shownPrompt,
         status: 'pending',
         steps: [],
         forkTurns: task.forkTurns ?? { kind: 'all' },
-        launchDeps: deps,
       })
       names.push(name)
     }
     if (deps.ownedNames) {
       for (const name of names) deps.ownedNames.add(name)
     }
-    deps.onProgress(this.list())
+    deps.onProgress()
 
-    const startNext = () => {
-      if (deps.isParentAborted()) return
-      const running = [...this.children.values()].filter(c => c.status === 'running').length
-      if (running >= maxConcurrent) return
-      const next = [...this.children.values()].find(c => c.status === 'pending' && !c.runPromise)
-      if (!next) return
-      this.startChild(next.name, next.launchDeps)
-      startNext()
+    if (!deps.isParentAborted()) {
+      for (const name of names) this.startChild(name, deps)
     }
-    this.startQueued = startNext
-    startNext()
     return names
   }
 
@@ -252,13 +314,16 @@ export class SubAgentRoster {
     if (slot.handle.isRunning()) {
       slot.handle.addUserMessage(message)
       slot.status = 'running'
-      deps.onProgress(this.list())
+      deps.onProgress()
       return { ok: true }
     }
 
+    if (!LIVE.has(slot.status) && this.room() <= 0) {
+      return { ok: false, error: `没做完的伙计已有 ${MAX_LIVE_CHILDREN} 个，等有人做完再追问 ${name}` }
+    }
     slot.status = 'running'
     slot.error = undefined
-    deps.onProgress(this.list())
+    deps.onProgress()
     slot.runPromise = this.runExisting(slot, message, deps)
     return { ok: true }
   }
@@ -287,7 +352,7 @@ export class SubAgentRoster {
     this.wake()
   }
 
-  recordStep(name: string, step: AgentStep, onProgress: (children: ChildSnapshot[]) => void): void {
+  recordStep(name: string, step: AgentStep, onProgress: () => void): void {
     const slot = this.children.get(name)
     if (!slot) return
     if (step.type !== 'tool_call' || !step.toolName) return
@@ -317,7 +382,14 @@ export class SubAgentRoster {
     if (step.success === false && step.toolResult) {
       slot.blockedReason = step.toolResult
     }
-    onProgress(this.list())
+    onProgress()
+  }
+
+  private markWaiting(name: string, waiting: boolean, onProgress: () => void): void {
+    const slot = this.children.get(name)
+    if (!slot || !!slot.waitingForModel === waiting) return
+    slot.waitingForModel = waiting || undefined
+    onProgress()
   }
 
   private startChild(name: string, deps: RosterSpawnDeps): void {
@@ -328,7 +400,7 @@ export class SubAgentRoster {
     slot.status = 'running'
     const seed = applyForkTurns(deps.sanitize(deps.getParentMessages()), slot.forkTurns)
     handle.seedOpeningMessages?.(seed)
-    deps.onProgress(this.list())
+    deps.onProgress()
     slot.runPromise = this.runExisting(slot, slot.prompt, deps)
   }
 
@@ -343,6 +415,7 @@ export class SubAgentRoster {
       const raw = await handle.run(message, deps.getParentContext(), {
         callbacks: {
           onStep: (_id, step) => this.recordStep(slot.name, step, deps.onProgress),
+          onModelWait: (_id, waiting) => this.markWaiting(slot.name, waiting, deps.onProgress),
         }
       })
       if (slot.status === 'interrupted' || deps.isParentAborted()) {
@@ -362,11 +435,11 @@ export class SubAgentRoster {
         slot.error = msg
       }
     }
-    deps.onProgress(this.list())
+    slot.waitingForModel = undefined
+    deps.onProgress()
     deps.knock(deps.formatKnock(snapshotOf(slot)))
     this.enqueueNews(slot.name)
     this.wake()
-    this.startQueued?.()
   }
 }
 
@@ -381,6 +454,8 @@ function snapshotOf(slot: ChildSlot): ChildSnapshot {
     steps: slot.steps.map(s => ({ ...s })),
     tokensUsed: slot.tokensUsed,
     blockedReason: slot.blockedReason,
+    waitingForModel: slot.waitingForModel,
+    shownPrompt: slot.shownPrompt,
   }
 }
 

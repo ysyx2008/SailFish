@@ -831,6 +831,16 @@ export default {
     subAgentCompleted: '已完成',
     subAgentFailed: '失败',
     subAgentInterrupted: '已打断',
+    subAgentWaitingModel: '等模型空位',
+    subAgentSummary: '{count} 个伙计：{parts}',
+    subAgentCount: {
+      completed: '{count} 做完',
+      running: '{count} 在干',
+      waiting: '{count} 等模型',
+      failed: '{count} 失败',
+      interrupted: '{count} 已打断',
+    },
+    subAgentShowMore: '再显示 {count} 个（还有 {rest} 个）',
     subAgentShowResult: '查看结果',
     subAgentHideResult: '收起结果',
     // 思考块（reasoning 模型的 thinking 单行呈现）

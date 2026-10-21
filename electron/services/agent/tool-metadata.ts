@@ -148,17 +148,27 @@ export function getMetaByName(
  */
 export function tryParsePartialJson(partial: string): Record<string, unknown> | null {
   if (!partial) return null
-  const trimmed = partial.trimStart()
-  if (!trimmed.startsWith('{')) return null
-  // 从完整 partial 开始，失败就从尾部剥一个字符再试。每次尝试都对当前的 core 独立
-  // 扫描并按 LIFO 补闭合括号——嵌套 [{ 必须先补 } 再补 ]，这一点是原实现里
-  // `while(bracket)` + `while(brace)` 线性补全处理不了的。
-  // 剥到原串一半停止（保护性上限：partial chunk 通常很短，O(n²) 足够）
-  const minCoreLen = Math.max(1, Math.floor(partial.length / 2))
+  const firstBrace = partial.length - partial.trimStart().length
+  if (partial[firstBrace] !== '{') return null
+  // 从完整 partial 开始，失败就从尾部剥一个字符再试；每次按 LIFO 补闭合括号——
+  // 嵌套 [{ 必须先补 } 再补 ]。
+  // 最多剥到原串一半；合法前缀的残尾（半个键名、悬空的 , 或 :、半个转义）都很短，
+  // 尾部剥够 PARTIAL_JSON_MAX_TAIL_STRIP 个字符还不成，就是参数本身坏了，不再往前剥。
+  // 剥的范围之前的结构只扫一遍，每次尝试只补扫尾部，单次调用随长度线性增长。
+  const minCoreLen = Math.max(
+    firstBrace + 1,
+    Math.floor(partial.length / 2),
+    partial.length - PARTIAL_JSON_MAX_TAIL_STRIP,
+  )
+  const scanner = new PartialJsonScanner()
+  scanner.feed(partial, 0, minCoreLen)
+  const closers: string[] = [scanner.closer()]
+  for (let i = minCoreLen; i < partial.length; i++) {
+    scanner.feed(partial, i, i + 1)
+    closers.push(scanner.closer())
+  }
   for (let coreLen = partial.length; coreLen >= minCoreLen; coreLen--) {
-    const core = partial.slice(0, coreLen)
-    const attempt = closePartial(core)
-    if (attempt === null) continue
+    const attempt = partial.slice(0, coreLen) + closers[coreLen - minCoreLen]
     try {
       const obj = JSON.parse(attempt) as unknown
       if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
@@ -171,32 +181,35 @@ export function tryParsePartialJson(partial: string): Record<string, unknown> | 
   return null
 }
 
-/**
- * 扫描 core 中的未闭合字符串与括号，按 LIFO 补上闭合形成一段可能合法的 JSON；
- * core 本身若不以 `{` 开头则返回 null。
- */
-function closePartial(core: string): string | null {
-  if (!core || !core.trimStart().startsWith('{')) return null
-  let inString = false
-  let escape = false
-  const stack: string[] = []
-  for (let i = 0; i < core.length; i++) {
-    const c = core[i]
-    if (escape) { escape = false; continue }
-    if (inString) {
-      if (c === '\\') escape = true
-      else if (c === '"') inString = false
-      continue
+const PARTIAL_JSON_MAX_TAIL_STRIP = 64
+
+/** 逐字符跟踪未闭合的字符串与括号，给出把当前前缀补成可能合法 JSON 所需的尾巴。 */
+class PartialJsonScanner {
+  private inString = false
+  private escape = false
+  private readonly stack: string[] = []
+
+  feed(text: string, from: number, to: number): void {
+    for (let i = from; i < to; i++) {
+      const c = text[i]
+      if (this.escape) { this.escape = false; continue }
+      if (this.inString) {
+        if (c === '\\') this.escape = true
+        else if (c === '"') this.inString = false
+        continue
+      }
+      if (c === '"') this.inString = true
+      else if (c === '{') this.stack.push('}')
+      else if (c === '[') this.stack.push(']')
+      else if (c === '}' || c === ']') this.stack.pop()
     }
-    if (c === '"') inString = true
-    else if (c === '{') stack.push('}')
-    else if (c === '[') stack.push(']')
-    else if (c === '}' || c === ']') stack.pop()
   }
-  let s = core
-  if (inString) s += '"'
-  while (stack.length > 0) s += stack.pop()
-  return s
+
+  closer(): string {
+    let s = this.inString ? '"' : ''
+    for (let i = this.stack.length - 1; i >= 0; i--) s += this.stack[i]
+    return s
+  }
 }
 
 /**

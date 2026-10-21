@@ -9,6 +9,7 @@
  */
 
 import type { AiMessage, ToolCall, ChatWithToolsResult, ToolDefinition, RetryInfo, AiModelFailoverNotice, TokenUsageInfo } from '../ai.service'
+import type { ModelRequestPriority } from '../model-request-buffer'
 import { StreamingToolExecutor } from './streaming-tool-executor'
 import type { AgentRecord } from '../history.service'
 import type {
@@ -132,6 +133,9 @@ import {
 
 const log = createLogger('Agent')
 
+/** 伙计在后台干活，没人当面等：被限流时多等几轮（约一刻钟），慢一点比失败好 */
+const SUB_AGENT_RATE_LIMIT_RETRIES = 20
+
 /**
  * 去除流式输出中因 API 代理重复发送 reasoning_content 而产生的连续相同思考块。
  * 仅移除内容完全相同的相邻 <details> 块，保留不同的块。
@@ -219,6 +223,8 @@ export abstract class Agent {
 
   /** 伙计：关掉落盘 / 侧栏 / L2 / L3 / 诞生引导 */
   private _isSubAgent = false
+  /** 伙计已经发出过模型请求：之后的请求在缓冲池里排在新伙计前面 */
+  private _subAgentHasRequested = false
 
   /** 伙计的确认交给主人这场：问你和替你放行都留在正在看的这场 */
   private _confirmationHost?: Agent
@@ -500,6 +506,16 @@ export abstract class Agent {
 
   isSubAgent(): boolean {
     return this._isSubAgent
+  }
+
+  /** 这一次模型请求在缓冲池里排哪一档。伙计头一回排在后面，之后接着发的排前面，趁缓存还热。 */
+  private takeModelRequestPriority(): ModelRequestPriority {
+    if (!this._isSubAgent) {
+      return conversationPolicy(inferConversationKind(this._agentId)).modelRequestPriority
+    }
+    if (this._subAgentHasRequested) return 'continuing'
+    this._subAgentHasRequested = true
+    return 'queued'
   }
 
   /**
@@ -1073,6 +1089,7 @@ export abstract class Agent {
           hasLiveChildren: () =>
             (this._subAgentRoster?.hasLive() ?? false) || this._backgroundWatches.hasPending(),
           waitForChildrenOrKnock: () => this.waitWhileHeld(run),
+          settlePending: () => this.letKnocksSettle(run),
           isAborted: () => run.aborted,
         })
       } finally {
@@ -2279,7 +2296,7 @@ export abstract class Agent {
       })
     }
 
-    const pendingHandoff = run.pendingUserMessages.filter(m => !m.backgroundNotice).map(m => ({
+    const pendingHandoff = run.pendingUserMessages.filter(m => !m.backgroundNotice && !m.subAgentKnock).map(m => ({
       message: m.message,
       ...(m.images?.length ? { images: m.images } : {}),
       ...(m.previewImages ? { previewImages: m.previewImages } : {}),
@@ -2336,8 +2353,13 @@ export abstract class Agent {
     })
     if (!record) return
 
+    const run = this.currentRun
     try {
-      historyService.saveAgentRecord(record)
+      historyService.saveAgentRecord(record, run?.stepsEditedAfterSave ? { forceRewrite: true } : undefined)
+      if (run) {
+        run.savedStepIds = new Set(record.steps.map(s => s.id))
+        run.stepsEditedAfterSave = false
+      }
     } catch (err) {
       log.error('保存会话历史失败:', err)
     }
@@ -2374,6 +2396,7 @@ export abstract class Agent {
 
     try {
       historyService.saveAgentRecord(record)
+      run.savedStepIds = new Set(record.steps.map(s => s.id))
     } catch (err) {
       log.error('保存检查点失败:', err)
     }
@@ -3052,7 +3075,8 @@ export abstract class Agent {
     // 逐任务状态清零（如「主动压缩压不动」的判定）——ContextWindowManager 跨 run 复用
     this._contextWindow.resetForNewRun()
 
-    if (this._isSubAgent && this._seedMessages.length > 0) {
+    // 伙计的系统提示不带知识库和过往对话，冷启动的召回对它是白做；几百人同时开工还会压垮嵌入模型
+    if (this._isSubAgent && !this._previousRunMessages?.length) {
       await cwdReady
       this.buildSubAgentOpening(run, message)
       return
@@ -3142,12 +3166,13 @@ export abstract class Agent {
     })
     // 过往对话有专门一节时，知识库这边只给文档，同一条不出现两遍
     const recallsConversationsSeparately = message.trim().length >= 5
-    const knowledgeResultPromise = run.internalNotice
+    const skipRecall = run.internalNotice || this._isSubAgent
+    const knowledgeResultPromise = skipRecall
       ? Promise.resolve({ context: '', enabled: false, conversationHistory: [] as KnowledgeContextResult['conversationHistory'] })
       : this.loadKnowledgeContextWithTimeout(message, sessionHostId, !recallsConversationsSeparately)
 
     const L3_RECALL_TIMEOUT_MS = 2000
-    const recallPromise: Promise<KnowledgeContextResult['conversationHistory']> = run.internalNotice
+    const recallPromise: Promise<KnowledgeContextResult['conversationHistory']> = skipRecall
       ? Promise.resolve([])
       : (() => {
       const ks = getKnowledgeService()
@@ -3612,6 +3637,7 @@ export abstract class Agent {
               if (run.pendingUserMessages.length > 0) {
                 this.retainReplyForNextRound(run, lastResponse)
                 lastResponse = null
+                await this.letKnocksSettle(run)
                 continue
               }
               
@@ -3635,6 +3661,7 @@ export abstract class Agent {
             if (run.pendingUserMessages.length > 0) {
               this.retainReplyForNextRound(run, lastResponse)
               lastResponse = null
+              await this.letKnocksSettle(run)
               continue
             }
             
@@ -4948,6 +4975,11 @@ export abstract class Agent {
             this.callbacks?.onModelFailover?.(agentKey, notice)
           }
         },
+        {
+          bufferPriority: this.takeModelRequestPriority(),
+          onBufferWait: (waiting) => this.callbacks?.onModelWait?.(this._agentId || run.id, waiting),
+          rateLimitMaxRetries: this._isSubAgent ? SUB_AGENT_RATE_LIMIT_RETRIES : undefined,
+        },
       )
     })
   }
@@ -5786,14 +5818,20 @@ export abstract class Agent {
     })
   }
 
+  /** 敲门只排进待处理，等这次模型回复走完、下一个循环边界再领；几十个陆续做完时不能每次都掐断重发 */
   protected injectSubAgentKnock(message: string): void {
     const run = this.currentRun
     if (!run?.isRunning) return
-    run.pendingUserMessages.push({ message, silent: true })
-    if (run.executionPhase === 'thinking' && run.requestId) {
-      this.services.aiService.abort(run.requestId)
-    }
+    run.pendingUserMessages.push({ message, silent: true, subAgentKnock: true })
     this.wakeHold()
+  }
+
+  /** 待处理的只有敲门、还有伙计在干：稍等一会儿把陆续回来的一起领，免得每回来一个就开口一次。用户说话、按停立刻结束 */
+  private async letKnocksSettle(run: AgentRun): Promise<void> {
+    const signal = run.abortController?.signal
+    const onlyKnocks = () => run.pendingUserMessages.every(p => p.subAgentKnock)
+    if (!this._subAgentRoster || !signal || !onlyKnocks()) return
+    await this._subAgentRoster.settleKnocks(signal, onlyKnocks)
   }
 
   /** 欠着的后台工作被清账、却没有结果送来时（比如开跑失败），叫醒在等的这一轮重新看一遍还要不要等 */
@@ -6048,6 +6086,7 @@ export abstract class Agent {
     } else {
       // 更新现有步骤
       Object.assign(step, updates)
+      if (this.currentRun.savedStepIds?.has(stepId)) this.currentRun.stepsEditedAfterSave = true
     }
     
     this.callbacks?.onStep?.(this.currentRun.id, step)
@@ -6063,6 +6102,7 @@ export abstract class Agent {
     if (index === -1) return
 
     this.currentRun.steps.splice(index, 1)
+    if (this.currentRun.savedStepIds?.delete(stepId)) this.currentRun.stepsEditedAfterSave = true
     this.callbacks?.onStepRemoved?.(this.currentRun.id, stepId)
   }
   
