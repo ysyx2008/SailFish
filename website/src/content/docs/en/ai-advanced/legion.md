@@ -23,10 +23,6 @@ Within one task, up to 200 helpers can be unfinished at a time. A dispatch that 
 
 Every helper that is dispatched gets started. How many model requests run at the same moment is adjusted automatically from the API's feedback: opened up gradually while nothing is rate-limited, slowed down when it is. Extra requests wait in line and show as "Waiting for model" — nothing is stuck. There is no concurrency number to set, and nowhere to set it.
 
-## A real test
-
-A list of 201 files, one helper per file, each reading its file and writing a one-line description, then everything gathered into a single table. With a fast model: about 75 seconds from dispatch to wrap-up, about 2 minutes (116 seconds) for the whole round, all 201 rows handed in, and the descriptions we spot-checked were accurate. A different model or API quota will give different speeds.
-
 ## What helpers can do
 
 - **Know what you asked for**: by default they start with what you've said in this conversation and the conclusions the secretary has already stated. The secretary can also give them only the last few turns, or none.
@@ -55,4 +51,4 @@ Helpers aren't separate conversations either: they don't appear in Recent Conver
 
 ## About cost
 
-Every helper sends requests to the model, so the more you dispatch, the more you use — roughly in proportion to the number of helpers. SailFish doesn't estimate cost before dispatching, and doesn't ask for confirmation because of cost. What helpers spend on the model counts toward this conversation's usage. For reference, the 201-file test above made 678 requests to the model, with about 6.47 million input tokens (about 90% served from cache) and about 110 thousand output tokens. If your model is billed by usage, keep an eye on it before starting a big batch.
+Every helper sends requests to the model, so the more you dispatch, the more you use — roughly in proportion to the number of helpers. SailFish doesn't estimate cost before dispatching, and doesn't ask for confirmation because of cost. What helpers spend on the model counts toward this conversation's usage. If your model is billed by usage, keep an eye on it before starting a big batch.

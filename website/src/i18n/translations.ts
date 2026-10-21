@@ -48,7 +48,7 @@ export const translations = {
       legion: {
         id: 'legion',
         title: '一个秘书，自成军团',
-        body: '你只对一个秘书说话。它把活拆开，一声令下，伙计们分头开工。实测：201 个文件，一人一份，不到两分钟，汇成一张表交到你手上。',
+        body: '你只对一个秘书说话。它把活拆开，一声令下，伙计们分头开工，最后把结果汇总交到你手上。',
         points: ['手上最多同时有 200 个伙计', '它们干活，你照常聊天', '做完自动汇总交回'],
         image: '/screenshot-legion.jpg',
         imageEn: '/screenshot-legion.jpg',
@@ -1014,7 +1014,7 @@ export const translations = {
       legion: {
         id: 'legion',
         title: 'One secretary, a legion of its own',
-        body: 'You talk to one secretary. It breaks the work apart and, at a word, its helpers set to work side by side. In our test: 201 files, one helper each, a single table in under two minutes.',
+        body: 'You talk to one secretary. It breaks the work apart and, at a word, its helpers set to work side by side, then brings the results together for you.',
         points: ['Up to 200 helpers at a time', 'Keep chatting while they work', 'Results gathered for you'],
         image: '/screenshot-legion.jpg',
         imageEn: '/screenshot-legion.jpg',
