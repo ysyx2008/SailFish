@@ -66,10 +66,9 @@ async function feishuRead(args: FeishuReadArgs, executor: ToolExecutorConfig): P
     return { success: false, output: '', error: t('feishu.missing_resource') }
   }
 
-  const idHint = args.app_token || args.document_id || args.spreadsheet_id || args.calendar_id || args.task_id || args.folder_token || ''
   executor.addStep({
     type: 'tool_call',
-    content: t('feishu.reading', { resource: resourceLabel(resource), hint: idHint ? ` (${idHint.substring(0, 20)})` : '' }),
+    content: t('feishu.reading', { resource: resourceLabel(resource), hint: '' }),
     toolName: 'feishu_read',
     toolArgs: { resource, ...Object.fromEntries(Object.entries(args).filter(([_, v]) => v !== undefined).slice(0, 4)) },
     riskLevel: 'safe'
@@ -315,7 +314,7 @@ async function readDoc(client: any, args: FeishuReadArgs, executor: ToolExecutor
     if (text) textParts.push(text)
   }
   const output = textParts.join('\n') || t('feishu.no_data')
-  addReadStep(executor, 'feishu_read', `📄 doc ${document_id}`, output)
+  addReadStep(executor, 'feishu_read', '已读取文档', output)
   return { success: true, output }
 }
 
@@ -331,8 +330,9 @@ async function writeDoc(
       data: { title, folder_token: (data?.folder_token as string) || '' },
     }, opts)
     const docId = resp?.data?.document?.document_id
+    const shown = `已创建文档: ${title}`
     const output = `Doc created: ${title} (document_id: ${docId})`
-    addWriteStep(executor, 'feishu_write', output, output)
+    addWriteStep(executor, 'feishu_write', shown, shown)
 
     // 如果提供了 content，追加到文档
     if (data?.content && docId) {

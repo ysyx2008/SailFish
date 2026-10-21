@@ -1211,10 +1211,6 @@ onUnmounted(() => {
             <dt>{{ t('todoPanel.fieldCompleted') }}</dt>
             <dd>{{ formatAbsolute(selectedItem.completedAt) }}</dd>
           </div>
-          <div class="meta-cell mono">
-            <dt>ID</dt>
-            <dd :title="selectedItem.id">{{ selectedItem.id.slice(0, 8) }}…</dd>
-          </div>
         </dl>
       </div>
 
@@ -1860,11 +1856,6 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.meta-cell.mono dd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
-}
-
 .detail-footer {
   display: flex;
   flex-wrap: wrap;

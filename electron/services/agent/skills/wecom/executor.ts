@@ -66,10 +66,9 @@ async function wecomRead(args: WeComReadArgs, executor: ToolExecutorConfig): Pro
     return { success: false, output: '', error: t('wecom.missing_resource' as any) }
   }
 
-  const idHint = args.calendar_id || args.sp_no || args.userid || args.template_id || ''
   executor.addStep({
     type: 'tool_call',
-    content: t('wecom.reading' as any, { resource: resourceLabel(resource), hint: idHint ? ` (${idHint.substring(0, 20)})` : '' }),
+    content: t('wecom.reading' as any, { resource: resourceLabel(resource), hint: '' }),
     toolName: 'wecom_read',
     toolArgs: { resource, ...Object.fromEntries(Object.entries(args).filter(([_, v]) => v !== undefined).slice(0, 4)) },
     riskLevel: 'safe'
@@ -306,7 +305,7 @@ async function readApproval(args: WeComReadArgs, executor: ToolExecutorConfig): 
       return { success: false, output: '', error: `审批单 ${sp_no} 不存在` }
     }
     const output = formatApprovalDetail(info)
-    addReadStep(executor, 'wecom_read', `📋 审批 ${sp_no}`, output)
+    addReadStep(executor, 'wecom_read', `📋 ${info.sp_name || '审批'}`, output)
     return { success: true, output }
   }
 
@@ -315,13 +314,13 @@ async function readApproval(args: WeComReadArgs, executor: ToolExecutorConfig): 
     const resp = await apiPost(corpId, corpSecret, '/oa/gettemplatedetail', { template_id })
     const tpl = resp?.template_names || []
     const controls = resp?.template_content?.controls || []
-    const name = tpl.length > 0 ? tpl[0].text : template_id
+    const name = tpl.length > 0 ? tpl[0].text : ''
     const lines = controls.map((c: any) => {
       const ctrlName = c.property?.title?.[0]?.text || c.property?.id || '(未命名)'
       return `- **${ctrlName}** (control: \`${c.property?.control}\`, id: \`${c.property?.id}\`)`
     })
-    const output = `## 审批模板: ${name}\n\ntemplate_id: \`${template_id}\`\n\n### 控件列表\n${lines.join('\n') || '（无控件）'}`
-    addReadStep(executor, 'wecom_read', `📋 模板 ${name}`, output)
+    const output = `## 审批模板: ${name || '审批模板'}\n\ntemplate_id: \`${template_id}\`\n\n### 控件列表\n${lines.join('\n') || '（无控件）'}`
+    addReadStep(executor, 'wecom_read', name ? `📋 模板 ${name}` : '审批模板', output)
     return { success: true, output }
   }
 
@@ -486,7 +485,7 @@ async function readContact(args: WeComReadArgs, executor: ToolExecutorConfig): P
   if (userid) {
     const resp = await apiGet(corpId, corpSecret, '/user/get', { userid })
     const output = formatUserDetail(resp)
-    addReadStep(executor, 'wecom_read', `👤 ${resp.name || userid}`, output)
+    addReadStep(executor, 'wecom_read', `👤 ${resp.name || '成员'}`, output)
     return { success: true, output }
   }
 
@@ -540,7 +539,7 @@ async function readDrive(args: WeComReadArgs, executor: ToolExecutorConfig): Pro
       return { success: false, output: '', error: `文件 ${fileid} 不存在或无权访问` }
     }
     const output = formatFileDetail(info)
-    addReadStep(executor, 'wecom_read', `📁 ${info.file_name || fileid}`, output)
+    addReadStep(executor, 'wecom_read', `📁 ${info.file_name || '文件'}`, output)
     return { success: true, output }
   }
 
@@ -712,9 +711,10 @@ async function writeDocument(args: WeComWriteArgs, executor: ToolExecutorConfig)
     const newDocId = resp?.docid || '(unknown)'
     const url = resp?.url || ''
     const typeLabel = docType === 4 ? '表格' : '文档'
+    const shown = url ? `${typeLabel}已创建: ${docName}\n链接: ${url}` : `${typeLabel}已创建: ${docName}`
     let output = `${typeLabel}已创建: ${docName} (docid: ${newDocId})`
     if (url) output += `\n链接: ${url}`
-    addWriteStep(executor, 'wecom_write', output, output)
+    addWriteStep(executor, 'wecom_write', shown, shown)
     return { success: true, output }
   }
 
@@ -767,7 +767,7 @@ async function readMeeting(args: WeComReadArgs, executor: ToolExecutorConfig): P
   if (!resp.meetingid) resp.meetingid = meetingid
 
   const output = formatMeetingDetail(resp)
-  addReadStep(executor, 'wecom_read', `🎥 ${resp.title || meetingid}`, output)
+  addReadStep(executor, 'wecom_read', `🎥 ${resp.title || '会议'}`, output)
   return { success: true, output }
 }
 

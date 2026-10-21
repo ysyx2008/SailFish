@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { AgentStep } from '@shared/types'
 import { dispatchRecall } from '../tools/memory'
 import { executeTool } from '../tools/index'
 import type { AgentConfig, ToolExecutorConfig } from '../tools/types'
+
+function visibleText(executor: ToolExecutorConfig): string {
+  const calls = (executor.addStep as ReturnType<typeof vi.fn>).mock.calls as Array<[Partial<AgentStep>]>
+  return calls.map(([step]) => `${step.content ?? ''}\n${step.toolResult ?? ''}`).join('\n')
+}
 
 function makeExecutor(overrides?: Partial<ToolExecutorConfig>): ToolExecutorConfig {
   return {
@@ -27,12 +33,18 @@ function makeExecutor(overrides?: Partial<ToolExecutorConfig>): ToolExecutorConf
 
 describe('dispatchRecall', () => {
   it('不带号时列出任务和归档', () => {
-    const result = dispatchRecall({}, makeExecutor(), undefined)
+    const executor = makeExecutor()
+    const result = dispatchRecall({}, executor, undefined)
     expect(result.success).toBe(true)
     expect(result.output).toContain('[t1]')
     expect(result.output).toContain('ca-1')
     expect(result.output).toContain('task_id')
     expect(result.output).toContain('archive_id')
+    const visible = visibleText(executor)
+    expect(visible).toContain('查 nginx')
+    expect(visible).toContain('前半截探查')
+    expect(visible).not.toContain('[t1]')
+    expect(visible).not.toContain('ca-1')
   })
 
   it('两个号都给则报错，不取任何一边', () => {
@@ -48,17 +60,25 @@ describe('dispatchRecall', () => {
   })
 
   it('只给归档号则取原文', () => {
-    const result = dispatchRecall({ archive_id: 'ca-1' }, makeExecutor(), undefined)
+    const executor = makeExecutor()
+    const result = dispatchRecall({ archive_id: 'ca-1' }, executor, undefined)
     expect(result.success).toBe(true)
     expect(result.output).toContain('探过了')
     expect(result.output).toContain('ca-1')
+    const visible = visibleText(executor)
+    expect(visible).toContain('探过了')
+    expect(visible).not.toContain('ca-1')
   })
 
   it('只给任务号则取摘要', () => {
-    const result = dispatchRecall({ task_id: 't1' }, makeExecutor(), undefined)
+    const executor = makeExecutor()
+    const result = dispatchRecall({ task_id: 't1' }, executor, undefined)
     expect(result.success).toBe(true)
     expect(result.output).toContain('nginx -t')
     expect(result.output).toContain('/etc/nginx')
+    const visible = visibleText(executor)
+    expect(visible).toContain('查 nginx')
+    expect(visible).not.toContain('t1')
   })
 
   it('这场什么都没有时列出空，不当失败', () => {

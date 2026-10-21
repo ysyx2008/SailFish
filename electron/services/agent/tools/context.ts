@@ -14,6 +14,37 @@ type CompactStepSink = {
   removeStep: (stepId: string) => void
 }
 
+function compressCounts(result: CompressResult): { before: string; after: string; freed: string } {
+  return {
+    before: result.beforeTokens.toLocaleString(),
+    after: result.afterTokens.toLocaleString(),
+    freed: result.freedTokens.toLocaleString(),
+  }
+}
+
+function compressLineForUser(result: CompressResult): string {
+  return t('context_tool.compress_done', compressCounts(result))
+}
+
+function compressLineForModel(result: CompressResult): string {
+  return t('context_tool.compress_success', {
+    ...compressCounts(result),
+    archiveId: result.archiveId,
+  })
+}
+
+export function archiveLineForModel(arc: { id: string; summary: string; messageCount: number }): string {
+  return `- **${arc.id}**: ${arc.summary} (${arc.messageCount} messages)`
+}
+
+export function archiveLineForUser(arc: { summary: string; messageCount: number }): string {
+  const name = arc.summary.trim()
+  const text = name
+    ? t('context_tool.archive_item', { summary: name, count: arc.messageCount })
+    : t('context_tool.archive_unnamed', { count: arc.messageCount })
+  return `- ${text}`
+}
+
 export function userCompactRequest(hint?: string): string {
   const title = t('agent.compact_tool_step')
   const extra = hint?.trim()
@@ -72,22 +103,17 @@ export function finishUserCompactSteps(
   result: CompressResult
 ): void {
   sink.removeStep(ids.thinkingId)
-  const output = t('context_tool.compress_success', {
-    before: result.beforeTokens.toLocaleString(),
-    after: result.afterTokens.toLocaleString(),
-    freed: result.freedTokens.toLocaleString(),
-    archiveId: result.archiveId
-  })
+  const shown = compressLineForUser(result)
   sink.updateStep(ids.toolStepId, {
     success: true,
-    toolResult: output
+    toolResult: shown
   })
   sink.addStep({
     type: 'tool_result',
-    content: output,
+    content: shown,
     toolName: 'compress_context',
     toolCallId: ids.toolStepId,
-    toolResult: output,
+    toolResult: shown,
     success: true
   })
 }
@@ -118,17 +144,12 @@ export function finishUserCompactTurn(
   result: CompressResult
 ): string {
   finishUserCompactSteps(sink, ids, result)
-  const output = t('context_tool.compress_success', {
-    before: result.beforeTokens.toLocaleString(),
-    after: result.afterTokens.toLocaleString(),
-    freed: result.freedTokens.toLocaleString(),
-    archiveId: result.archiveId
-  })
+  const shown = compressLineForUser(result)
   sink.addStep({
     type: 'final_result',
-    content: output
+    content: shown
   })
-  return output
+  return shown
 }
 
 export function failUserCompactTurn(
@@ -267,18 +288,14 @@ export async function compressContext(
     return { success: false, output: '', error: msg }
   }
 
-  const output = t('context_tool.compress_success', {
-    before: result.beforeTokens.toLocaleString(),
-    after: result.afterTokens.toLocaleString(),
-    freed: result.freedTokens.toLocaleString(),
-    archiveId: result.archiveId
-  })
+  const output = compressLineForModel(result)
+  const shown = compressLineForUser(result)
 
   executor.addStep({
     type: 'tool_result',
-    content: output,
+    content: shown,
     toolName: 'context',
-    toolResult: output
+    toolResult: shown
   })
 
   return { success: true, output }
@@ -296,7 +313,7 @@ export function recallCompressed(
   executor.addStep({
     type: 'tool_call',
     content: archiveId
-      ? t('context_tool.recall_step', { archiveId })
+      ? t('context_tool.recall_step')
       : t('context_tool.recall_list'),
     toolName: 'recall',
     toolArgs: args,
@@ -328,17 +345,19 @@ export function recallCompressed(
       return { success: true, output: msg }
     }
 
-    const lines = [t('context_tool.recall_list'), '']
+    const modelLines = [t('context_tool.recall_list'), '']
+    const userLines = [t('context_tool.recall_list'), '']
     for (const arc of archives) {
-      lines.push(`- **${arc.id}**: ${arc.summary} (${arc.messageCount} messages)`)
+      modelLines.push(archiveLineForModel(arc))
+      userLines.push(archiveLineForUser(arc))
     }
-    const output = lines.join('\n')
+    const output = modelLines.join('\n')
 
     executor.addStep({
       type: 'tool_result',
       content: t('context_tool.recall_list'),
       toolName: 'recall',
-      toolResult: output
+      toolResult: userLines.join('\n')
     })
 
     return { success: true, output }
@@ -346,44 +365,52 @@ export function recallCompressed(
 
   // 查看指定归档
   if (!executor.getCompressedArchive) {
-    const msg = t('context_tool.recall_not_found', { archiveId })
+    const shown = t('context_tool.recall_missing')
+    const error = t('context_tool.recall_not_found', { archiveId })
     executor.addStep({
       type: 'tool_result',
-      content: msg,
+      content: shown,
       toolName: 'recall',
-      toolResult: msg
+      toolResult: shown
     })
-    return { success: false, output: '', error: msg }
+    return { success: false, output: '', error }
   }
 
   const messages = executor.getCompressedArchive(archiveId)
   if (!messages) {
-    const msg = t('context_tool.recall_not_found', { archiveId })
+    const shown = t('context_tool.recall_missing')
+    const error = t('context_tool.recall_not_found', { archiveId })
     executor.addStep({
       type: 'tool_result',
-      content: msg,
+      content: shown,
       toolName: 'recall',
-      toolResult: msg
+      toolResult: shown
     })
-    return { success: false, output: '', error: msg }
+    return { success: false, output: '', error }
   }
 
-  // 格式化归档消息为可读文本
-  const lines: string[] = [`📋 **Compressed Archive: ${archiveId}**`, `**Messages**: ${messages.length}`, '']
+  const modelLines: string[] = [`📋 **Compressed Archive: ${archiveId}**`]
+  const userLines: string[] = [`📋 **${t('context_tool.recall_body')}**`]
+  const pushBoth = (line: string) => {
+    modelLines.push(line)
+    userLines.push(line)
+  }
+  pushBoth(`**Messages**: ${messages.length}`)
+  pushBoth('')
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i]
     const roleLabel = msg.role === 'assistant' ? '🤖 Assistant' : msg.role === 'tool' ? '🔧 Tool' : `📝 ${msg.role}`
-    lines.push(`### ${i}. ${roleLabel}`)
+    pushBoth(`### ${i}. ${roleLabel}`)
 
     if (msg.tool_calls && msg.tool_calls.length > 0) {
       for (const tc of msg.tool_calls) {
-        lines.push(`**Tool Call**: ${tc.function.name}`)
+        pushBoth(`**Tool Call**: ${tc.function.name}`)
         const argsStr = tc.function.arguments
         if (argsStr && argsStr.length <= 200) {
-          lines.push(`**Args**: ${argsStr}`)
+          pushBoth(`**Args**: ${argsStr}`)
         } else if (argsStr) {
-          lines.push(`**Args**: ${argsStr.substring(0, 200)}...`)
+          pushBoth(`**Args**: ${argsStr.substring(0, 200)}...`)
         }
       }
     }
@@ -392,23 +419,23 @@ export function recallCompressed(
       const content = msg.content.length > 500
         ? msg.content.substring(0, 500) + `\n... [truncated, total ${msg.content.length} chars]`
         : msg.content
-      lines.push(content)
+      pushBoth(content)
     }
 
     if (msg.tool_call_id) {
-      lines.push(`*(tool_call_id: ${msg.tool_call_id})*`)
+      modelLines.push(`*(tool_call_id: ${msg.tool_call_id})*`)
     }
 
-    lines.push('')
+    pushBoth('')
   }
 
-  const output = lines.join('\n')
+  const output = modelLines.join('\n')
 
   executor.addStep({
     type: 'tool_result',
-    content: t('context_tool.recall_step', { archiveId }),
+    content: t('context_tool.recall_step'),
     toolName: 'recall',
-    toolResult: output
+    toolResult: userLines.join('\n')
   })
 
   return { success: true, output }
@@ -436,6 +463,7 @@ export function manageMemory(
   const results: string[] = []
   let updatedCount = 0
   let discardedCount = 0
+  let missedCount = 0
 
   // 处理压缩级别建议
   if (suggestions && Array.isArray(suggestions)) {
@@ -451,6 +479,7 @@ export function manageMemory(
         const msg = t('context_tool.manage_level_updated', { taskId: task_id, level: validLevel })
         results.push(`✓ ${msg}${reason ? ` (${reason})` : ''}`)
       } else {
+        missedCount++
         results.push(`✗ ${t('context_tool.manage_task_not_found', { taskId: task_id })}`)
       }
     }
@@ -464,6 +493,7 @@ export function manageMemory(
         discardedCount++
         results.push(`✓ ${t('context_tool.manage_task_discarded', { taskId })}`)
       } else {
+        missedCount++
         results.push(`✗ ${t('context_tool.manage_task_not_found', { taskId })}`)
       }
     }
@@ -482,16 +512,22 @@ export function manageMemory(
     outputLines.push(...results)
   }
   if (outputLines.length === 0) {
-    outputLines.push('No changes made')
+    outputLines.push(t('context_tool.manage_none'))
   }
 
   const output = outputLines.join('\n')
+  const shownLines: string[] = []
+  if (updatedCount > 0) shownLines.push(t('context_tool.manage_updated', { count: updatedCount }))
+  if (discardedCount > 0) shownLines.push(t('context_tool.manage_discarded', { count: discardedCount }))
+  if (missedCount > 0) shownLines.push(t('context_tool.manage_missed', { count: missedCount }))
+  if (shownLines.length === 0) shownLines.push(t('context_tool.manage_none'))
+  const shown = shownLines.join('\n')
 
   executor.addStep({
     type: 'tool_result',
-    content: output,
+    content: shown,
     toolName: 'manage_memory',
-    toolResult: output
+    toolResult: shown
   })
 
   return { success: true, output }
