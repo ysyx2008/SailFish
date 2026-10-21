@@ -2691,6 +2691,7 @@ interface Window {
       onConnectionChange: (callback: (data: { platform: string; connected: boolean }) => void) => () => void
       onWeChatLoginStatus: (callback: (status: WeChatLoginStatus) => void) => () => void
       onSendFailure: (callback: (data: { platform: string; userId?: string; userName?: string; reason?: string }) => void) => () => void
+      onWeChatHeld: (callback: (data: { title: string; message: string }) => void) => () => void
     }
 
     feishuOAuth: {
@@ -2739,6 +2740,7 @@ interface Window {
       onConnectionsChanged: (
         callback: (status: import('@shared/types/browser-bridge').BrowserBridgeStatus) => void
       ) => () => void
+      onHeld: (callback: (data: { title: string; message: string }) => void) => () => void
     }
     // 羁绊（Bond）
     bond: {

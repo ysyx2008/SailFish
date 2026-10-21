@@ -487,6 +487,9 @@ let cleanupGatewayRemoteTab: (() => void) | null = null
 let cleanupGatewayRemoteTask: (() => void) | null = null
 let cleanupImConnectionChange: (() => void) | null = null
 let cleanupImSendFailure: (() => void) | null = null
+let cleanupWeChatHeld: (() => void) | null = null
+let cleanupBrowserBridgeHeld: (() => void) | null = null
+let heldNoticeQueue: Promise<void> = Promise.resolve()
 let cleanupAiProfileFallback: (() => void) | null = null
 let cleanupRunTask: (() => void) | null = null
 let cleanupInstallSkill: (() => void) | null = null
@@ -500,6 +503,14 @@ let cleanupAgentNeedConfirmGlobal: (() => void) | null = null
 let cleanupAgentConfirmResolvedGlobal: (() => void) | null = null
 let cleanupFullScreenChange: (() => void) | null = null
 
+function showHeldNotice(title: string, message: string) {
+  heldNoticeQueue = heldNoticeQueue.then(() => showConfirm({
+    title,
+    message,
+    type: 'warning',
+    showCancel: false,
+  })).then(() => {})
+}
 
 onMounted(async () => {
   // 注册全局快捷键
@@ -510,6 +521,16 @@ onMounted(async () => {
   // 注册分屏反向 IPC 处理器（响应主进程 Agent 工具的分屏调用）
   initSplitPaneHandler()
   initWorkbenchHandler()
+
+  // 微信 / 浏览器助手被别人占着：启动时就可能发生，先于后面的 await 订上。两个一起到就排队，不互相盖掉。
+  cleanupWeChatHeld = window.electronAPI.im.onWeChatHeld((data) => {
+    if (!data?.message) return
+    showHeldNotice(data.title || t('settings.im.wechat'), data.message)
+  })
+  cleanupBrowserBridgeHeld = window.electronAPI.browserBridge.onHeld((data) => {
+    if (!data?.message) return
+    showHeldNotice(data.title || t('conn.browserBridge'), data.message)
+  })
 
   // ── 知识库 / 启动进度：必须最先订阅，绝不能被弹窗 await 堵住 ──────────────
   // 后端常在 Vue mount 前后就开始 rebuild；若等确认框点完再监听会漏掉全部进度。
@@ -1639,6 +1660,8 @@ onUnmounted(() => {
   cleanupGatewayRemoteTask?.()
   cleanupImConnectionChange?.()
   cleanupImSendFailure?.()
+  cleanupWeChatHeld?.()
+  cleanupBrowserBridgeHeld?.()
   cleanupAiProfileFallback?.()
   cleanupRunTask?.()
   cleanupInstallSkill?.()

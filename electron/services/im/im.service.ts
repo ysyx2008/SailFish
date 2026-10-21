@@ -38,11 +38,12 @@ import { FeishuAdapter } from './feishu-adapter'
 import { SlackAdapter } from './slack-adapter'
 import { TelegramAdapter } from './telegram-adapter'
 import { WeComAdapter } from './wecom-adapter'
-import { WeChatAdapter } from './wechat-adapter'
+import { WeChatAdapter, WeChatHeldByOtherInstanceError } from './wechat-adapter'
 import { IMAGE_MIME_TYPES, VISION_IMAGE_EXTENSIONS } from '../agent/tools/types'
 import { getDocumentParserService, type ParsedDocument } from '../document-parser.service'
 import { getConfigService } from '../config.service'
 import { t } from '../agent/i18n'
+import { t as mainT } from '../../i18n/main-i18n'
 import { createLogger } from '../../utils/logger'
 import path from 'path'
 import fs from 'fs'
@@ -1058,8 +1059,18 @@ export class IMService {
     } catch (err: any) {
       log.error('WeChat start failed:', err)
       this.wechatAdapter = null
-      return { success: false, error: err.message || 'Failed to connect' }
+      const message = err?.message || 'Failed to connect'
+      if (err instanceof WeChatHeldByOtherInstanceError) this.alertWeChatHeld(message)
+      return { success: false, error: message }
     }
+  }
+
+  /** 同一个微信被另一个旗鱼占着时，让界面弹出自己的对话框。 */
+  private alertWeChatHeld(message: string): void {
+    this.sendToDesktop('im:wechatHeld', {
+      title: mainT('dialog.wechatHeldTitle'),
+      message,
+    })
   }
 
   async stopWeChat(): Promise<void> {
