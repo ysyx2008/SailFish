@@ -51,6 +51,21 @@ describe('BackgroundExecManager', () => {
       expect(snap.output).toContain('hello')
     })
 
+    itPosix('汉字被拆进两段输出时不会变成替换符', async () => {
+      const script = [
+        "const b = Buffer.from('单元测试', 'utf8')",
+        "const cut = Buffer.from('单', 'utf8').length + 1",
+        'process.stdout.write(b.subarray(0, cut))',
+        'setTimeout(() => process.stdout.write(b.subarray(cut)), 80)',
+      ].join('; ')
+      const task = mgr.spawn({ command: `node -e ${JSON.stringify(script)}`, maxSeconds: 10 })
+      const reason = await mgr.wait({ task, waitSeconds: 5 })
+      expect(reason).toBe('done')
+      const snap = mgr.snapshot(task)
+      expect(snap.output).toContain('单元测试')
+      expect(snap.output.includes('\uFFFD')).toBe(false)
+    })
+
     itPosix('exit code 非 0 → status=failed', async () => {
       const task = mgr.spawn({ command: 'exit 42', maxSeconds: 10 })
       await mgr.wait({ task, waitSeconds: 5 })

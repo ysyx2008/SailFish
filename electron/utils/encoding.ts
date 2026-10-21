@@ -148,3 +148,71 @@ export function decodeBuffer(buf: Buffer, allowTruncatedEnd = false): { content:
   }
   return { content: iconv.decode(buf, encoding), encoding }
 }
+
+/**
+ * 末尾若是一个没写完的 UTF-8 字符，返回它占的字节数。
+ * 整段都合法、或中间就有非法字节（例如 GBK）时返回 0，调用方整段解码。
+ */
+function incompleteUtf8TailLength(buf: Buffer): number {
+  let i = 0
+  while (i < buf.length) {
+    const byte = buf[i]
+    let continuationBytes: number
+    if (byte <= 0x7F) {
+      i++
+      continue
+    } else if ((byte & 0xE0) === 0xC0) {
+      if (byte < 0xC2) return 0
+      continuationBytes = 1
+    } else if ((byte & 0xF0) === 0xE0) {
+      continuationBytes = 2
+    } else if ((byte & 0xF8) === 0xF0) {
+      if (byte > 0xF4) return 0
+      continuationBytes = 3
+    } else {
+      return 0
+    }
+
+    const available = buf.length - i - 1
+    if (available < continuationBytes) {
+      for (let j = 1; j <= available; j++) {
+        if ((buf[i + j] & 0xC0) !== 0x80) return 0
+      }
+      return available + 1
+    }
+
+    for (let j = 1; j <= continuationBytes; j++) {
+      if ((buf[i + j] & 0xC0) !== 0x80) return 0
+    }
+    i += 1 + continuationBytes
+  }
+  return 0
+}
+
+/**
+ * 一段一段到来的字节。汉字占多个字节，段的边界可能落在字中间。
+ * 没写完的字先留下，下一段补齐再解码。两股独立的输出各用一个，不能混用。
+ */
+export class ChunkTextDecoder {
+  private tail: Buffer = Buffer.alloc(0)
+
+  push(chunk: Buffer): string {
+    const buf = this.tail.length === 0 ? chunk : Buffer.concat([this.tail, chunk])
+    const tailLen = incompleteUtf8TailLength(buf)
+    if (tailLen === 0) {
+      this.tail = Buffer.alloc(0)
+      return buf.length === 0 ? '' : decodeBuffer(buf).content
+    }
+    this.tail = Buffer.from(buf.subarray(buf.length - tailLen))
+    const complete = buf.subarray(0, buf.length - tailLen)
+    return complete.length === 0 ? '' : decodeBuffer(complete).content
+  }
+
+  /** 流结束。剩下的半个字不再有后续，按整段解码。 */
+  end(): string {
+    if (this.tail.length === 0) return ''
+    const rest = this.tail
+    this.tail = Buffer.alloc(0)
+    return decodeBuffer(rest).content
+  }
+}

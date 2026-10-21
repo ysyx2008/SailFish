@@ -13,7 +13,7 @@
  * - 停一条命令要连它带出来的子进程一起停：POSIX 下每条命令自成进程组，信号发给整组
  */
 import { spawn, ChildProcess } from 'child_process'
-import { decodeBuffer } from '../../../utils/encoding'
+import { ChunkTextDecoder } from '../../../utils/encoding'
 import { resolveDefaultShell, getShellSpawnArgs } from '../../../utils/shell'
 import { createLogger } from '../../../utils/logger'
 
@@ -243,13 +243,24 @@ class BackgroundExecManager {
       description: opts.description,
     }
 
-    const onData = (chunk: Buffer) => {
-      const text = decodeBuffer(chunk, true).content
+    const stdoutText = new ChunkTextDecoder()
+    const stderrText = new ChunkTextDecoder()
+    const appendOutput = (text: string) => {
+      if (!text) return
       buffer.append(text)
       this.notifyWaiters(task)
     }
-    child.stdout?.on('data', onData)
-    child.stderr?.on('data', onData)
+    // 标准输出和错误输出是两股字节，半个字不能留到另一股里去补
+    const onChunk = (decoder: ChunkTextDecoder) => (chunk: Buffer | string) => {
+      appendOutput(typeof chunk === 'string' ? chunk : decoder.push(chunk))
+    }
+    const onEnd = (decoder: ChunkTextDecoder) => () => {
+      appendOutput(decoder.end())
+    }
+    child.stdout?.on('data', onChunk(stdoutText))
+    child.stderr?.on('data', onChunk(stderrText))
+    child.stdout?.on('end', onEnd(stdoutText))
+    child.stderr?.on('end', onEnd(stderrText))
 
     child.on('exit', (code, signal) => {
       task.exitCode = code
