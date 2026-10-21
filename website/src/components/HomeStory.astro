@@ -1,5 +1,5 @@
 ---
-import { useTranslations, type Lang } from '../i18n/utils';
+import { useTranslations, localePath, type Lang } from '../i18n/utils';
 import { defaultLanguage } from '../i18n/translations';
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
 
 const { lang = defaultLanguage } = Astro.props;
 const t = useTranslations(lang);
-const sections = [t.story.task, t.story.companion, t.story.handsOn, t.story.memory];
+const sections = [t.story.task, t.story.legion, t.story.companion, t.story.handsOn, t.story.memory];
 ---
 
 <section class="home-story" id="how-it-works" aria-label={t.nav.features}>
@@ -29,6 +29,11 @@ const sections = [t.story.task, t.story.companion, t.story.handsOn, t.story.memo
                 <li style={`--i: ${i}`}>{point}</li>
               ))}
             </ul>
+            {'href' in section && section.href && (
+              <a class="story-link" href={localePath(lang, section.href)}>
+                {section.linkLabel} <span aria-hidden="true">→</span>
+              </a>
+            )}
           </div>
           <div class="story-media fade-in reveal-scale fade-in-delay-1">
             <img src={imageSrc} alt={section.imageAlt} loading="lazy" />
@@ -126,6 +131,20 @@ const sections = [t.story.task, t.story.companion, t.story.handsOn, t.story.memo
     border-radius: 50%;
     background: var(--color-accent-primary);
     opacity: 0.85;
+  }
+
+  .story-link {
+    display: inline-block;
+    margin-top: 24px;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--color-accent-primary);
+    text-decoration: none;
+    transition: opacity var(--duration-micro) var(--ease-out-soft);
+  }
+
+  .story-link:hover {
+    opacity: 0.72;
   }
 
   .story-media {
