@@ -71,9 +71,47 @@ preversion 会检查热修支是不是从已发布的 `vX.Y.Z` 拉的；从 deve
    - `README.md` 和 `README_CN.md`（功能列表、描述、文档链接）
    - `website/src/i18n/translations.ts`（网站功能介绍、Hero 文案等）
 5. **提交日志及文档变更**：`git add` 并 `git commit` 更新日志和可能的 README 变更。
-6. **执行版本号更新**：执行与步骤 1 一致的 `npm_config_yes=true npm version <patch|minor|major>`，此时产生的版本号会与日志中一致。
+6. **在 CI 上试打包**：把当前分支推到远程，手动触发一次发版工作流并等它结束，通过后再进入下一步。
+
+   ```bash
+   git push origin <当前分支>
+   gh workflow run build-release.yml --ref <当前分支>
+   gh run list --workflow=build-release.yml --branch <当前分支> --event workflow_dispatch --limit 1   # 取最新一条的 id
+   gh run watch <id> --exit-status
+   ```
+
+   - 手动触发只跑 Windows 与 macOS 的打包；上传 OSS、创建 Release 两个任务只在 tag 上执行，试打包不会对外发布任何东西。
+   - 耗时：Windows 约 17 分钟，macOS 约 6 到 10 分钟，两边同时跑，合计约 17 到 19 分钟；Windows 是长的那一边。
+   - 触发时机：安装包只由代码和依赖决定，更新日志、README、官网文案不进安装包。步骤 1 确认之后就可以先触发，等待的时候写日志、改文档、跑 `npm run verify`。若 `verify` 之后又改了代码，需要重新触发。
+   - 是否需要：`npm run verify` 跑在本机已装好的 `node_modules` 上，看不到只在 CI 出现的环节：干净安装（`npm ci` 与 postinstall 补丁）、打包脚本的下载与校验、electron-builder、runner 的内存与下载镜像。过去几次发版失败都出在这里，见下方「tag 已推出但 CI 失败」。这些环节由下面这些文件决定：`package.json`、`package-lock.json`、`patches/`、`electron-builder.config.cjs`、`vite.config.*`、`tsconfig*.json`、`.github/workflows/`、`scripts/download-*`、`scripts/fix-*`。拿它们对比**上一个成功发出安装包的版本**（以 `gh release list` 为准，不是最新的 tag；失败的 tag 里的改动没有真正打过包），没有变化时 CI 上没有新东西，可以不试，在步骤 1 的预览里写明；有变化或拿不准就试。
+   - 失败时用 `gh run view <id> --log-failed` 看原因，修好后重新试打包。
+   - 热修在热修支上同样处理。
+7. **执行版本号更新**：执行与步骤 1 一致的 `npm_config_yes=true npm version <patch|minor|major>`，此时产生的版本号会与日志中一致。
 
    > ⚠️ AI 工具调用 / 脚本 / 任何无 TTY 场景**必须加 `npm_config_yes=true` 前缀**，否则 preversion 的交互式"确认继续? (y/N)"会挂死。preversion 已加非 TTY 检测，缺前缀时会快速失败并报错而非挂起。
+8. **等 Release 出来**：tag 推送会触发发版工作流。安装包与 Release 在这个工作流的最后几个任务里才生成，工作流没跑完时用户还拿不到新版本。`gh run watch <id> --exit-status` 全部通过，且 `gh release view v<版本>` 能查到，才算发出去；工作流失败按下方「tag 已推出但 CI 失败」处理。
+
+---
+
+## tag 已推出但 CI 失败
+
+这时 tag 已在远程，`main` 也已指向这个版本，官网部署随 `main` 执行，但没有安装包和 Release，用户能拿到的最新版仍是上一个。`npm run verify` 全绿也可能走到这一步。
+
+过去的失败原因（都出在本机验证看不到的环节）：
+
+| 版本 | 失败环节 | 原因 |
+|---|---|---|
+| v11.14.0 | 装依赖 | 飞书 SDK 的补丁按旧版本制作，锁文件里已是新版本，补丁打不上 |
+| v11.13.0 | Windows 打包 | 新增的 ripgrep 下载脚本，校验说明的格式在 Windows 上对不上 |
+| v10.40.1 | 打包 | 类型检查输出缺失（TS6305） |
+| v10.37.2 到 v10.39.0（2026-05） | 打包 | 同样的 TS6305，另有内存不够、Electron 下载镜像 404 |
+
+处理方式：
+
+- 已推送的 tag 不再移动，也不复用这个版本号；在 `develop` 修好后，用下一个版本号重发。
+- 失败版本没有发给用户，它的更新说明并入新版本的条目；原条目保留版本标题，下面只留一行「未发布，内容并入 vX.Y.Z」。`CHANGELOG.md` 与 `CHANGELOG_CN.md` 同步。
+- 按流程里的试打包（步骤 6）通过后再重新打 tag。
+- 网站部署工作流（Deploy Website）在 `develop` 上的 github-pages 环节一直是红的，是环境保护规则所致，与打包成败无关。
 
 ---
 
@@ -202,8 +240,10 @@ git log v<当前版本>..HEAD --oneline
 - [ ] `CHANGELOG.md` 与 `CHANGELOG_CN.md` 已更新且版本号、日期、条目一致
 - [ ] （minor/major）检查 `README.md`、`README_CN.md` 和 `website/src/i18n/translations.ts` 是否需要同步更新
 - [ ] 更新日志及文档变更已提交
+- [ ] CI 试打包通过（`gh workflow run build-release.yml --ref <分支>`，Windows 与 macOS 都绿）；或步骤 6 里打包相关文件自上一个成功发出的版本以来没有变化，已向用户写明
 - [ ] 当前在 develop、main 或 hotfix/*，无未提交更改；热修须从已发布 tag 拉出
 - [ ] 执行 `npm_config_yes=true npm version <patch|minor|major>` 完成发版（热修用 patch；AI / 脚本场景必加前缀）
+- [ ] tag 触发的工作流全部通过，`gh release view v<版本>` 能查到 Release
 - [ ] （热修）发完确认 develop 已含本次修复和版本号；功能分支 rebase 到最新 develop
 
 ---
