@@ -3285,3 +3285,119 @@ describe('Agent goal accounting', () => {
     expect(steps.some(s => s.type === 'proactive_notice')).toBe(false)
   })
 })
+
+describe('伙计的用量算进主人这场', () => {
+  function parentRun() {
+    return {
+      id: 'parent-run',
+      isRunning: true,
+      originalUserRequest: '派伙计去看',
+      aborted: false,
+      executionPhase: 'executing_tool' as const,
+      steps: [] as AgentStep[],
+      messages: [] as AiMessage[],
+      taskMessageLog: [] as AiMessage[],
+      pendingUserMessages: [],
+      realtimeOutputBuffer: [] as string[],
+      config: { enabled: true, maxSteps: 0, commandTimeout: 30000, autoExecuteSafe: true, autoExecuteModerate: true, executionMode: 'strict' as const, debugMode: false },
+      context: createMockContext(),
+    }
+  }
+
+  it('伙计问完一次模型，主人这场的消耗、落盘用量和目标已用都加上这一次', async () => {
+    const parent = new TestAgent(createMockServices())
+    parent.setAgentId('tab-1')
+    const started = GoalContract.start('把测试跑绿')
+    if ('error' in started) throw new Error(started.error)
+    parent.setGoal(started)
+    parent.chargeRunToGoal(started.goalId)
+    const run = parentRun()
+    parent.injectCurrentRun(run)
+
+    let consumed = 0
+    let prompt = 0
+    let completion = 0
+    let cacheHit = 0
+    parent.setCallbacks({
+      onContextBar: (_id, bar) => {
+        consumed = bar.consumedTokens ?? 0
+        prompt = bar.consumedPromptTokens ?? 0
+        completion = bar.consumedCompletionTokens ?? 0
+        cacheHit = bar.consumedCacheHitTokens ?? 0
+      },
+    })
+    let goalShown = 0
+    parent.setGoalChangedListener(goal => { goalShown = goal?.tokensUsed ?? 0 })
+
+    const child = new TestAgent(createMockServices())
+    child.markAsSubAgent()
+    child.bindConfirmationHost(parent, '甲')
+    const childAi = child.exposeServices().aiService as unknown as ReturnType<typeof createMockAiService>
+    const usage = {
+      prompt_tokens: 4000,
+      completion_tokens: 300,
+      total_tokens: 4300,
+      cache_hit_tokens: 3500,
+      cache_miss_tokens: 500,
+    }
+    childAi.chatWithToolsStream.mockImplementation(
+      (_messages, _tools, _onChunk, _onToolCall, onDone) => {
+        onDone({ content: '看完了', usage })
+        return Promise.resolve()
+      }
+    )
+
+    await child.run('去看那段日志', createMockContext())
+    await child.run('再看一眼', createMockContext())
+
+    expect(run.tokenUsage).toEqual({
+      prompt_tokens: 8000,
+      completion_tokens: 600,
+      total_tokens: 8600,
+      cache_hit_tokens: 7000,
+      cache_miss_tokens: 1000,
+    })
+    expect(consumed).toBe(8600)
+    expect(prompt).toBe(8000)
+    expect(completion).toBe(600)
+    expect(cacheHit).toBe(7000)
+    expect(goalShown).toBe(8600)
+    expect(parent.getGoal()?.tokensUsed).toBe(0)
+  })
+
+  it('接口没回报精确用量时，估算只进眼前的数字，不进落盘和目标', async () => {
+    const parent = new TestAgent(createMockServices())
+    parent.setAgentId('tab-1')
+    const started = GoalContract.start('把测试跑绿')
+    if ('error' in started) throw new Error(started.error)
+    parent.setGoal(started)
+    parent.chargeRunToGoal(started.goalId)
+    const run = parentRun()
+    parent.injectCurrentRun(run)
+
+    let consumed = 0
+    parent.setCallbacks({
+      onContextBar: (_id, bar) => { consumed = bar.consumedTokens ?? 0 },
+    })
+    let goalShown = 0
+    parent.setGoalChangedListener(goal => { goalShown = goal?.tokensUsed ?? 0 })
+
+    const child = new TestAgent(createMockServices())
+    child.markAsSubAgent()
+    child.bindConfirmationHost(parent, '甲')
+    const childAi = child.exposeServices().aiService as unknown as ReturnType<typeof createMockAiService>
+    childAi.chatWithToolsStream.mockImplementation(
+      (_messages, _tools, onChunk, _onToolCall, onDone) => {
+        onChunk('看了一半')
+        onDone({ content: '看了一半' })
+        return Promise.resolve()
+      }
+    )
+
+    await child.run('去看那段日志', createMockContext())
+
+    expect(run.tokenUsage).toBeUndefined()
+    expect(consumed).toBeGreaterThan(0)
+    expect(goalShown).toBe(0)
+  })
+})

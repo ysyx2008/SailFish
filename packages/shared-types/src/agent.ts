@@ -665,7 +665,7 @@ export interface AgentContextBar {
    */
   composition?: ContextCompositionNode
   /**
-   * 当前会话在本进程内的累计 API 消耗（live 推送；不落盘、不从历史回种）。
+   * 当前会话在本进程内的累计 API 消耗（live 推送；不落盘、不从历史回种）。含这场里伙计问模型花掉的。
    * 与 contextTokens（当前窗口占用）不是同一件事。
    */
   consumedTokens?: number

@@ -358,7 +358,7 @@ export abstract class Agent {
   private _contextBar: AgentContextBar = {}
 
   /**
-   * 当前会话在本进程内的累计 API 消耗（不落盘、不从历史回种）。
+   * 当前会话在本进程内的累计 API 消耗（不落盘、不从历史回种）。含这场里伙计问模型花掉的。
    * 与 Conversation.tokenUsage（会写入历史统计）分开，避免恢复旧对话时数字跳变。
    */
   private _consumedUsage: TokenUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
@@ -4242,6 +4242,36 @@ export abstract class Agent {
     }
   }
 
+  /** 精确用量进这一轮要落盘的账（目标结算读的也是它）。 */
+  private addRunTokenUsage(run: AgentRun, usage: TokenUsage): void {
+    if (!run.tokenUsage) run.tokenUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+    run.tokenUsage.prompt_tokens += usage.prompt_tokens
+    run.tokenUsage.completion_tokens += usage.completion_tokens
+    run.tokenUsage.total_tokens += usage.total_tokens
+    if (usage.cache_hit_tokens !== undefined) {
+      run.tokenUsage.cache_hit_tokens = (run.tokenUsage.cache_hit_tokens || 0) + usage.cache_hit_tokens
+    }
+    if (usage.cache_miss_tokens !== undefined) {
+      run.tokenUsage.cache_miss_tokens = (run.tokenUsage.cache_miss_tokens || 0) + usage.cache_miss_tokens
+    }
+  }
+
+  /**
+   * 记一笔模型用量。主人自己问的、伙计问的，进的是同一场还在跑的账。
+   * 没有精确值、只剩估算时，只进眼前的消耗数字，不进落盘、也不进目标。
+   * 伙计记完交给主人；主人若自己也是伙计，再往上交，直到最外层那场。
+   */
+  private noteApiUsage(usage: TokenUsage, opts?: { estimated?: boolean; run?: AgentRun }): void {
+    const run = opts?.run ?? this.currentRun
+    if (run?.isRunning) {
+      if (!opts?.estimated) this.addRunTokenUsage(run, usage)
+      this.addConsumedUsage(usage)
+      if (!opts?.estimated) this.notifyGoalLiveUsage()
+      if (!this._isSubAgent) this.publishConsumedLive()
+    }
+    this._confirmationHost?.noteApiUsage(usage, opts?.estimated ? { estimated: true } : undefined)
+  }
+
   /**
    * system prompt 规模读数的适用范围：同一 profile + 终端模式下才可复用。
    * 换了模型或模式（local/ssh/assistant 的提示词规模差数千 tokens）就得重新量。
@@ -4271,9 +4301,9 @@ export abstract class Agent {
   /** 精确 usage 入账并清掉估算；没有精确值则把估算折算进去，避免中断后数字回退。 */
   private commitPendingUsage(usage?: TokenUsage): void {
     if (usage) {
-      this.addConsumedUsage(usage)
+      this.noteApiUsage(usage)
     } else if (this._pendingUsage.total_tokens > 0) {
-      this.addConsumedUsage(this._pendingUsage)
+      this.noteApiUsage(this._pendingUsage, { estimated: true })
     }
     this._pendingUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
   }
@@ -4643,23 +4673,10 @@ export abstract class Agent {
             run.imagesStripped = true
           }
 
-          // 累积 token usage（由 LLM provider 返回的精确值）
+          // 精确用量入账（含交给主人这场）。没有精确值时 commit 会把估算留下，避免数字回退。
           if (result.usage) {
-            if (!run.tokenUsage) {
-              run.tokenUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-            }
-            run.tokenUsage.prompt_tokens += result.usage.prompt_tokens
-            run.tokenUsage.completion_tokens += result.usage.completion_tokens
-            run.tokenUsage.total_tokens += result.usage.total_tokens
-            if (result.usage.cache_hit_tokens !== undefined) {
-              run.tokenUsage.cache_hit_tokens = (run.tokenUsage.cache_hit_tokens || 0) + result.usage.cache_hit_tokens
-            }
-            if (result.usage.cache_miss_tokens !== undefined) {
-              run.tokenUsage.cache_miss_tokens = (run.tokenUsage.cache_miss_tokens || 0) + result.usage.cache_miss_tokens
-            }
             this.commitPendingUsage(result.usage)
             this._conversation?.recordPromptUsage(requestMessageCount, result.usage.prompt_tokens)
-            this.notifyGoalLiveUsage()
           } else {
             this.commitPendingUsage()
           }
@@ -6600,20 +6617,9 @@ export abstract class Agent {
     return lines.join('\n\n')
   }
 
-  /** 评审员花的 token 记进这场任务的账，不碰上下文水位。 */
+  /** 评审员花的 token 记进这场任务的账，不碰上下文水位。伙计的评审也交到主人这场。 */
   private addSideUsage(run: AgentRun, usage: TokenUsageInfo): void {
-    if (!run.tokenUsage) run.tokenUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-    run.tokenUsage.prompt_tokens += usage.prompt_tokens
-    run.tokenUsage.completion_tokens += usage.completion_tokens
-    run.tokenUsage.total_tokens += usage.total_tokens
-    if (usage.cache_hit_tokens !== undefined) {
-      run.tokenUsage.cache_hit_tokens = (run.tokenUsage.cache_hit_tokens || 0) + usage.cache_hit_tokens
-    }
-    if (usage.cache_miss_tokens !== undefined) {
-      run.tokenUsage.cache_miss_tokens = (run.tokenUsage.cache_miss_tokens || 0) + usage.cache_miss_tokens
-    }
-    this.addConsumedUsage(usage)
-    this.notifyGoalLiveUsage()
+    this.noteApiUsage(usage, { run })
   }
   
   /**
