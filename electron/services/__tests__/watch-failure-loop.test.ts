@@ -2,7 +2,8 @@
  * 唤醒失败风暴防护：profile 预检 + 自激环过滤 + circuit 退避表
  */
 import { describe, it, expect } from 'vitest'
-import { validateProfileForRequest } from '../ai.service'
+import { translateNetworkError, validateProfileForRequest } from '../ai.service'
+import { t } from '../agent/i18n'
 import type { AiProfile } from '@shared/types'
 
 function makeProfile(partial: Partial<AiProfile> = {}): AiProfile {
@@ -69,6 +70,22 @@ describe('validateProfileForRequest', () => {
     const r = validateProfileForRequest(makeProfile({ model: '' }))
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.code).toBe('MISSING_MODEL')
+  })
+
+  it('writes profile failures in the interface language', () => {
+    const r = validateProfileForRequest(null)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.message).toBe(t('error.watch_no_profile'))
+  })
+})
+
+describe('certificate errors use the interface language', () => {
+  it('translates UNABLE_TO_VERIFY_LEAF_SIGNATURE by error code', () => {
+    const message = translateNetworkError({
+      code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+      message: 'unable to verify the first certificate',
+    })
+    expect(message).toBe(t('error.net_cert_untrusted'))
   })
 })
 

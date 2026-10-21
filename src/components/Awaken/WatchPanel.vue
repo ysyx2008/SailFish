@@ -18,6 +18,7 @@ import WatchOverviewPanel from './WatchOverviewPanel.vue'
 import WatchHistoryDetailView from './WatchHistoryDetailView.vue'
 import { showConfirm, showAlert } from '../../composables/useConfirm'
 import AppSelect from '../common/AppSelect.vue'
+import { watchSkipReasonText } from './watch-skip-reason'
 
 const { t } = useI18n()
 const configStore = useConfigStore()
@@ -1214,7 +1215,7 @@ onUnmounted(() => {
                       </div>
                       <div class="detail-row" v-if="selectedWatch.lastRun.skipReason">
                         <span class="label">{{ t('watch.statusSkipped') }}:</span>
-                        <span class="value">{{ selectedWatch.lastRun.skipReason }}</span>
+                        <span class="value">{{ watchSkipReasonText(selectedWatch.lastRun.skipReason) }}</span>
                       </div>
                     </div>
                     <!-- 该关切的运行历史时间线（最近 5 条） -->

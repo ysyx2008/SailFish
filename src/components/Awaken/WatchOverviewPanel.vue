@@ -17,6 +17,7 @@ import {
   CheckCircle2, ChevronRight, AlertCircle, RotateCcw, Pause, Square, Eye, Plus
 } from 'lucide-vue-next'
 import type { WatchDefinition, WatchHistoryRecord, WatchTrigger } from '@shared/types'
+import { watchSkipReasonText } from './watch-skip-reason'
 
 const props = defineProps<{
   watches: WatchDefinition[]
@@ -256,7 +257,7 @@ function runningDurationText(w: WatchDefinition): string {
 
 const HISTORY_SUMMARY_MAX = 60
 function historySummary(r: WatchHistoryRecord): string {
-  const text = (r.error || r.skipReason || r.output || '').trim()
+  const text = (r.error || (r.skipReason ? watchSkipReasonText(r.skipReason) : '') || r.output || '').trim()
   if (!text) return ''
   return text.length > HISTORY_SUMMARY_MAX ? text.slice(0, HISTORY_SUMMARY_MAX) + '…' : text
 }
