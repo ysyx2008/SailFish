@@ -13,7 +13,7 @@ SailFish supports macOS and Windows. Installation is straightforward and similar
 
 | Platform | Minimum Requirement |
 |----------|---------------------|
-| macOS | 10.15 (Catalina) or later; supports Intel and Apple Silicon |
+| macOS | 13 (Ventura) or later; supports Intel and Apple Silicon |
 | Windows | Windows 10 / 11, Server 2016 or later |
 
 ## Download

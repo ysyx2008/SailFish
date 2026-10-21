@@ -13,6 +13,9 @@ import { Menu, MenuItemConstructorOptions, shell, clipboard, BrowserWindow, app 
 import { type KeyboardShortcuts, DEFAULT_KEYBOARD_SHORTCUTS } from './config.service'
 import { oemResolved } from '@shared/oem-resolve'
 import { oemConfig } from '@shared/oem-runtime'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('Menu')
 
 // 菜单翻译
 const menuI18n = {
@@ -692,7 +695,9 @@ export class MenuService {
       const group = links.qqGroup
       submenu.push({
         label: `${this.t('qqGroup')} (${group})`,
-        click: () => { void clipboard.writeText(group) }
+        click: () => {
+          void clipboard.writeText(group).catch(err => log.warn('复制 QQ 群号失败', err))
+        }
       })
     }
     if (links.website) {

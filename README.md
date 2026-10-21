@@ -132,7 +132,7 @@ Get the latest release from the [website](https://www.sfterm.com/en/#download) o
 
 | Platform | Requirements | Packages |
 |----------|--------------|----------|
-| **macOS** | 10.15+, Intel and Apple Silicon | `.dmg` (arm64 / x64) |
+| **macOS** | 13+, Intel and Apple Silicon | `.dmg` (arm64 / x64) |
 | **Windows** | Windows 10 / 11, Server 2016+ | NSIS installer, plus a **portable ZIP** |
 
 No official Linux desktop build. On Windows, if the installer fails (e.g. some Windows Server 2016 hosts), use the ZIP.

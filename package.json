@@ -192,5 +192,8 @@
     "name": "旗鱼",
     "email": "nuoyan_cfan@163.com"
   },
-  "license": "AGPL-3.0"
+  "license": "AGPL-3.0",
+  "engines": {
+    "node": ">=22.12.0"
+  }
 }

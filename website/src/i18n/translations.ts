@@ -237,7 +237,7 @@ export const translations = {
       platforms: {
         macOS: {
           name: 'macOS',
-          description: '支持 macOS 10.15+',
+          description: '支持 macOS 13+',
           variants: {
             appleSilicon: 'Apple Silicon',
             intel: 'Intel',
@@ -1203,7 +1203,7 @@ export const translations = {
       platforms: {
         macOS: {
           name: 'macOS',
-          description: 'Supports macOS 10.15+',
+          description: 'Supports macOS 13+',
           variants: {
             appleSilicon: 'Apple Silicon',
             intel: 'Intel',
