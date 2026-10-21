@@ -87,7 +87,37 @@ const AI_RETRY = {
 }
 
 /** 网络错误判定输入：字符串（兼容 'ETIMEDOUT'）或带 code/message 的 Error */
-type NetworkErrorLike = string | { message?: string; code?: string }
+type NetworkErrorLike = string | { message?: string; code?: string; cause?: unknown }
+
+/**
+ * 证书校验失败的 Node/OpenSSL 错误码。只认 code，不看 message。
+ * 信任链对不上的说成一件事；过期、名字对不上各说各的。
+ */
+const CERT_FAILURE_KEYS = {
+  UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'error.net_cert_untrusted',
+  UNABLE_TO_GET_ISSUER_CERT: 'error.net_cert_untrusted',
+  UNABLE_TO_GET_ISSUER_CERT_LOCALLY: 'error.net_cert_untrusted',
+  SELF_SIGNED_CERT_IN_CHAIN: 'error.net_cert_untrusted',
+  DEPTH_ZERO_SELF_SIGNED_CERT: 'error.net_cert_untrusted',
+  CERT_UNTRUSTED: 'error.net_cert_untrusted',
+  CERT_HAS_EXPIRED: 'error.net_cert_expired',
+  ERR_TLS_CERT_ALTNAME_INVALID: 'error.net_cert_name',
+} as const
+
+function certificateFailureKey(error: NetworkErrorLike): keyof typeof CERT_FAILURE_KEYS | null {
+  if (typeof error !== 'object' || error === null) return null
+  const codes: string[] = []
+  if (error.code) codes.push(error.code)
+  const cause = error.cause
+  if (cause && typeof cause === 'object' && 'code' in cause) {
+    const causeCode = (cause as { code?: unknown }).code
+    if (typeof causeCode === 'string' && causeCode) codes.push(causeCode)
+  }
+  for (const code of codes) {
+    if (code in CERT_FAILURE_KEYS) return code as keyof typeof CERT_FAILURE_KEYS
+  }
+  return null
+}
 
 function getNetworkErrorMessage(error: NetworkErrorLike): string {
   return typeof error === 'string' ? error : (error.message ?? '')
@@ -104,6 +134,7 @@ function getNetworkErrorCode(error: NetworkErrorLike): string {
  * 不含 ECONNRESET 字样，但 code 仍为 ECONNRESET——只匹配 message 会漏掉重试。
  */
 export function isRetryableError(error: NetworkErrorLike): boolean {
+  if (certificateFailureKey(error)) return false
   const code = getNetworkErrorCode(error)
   if (code && (AI_RETRY.RETRYABLE_ERROR_CODES as readonly string[]).includes(code)) {
     return true
@@ -277,7 +308,9 @@ async function withApiRetry<T>(
  */
 const NET_ERROR_CODES = ['ENOTFOUND', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'EAI_AGAIN', 'EPROTO'] as const
 
-function translateNetworkError(err: NetworkErrorLike): string {
+export function translateNetworkError(err: NetworkErrorLike): string {
+  const certCode = certificateFailureKey(err)
+  if (certCode) return t(CERT_FAILURE_KEYS[certCode])
   const errMessage = getNetworkErrorMessage(err)
   const errCode = getNetworkErrorCode(err)
   if (errMessage.includes('socket hang up')) {

@@ -30,7 +30,7 @@ vi.mock('../../utils/logger', () => ({
   })
 }))
 
-import { isRetryableError } from '../ai.service'
+import { isRetryableError, translateNetworkError } from '../ai.service'
 
 describe('isRetryableError', () => {
   it('matches Node system error codes via err.code', () => {
@@ -62,5 +62,46 @@ describe('isRetryableError', () => {
   it('does not retry permanent client errors', () => {
     expect(isRetryableError({ code: 'ERR_INVALID_URL', message: 'Invalid URL' })).toBe(false)
     expect(isRetryableError('invalid api key')).toBe(false)
+  })
+
+  it('does not retry certificate verification failures', () => {
+    expect(isRetryableError({
+      code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+      message: 'unable to verify the first certificate',
+    })).toBe(false)
+    expect(isRetryableError({
+      code: 'EPROTO',
+      message: 'write EPROTO',
+      cause: { code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' },
+    })).toBe(false)
+  })
+})
+
+describe('translateNetworkError', () => {
+  it('explains a certificate the trust store cannot verify', () => {
+    expect(translateNetworkError({
+      code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+      message: 'unable to verify the first certificate',
+    })).toBe('error.net_cert_untrusted')
+  })
+
+  it('reads the certificate code from the cause when the outer error is wrapped', () => {
+    expect(translateNetworkError({
+      message: 'write EPROTO',
+      code: 'EPROTO',
+      cause: { code: 'SELF_SIGNED_CERT_IN_CHAIN' },
+    })).toBe('error.net_cert_untrusted')
+  })
+
+  it('keeps expiry and hostname mismatch distinct', () => {
+    expect(translateNetworkError({ code: 'CERT_HAS_EXPIRED', message: 'certificate has expired' }))
+      .toBe('error.net_cert_expired')
+    expect(translateNetworkError({ code: 'ERR_TLS_CERT_ALTNAME_INVALID', message: 'Hostname mismatch' }))
+      .toBe('error.net_cert_name')
+  })
+
+  it('leaves an unrecognized message unchanged', () => {
+    expect(translateNetworkError({ message: 'unable to verify the first certificate' }))
+      .toBe('unable to verify the first certificate')
   })
 })
