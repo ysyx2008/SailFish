@@ -1351,7 +1351,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       type: 'function',
       function: {
         name: 'dispatch_experts',
-        description: `派出专家，派出的都立刻开工，立刻返回每位专家的名字。不带 team 时各干各的，干完来敲门，和伙计一样。带 team 时这一次派的专家组成专家团：在一个群里说话、点名交接，你是组长；整个专家团停下来、有人点名组长、有人失败、或者专家互相叫醒又满了 ${WAKES_PER_CHECKPOINT} 次时，你会收到敲门。再交代、等待、打断和伙计一样用 followup_agent / wait_agents / interrupt_agent。专家和伙计合起来，一场任务里没做完的最多 ${MAX_LIVE_CHILDREN} 个。`,
+        description: `派出专家，都立刻开工，立刻返回名字。不带 team 各干各的，干完来敲门；带 team 组成专家团，在群里点名交接，你是组长，团里的规矩在派出后的回执里。再交代、等待、打断用 followup_agent / wait_agents / interrupt_agent。和伙计合起来，没做完的最多 ${MAX_LIVE_CHILDREN} 个。`,
         parameters: {
           type: 'object',
           properties: {
@@ -1360,16 +1360,15 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
               items: {
                 type: 'object',
                 properties: {
-                  role: { type: 'string', description: '专家角色：哪方面的专家，几个字（如「测试专家」「数据库性能专家」），跟名字一起显示给用户' },
+                  role: { type: 'string', description: '专家角色，几个字' },
                   name: { type: 'string', description: `${SUB_AGENT_NAME_DESCRIPTION}。不能叫「${TEAM_LEADER}」` },
-                  description: { type: 'string', description: '一句话简述（用于进度展示，组团时也写进团员名单）' },
+                  description: { type: 'string', description: '一句话简述' },
                   prompt: { type: 'string', description: '详细指令' }
                 },
                 required: ['role', 'description', 'prompt']
-              },
-              description: '至少 1 位'
+              }
             },
-            team: { type: 'string', description: `团名。带上就让这一次派的专家组成专家团，一个团 ${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位；不带就各干各的` },
+            team: { type: 'string', description: `团名，${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位` },
             fork_turns: { type: 'string', description: `${FORK_TURNS_DESCRIPTION}这一次派的人共用。` }
           },
           required: ['experts']
