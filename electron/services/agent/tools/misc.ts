@@ -378,9 +378,9 @@ export async function sendFileToChat(
   })
   executor.addStep({
     type: 'tool_result',
-    content: t('im.tool_file_uploading', { name: displayName, taskId }),
+    content: t('im.tool_file_uploading', { name: displayName }),
     toolName: 'send_file_to_chat',
-    toolResult: t('im.tool_file_uploading', { name: displayName, taskId })
+    toolResult: t('im.tool_file_uploading', { name: displayName })
   })
 
   return {
@@ -411,7 +411,7 @@ export async function awaitFileTransfer(
 
   executor.addStep({
     type: 'tool_call',
-    content: t('im.tool_file_awaiting', { name: task.displayName, taskId }),
+    content: t('im.tool_file_awaiting', { name: task.displayName }),
     toolName: 'await_file_transfer',
     toolArgs: { task_id: taskId, wait_seconds: waitSeconds },
     riskLevel: 'safe'

@@ -8,12 +8,37 @@ import { formatRecalledConversation } from '../../knowledge/conversation-index'
 import { truncateFromEnd } from './utils'
 import type { ToolExecutorConfig, ToolResult } from './types'
 import { isAbortError } from '../../../utils/abort'
-import { recallCompressed } from './context'
+import { archiveLineForModel, archiveLineForUser, recallCompressed } from './context'
 
 function asId(value: unknown): string {
   if (typeof value === 'string') return value.trim()
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)
   return ''
+}
+
+type NamedTask = { id: string; summary: string }
+
+function taskTitle(
+  memoryStore: { getSummaries(limit?: number): NamedTask[] },
+  taskId: string
+): string {
+  if (!taskId) return ''
+  return memoryStore.getSummaries(2000).find(item => item.id === taskId)?.summary?.trim() ?? ''
+}
+
+function withTitle(base: string, title: string): string {
+  return title ? `${base}: ${title}` : base
+}
+
+function taskLinesForModel(summaries: NamedTask[]): string {
+  return summaries.map(item => `- [${item.id}] ${item.summary}`).join('\n')
+}
+
+function taskLinesForUser(summaries: NamedTask[]): string {
+  return summaries.map(item => {
+    const name = item.summary.trim()
+    return `- ${name || t('memory.unnamed_task')}`
+  }).join('\n')
 }
 
 /**
@@ -95,18 +120,24 @@ function listRecallables(
   const archives = executor.getCompressedArchives?.() ?? []
   const lines: string[] = []
 
+  const userLines: string[] = []
   if (summaries.length > 0) {
     lines.push(t('memory.available_task_ids'), '')
+    userLines.push(t('memory.listing_tasks'), '')
     for (const s of summaries) {
       lines.push(`- [${s.id}] ${s.summary}`)
     }
+    userLines.push(taskLinesForUser(summaries))
   }
 
   if (archives.length > 0) {
     if (lines.length > 0) lines.push('')
+    if (userLines.length > 0) userLines.push('')
     lines.push(t('context_tool.recall_list'), '')
+    userLines.push(t('context_tool.recall_list'), '')
     for (const arc of archives) {
-      lines.push(`- **${arc.id}**: ${arc.summary} (${arc.messageCount} messages)`)
+      lines.push(archiveLineForModel(arc))
+      userLines.push(archiveLineForUser(arc))
     }
   }
 
@@ -127,7 +158,7 @@ function listRecallables(
     type: 'tool_result',
     content: t('memory.listing_recallables'),
     toolName: 'recall',
-    toolResult: output
+    toolResult: userLines.join('\n')
   })
   return { success: true, output }
 }
@@ -142,11 +173,12 @@ export function recallTask(
 ): ToolResult {
   const taskId = args.task_id as string
   const memoryStore = executor.getTaskMemory()
+  const title = taskId ? taskTitle(memoryStore, taskId) : ''
   
   // 记录工具调用
   executor.addStep({
     type: 'tool_call',
-    content: taskId ? t('memory.recalling_task', { taskId }) : t('memory.listing_tasks'),
+    content: taskId ? withTitle(t('memory.recalling_task'), title) : t('memory.listing_tasks'),
     toolName: 'recall_task',
     toolArgs: args,
     riskLevel: 'safe'
@@ -164,13 +196,13 @@ export function recallTask(
       })
       return { success: false, output: '', error }
     }
-    const availableIds = summaries.map(s => `- [${s.id}] ${s.summary}`).join('\n')
+    const availableIds = taskLinesForModel(summaries)
     const error = t('memory.task_id_required') + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds
     executor.addStep({
       type: 'tool_result',
-      content: t('memory.available_task_ids'),
+      content: t('memory.listing_tasks'),
       toolName: 'recall_task',
-      toolResult: availableIds
+      toolResult: taskLinesForUser(summaries)
     })
     return { success: false, output: '', error }
   }
@@ -179,13 +211,14 @@ export function recallTask(
   
   if (!result) {
     const summaries = memoryStore.getSummaries(20)
+    const shown = t('memory.task_missing')
     if (summaries.length === 0) {
       const error = t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.no_task_history')
       executor.addStep({
         type: 'tool_result',
-        content: error,
+        content: shown,
         toolName: 'recall_task',
-        toolResult: error
+        toolResult: shown
       })
       return { 
         success: false, 
@@ -193,13 +226,13 @@ export function recallTask(
         error
       }
     }
-    const availableIds = summaries.map(s => `- [${s.id}] ${s.summary}`).join('\n')
+    const availableIds = taskLinesForModel(summaries)
     const error = t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds
     executor.addStep({
       type: 'tool_result',
-      content: t('memory.task_not_found', { taskId }),
+      content: shown,
       toolName: 'recall_task',
-      toolResult: availableIds
+      toolResult: taskLinesForUser(summaries)
     })
     return { 
       success: false, 
@@ -208,8 +241,9 @@ export function recallTask(
     }
   }
   
+  const shownTitle = title || result.userRequest.trim()
   const lines: string[] = [
-    `📋 **${t('memory.task_recall')}**: ${taskId}`,
+    `📋 **${withTitle(t('memory.task_recall'), shownTitle)}**`,
     `**${t('memory.user_request')}**: ${result.userRequest}`,
     ''
   ]
@@ -249,7 +283,7 @@ export function recallTask(
   // 记录工具结果
   executor.addStep({
     type: 'tool_result',
-    content: t('memory.task_recalled', { taskId }),
+    content: withTitle(t('memory.task_recalled'), shownTitle),
     toolName: 'recall_task',
     toolResult: output
   })
@@ -268,12 +302,13 @@ export function deepRecall(
   const taskId = args.task_id as string
   const stepIndex = args.step_index as number | undefined
   const memoryStore = executor.getTaskMemory()
+  const title = taskId ? taskTitle(memoryStore, taskId) : ''
   
   // 记录工具调用
   const callContent = stepIndex !== undefined 
-    ? t('memory.deep_recalling_step', { taskId, stepIndex })
+    ? withTitle(t('memory.deep_recalling_step', { stepIndex }), title)
     : taskId 
-      ? t('memory.deep_recalling_task', { taskId })
+      ? withTitle(t('memory.deep_recalling_task'), title)
       : t('memory.listing_tasks')
   
   executor.addStep({
@@ -296,13 +331,13 @@ export function deepRecall(
       })
       return { success: false, output: '', error }
     }
-    const availableIds = summaries.map(s => `- [${s.id}] ${s.summary}`).join('\n')
+    const availableIds = taskLinesForModel(summaries)
     const error = t('memory.task_id_required') + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds
     executor.addStep({
       type: 'tool_result',
-      content: t('memory.available_task_ids'),
+      content: t('memory.listing_tasks'),
       toolName: 'deep_recall',
-      toolResult: availableIds
+      toolResult: taskLinesForUser(summaries)
     })
     return { success: false, output: '', error }
   }
@@ -312,11 +347,12 @@ export function deepRecall(
   if (!result) {
     if (stepIndex !== undefined) {
       const error = t('memory.step_not_found', { taskId, stepIndex })
+      const shown = t('memory.step_missing', { stepIndex })
       executor.addStep({
         type: 'tool_result',
-        content: error,
+        content: shown,
         toolName: 'deep_recall',
-        toolResult: error
+        toolResult: shown
       })
       return { 
         success: false, 
@@ -325,13 +361,14 @@ export function deepRecall(
       }
     }
     const summaries = memoryStore.getSummaries(20)
+    const shown = t('memory.task_missing')
     if (summaries.length === 0) {
       const error = t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.no_task_history')
       executor.addStep({
         type: 'tool_result',
-        content: error,
+        content: shown,
         toolName: 'deep_recall',
-        toolResult: error
+        toolResult: shown
       })
       return { 
         success: false, 
@@ -339,13 +376,13 @@ export function deepRecall(
         error
       }
     }
-    const availableIds = summaries.map(s => `- [${s.id}] ${s.summary}`).join('\n')
+    const availableIds = taskLinesForModel(summaries)
     const error = t('memory.task_not_found', { taskId }) + '\n\n' + t('memory.available_task_ids') + '\n' + availableIds
     executor.addStep({
       type: 'tool_result',
-      content: t('memory.task_not_found', { taskId }),
+      content: shown,
       toolName: 'deep_recall',
-      toolResult: availableIds
+      toolResult: taskLinesForUser(summaries)
     })
     return { 
       success: false, 
@@ -358,7 +395,7 @@ export function deepRecall(
   if (!Array.isArray(result)) {
     const step = result
     const lines: string[] = [
-      `📋 **${t('memory.deep_recall')}**: ${taskId} - ${t('memory.step')} ${stepIndex}`,
+      `📋 **${withTitle(t('memory.deep_recall'), title)}** - ${t('memory.step')} ${stepIndex}`,
       '',
       `**${t('memory.step_type')}**: ${step.type}`,
     ]
@@ -391,7 +428,7 @@ export function deepRecall(
     // 记录工具结果
     executor.addStep({
       type: 'tool_result',
-      content: t('memory.step_recalled', { taskId, stepIndex: stepIndex ?? 0 }),
+      content: withTitle(t('memory.step_recalled', { stepIndex: stepIndex ?? 0 }), title),
       toolName: 'deep_recall',
       toolResult: output
     })
@@ -402,7 +439,7 @@ export function deepRecall(
   // 返回所有步骤的概览
   const steps = result
   const lines: string[] = [
-    `📋 **${t('memory.deep_recall')}**: ${taskId}`,
+    `📋 **${withTitle(t('memory.deep_recall'), title)}**`,
     `**${t('memory.total_steps')}**: ${steps.length}`,
     ''
   ]
@@ -429,7 +466,7 @@ export function deepRecall(
   // 记录工具结果
   executor.addStep({
     type: 'tool_result',
-    content: t('memory.task_steps_recalled', { taskId, count: steps.length }),
+    content: withTitle(t('memory.task_steps_recalled', { count: steps.length }), title),
     toolName: 'deep_recall',
     toolResult: output
   })

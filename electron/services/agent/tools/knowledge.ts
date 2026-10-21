@@ -301,10 +301,13 @@ export async function addKnowledge(
     const docId = await service.addDocument(parsed, { folder, addedBy: 'agent' })
     const doc = service.getDocument(docId)
     const where = doc?.folder ? `${doc.folder}/${doc.filename}` : (doc?.filename || parsed.filename)
+    const shown = before.isDuplicate
+      ? `知识库里已经有同样内容：${where}。正文没有放进这次对话。`
+      : `已放入知识库：${where}。正文没有放进这次对话。`
     const output = before.isDuplicate
       ? `知识库里已经有同样内容：${where}（doc_id: ${docId}）。正文没有放进这次对话。`
       : `已放入知识库：${where}（doc_id: ${docId}）。正文没有放进这次对话。`
-    executor.addStep({ type: 'tool_result', content: output, toolName: 'add_knowledge' })
+    executor.addStep({ type: 'tool_result', content: shown, toolName: 'add_knowledge', toolResult: shown })
     return { success: true, output }
   } catch (error) {
     const errorMsg = error instanceof FolderPathError

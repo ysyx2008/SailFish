@@ -3,9 +3,10 @@ import type { AgentStep } from '@shared/types'
 import { checkContext, compressContext, dispatchContext, resolveContextAction } from '../tools/context'
 import type { ToolExecutorConfig } from '../tools/types'
 
-function makeExecutor(overrides?: Partial<ToolExecutorConfig>): ToolExecutorConfig {
+function makeExecutor(overrides?: Partial<ToolExecutorConfig>): ToolExecutorConfig & { steps: AgentStep[] } {
   const steps: AgentStep[] = []
   return {
+    steps,
     addStep: (step) => {
       const created = { id: `s${steps.length}`, timestamp: Date.now(), ...step } as AgentStep
       steps.push(created)
@@ -47,6 +48,8 @@ describe('dispatchContext', () => {
     expect(result.success).toBe(true)
     expect(executor.compressCurrentContext).toHaveBeenCalledWith('重点留部署步骤')
     expect(result.output).toContain('ca-1')
+    const visible = executor.steps.map(step => `${step.content ?? ''}\n${step.toolResult ?? ''}`).join('\n')
+    expect(visible).not.toContain('ca-1')
 
     const inferred = makeExecutor()
     const inferredResult = await dispatchContext({ summary: '只带小结也当压缩' }, inferred)

@@ -69,8 +69,9 @@ async function moveDoc(args: Record<string, unknown>, executor: ToolExecutorConf
     const moved = await service.moveLibraryDocument(docId, folder)
     if (!moved) return { success: false, output: '', error: '同目录下已有同名文档' }
     const where = folder ? `${service.getDocument(docId)?.folder}/${doc.filename}` : doc.filename
+    const shown = `已挪到：${where}。`
     const output = `已挪到：${where}（doc_id: ${docId}）。`
-    executor.addStep({ type: 'tool_result', content: output, toolName: 'archive_move' })
+    executor.addStep({ type: 'tool_result', content: shown, toolName: 'archive_move', toolResult: shown })
     return { success: true, output }
   } catch (error) {
     return fail(error, '挪动失败')

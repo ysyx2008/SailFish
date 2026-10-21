@@ -71,10 +71,9 @@ async function dingtalkRead(args: DingTalkReadArgs, executor: ToolExecutorConfig
     return { success: false, output: '', error: t('dingtalk.missing_resource' as any) }
   }
 
-  const idHint = args.union_id || args.userid || args.process_instance_id || args.task_id || ''
   executor.addStep({
     type: 'tool_call',
-    content: t('dingtalk.reading' as any, { resource: resourceLabel(resource), hint: idHint ? ` (${idHint.substring(0, 20)})` : '' }),
+    content: t('dingtalk.reading' as any, { resource: resourceLabel(resource), hint: '' }),
     toolName: 'dingtalk_read',
     toolArgs: { resource, ...Object.fromEntries(Object.entries(args).filter(([_, v]) => v !== undefined).slice(0, 4)) },
     riskLevel: 'safe'
@@ -492,7 +491,7 @@ async function readContact(args: DingTalkReadArgs, executor: ToolExecutorConfig)
       return { success: false, output: '', error: `用户 ${userid} 不存在` }
     }
     const output = formatUserDetail(user)
-    addReadStep(executor, 'dingtalk_read', `👤 ${user.name || userid}`, output)
+    addReadStep(executor, 'dingtalk_read', `👤 ${user.name || '成员'}`, output)
     return { success: true, output }
   }
 
@@ -558,7 +557,7 @@ async function readApproval(args: DingTalkReadArgs, executor: ToolExecutorConfig
       return { success: false, output: '', error: `审批实例 ${process_instance_id} 不存在` }
     }
     const output = formatApprovalDetail(info, process_instance_id)
-    addReadStep(executor, 'dingtalk_read', `📋 审批 ${process_instance_id.substring(0, 12)}...`, output)
+    addReadStep(executor, 'dingtalk_read', `📋 ${info.title || '审批'}`, output)
     return { success: true, output }
   }
 
@@ -648,8 +647,9 @@ async function writeApproval(args: DingTalkWriteArgs, executor: ToolExecutorConf
 
   const resp = await oapi(clientId, clientSecret, 'POST', '/topapi/processinstance/create', body)
   const instanceId = resp?.process_instance_id || '(unknown)'
+  const shown = '审批申请已提交'
   const output = `审批申请已提交 (instance_id: ${instanceId})`
-  addWriteStep(executor, 'dingtalk_write', output, output)
+  addWriteStep(executor, 'dingtalk_write', shown, shown)
   return { success: true, output }
 }
 
@@ -675,7 +675,7 @@ async function readBitable(args: DingTalkReadArgs, executor: ToolExecutorConfig)
     const resp = await api(clientId, clientSecret, 'GET',
       `/v1.0/notable/bases/${base_id}/sheets/${encodeURIComponent(sheet_id)}/records/${record_id}?${opParam}`)
     const output = formatBitableRecord(resp)
-    addReadStep(executor, 'dingtalk_read', `📊 记录 ${record_id}`, output)
+    addReadStep(executor, 'dingtalk_read', '已读取一条记录', output)
     return { success: true, output }
   }
 
@@ -777,8 +777,9 @@ async function writeBitable(args: DingTalkWriteArgs, executor: ToolExecutorConfi
 
     const created = resp?.records || []
     const ids = created.map((r: any) => r.recordId || r.id).filter(Boolean)
-    const output = `已新增 ${created.length || records.length} 条记录${ids.length ? ` (IDs: ${ids.join(', ')})` : ''}`
-    addWriteStep(executor, 'dingtalk_write', output, output)
+    const shown = `已新增 ${created.length || records.length} 条记录`
+    const output = `${shown}${ids.length ? ` (IDs: ${ids.join(', ')})` : ''}`
+    addWriteStep(executor, 'dingtalk_write', shown, shown)
     return { success: true, output }
   }
 
@@ -791,8 +792,9 @@ async function writeBitable(args: DingTalkWriteArgs, executor: ToolExecutorConfi
     await api(clientId, clientSecret, 'PUT',
       `${sheetPath}?${opParam}`, { records })
 
+    const shown = '记录已更新'
     const output = `记录 ${record_id} 已更新`
-    addWriteStep(executor, 'dingtalk_write', output, output)
+    addWriteStep(executor, 'dingtalk_write', shown, shown)
     return { success: true, output }
   }
 
