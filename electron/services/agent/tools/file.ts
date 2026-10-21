@@ -714,12 +714,18 @@ export async function fileSearch(
   }
 }
 
+/** 按行切开文本；末尾的换行是最后一行的结尾，不另算一行（与 wc -l 同口径） */
+export function splitTextLines(text: string): string[] {
+  const lines = text.split('\n')
+  if (lines[lines.length - 1] === '') lines.pop()
+  return lines
+}
+
 /**
- * 为文本内容添加行号前缀，帮助 AI 精确定位和引用
+ * 为文本行添加行号前缀，帮助 AI 精确定位和引用
  * 格式: "   1|line content"（行号右对齐，宽度根据总行数自适应）
  */
-function addLineNumbers(content: string, startLine: number = 1): string {
-  const lines = content.split('\n')
+function addLineNumbers(lines: string[], startLine: number = 1): string {
   const maxLineNum = startLine + lines.length - 1
   const width = Math.max(4, String(maxLineNum).length)
   return lines.map((line, i) => {
@@ -1513,7 +1519,7 @@ ${hint}`
       try {
         if (fileSize <= 10 * 1024 * 1024) {
           const fullContent = readTextFileSync(filePath)
-          const lines = fullContent.split('\n')
+          const lines = splitTextLines(fullContent)
           totalLines = lines.length
           sampleContent = lines.slice(0, 10).join('\n')
         } else {
@@ -1583,7 +1589,7 @@ ${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`
 
     if (startLine !== undefined || endLine !== undefined) {
       const fullContent = readTextFileSync(filePath)
-      const allLines = fullContent.split('\n')
+      const allLines = splitTextLines(fullContent)
       totalLines = allLines.length
       const start = startLine !== undefined ? Math.max(1, startLine) - 1 : 0
       const end = endLine !== undefined ? Math.min(allLines.length, endLine) : allLines.length
@@ -1596,7 +1602,7 @@ ${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`
       isPartialRead = actualLines.length < allLines.length || linesCapped
     } else if (maxLines !== undefined) {
       const fullContent = readTextFileSync(filePath)
-      const allLines = fullContent.split('\n')
+      const allLines = splitTextLines(fullContent)
       totalLines = allLines.length
       readLineCapMode = 'head'
       const sliced = allLines.slice(0, maxLines)
@@ -1607,7 +1613,7 @@ ${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`
       isPartialRead = actualLines.length < allLines.length || linesCapped
     } else if (tailLines !== undefined) {
       const fullContent = readTextFileSync(filePath)
-      const allLines = fullContent.split('\n')
+      const allLines = splitTextLines(fullContent)
       totalLines = allLines.length
       readLineCapMode = 'tail'
       const sliced = allLines.slice(-tailLines)
@@ -1629,7 +1635,7 @@ ${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`
         return { success: false, output: '', error: errorMsg }
       }
       content = readTextFileSync(filePath)
-      actualLines = content.split('\n')
+      actualLines = splitTextLines(content)
       totalLines = actualLines.length
       readLineCapMode = 'head'
       const capped = capReadLines(actualLines, readBudget, readLineCapMode)
@@ -1673,7 +1679,9 @@ ${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`
     const lineOffset = startLine !== undefined ? Math.max(1, startLine)
       : tailLines !== undefined && totalLines !== undefined ? totalLines - actualLines.length + 1
       : 1
-    const numberedContent = addLineNumbers(content, lineOffset)
+    const numberedContent = totalLines === 0
+      ? t('file.empty_content')
+      : addLineNumbers(actualLines, lineOffset)
     const outputForAi = applyReadFileOutputBudget(numberedContent, filePath, executor)
 
     executor.addStep({
