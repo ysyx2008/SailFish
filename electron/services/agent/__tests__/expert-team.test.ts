@@ -49,6 +49,7 @@ import { teamSay } from '../tools/expert'
 import { dispatchSubAgents, parseDispatchTasks, followupAgent, waitAgents, denyIfNotForThisAgent, SubAgentWorkspace } from '../tools/sub-agent'
 import { filterSubAgentTools, filterTeamMemberTools, getAgentTools, type ToolDefinitionWithMeta } from '../tools'
 import { PromptBuilder } from '../prompt-builder'
+import { buildPreToolCallDisplay, formatToolCallPrefixFromMeta } from '../tool-metadata'
 import type { AgentConfig, ToolExecutorConfig } from '../tools/types'
 import type { AgentContext } from '../types'
 import type { AgentStep } from '@shared/types'
@@ -374,6 +375,56 @@ describe('dispatch_agents 团名和角色的整理与上限', () => {
     const result = await dispatchSubAgents(args, CONFIG, executor)
     expect(result.success).toBe(false)
     expect(render(args)).toBe('派出 3 个伙计')
+  })
+})
+
+describe('等待 / 再交代 / 打断那几张卡：对象是专家就写专家', () => {
+  const tools = getAgentTools(undefined, { mode: 'assistant' }) as ToolDefinitionWithMeta[]
+  const metaOf = (name: string) => tools.find(def => def.function.name === name)!._meta
+  const roster = [
+    { name: '写代码', role: '开发专家', status: 'running' },
+    { name: '做测试', role: '测试专家', status: 'completed' },
+    { name: '跑腿', status: 'running' },
+    { name: '读配置', status: 'completed' },
+  ]
+  const card = (tool: string, args: Record<string, unknown>, subAgents: typeof roster | undefined = roster) =>
+    formatToolCallPrefixFromMeta(metaOf(tool), args, { subAgents: subAgents && (() => subAgents) })
+
+  it('等待：还在干的全是专家就写「等待专家」，混着伙计或没名册就写「等待伙计」', () => {
+    expect(card('wait_agents', {}, [roster[0], roster[1]])).toBe('等待专家')
+    expect(card('wait_agents', {})).toBe('等待伙计')
+    expect(card('wait_agents', {}, undefined)).toBe('等待伙计')
+    expect(card('wait_agents', {}, [])).toBe('等待伙计')
+  })
+
+  it('等待：不传名字只看还在干的；都不在干了看全部；传了名字就看名字', () => {
+    expect(card('wait_agents', {}, [roster[0], roster[1], roster[3]])).toBe('等待专家')
+    expect(card('wait_agents', {}, [roster[1], roster[3]])).toBe('等待伙计')
+    expect(card('wait_agents', { names: ['写代码', '做测试'] })).toBe('等待专家')
+    expect(card('wait_agents', { names: ['写代码', '跑腿'] })).toBe('等待伙计')
+    expect(card('wait_agents', { names: ['不认识的人'] })).toBe('等待伙计')
+  })
+
+  it('再交代、打断：对象是专家写「专家」，后面跟名字；名字还没到时用占位符', () => {
+    expect(card('followup_agent', { name: '写代码' })).toBe('再交代专家: 写代码')
+    expect(card('followup_agent', { name: '跑腿' })).toBe('再交代伙计: 跑腿')
+    expect(card('interrupt_agent', { name: '做测试' })).toBe('打断专家: 做测试')
+    expect(card('interrupt_agent', { name: '读配置' })).toBe('打断伙计: 读配置')
+    expect(card('followup_agent', {})).toMatch(/^再交代伙计: /)
+  })
+
+  it('流式预卡片和执行器用同一套：认得花名册', () => {
+    const built = buildPreToolCallDisplay('wait_agents', '{"timeout": 60}', metaOf('wait_agents'), { subAgents: () => [roster[0]] })
+    expect(built).toBe('等待专家')
+  })
+
+  it('花名册给的名单只有名字、角色、状态', async () => {
+    const { roster: live, executor } = setup()
+    await dispatchSubAgents({ team: '小工具组', tasks: TEAM_ARGS.tasks }, CONFIG, executor)
+    const brief = live.brief()
+    expect(brief).toHaveLength(TEAM_ARGS.tasks.length)
+    expect(Object.keys(brief[0]).sort()).toEqual(['name', 'role', 'status'])
+    expect(brief.every(c => !!c.role)).toBe(true)
   })
 })
 

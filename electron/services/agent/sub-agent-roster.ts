@@ -239,6 +239,11 @@ export class SubAgentRoster {
     return [...this.children.values()].map(snapshotOf)
   }
 
+  /** 只要名字、角色和状态的名单：界面标题要认「这几位是不是专家」，不必把每人的步骤都复制一遍 */
+  brief(): Array<Pick<ChildSnapshot, 'name' | 'role' | 'status'>> {
+    return [...this.children.values()].map(({ name, role, status }) => ({ name, role, status }))
+  }
+
   get(name: string): ChildSnapshot | undefined {
     const slot = this.children.get(name)
     return slot ? snapshotOf(slot) : undefined

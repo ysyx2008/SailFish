@@ -34,6 +34,8 @@ const INLINE_RESULT_MIN = 1000
 const PROGRESS_INTERVAL_MS = 250
 /** 总览是给秘书读的文件，不用像界面那样勤；伙计多时每次重写都要把所有人的步骤过一遍 */
 const OVERVIEW_INTERVAL_MS = 1000
+/** 等伙计时多久看一次用户有没有说话 */
+const USER_SPEECH_POLL_MS = 200
 
 function buildArtifactDir(): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
@@ -602,13 +604,23 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
     : undefined
   const timeoutSec = Math.min(Math.max(1, Number(args.timeout) || 120), 600)
 
+  // 等的时候用户说话：这次等待先停下，让主人先回应；伙计照旧在后台干
+  const userSpoke = new AbortController()
+  const spoke = () => executor.hasPendingUserSpeech?.() ?? false
   const parentSignal = executor.getAbortSignal?.()
   const timeout = AbortSignal.timeout(timeoutSec * 1000)
-  const signal = parentSignal
-    ? AbortSignal.any([parentSignal, timeout])
-    : timeout
+  const signal = AbortSignal.any([...(parentSignal ? [parentSignal] : []), timeout, userSpoke.signal])
+  if (spoke()) userSpoke.abort()
+  const poll = executor.hasPendingUserSpeech
+    ? setInterval(() => { if (spoke()) userSpoke.abort() }, USER_SPEECH_POLL_MS)
+    : undefined
 
-  const news = await roster.waitForNews(names, signal)
+  let news: Awaited<ReturnType<SubAgentRoster['waitForNews']>>
+  try {
+    news = await roster.waitForNews(names, signal)
+  } finally {
+    if (poll) clearInterval(poll)
+  }
   if (executor.isAborted()) {
     return { success: false, output: '', error: t('error.operation_aborted') }
   }
@@ -619,9 +631,11 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
   const stillWorking = news.targets.some(c => c.status === 'pending' || c.status === 'running')
   const headline = news.arrived.length > 0
     ? t('dispatch.wait_arrived', { list: news.arrived.map(c => `${c.name}（${statusLabel(c.status)}）`).join('、') })
-    : stillWorking
-      ? t('dispatch.wait_news_timeout', { seconds: timeoutSec })
-      : t('dispatch.wait_all_done')
+    : userSpoke.signal.aborted
+      ? t('dispatch.wait_user_spoke')
+      : stillWorking
+        ? t('dispatch.wait_news_timeout', { seconds: timeoutSec })
+        : t('dispatch.wait_all_done')
   return {
     success: true,
     output: [

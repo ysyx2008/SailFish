@@ -18,7 +18,7 @@
  * - isJsonStringFieldComplete(partial, key) 原始流里某个字符串字段的值是否已闭合
  */
 import type { ToolDefinition } from '../ai.service'
-import type { ToolDefinitionWithMeta, ToolMeta, ToolStreamDisplay } from './tools'
+import type { ToolDefinitionWithMeta, ToolDisplayContext, ToolMeta, ToolStreamDisplay } from './tools'
 import { t, type TranslationKey } from './i18n'
 
 /**
@@ -76,13 +76,14 @@ function resolveTitleKey(
  */
 export function formatToolCallPrefixFromMeta(
   meta: ToolMeta | undefined,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  context?: ToolDisplayContext
 ): string | null {
   const display = meta?.streamDisplay
   if (!display) return null
   // 自定义渲染优先（complex 工具如 dispatch_agents 用得到）
   if (display.customRender) {
-    return display.customRender(args)
+    return display.customRender(args, context)
   }
   if (!display.titleKey) return null
   const title = t(resolveTitleKey(display.titleKey, args))
@@ -102,9 +103,10 @@ export function formatToolCallPrefixFromMeta(
  */
 export function formatStreamPreCardFromMeta(
   meta: ToolMeta | undefined,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  context?: ToolDisplayContext
 ): string | null {
-  const prefix = formatToolCallPrefixFromMeta(meta, args)
+  const prefix = formatToolCallPrefixFromMeta(meta, args, context)
   if (prefix === null) return null
   const display = meta?.streamDisplay
   let chars = 0
@@ -293,17 +295,19 @@ export function isJsonStringFieldComplete(partial: string, field: string): boole
  * @param toolName    AI 流式中的工具名
  * @param partialArgs 当前已到达的 args 字符串（可能不完整）
  * @param meta        来自 ToolDefinition._meta 的元数据，调用方负责按 toolName 查表
+ * @param context     标题要认花名册里的人是不是专家时用（等待 / 再交代 / 打断那几张卡）
  */
 export function buildPreToolCallDisplay(
   toolName: string,
   partialArgs: string,
-  meta: ToolMeta | undefined
+  meta: ToolMeta | undefined,
+  context?: ToolDisplayContext
 ): string | null {
   const parsed = tryParsePartialJson(partialArgs)
   if (!parsed) return null
   // 工具声明了 streamDisplay：尝试富信息渲染
   if (meta?.streamDisplay) {
-    return formatStreamPreCardFromMeta(meta, parsed)
+    return formatStreamPreCardFromMeta(meta, parsed, context)
   }
   // 未声明 streamDisplay 的工具走通用兜底（透明原则默认值）
   return `${t('status.calling')}: ${toolName}`

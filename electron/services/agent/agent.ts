@@ -4850,7 +4850,7 @@ export abstract class Agent {
           const lastAt = toolProgressThrottle.get(toolCallId) || 0
           if (now - lastAt < TOOL_PROGRESS_THROTTLE_MS) return
 
-          const built = buildPreToolCallDisplay(toolName, partialArgs, meta)
+          const built = buildPreToolCallDisplay(toolName, partialArgs, meta, { subAgents: () => this._subAgentRoster?.brief() ?? [] })
           // 解析失败时不回退显示（保留上一次已解析内容），让用户观感上是"连续增长"
           if (!run.pendingPreToolCallText) run.pendingPreToolCallText = new Map()
           const previousText = run.pendingPreToolCallText.get(toolCallId)

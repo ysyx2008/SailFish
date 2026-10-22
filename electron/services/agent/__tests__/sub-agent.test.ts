@@ -270,6 +270,58 @@ describe('dispatch_agents 异步派出', () => {
     roster.abortAll()
   })
 
+  it('等的时候用户说话：这次等待先停下、说明原因，伙计照旧在跑；用户没说话才等到超时', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, stubChild('ok', 5000))
+    let userSpoke = false
+    executor.hasPendingUserSpeech = () => userSpoke
+    await dispatchSubAgents({ tasks: [{ name: 'a', description: 'a', prompt: 'a' }] }, defaultConfig, executor)
+
+    setTimeout(() => { userSpoke = true }, 300)
+    const started = Date.now()
+    const waited = await waitAgents({ timeout: 120 }, executor)
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(waited.success).toBe(true)
+    expect(waited.output).toContain('用户发来了新消息，这次等待先停下')
+    expect(waited.output).toContain('在干 1')
+    expect(roster.hasLive()).toBe(true)
+
+    // 用户那句已经处理掉了：再等就是正常的等，到超时才返回
+    userSpoke = false
+    const quiet = await waitAgents({ timeout: 1 }, executor)
+    expect(quiet.output).toContain('等了 1 秒，还没有新消息')
+    roster.abortAll()
+  })
+
+  it('等之前用户已经说了话：谁都没做完也立刻返回，不等到超时', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, stubChild('ok', 5000))
+    executor.hasPendingUserSpeech = () => true
+    await dispatchSubAgents({ tasks: [{ name: 'slow', description: 'slow', prompt: 'b' }] }, defaultConfig, executor)
+    const started = Date.now()
+    const waited = await waitAgents({ timeout: 120 }, executor)
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect(waited.output).toContain('用户发来了新消息，这次等待先停下')
+    expect(waited.output).toContain('在干 1')
+    roster.abortAll()
+  })
+
+  it('用户说话的同时刚好有人做完：新到的照报', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, (name) => stubChild('ok', name === 'quick' ? 5 : 5000))
+    executor.hasPendingUserSpeech = () => true
+    await dispatchSubAgents({
+      tasks: [
+        { name: 'quick', description: 'quick', prompt: 'a' },
+        { name: 'slow', description: 'slow', prompt: 'b' },
+      ]
+    }, defaultConfig, executor)
+    await new Promise(r => setTimeout(r, 60))
+    const waited = await waitAgents({ timeout: 120 }, executor)
+    expect(waited.output).toContain('新到：quick（已完成）')
+    roster.abortAll()
+  })
+
   it('fork_turns=none 时伙计开局不带这场对话', async () => {
     const roster = new SubAgentRoster()
     const child = stubChild('ok', 1)

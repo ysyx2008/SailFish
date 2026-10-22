@@ -50,6 +50,11 @@ export type AgentMode = TerminalType
  *
  * 两种模式都支持 progressFields 共同的字符数尾缀。
  */
+export interface ToolDisplayContext {
+  /** 这场任务里派出过的伙计和专家（名字、角色、状态）；标题要认「对象是不是专家」时用 */
+  subAgents?: () => ReadonlyArray<{ name: string; role?: string; status: string }>
+}
+
 export interface ToolStreamDisplay {
   /**
    * 标题前缀的 i18n 键，或根据 args 动态返回 i18n 键的函数。
@@ -73,7 +78,7 @@ export interface ToolStreamDisplay {
    * 返回 null 表示当前 args 还不足以构造（如 dispatch_agents 的 tasks 数组还没到），
    * 让调用方保留上一次缓存内容，避免"闪一下又消失"。
    */
-  customRender?: (args: Record<string, unknown>) => string | null
+  customRender?: (args: Record<string, unknown>, context?: ToolDisplayContext) => string | null
   /**
    * 自定义字符数计算（可选），用于 progressFields 表达不了的嵌套字段累计场景
    *（如 dispatch_agents 的 tasks[].prompt + tasks[].description）。
@@ -231,6 +236,37 @@ function dispatchAgentsPrefix(args: Record<string, unknown>): string | null {
     && team !== undefined && labelLength(team) <= MAX_TEAM_NAME_CHARS
   return dispatchTitle(count, allExperts, teamFits ? team : undefined)
 }
+
+/**
+ * 等待 / 再交代 / 打断那几张卡的对象是不是全是专家（有角色）：
+ * 没给名字就看还在干的所有人（都不在干了就看全部）；名字对不上花名册的按伙计。
+ */
+function targetsAreExperts(names: string[] | undefined, context?: ToolDisplayContext): boolean {
+  const all = context?.subAgents?.() ?? []
+  if (names?.length) return names.every(name => !!all.find(c => c.name === name)?.role)
+  const live = all.filter(c => c.status === 'pending' || c.status === 'running')
+  const pool = live.length > 0 ? live : all
+  return pool.length > 0 && pool.every(c => !!c.role)
+}
+
+/** wait_agents 那一张卡的标题：等的全是专家写「等待专家」，否则「等待伙计」 */
+export function waitAgentsTitle(args: Record<string, unknown>, context?: ToolDisplayContext): string {
+  const names = Array.isArray(args.names)
+    ? args.names.filter((n): n is string => typeof n === 'string' && n.trim() !== '')
+    : undefined
+  return t(targetsAreExperts(names, context) ? 'tool.wait_experts' : 'tool.wait_agents')
+}
+
+/** followup_agent / interrupt_agent 那一张卡的标题：对象是专家写「专家」，否则「伙计」，后面跟名字 */
+function namedAgentTitle(expertKey: 'tool.followup_expert' | 'tool.interrupt_expert', helperKey: 'tool.followup_agent' | 'tool.interrupt_agent') {
+  return (args: Record<string, unknown>, context?: ToolDisplayContext): string => {
+    const name = typeof args.name === 'string' ? args.name : undefined
+    const title = t(name && targetsAreExperts([name], context) ? expertKey : helperKey)
+    return `${title}: ${name ?? getStreamPlaceholder()}`
+  }
+}
+export const followupAgentTitle = namedAgentTitle('tool.followup_expert', 'tool.followup_agent')
+export const interruptAgentTitle = namedAgentTitle('tool.interrupt_expert', 'tool.interrupt_agent')
 
 /** 派出那一步的标题：组了团写团名，全是专家写专家，否则写伙计 */
 export function dispatchTitle(count: number, allExperts: boolean, team?: string): string {
@@ -1289,7 +1325,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       _meta: {
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
-        streamDisplay: { titleKey: 'tool.followup_agent', titleField: 'name' }
+        streamDisplay: { customRender: followupAgentTitle }
       }
     } as ToolDefinitionWithMeta,
     {
@@ -1315,7 +1351,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       _meta: {
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
-        streamDisplay: { titleKey: 'tool.wait_agents' }
+        streamDisplay: { customRender: waitAgentsTitle }
       }
     } as ToolDefinitionWithMeta,
     {
@@ -1334,7 +1370,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       _meta: {
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
-        streamDisplay: { titleKey: 'tool.interrupt_agent', titleField: 'name' }
+        streamDisplay: { customRender: interruptAgentTitle }
       }
     } as ToolDefinitionWithMeta,
     {
