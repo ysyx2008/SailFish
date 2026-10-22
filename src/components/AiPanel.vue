@@ -2996,7 +2996,6 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                       <ExpertTeamCard
                         v-if="item.step!.expertTeam"
                         :team="item.step!.expertTeam"
-                        :agents="item.step!.subAgents"
                         @open="openExpertTeam(item.step!.id)"
                       />
                     </div>
