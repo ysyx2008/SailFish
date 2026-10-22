@@ -577,12 +577,12 @@ const hiddenSubAgentCount = (stepId: string, list: readonly SubAgentResult[]): n
   if (list.length <= SUB_AGENT_FOLD_THRESHOLD || !isSubAgentListOpen(stepId)) return 0
   return Math.max(0, list.length - subAgentShownLimit(stepId, list))
 }
-const formatSubAgentSummary = (list: readonly SubAgentResult[], toolName?: string): string => {
+const formatSubAgentSummary = (list: readonly SubAgentResult[]): string => {
   const counts = countSubAgents(list)
   const parts = SUB_AGENT_SUMMARY_ORDER
     .filter(bucket => counts[bucket] > 0)
     .map(bucket => t(`ai.subAgentCount.${bucket}`, { count: counts[bucket] }))
-  const key = toolName === 'dispatch_experts' ? 'ai.expertSummary' : 'ai.subAgentSummary'
+  const key = list.length > 0 && list.every(agent => !!agent.role) ? 'ai.expertSummary' : 'ai.subAgentSummary'
   return t(key, { count: list.length, parts: parts.join(' / ') })
 }
 
@@ -2938,7 +2938,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                         @click="toggleSubAgentList(item.step!.id)"
                       >
                         <span class="sub-agent-expand-icon" :class="{ expanded: isSubAgentListOpen(item.step!.id) }">▶</span>
-                        <span>{{ formatSubAgentSummary(item.step!.subAgents, item.step!.toolName) }}</span>
+                        <span>{{ formatSubAgentSummary(item.step!.subAgents) }}</span>
                       </div>
                       <div
                         v-for="sa in visibleSubAgents(item.step!.id, item.step!.subAgents)"

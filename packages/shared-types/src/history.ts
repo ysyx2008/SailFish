@@ -41,7 +41,7 @@ export interface AgentStepRecord {
   autoReview?: import('./agent').AutoReviewTrail
   /** 并行子 Agent 卡片组（dispatch_agents 工具专用） */
   subAgents?: import('./agent').SubAgentResult[]
-  /** 专家团群聊（dispatch_experts 组团时） */
+  /** 专家团群聊（dispatch_agents 带 team 组团时） */
   expertTeam?: import('./agent').ExpertTeamView
   /** Canvas 预览数据（仅 UI / Artifact 面板消费，不发给 AI；历史重开时重放） */
   canvasData?: import('./canvas').CanvasData

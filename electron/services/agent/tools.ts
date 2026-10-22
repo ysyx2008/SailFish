@@ -202,12 +202,6 @@ function writeTextFilePrefix(args: Record<string, unknown>): string {
   }
 }
 
-/**
- * dispatch_agents 的预卡片渲染。
- * 内容格式必须与 tools/sub-agent.ts 执行器 addStep 的 content 对齐：
- *   t('dispatch.running', { count, type })
- * tasks 数组还没到或为空时返回 null（上层调用方保留缓存）。
- */
 /** dispatch_agents 两种写法各自的条目：tasks[] 与 batch.items[]。 */
 function dispatchAgentsEntries(args: Record<string, unknown>): { tasks: unknown[]; batchItems: unknown[]; instruction?: string } {
   const tasks = Array.isArray(args.tasks) ? (args.tasks as unknown[]) : []
@@ -217,38 +211,27 @@ function dispatchAgentsEntries(args: Record<string, unknown>): { tasks: unknown[
   return { tasks, batchItems, instruction }
 }
 
+/**
+ * dispatch_agents 的预卡片渲染，与 tools/sub-agent.ts 执行器 addStep 的 content 逐字对齐（同用 dispatchTitle）。
+ * 条目还没到或为空时返回 null（上层调用方保留缓存）；组团不成立的参数不写团名，执行器会整批退回。
+ */
 function dispatchAgentsPrefix(args: Record<string, unknown>): string | null {
   const { tasks, batchItems } = dispatchAgentsEntries(args)
   const count = tasks.length + batchItems.length
   if (count === 0) return null
-  return t('dispatch.running', { count })
+  const allExperts = batchItems.length === 0 && tasks.every(task => {
+    const role = (task as { role?: unknown } | null)?.role
+    return typeof role === 'string' && role.trim() !== ''
+  })
+  const teamFits = allExperts && count >= MIN_TEAM_SIZE && count <= MAX_TEAM_SIZE
+  return dispatchTitle(count, allExperts, teamFits && typeof args.team === 'string' ? args.team : undefined)
 }
 
-/**
- * dispatch_experts 的预卡片渲染，与 tools/expert.ts 执行器 addStep 的 content 对齐（expertDispatchTitle）。
- */
-function dispatchExpertsPrefix(args: Record<string, unknown>): string | null {
-  const experts = Array.isArray(args.experts) ? args.experts : []
-  if (experts.length === 0) return null
-  return expertDispatchTitle(experts.length, typeof args.team === 'string' ? args.team : undefined)
-}
-
-export function expertDispatchTitle(count: number, team?: string): string {
+/** 派出那一步的标题：组了团写团名，全是专家写专家，否则写伙计 */
+export function dispatchTitle(count: number, allExperts: boolean, team?: string): string {
   const name = team?.trim()
-  return name ? t('expert.running_team', { team: name, count }) : t('expert.running', { count })
-}
-
-function dispatchExpertsCharCount(args: Record<string, unknown>): number {
-  const experts = Array.isArray(args.experts) ? args.experts : []
-  let chars = 0
-  for (const entry of experts) {
-    if (!entry || typeof entry !== 'object') continue
-    const rec = entry as { prompt?: unknown; description?: unknown; role?: unknown }
-    for (const field of [rec.prompt, rec.description, rec.role]) {
-      if (typeof field === 'string') chars += field.length
-    }
-  }
-  return chars
+  if (name) return t('expert.running_team', { team: name, count })
+  return allExperts ? t('expert.running', { count }) : t('dispatch.running', { count })
 }
 
 /**
@@ -295,8 +278,8 @@ function dispatchAgentsCharCount(args: Record<string, unknown>): number {
   let chars = instruction?.length ?? 0
   for (const entry of [...tasks, ...batchItems]) {
     if (!entry || typeof entry !== 'object') continue
-    const rec = entry as { prompt?: unknown; input?: unknown; description?: unknown }
-    for (const field of [rec.prompt, rec.input, rec.description]) {
+    const rec = entry as { prompt?: unknown; input?: unknown; description?: unknown; role?: unknown }
+    for (const field of [rec.prompt, rec.input, rec.description, rec.role]) {
       if (typeof field === 'string') chars += field.length
     }
   }
@@ -1230,7 +1213,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       type: 'function',
       function: {
         name: 'dispatch_agents',
-        description: `派出这场任务里的同事（伙计）并行干活，派出的都立刻开工。立刻返回每个人的名字。两种写法：tasks 每人各写一份指令；batch 一份共同指令加一批条目，每个条目派一个人。同一次可以两种一起用。同时向模型发几个请求由系统按接口的承受情况调节，暂时发不出去的排队，轮到了再发。每个伙计各自占用对话上下文和费用。一场任务里没做完的伙计最多 ${MAX_LIVE_CHILDREN} 个，这次要派的加上没做完的超过这个数时，整批不派。`,
+        description: `派出这场任务里的同事（伙计）并行干活，派出的都立刻开工。立刻返回每个人的名字。两种写法：tasks 每人各写一份指令；batch 一份共同指令加一批条目，每个条目派一个人。同一次可以两种一起用。tasks 里带 role 的是专家；再带 team，这次 tasks 里的专家组成专家团，在群里点名交接，你是组长，团里的规矩在派出后的回执里。同时向模型发几个请求由系统按接口的承受情况调节，暂时发不出去的排队，轮到了再发。每个伙计各自占用对话上下文和费用。一场任务里没做完的伙计最多 ${MAX_LIVE_CHILDREN} 个，这次要派的加上没做完的超过这个数时，整批不派。`,
         parameters: {
           type: 'object',
           properties: {
@@ -1240,6 +1223,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
                 type: 'object',
                 properties: {
                   name: { type: 'string', description: SUB_AGENT_NAME_DESCRIPTION },
+                  role: { type: 'string', description: `专家角色，几个字。带了就是专家，名字不能叫「${TEAM_LEADER}」` },
                   description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
                   prompt: { type: 'string', description: '详细任务指令' },
                   fork_turns: { type: 'string', description: FORK_TURNS_DESCRIPTION }
@@ -1248,6 +1232,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
               },
               description: '每人各写一份指令'
             },
+            team: { type: 'string', description: `团名。${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位，每位都带 role，不用 batch` },
             batch: {
               type: 'object',
               description: '一份共同指令加一批条目。交给每个伙计的指令是 instruction、换行、再接本条目的 input',
@@ -1345,42 +1330,6 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
         streamDisplay: { titleKey: 'tool.interrupt_agent', titleField: 'name' }
-      }
-    } as ToolDefinitionWithMeta,
-    {
-      type: 'function',
-      function: {
-        name: 'dispatch_experts',
-        description: `派出专家，都立刻开工，立刻返回名字。不带 team 各干各的，干完来敲门；带 team 组成专家团，在群里点名交接，你是组长，团里的规矩在派出后的回执里。再交代、等待、打断用 followup_agent / wait_agents / interrupt_agent。和伙计合起来，没做完的最多 ${MAX_LIVE_CHILDREN} 个。`,
-        parameters: {
-          type: 'object',
-          properties: {
-            experts: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  role: { type: 'string', description: '专家角色，几个字' },
-                  name: { type: 'string', description: `${SUB_AGENT_NAME_DESCRIPTION}。不能叫「${TEAM_LEADER}」` },
-                  description: { type: 'string', description: '一句话简述' },
-                  prompt: { type: 'string', description: '详细指令' }
-                },
-                required: ['role', 'description', 'prompt']
-              }
-            },
-            team: { type: 'string', description: `团名，${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位` },
-            fork_turns: { type: 'string', description: `${FORK_TURNS_DESCRIPTION}这一次派的人共用。` }
-          },
-          required: ['experts']
-        }
-      },
-      _meta: {
-        supportedModes: ['local', 'assistant'],
-        allowedForSubAgent: false,
-        streamDisplay: {
-          customRender: dispatchExpertsPrefix,
-          customProgress: dispatchExpertsCharCount
-        }
       }
     } as ToolDefinitionWithMeta,
     {

@@ -183,7 +183,7 @@ function hasHandedOverPayload(step: ProcessStepLike): boolean {
  * 那一行还会再报一遍有人在并行，看起来像又多出一个伙计。
  */
 function hasColleagues(step: ProcessStepLike): boolean {
-  if (step.toolName === 'dispatch_agents' || step.toolName === 'dispatch_experts' || step.toolName === 'followup_agent') return true
+  if (step.toolName === 'dispatch_agents' || step.toolName === 'followup_agent') return true
   return Array.isArray(step.subAgents) && step.subAgents.length > 0
 }
 

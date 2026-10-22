@@ -54,7 +54,7 @@ function text(messages: Msg[]): string {
 
 /** 认人：专家开工第一条话里写着「你是 名字（角色）」 */
 function whoIs(messages: Msg[], tools: string[]): string {
-  if (tools.includes('dispatch_experts')) return 'parent'
+  if (tools.includes('dispatch_agents')) return 'parent'
   const m = /你是 (\S+)（/.exec(text(messages))
   return m ? m[1] : 'unknown'
 }
@@ -147,9 +147,9 @@ describe('专家团端到端（真实 SailFish.run）', () => {
         if (!all.includes('已派出专家团')) {
           return {
             content: '我派个专家团',
-            tool_calls: [tc('dispatch_experts', {
+            tool_calls: [tc('dispatch_agents', {
               team: '小工具组',
-              experts: [
+              tasks: [
                 { name: '定需求', role: '产品专家', description: '写清需求', prompt: '想清楚 hello 工具要输出什么，交给开发' },
                 { name: '写代码', role: '开发专家', description: '实现', prompt: '等产品交需求，按需求实现' },
               ],
@@ -202,7 +202,7 @@ describe('专家团端到端（真实 SailFish.run）', () => {
     const expertCalls = calls.filter(c => c.who === '定需求' || c.who === '写代码')
     expect(expertCalls.length).toBeGreaterThan(0)
     expect(expertCalls.every(c => c.tools.includes('team_say'))).toBe(true)
-    expect(expertCalls.every(c => !c.tools.includes('dispatch_experts') && !c.tools.includes('dispatch_agents'))).toBe(true)
+    expect(expertCalls.every(c => !c.tools.includes('dispatch_agents'))).toBe(true)
 
     const knocks = parentCalls.flatMap(c => c.messages).map(m => String(m.content ?? ''))
     const leaderKnocks = new Set(knocks.filter(k => k.includes('[专家团「小工具组」开发专家·写代码 点名组长]')))
@@ -211,7 +211,7 @@ describe('专家团端到端（真实 SailFish.run）', () => {
     expect(stoppedKnocks.size).toBe(1)
     expect(knocks.some(k => k.includes('[专家 ') && k.includes('完成]'))).toBe(false)
 
-    const dispatched = steps.filter(s => s.toolName === 'dispatch_experts')
+    const dispatched = steps.filter(s => s.toolName === 'dispatch_agents')
     expect(dispatched.length).toBeGreaterThan(0)
     const last = dispatched[dispatched.length - 1]
     expect(last.subAgents?.map(s => s.role).sort()).toEqual(['产品专家', '开发专家'])

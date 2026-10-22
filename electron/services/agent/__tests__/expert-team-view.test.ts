@@ -76,7 +76,7 @@ describe('派出那一步随会话落盘再读回', () => {
       id: 'dispatch_1',
       type: 'tool_call',
       content: '派出专家团「小工具组」· 2 位专家',
-      toolName: 'dispatch_experts',
+      toolName: 'dispatch_agents',
       timestamp: 2,
       subAgents: [
         { id: '写需求', name: '写需求', role: '产品专家', description: '把需求写清楚', status: 'completed' },

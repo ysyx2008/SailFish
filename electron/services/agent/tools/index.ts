@@ -26,7 +26,7 @@ import { recallTask, deepRecall, searchHistory, dispatchRecall } from './memory'
 import { checkContext, compressContext, dispatchContext, recallCompressed, manageMemory } from './context'
 import { wait, askUser, sendFileToChat, sendImageToChat, sendToChat, awaitFileTransfer, messageUser, executeMcpTool, loadMcpServer, loadSkillTool, unloadSkillTool, dispatchSkill, loadUserSkillTool, executeSkillTool } from './misc'
 import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, denyIfNotForThisAgent } from './sub-agent'
-import { dispatchExperts, teamSay } from './expert'
+import { teamSay } from './expert'
 import { manageTasks } from './task-manager'
 import { executeWebSearch } from './web-search'
 import { executeWebFetch } from './web-fetch'
@@ -303,8 +303,6 @@ async function dispatchTool(
       return waitAgents(args, executor)
     case 'interrupt_agent':
       return interruptAgent(args, executor)
-    case 'dispatch_experts':
-      return dispatchExperts(args, config, executor)
     case 'team_say':
       return teamSay(args, executor)
 

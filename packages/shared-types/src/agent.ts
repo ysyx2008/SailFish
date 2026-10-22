@@ -490,7 +490,7 @@ export interface ExpertTeamMessageView {
   omitted?: number
 }
 
-/** 专家团群聊（dispatch_experts 组团时挂在派出那一步上，实时更新） */
+/** 专家团群聊（dispatch_agents 带 team 组团时挂在派出那一步上，实时更新） */
 export interface ExpertTeamView {
   name: string
   /** 最近的一小段群消息（总字数有上限），完整的按 chatFile 翻页读 */
@@ -613,7 +613,7 @@ export interface AgentStep {
   canvasData?: import('./canvas').CanvasData
   /** 并行子 Agent 状态（dispatch_agents 工具专用，实时更新） */
   subAgents?: SubAgentResult[]
-  /** 专家团群聊（dispatch_experts 组团时，实时更新） */
+  /** 专家团群聊（dispatch_agents 带 team 组团时，实时更新） */
   expertTeam?: ExpertTeamView
   /** Web 搜索结果（web_search 工具专用，供 UI 可展开渲染） */
   webSearchResults?: WebSearchResultItem[]

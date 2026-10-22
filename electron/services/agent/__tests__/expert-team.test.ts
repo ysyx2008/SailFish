@@ -44,9 +44,9 @@ vi.mock('../../web-search/index', () => ({
 
 import { ExpertTeam, TEAM_LEADER, WAKES_PER_CHECKPOINT } from '../expert-team'
 import { SubAgentRoster, type ChildAgentHandle, type TeamSeat } from '../sub-agent-roster'
-import { dispatchExperts, parseDispatchExperts, teamSay } from '../tools/expert'
-import { dispatchSubAgents, followupAgent, waitAgents, denyIfNotForThisAgent, SubAgentWorkspace } from '../tools/sub-agent'
-import { filterSubAgentTools, filterTeamMemberTools, getAgentTools } from '../tools'
+import { teamSay } from '../tools/expert'
+import { dispatchSubAgents, parseDispatchTasks, followupAgent, waitAgents, denyIfNotForThisAgent, SubAgentWorkspace } from '../tools/sub-agent'
+import { filterSubAgentTools, filterTeamMemberTools, getAgentTools, type ToolDefinitionWithMeta } from '../tools'
 import { PromptBuilder } from '../prompt-builder'
 import type { AgentConfig, ToolExecutorConfig } from '../tools/types'
 import type { AgentContext } from '../types'
@@ -171,7 +171,7 @@ function setup() {
 
 const TEAM_ARGS = {
   team: '小工具组',
-  experts: [
+  tasks: [
     { name: '定需求', role: '产品专家', description: '写清需求', prompt: '写需求文档' },
     { name: '写代码', role: '开发专家', description: '实现', prompt: '按需求实现' },
     { name: '测一遍', role: '测试专家', description: '测试', prompt: '测试实现' },
@@ -231,36 +231,73 @@ describe('ExpertTeam：群里点名', () => {
   })
 })
 
-describe('dispatch_experts 参数', () => {
-  it('缺角色、叫「组长」、组团只有一位、组团超过 15 位都退回；不组团超过 15 位照常', () => {
-    expect('error' in parseDispatchExperts({ experts: [{ description: 'x', prompt: 'y' }] })).toBe(true)
-    const leader = parseDispatchExperts({ experts: [{ role: '测试专家', name: TEAM_LEADER, description: 'x', prompt: 'y' }] })
+describe('dispatch_agents 带角色和团', () => {
+  it('组团有人缺角色、组团带 batch、专家叫「组长」、组团只有一位、组团超过 15 位都退回；不组团超过 15 位照常', () => {
+    const noRole = parseDispatchTasks({ team: 't', tasks: [{ description: 'x', prompt: 'y' }, { role: '测试专家', description: 'x', prompt: 'y' }] })
+    expect('error' in noRole && noRole.error).toContain('第 1 位')
+    const withBatch = parseDispatchTasks({
+      team: 't',
+      tasks: [{ role: '测试专家', description: 'x', prompt: 'y' }, { role: '开发专家', description: 'x', prompt: 'y' }],
+      batch: { instruction: '审', items: [{ description: 'x', input: 'a' }] },
+    })
+    expect('error' in withBatch && withBatch.error).toContain('batch')
+    const mixed = parseDispatchTasks({ tasks: [{ role: '测试专家', description: 'x', prompt: 'y' }, { description: 'x', prompt: 'y' }] })
+    expect('tasks' in mixed && mixed.tasks.map(task => task.role)).toEqual(['测试专家', undefined])
+    const leader = parseDispatchTasks({ tasks: [{ role: '测试专家', name: TEAM_LEADER, description: 'x', prompt: 'y' }] })
     expect('error' in leader && leader.error).toContain(TEAM_LEADER)
-    const solo = parseDispatchExperts({ team: 't', experts: [{ role: '测试专家', description: 'x', prompt: 'y' }] })
+    const solo = parseDispatchTasks({ team: 't', tasks: [{ role: '测试专家', description: 'x', prompt: 'y' }] })
     expect('error' in solo && solo.error).toContain('一位专家')
     const many = Array.from({ length: 16 }, (_, i) => ({ role: '审查专家', description: `第 ${i}`, prompt: '审' }))
-    const tooBig = parseDispatchExperts({ team: 't', experts: many })
+    const tooBig = parseDispatchTasks({ team: 't', tasks: many })
     expect('error' in tooBig && tooBig.error).toContain('15')
-    const loose = parseDispatchExperts({ experts: many })
-    expect('experts' in loose && loose.experts).toHaveLength(16)
+    const loose = parseDispatchTasks({ tasks: many })
+    expect('tasks' in loose && loose.tasks).toHaveLength(16)
   })
 
   it('组团超过 15 位：一个都不派', async () => {
     const { roster, executor } = setup()
-    const result = await dispatchExperts({
+    const result = await dispatchSubAgents({
       team: 't',
-      experts: Array.from({ length: 16 }, (_, i) => ({ role: '审查专家', description: `第 ${i}`, prompt: '审' })),
+      tasks: Array.from({ length: 16 }, (_, i) => ({ role: '审查专家', description: `第 ${i}`, prompt: '审' })),
     }, CONFIG, executor)
     expect(result.success).toBe(false)
     expect(roster.list()).toHaveLength(0)
   })
 })
 
+describe('dispatch_agents 派出那一步的标题与回执', () => {
+  const render = (getAgentTools(undefined, { mode: 'assistant' }) as ToolDefinitionWithMeta[])
+    .find(tool => tool.function.name === 'dispatch_agents')!._meta!.streamDisplay!.customRender!
+  const cases = [
+    { args: TEAM_ARGS, title: '派出专家团「小工具组」· 3 位专家', receipt: '已派出专家团「小工具组」' },
+    { args: { tasks: TEAM_ARGS.tasks }, title: '派出 3 位专家', receipt: '已派出 3 位专家' },
+    { args: { tasks: [...TEAM_ARGS.tasks, { name: '跑腿', description: '读配置', prompt: '去读' }] }, title: '派出 4 个伙计', receipt: '已派出 4 个伙计' },
+  ]
+
+  it.each(cases)('$title：预卡片与执行器逐字一样，回执对得上', async ({ args, title, receipt }) => {
+    const { executor } = setup()
+    const added: string[] = []
+    const addStep = executor.addStep
+    executor.addStep = (partial) => { added.push(String(partial.content)); return addStep(partial) }
+    const result = await dispatchSubAgents(args, CONFIG, executor)
+    expect(render(args)).toBe(title)
+    expect(added[0]).toBe(title)
+    expect(result.output.startsWith(receipt)).toBe(true)
+  })
+
+  it('组团不成立时预卡片不写团名', () => {
+    const one = { team: 't', tasks: [TEAM_ARGS.tasks[0]] }
+    expect(render(one)).toBe('派出 1 位专家')
+    const withWorker = { team: 't', tasks: [...TEAM_ARGS.tasks, { description: 'x', prompt: 'y' }] }
+    expect(render(withWorker)).toBe('派出 4 个伙计')
+  })
+})
+
 describe('不组团的专家', () => {
   it('带角色，干完照常敲门，看不到 team_say', async () => {
     const { roster, child, knocks, executor } = setup()
-    const result = await dispatchExperts({
-      experts: [{ name: '安全审查', role: '安全专家', description: '从安全角度审', prompt: '审登录' }],
+    const result = await dispatchSubAgents({
+      tasks: [{ name: '安全审查', role: '安全专家', description: '从安全角度审', prompt: '审登录' }],
     }, CONFIG, executor)
     expect(result.success).toBe(true)
     expect(roster.get('安全审查')?.role).toBe('安全专家')
@@ -278,7 +315,7 @@ describe('不组团的专家', () => {
 describe('专家团', () => {
   it('同团第一条话开头的团说明逐字一样，后面是各自的身份和指令；伙计照旧只拿指令', async () => {
     const { child, executor } = setup()
-    await dispatchExperts(TEAM_ARGS, CONFIG, executor)
+    await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
     const a = child('定需求').runs[0]
     const b = child('写代码').runs[0]
     const brief = a.slice(0, a.indexOf('你是 定需求'))
@@ -296,7 +333,7 @@ describe('专家团', () => {
 
   it('点名叫醒已停的人：交给他点名那条和他没看过的群消息', async () => {
     const { child, executor } = setup()
-    await dispatchExperts(TEAM_ARGS, CONFIG, executor)
+    await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
     child('写代码').finish('等需求')
     child('测一遍').finish('等实现')
     await flush()
@@ -312,7 +349,7 @@ describe('专家团', () => {
 
   it('点名在跑的人：先记下给他，不另开一轮', async () => {
     const { child, executor } = setup()
-    await dispatchExperts(TEAM_ARGS, CONFIG, executor)
+    await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
     child('定需求').seat!.say(['写代码'], '顺便看下接口')
     expect(child('写代码').runs).toHaveLength(1)
     expect(child('写代码').supplements[0]).toContain('顺便看下接口')
@@ -320,7 +357,7 @@ describe('专家团', () => {
 
   it('写错名字：失败并列出能点的名字', async () => {
     const { child, executor } = setup()
-    await dispatchExperts(TEAM_ARGS, CONFIG, executor)
+    await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
     const result = await teamSay({ to: ['不存在'], message: 'hi' }, { teamSeat: child('定需求').seat } as ToolExecutorConfig)
     expect(result.success).toBe(false)
     expect(result.error).toContain('不存在')
@@ -330,7 +367,7 @@ describe('专家团', () => {
 
   it('专家干完一段不敲门；整个团停下来敲一次门，带各人交的东西和群里最后几条', async () => {
     const { child, knocks, executor } = setup()
-    await dispatchExperts(TEAM_ARGS, CONFIG, executor)
+    await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
     child('定需求').seat!.say(['写代码'], '需求在 req.md')
     child('定需求').finish('需求写完')
     child('写代码').finish('实现完')
@@ -348,7 +385,7 @@ describe('专家团', () => {
 
   it('wait_agents 只在专家团停下来时返回', async () => {
     const { child, executor } = setup()
-    await dispatchExperts(TEAM_ARGS, CONFIG, executor)
+    await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
     let returned = false
     const waiting = waitAgents({ timeout: 5 }, executor).then(r => { returned = true; return r })
     child('定需求').finish()
@@ -362,7 +399,7 @@ describe('专家团', () => {
 
   it('点名组长、有人失败：敲门', async () => {
     const { child, knocks, executor } = setup()
-    await dispatchExperts(TEAM_ARGS, CONFIG, executor)
+    await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
     child('定需求').seat!.say([TEAM_LEADER], '登录要不要支持手机号？')
     expect(knocks).toHaveLength(1)
     expect(knocks[0]).toContain('登录要不要支持手机号？')
@@ -375,7 +412,7 @@ describe('专家团', () => {
 
   it('组长再交代：进群里，对方收到的是组长的话', async () => {
     const { roster, child, executor } = setup()
-    await dispatchExperts(TEAM_ARGS, CONFIG, executor)
+    await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
     child('写代码').finish()
     await flush()
     const r = await followupAgent({ name: '写代码', message: '先别做导出' }, executor)
@@ -386,7 +423,7 @@ describe('专家团', () => {
 
   it('满 30 次：敲一次门，之后点名只记不叫醒；组长说话后重新数，并叫醒期间被点的人（只叫醒一次）', async () => {
     const { roster, child, knocks, executor } = setup()
-    await dispatchExperts(TEAM_ARGS, CONFIG, executor)
+    await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
     const say = (from: string, to: string[], text: string) => child(from).seat!.say(to, text)
     for (let i = 0; i < WAKES_PER_CHECKPOINT; i++) say('定需求', ['写代码'], `改 ${i}`)
     expect(knocks).toHaveLength(1)
@@ -413,7 +450,7 @@ describe('专家团', () => {
 describe('专家团：边角', () => {
   it('上一段刚跑完还没记账时又被点名：新一段照常跑，旧的不把他记成做完、不敲门', async () => {
     const { roster, child, knocks, executor } = setup()
-    await dispatchExperts(TEAM_ARGS, CONFIG, executor)
+    await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
     child('定需求').finish()
     child('测一遍').finish()
     await flush()
@@ -431,7 +468,7 @@ describe('专家团：边角', () => {
 
   it('被打断的专家：同伴点名只记在群里不叫醒，组长再交代才接着干', async () => {
     const { roster, child, executor } = setup()
-    await dispatchExperts(TEAM_ARGS, CONFIG, executor)
+    await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
     roster.interrupt('写代码')
     await flush()
     expect(roster.get('写代码')?.status).toBe('interrupted')
@@ -446,7 +483,7 @@ describe('专家团：边角', () => {
 
   it('满 30 次的敲门只报各人状态，不重发交的东西', async () => {
     const { child, knocks, executor } = setup()
-    await dispatchExperts(TEAM_ARGS, CONFIG, executor)
+    await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
     child('测一遍').finish('一大段测试报告')
     await flush()
     for (let i = 0; i < WAKES_PER_CHECKPOINT; i++) child('定需求').seat!.say(['写代码'], `改 ${i}`)
@@ -457,7 +494,7 @@ describe('专家团：边角', () => {
 
   it('很久没被点到的人被叫醒：未读太多时只列最近的，说明更早的在群聊文件里', async () => {
     const { child, executor } = setup()
-    await dispatchExperts(TEAM_ARGS, CONFIG, executor)
+    await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
     child('测一遍').finish()
     await flush()
     const long = '长'.repeat(3000)
@@ -488,8 +525,9 @@ describe('team_say 只给专家团成员', () => {
     expect(names(filterSubAgentTools(filterTeamMemberTools(catalog, false)))).not.toContain('team_say')
     const member = names(filterSubAgentTools(filterTeamMemberTools(catalog, true)))
     expect(member).toContain('team_say')
-    expect(member).not.toContain('dispatch_experts')
-    expect(names(filterTeamMemberTools(catalog, false))).toContain('dispatch_experts')
+    expect(member).not.toContain('dispatch_agents')
+    expect(names(filterTeamMemberTools(catalog, false))).toContain('dispatch_agents')
+    expect(names(catalog)).not.toContain('dispatch_experts')
   })
 
   it('没有座位的调用直接拦下', () => {

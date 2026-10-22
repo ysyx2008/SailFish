@@ -29,7 +29,6 @@ const translations = {
     'tool.followup_agent': '再交代伙计',
     'tool.wait_agents': '等待伙计',
     'tool.interrupt_agent': '打断伙计',
-    'tool.dispatch_experts': '派专家',
     'tool.team_say': '在群里说',
     'tool.manage_pane': '管理窗格',
     'tool.list_ssh_sessions': '查看远程会话',
@@ -1713,7 +1712,7 @@ const translations = {
     'dispatch.command_blocked': '高危命令被拦下了，原命令：{command}',
     'dispatch.confirm_by': '这是伙计「{name}」要做的',
 
-    // dispatch_experts 派专家 / 专家团（customRender 与执行器 addStep 共享前缀，两边必须字节对齐）
+    // dispatch_agents 派专家 / 专家团（customRender 与执行器 addStep 共享前缀，两边必须字节对齐）
     'expert.running': '派出 {count} 位专家',
     'expert.running_team': '派出专家团「{team}」· {count} 位专家',
     'expert.list_item': '- {name}（{role}）：{description}',
@@ -2015,7 +2014,6 @@ const translations = {
     'tool.followup_agent': 'Follow up with colleague',
     'tool.wait_agents': 'Wait for colleagues',
     'tool.interrupt_agent': 'Interrupt colleague',
-    'tool.dispatch_experts': 'Send experts',
     'tool.team_say': 'Say in team chat',
     'tool.manage_pane': 'Manage panes',
     'tool.list_ssh_sessions': 'List remote sessions',
@@ -3699,7 +3697,7 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'dispatch.command_blocked': 'Dangerous command was blocked. Original command: {command}',
     'dispatch.confirm_by': 'Helper “{name}” wants to do this',
 
-    // dispatch_experts experts / expert teams (customRender and executor addStep share the same prefix; must stay byte-aligned)
+    // dispatch_agents experts / expert teams (customRender and executor addStep share the same prefix; must stay byte-aligned)
     'expert.running': 'Sent {count} expert(s)',
     'expert.running_team': 'Sent expert team “{team}” · {count} experts',
     'expert.list_item': '- {name} ({role}): {description}',

@@ -13,12 +13,12 @@ import { getMetaByName } from '../tool-metadata'
 import { MAX_LIVE_CHILDREN, type ChildSnapshot, type RosterSpawnDeps, type SpawnTask, type SubAgentRoster } from '../sub-agent-roster'
 import { parseForkTurns, sanitizeParentMessages, type ForkTurns } from '../sanitize-parent-messages'
 import type { ToolExecutorConfig, ToolResult, AgentConfig } from './types'
-import { getAgentTools, filterSubAgentTools } from '../tools'
+import { getAgentTools, filterSubAgentTools, dispatchTitle } from '../tools'
 import { truncateFromEnd, truncateFromEndWithNotice } from './utils'
 import { getScratchPath } from './file'
 import { createLogger } from '../../../utils/logger'
 import { t } from '../i18n'
-import type { ExpertTeam } from '../expert-team'
+import { MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER, WAKES_PER_CHECKPOINT, type ExpertTeam } from '../expert-team'
 import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
 import { createTeamTexts, expertOpening, formatTranscript } from './expert-team-text'
 
@@ -240,10 +240,20 @@ function formatExpertKnock(child: ChildSnapshot, role: string): string {
   return t('expert.knock_fail', { ...base, error: child.error || 'Unknown error' })
 }
 
-function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubAgentRoster): string {
-  const lines = snapshots.map(c => `- ${c.name}：${c.description}`)
+function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubAgentRoster, team?: string): string {
+  const list = snapshots
+    .map(c => c.role
+      ? t('expert.list_item', { name: c.name, role: c.role, description: c.description })
+      : `- ${c.name}：${c.description}`)
+    .join('\n')
+  const count = names.length
+  const head = team
+    ? t('expert.spawned_team', { team, count, list, limit: WAKES_PER_CHECKPOINT })
+    : snapshots.every(c => !!c.role)
+      ? t('expert.spawned', { count, list })
+      : t('dispatch.spawned', { count, list })
   return [
-    t('dispatch.spawned', { count: names.length, list: lines.join('\n') }),
+    head,
     t('dispatch.capacity', { live: roster.liveCount(), room: roster.room() }),
     t('dispatch.overview_at', { path: workspaceOf(roster).overviewPath }),
   ].join('\n')
@@ -368,8 +378,15 @@ function isBatchArgs(value: unknown): value is { instruction: string } {
   return !!value && typeof value === 'object' && typeof (value as { instruction?: unknown }).instruction === 'string'
 }
 
-/** tasks 每人一份指令；batch 一份共同指令加一批条目，交给伙计的是共同指令、换行、本条目。两种可同次混用。 */
-export function parseDispatchTasks(args: Record<string, unknown>): { tasks: ParsedSpawnTask[] } | { error: string } {
+function optionalText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+/**
+ * tasks 每人一份指令；batch 一份共同指令加一批条目，交给伙计的是共同指令、换行、本条目。两种可同次混用。
+ * tasks 里带 role 的是专家；带 team 时这次 tasks 里的人组成专家团（每位都带 role，不用 batch）。
+ */
+export function parseDispatchTasks(args: Record<string, unknown>): { tasks: ParsedSpawnTask[]; team?: string } | { error: string } {
   const tasks: ParsedSpawnTask[] = []
   const rawTasks = args.tasks
   const rawBatch = args.batch
@@ -384,11 +401,18 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
       }
       const forkTurns = parseForkTurns(task.fork_turns)
       if ('error' in forkTurns) return { error: `子任务 ${i + 1}：${forkTurns.error}` }
+      const name = optionalName(task.name)
+      const role = optionalText(task.role)
+      if (role && name?.trim() === TEAM_LEADER) {
+        return { error: `「${TEAM_LEADER}」留给派出专家团的你，专家不能叫这个名字` }
+      }
+      const description = typeof task.description === 'string' && task.description ? task.description : undefined
       tasks.push({
-        name: optionalName(task.name),
-        description: typeof task.description === 'string' && task.description ? task.description : 'task',
+        name,
+        description: description ?? (role ? name ?? role : 'task'),
         prompt: task.prompt,
         forkTurns,
+        ...(role ? { role } : {}),
       })
     }
   }
@@ -423,7 +447,20 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
   if (tasks.length === 0) {
     return { error: 'tasks 和 batch 至少给一个，且不能为空' }
   }
-  return { tasks }
+  const team = optionalText(args.team)
+  if (!team) return { tasks }
+  if (rawBatch !== undefined) return { error: '带 team 时只用 tasks 写每位专家，不能用 batch' }
+  const noRole = tasks.findIndex(task => !task.role)
+  if (noRole >= 0) return { error: `带 team 时每位都要有 role（专家角色），第 ${noRole + 1} 位没有` }
+  if (tasks.length < MIN_TEAM_SIZE || tasks.length > MAX_TEAM_SIZE) {
+    return {
+      error: `没派：一个专家团 ${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位专家，这次 ${tasks.length} 位。`
+        + (tasks.length < MIN_TEAM_SIZE
+          ? '一位专家没有可交接的人，不带 team 就是单独派。'
+          : '可以拆成几个团，或不带 team 各干各的。'),
+    }
+  }
+  return { tasks, team }
 }
 
 export async function dispatchSubAgents(
@@ -441,7 +478,8 @@ export async function dispatchSubAgents(
   if ('error' in parsed) {
     return { success: false, output: '', error: parsed.error }
   }
-  const parsedTasks = parsed.tasks
+  const { tasks: parsedTasks, team } = parsed
+  const allExperts = parsedTasks.every(task => !!task.role)
   if (parsedTasks.length > roster.room()) {
     return {
       success: false,
@@ -457,10 +495,11 @@ export async function dispatchSubAgents(
 
   const progressStep = executor.addStep({
     type: 'tool_call',
-    content: t('dispatch.running', { count: parsedTasks.length }),
+    content: dispatchTitle(parsedTasks.length, allExperts, team),
     toolName: 'dispatch_agents',
     toolArgs: {
-      tasks: parsedTasks.map(task => ({ name: task.name, description: task.description })),
+      tasks: parsedTasks.map(task => ({ name: task.name, description: task.description, ...(task.role ? { role: task.role } : {}) })),
+      ...(team ? { team } : {}),
       ...(isBatchArgs(args.batch) ? { batch: { instruction: args.batch.instruction } } : {}),
     },
     riskLevel: 'safe',
@@ -474,19 +513,25 @@ export async function dispatchSubAgents(
     return { success: false, output: '', error: deps.error }
   }
 
-  const names = roster.spawn(parsedTasks, deps)
-  workspaceOf(roster).writeOverview(roster.list())
+  const names = roster.spawn(parsedTasks, deps, team ? { team } : undefined)
+  const workspace = workspaceOf(roster)
+  workspace.writeOverview(roster.list())
+  const created = team ? roster.teamOf(names[0]) : undefined
+  if (created) {
+    workspace.writeTeamChat(created)
+    workspace.writeTeamTranscript(created)
+  }
 
   const snapshots = roster.list().filter(c => names.includes(c.name))
   executor.updateStep(progressStep.id, {
-    content: t('dispatch.running', { count: names.length }),
-    subAgents: snapshots.map(toSubAgentView),
+    content: dispatchTitle(names.length, allExperts, created?.name),
+    ...dispatchStepView(roster, new Set(names)),
   })
 
-  log.info(`Dispatched ${names.length} sub-agents: ${names.join(', ')}`)
+  log.info(`Dispatched ${names.length} sub-agents${created ? ` as team ${created.name}` : ''}: ${names.join(', ')}`)
   return {
     success: true,
-    output: formatSpawned(names, snapshots, roster)
+    output: formatSpawned(names, snapshots, roster, created?.name)
   }
 }
 

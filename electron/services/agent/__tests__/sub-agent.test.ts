@@ -425,7 +425,7 @@ describe('两种写法', () => {
   it('工具说明里写着保险丝的数', () => {
     const tool = getAgentTools(undefined, { mode: 'assistant' }).find(t => t.function.name === 'dispatch_agents')!
     expect(tool.function.description).toContain(String(MAX_LIVE_CHILDREN))
-    expect(Object.keys((tool.function.parameters as { properties: object }).properties).sort()).toEqual(['batch', 'tasks'])
+    expect(Object.keys((tool.function.parameters as { properties: object }).properties).sort()).toEqual(['batch', 'tasks', 'team'])
   })
 })
 
