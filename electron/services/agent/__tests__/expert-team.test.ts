@@ -377,6 +377,23 @@ describe('dispatch_agents 团名和角色的整理与上限', () => {
   })
 })
 
+describe('dispatch_agents 工具说明里的数字各归各处', () => {
+  const tool = (getAgentTools(undefined, { mode: 'assistant' }) as ToolDefinitionWithMeta[])
+    .find(def => def.function.name === 'dispatch_agents')!
+  const props = (tool.function.parameters as { properties: Record<string, any> }).properties
+  const roleDescription: string = props.tasks.items.properties.role.description
+
+  it('团名那栏只讲团名的字数，人数写在工具说明里（被模型读成团名字数过三次）', () => {
+    expect(props.team.description).toContain('最长 40 个字')
+    expect(props.team.description).not.toMatch(/15|位/)
+    expect(tool.function.description).toContain('2 到 15 位')
+  })
+
+  it('角色那栏写明字数上限', () => {
+    expect(roleDescription).toContain('最长 20 个字')
+  })
+})
+
 describe('dispatch_agents 派出那一步的标题与回执', () => {
   const render = (getAgentTools(undefined, { mode: 'assistant' }) as ToolDefinitionWithMeta[])
     .find(tool => tool.function.name === 'dispatch_agents')!._meta!.streamDisplay!.customRender!
