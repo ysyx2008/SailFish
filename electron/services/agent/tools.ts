@@ -25,7 +25,10 @@ import type { TerminalType, RemoteChannel } from '@shared/types'
 import { ASSISTANT_WORKBENCH_AGENT_TOOLS } from '@sailfish/workbench-assistant/agent-tools'
 import { getAllTerminalTools } from './skills/terminal/tools'
 import { MAX_LIVE_CHILDREN } from './sub-agent-roster'
-import { MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER, WAKES_PER_CHECKPOINT } from './expert-team'
+import {
+  labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER,
+  teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT
+} from './expert-team'
 
 const SUB_AGENT_NAME_DESCRIPTION = '能反映出他在干什么的短名字，让用户一眼看懂（如「读 nginx 配置」）。不要用人名、编号或跟任务无关的代号。可选，不填则从任务简述生成'
 const FORK_TURNS_DESCRIPTION = '带多少对话。默认 all。none=不带，all=全带，正整数字符串（如 1、3）=只带最近几轮。'
@@ -221,10 +224,12 @@ function dispatchAgentsPrefix(args: Record<string, unknown>): string | null {
   if (count === 0) return null
   const allExperts = batchItems.length === 0 && tasks.every(task => {
     const role = (task as { role?: unknown } | null)?.role
-    return typeof role === 'string' && role.trim() !== ''
+    return typeof role === 'string' && tidyLabel(role) !== ''
   })
+  const team = teamNameFrom(args.team)
   const teamFits = allExperts && count >= MIN_TEAM_SIZE && count <= MAX_TEAM_SIZE
-  return dispatchTitle(count, allExperts, teamFits && typeof args.team === 'string' ? args.team : undefined)
+    && team !== undefined && labelLength(team) <= MAX_TEAM_NAME_CHARS
+  return dispatchTitle(count, allExperts, teamFits ? team : undefined)
 }
 
 /** 派出那一步的标题：组了团写团名，全是专家写专家，否则写伙计 */
@@ -1223,7 +1228,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
                 type: 'object',
                 properties: {
                   name: { type: 'string', description: SUB_AGENT_NAME_DESCRIPTION },
-                  role: { type: 'string', description: `专家角色，几个字。带了就是专家；专家的名字和角色都不能用「${TEAM_LEADER}」` },
+                  role: { type: 'string', description: `专家角色，几个字，最长 ${MAX_ROLE_CHARS} 个字。带了就是专家；专家的名字和角色都不能用「${TEAM_LEADER}」` },
                   description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
                   prompt: { type: 'string', description: '详细任务指令' },
                   fork_turns: { type: 'string', description: FORK_TURNS_DESCRIPTION }
@@ -1232,7 +1237,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
               },
               description: '每人各写一份指令'
             },
-            team: { type: 'string', description: `团名，几个字。一个团 ${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位专家，每位都带 role，不能和 batch 一起用` },
+            team: { type: 'string', description: `团名，几个字，最长 ${MAX_TEAM_NAME_CHARS} 个字。组团要 ${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位专家，每位都带 role，不能和 batch 一起用` },
             batch: {
               type: 'object',
               description: '一份共同指令加一批条目。交给每个伙计的指令是 instruction、换行、再接本条目的 input',

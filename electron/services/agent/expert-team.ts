@@ -12,6 +12,33 @@ export const WAKES_PER_CHECKPOINT = 30
 export const MIN_TEAM_SIZE = 2
 export const MAX_TEAM_SIZE = 15
 
+/** 团名、角色的字数上限：它们要摆进每位专家的开场、群聊标题和总览的一行里，几个字就够 */
+export const MAX_TEAM_NAME_CHARS = 40
+export const MAX_ROLE_CHARS = 20
+
+/**
+ * 换行、制表等空白、控制字符、零宽空格和改变文字方向的符号折成一个空格，去掉首尾——
+ * 团名和角色里带换行会把总览的一行拆成两行，改方向的符号会让那一行在界面上反着显示。
+ * 零宽连接符（表情组合要用）不动。
+ */
+export function tidyLabel(value: string): string {
+  return value.replace(/[\s\p{Cc}\u200B\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069]+/gu, ' ').trim()
+}
+
+/** 参数里的团名：不是字符串、或整理后是空的，都当没给 */
+export function teamNameFrom(value: unknown): string | undefined {
+  return typeof value === 'string' ? tidyLabel(value) || undefined : undefined
+}
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
+/** 按看得见的字数（一个组合表情算一个字，不是码元也不是码点） */
+export function labelLength(value: string): number {
+  let count = 0
+  for (const _ of graphemes.segment(value)) count++
+  return count
+}
+
 /**
  * 推给界面、随派出那一步落盘的那份只留最近一小段：单条和合计各有上限。
  * 那一步存盘是一行，单行太大读回时整步都会被略掉；还会被频繁推给界面。

@@ -462,6 +462,26 @@ describe('结果落文件与总览', () => {
       expect(overview).toHaveLength(5)
       expect(overview[3]).toContain(`长的 | 已完成 | 5000 | ${path.join(dir, '长的.md')} | 读 b`)
       expect(overview[4]).toContain('还在干 | 还在做 | - | - | 读 c')
+
+      ws.writeOverview([
+        {
+          name: '忙的', description: '读 d', prompt: 'd', status: 'running',
+          steps: [
+            { tool: 'read_file', status: 'completed' },
+            { tool: 'exec', status: 'running' },
+          ],
+        },
+        { name: '排队的', description: '读 e', prompt: 'e', status: 'running', steps: [], waitingForModel: true },
+        { name: '排队又忙', description: '读 f', prompt: 'f', status: 'running', steps: [{ tool: 'grep', status: 'completed' }], waitingForModel: true },
+        { name: '没开工', description: '读 g', prompt: 'g', status: 'pending', steps: [] },
+        { name: '做完了', description: '读 h', prompt: 'h', status: 'completed', steps: [{ tool: 'exec', status: 'completed' }] },
+      ])
+      const live = writes.get(ws.overviewPath)!.trim().split('\n')
+      expect(live[2]).toContain('忙的 | 还在做（已 2 步，最近：exec） | - | - | 读 d')
+      expect(live[3]).toContain('排队的 | 还在做（排队等模型） | - | - | 读 e')
+      expect(live[4]).toContain('排队又忙 | 还在做（已 1 步，最近：grep；排队等模型）')
+      expect(live[5]).toContain('没开工 | 还没开工 | - | - | 读 g')
+      expect(live[6]).toContain('做完了 | 已完成 | - | - | 读 h')
     } finally {
       vi.mocked(fs.writeFileSync).mockReset()
       realFs.rmSync(dir, { recursive: true, force: true })
@@ -519,6 +539,41 @@ describe('进度推给界面', () => {
     expect(step.subAgents![0].steps!.every(st => st.result === undefined)).toBe(true)
     expect(step.subAgents![3].prompt).toBe('条目 3')
     expect((step.toolArgs as { batch?: { instruction: string } }).batch?.instruction).toBe('很长的共同指令'.repeat(50))
+  })
+
+  it('总览随进展重写：还在干的写做到第几步、最近的工具，不用等有人做完', async () => {
+    const writes = new Map<string, string>()
+    vi.mocked(fs.writeFileSync).mockImplementation((file, data) => { writes.set(String(file), String(data)) })
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const busy: ChildAgentHandle = {
+      isRunning: () => true,
+      abort: () => true,
+      addUserMessage: () => true,
+      async run(_message, _context, options) {
+        const cb = options?.callbacks
+        cb?.onStep?.('child', { id: 't0', type: 'tool_call', toolName: 'read_file', toolArgs: { path: '/a' }, content: '', timestamp: 0 } as AgentStep)
+        cb?.onStep?.('child', { id: 't0', type: 'tool_call', toolName: 'read_file', toolArgs: { path: '/a' }, success: true, toolResult: 'x', content: '', timestamp: 0 } as AgentStep)
+        await new Promise(r => setTimeout(r, 100))
+        cb?.onStep?.('child', { id: 't1', type: 'tool_call', toolName: 'exec', toolArgs: { command: 'sleep 60' }, content: '', timestamp: 0 } as AgentStep)
+        await gate
+        return 'ok'
+      },
+    }
+    try {
+      const roster = new SubAgentRoster({ knockSettleMs: 0 })
+      const executor = createExecutor(roster, () => busy)
+      await dispatchSubAgents({ tasks: [{ name: 'a', description: '读配置', prompt: 'a' }] }, defaultConfig, executor)
+      const overviewOf = () => [...writes].find(([file]) => file.endsWith('overview.md'))?.[1] ?? ''
+      expect(overviewOf()).not.toContain('最近：exec')
+      await new Promise(r => setTimeout(r, 1300))
+      expect(overviewOf()).toContain('a | 还在做（已 2 步，最近：exec） | - | - | 读配置')
+      release()
+      await roster.waitUntil(undefined, new AbortController().signal)
+    } finally {
+      release()
+      vi.mocked(fs.writeFileSync).mockReset()
+    }
   })
 
   it('伙计在排队等模型时卡片上看得出来，拿到名额后恢复', async () => {

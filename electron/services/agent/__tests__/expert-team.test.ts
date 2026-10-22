@@ -42,7 +42,8 @@ vi.mock('../../web-search/index', () => ({
   getApiKey: () => '',
 }))
 
-import { ExpertTeam, TEAM_LEADER, WAKES_PER_CHECKPOINT } from '../expert-team'
+import * as fs from 'fs'
+import { ExpertTeam, TEAM_LEADER, tidyLabel, WAKES_PER_CHECKPOINT } from '../expert-team'
 import { SubAgentRoster, type ChildAgentHandle, type TeamSeat } from '../sub-agent-roster'
 import { teamSay } from '../tools/expert'
 import { dispatchSubAgents, parseDispatchTasks, followupAgent, waitAgents, denyIfNotForThisAgent, SubAgentWorkspace } from '../tools/sub-agent'
@@ -267,6 +268,112 @@ describe('dispatch_agents 带角色和团', () => {
     }, CONFIG, executor)
     expect(result.success).toBe(false)
     expect(roster.list()).toHaveLength(0)
+  })
+})
+
+describe('dispatch_agents 团名和角色的整理与上限', () => {
+  const two = (role = '测试专家') => [
+    { role, description: 'x', prompt: 'y' },
+    { role: '开发专家', description: 'x', prompt: 'y' },
+  ]
+
+  it('团名里的换行、制表折成一个空格，首尾去掉；角色同样', () => {
+    const parsed = parseDispatchTasks({ team: '  换行测试团\n第二行\t三  ', tasks: two('测\n试专家') })
+    expect('tasks' in parsed && parsed.team).toBe('换行测试团 第二行 三')
+    expect('tasks' in parsed && parsed.tasks[0].role).toBe('测 试专家')
+  })
+
+  it('团名恰好 40 个字可以；41 个字退回并写明字数，不悄悄截断', () => {
+    const ok = parseDispatchTasks({ team: '团'.repeat(40), tasks: two() })
+    expect('tasks' in ok && ok.team).toBe('团'.repeat(40))
+    const over = parseDispatchTasks({ team: '团'.repeat(41), tasks: two() })
+    expect('error' in over && over.error).toContain('团名最长 40 个字，这次 41 个字')
+  })
+
+  it('字数按看得见的字算：40 个表情、40 个组合表情（家庭，由多个符号拼成）都不算超限', () => {
+    const rocket = parseDispatchTasks({ team: '🚀'.repeat(40), tasks: two() })
+    expect('tasks' in rocket && rocket.team).toBe('🚀'.repeat(40))
+    const family = '👨\u200D👩\u200D👧'
+    const joined = parseDispatchTasks({ team: family.repeat(40), tasks: two() })
+    expect('tasks' in joined && joined.team).toBe(family.repeat(40))
+    const over = parseDispatchTasks({ team: family.repeat(41), tasks: two() })
+    expect('error' in over && over.error).toContain('这次 41 个字')
+  })
+
+  it('整理的范围：回车换行、不换行空格、控制字符、零宽空格、改方向的符号都折成空格；组合表情用的连接符不动', () => {
+    expect(tidyLabel('甲\r\n乙')).toBe('甲 乙')
+    expect(tidyLabel('甲\u00A0乙')).toBe('甲 乙')
+    expect(tidyLabel('甲\u0007\u0085乙')).toBe('甲 乙')
+    expect(tidyLabel('甲\u200B乙')).toBe('甲 乙')
+    expect(tidyLabel('\u202E甲乙\u202C')).toBe('甲乙')
+    expect(tidyLabel('👨\u200D👩')).toBe('👨\u200D👩')
+    expect(tidyLabel('  \n ')).toBe('')
+  })
+
+  it('一句话简述里的换行也折成一行', () => {
+    const parsed = parseDispatchTasks({
+      tasks: [{ description: '读\n配置', prompt: 'y' }],
+      batch: { instruction: '审', items: [{ description: '第一\r\n条', input: 'a' }] },
+    })
+    expect('tasks' in parsed && parsed.tasks.map(task => task.description)).toEqual(['读 配置', '第一 条'])
+  })
+
+  it('团名超长和别的问题一起说', () => {
+    const parsed = parseDispatchTasks({ team: '团'.repeat(50), tasks: [{ description: 'x', prompt: 'y' }] })
+    const error = 'error' in parsed ? parsed.error : ''
+    expect(error).toContain('团名最长 40')
+    expect(error).toContain('第 1 位没有')
+  })
+
+  it('角色超过 20 个字：整批退回并指出是第几位；和团名超长一起说', () => {
+    const parsed = parseDispatchTasks({ tasks: [...two(), { role: '专'.repeat(21), description: 'x', prompt: 'y' }] })
+    expect('error' in parsed && parsed.error).toContain('子任务 3 的 role 最长 20 个字，这次 21 个字')
+    const both = parseDispatchTasks({ team: '团'.repeat(41), tasks: two('专'.repeat(21)) })
+    const error = 'error' in both ? both.error : ''
+    expect(error).toContain('子任务 1 的 role 最长 20')
+    expect(error).toContain('团名最长 40')
+  })
+
+  it('团名整理后是空的（只有换行）：当没给团名', () => {
+    const parsed = parseDispatchTasks({ team: '\n\t ', tasks: two() })
+    expect('tasks' in parsed && parsed.team).toBeUndefined()
+  })
+
+  it('超长团名：执行器整批不派，预卡片也不写团名', async () => {
+    const { roster, executor } = setup()
+    const args = { team: '团'.repeat(41), tasks: TEAM_ARGS.tasks }
+    const result = await dispatchSubAgents(args, CONFIG, executor)
+    expect(result.success).toBe(false)
+    expect(roster.list()).toHaveLength(0)
+    const render = (getAgentTools(undefined, { mode: 'assistant' }) as ToolDefinitionWithMeta[])
+      .find(tool => tool.function.name === 'dispatch_agents')!._meta!.streamDisplay!.customRender!
+    expect(render(args)).toBe('派出 3 位专家')
+  })
+
+  it('带换行的团名：回执和名册里是整理后的名字，总览每人仍是一行', async () => {
+    const writes = new Map<string, string>()
+    vi.mocked(fs.writeFileSync).mockImplementation((file, data) => { writes.set(String(file), String(data)) })
+    try {
+      const { roster, executor } = setup()
+      const result = await dispatchSubAgents({ team: '小工具\n组', tasks: TEAM_ARGS.tasks }, CONFIG, executor)
+      expect(result.output.startsWith('已派出专家团「小工具 组」')).toBe(true)
+      expect(roster.list().every(c => c.team === '小工具 组')).toBe(true)
+      const overview = [...writes].find(([file]) => file.endsWith('overview.md'))![1].trim().split('\n')
+      expect(overview).toHaveLength(2 + TEAM_ARGS.tasks.length)
+      expect(overview.slice(2).every(line => line.includes('「小工具 组」'))).toBe(true)
+    } finally {
+      vi.mocked(fs.writeFileSync).mockReset()
+    }
+  })
+
+  it('角色只有控制字符：预卡片和执行器一致，都当没有角色', async () => {
+    const { executor } = setup()
+    const args = { team: '小工具组', tasks: TEAM_ARGS.tasks.map(task => ({ ...task, role: '\u0007' })) }
+    const render = (getAgentTools(undefined, { mode: 'assistant' }) as ToolDefinitionWithMeta[])
+      .find(tool => tool.function.name === 'dispatch_agents')!._meta!.streamDisplay!.customRender!
+    const result = await dispatchSubAgents(args, CONFIG, executor)
+    expect(result.success).toBe(false)
+    expect(render(args)).toBe('派出 3 个伙计')
   })
 })
 

@@ -18,7 +18,10 @@ import { truncateFromEnd, truncateFromEndWithNotice } from './utils'
 import { getScratchPath } from './file'
 import { createLogger } from '../../../utils/logger'
 import { t } from '../i18n'
-import { MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER, WAKES_PER_CHECKPOINT, type ExpertTeam } from '../expert-team'
+import {
+  labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER,
+  teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT, type ExpertTeam
+} from '../expert-team'
 import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
 import { createTeamTexts, expertOpening, formatTranscript } from './expert-team-text'
 
@@ -29,6 +32,8 @@ const INLINE_RESULT_MAX = 8000
 const INLINE_RESULT_MIN = 1000
 /** 伙计进度推给界面最多约每秒 4 次 */
 const PROGRESS_INTERVAL_MS = 250
+/** 总览是给秘书读的文件，不用像界面那样勤；伙计多时每次重写都要把所有人的步骤过一遍 */
+const OVERVIEW_INTERVAL_MS = 1000
 
 function buildArtifactDir(): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
@@ -44,6 +49,17 @@ function statusLabel(status: ChildSnapshot['status']): string {
     case 'pending': return t('dispatch.status_pending')
     default: return t('dispatch.status_running')
   }
+}
+
+/** 总览里的状态一格：还在干的写做到第几步、最近用了什么工具，看得出是在忙还是停住了 */
+function statusCell(c: ChildSnapshot): string {
+  if (c.status !== 'running' && c.status !== 'pending') return statusLabel(c.status)
+  const last = c.steps[c.steps.length - 1]
+  const detail = [
+    last && t('dispatch.overview_steps', { steps: c.steps.length, tool: last.tool }),
+    c.waitingForModel && t('dispatch.overview_queued'),
+  ].filter(Boolean).join('；')
+  return detail ? t('dispatch.overview_live', { status: statusLabel(c.status), detail }) : statusLabel(c.status)
 }
 
 /** 做完 / 在干 / 失败 / 已打断各几个 */
@@ -62,6 +78,8 @@ export class SubAgentWorkspace {
   private readonly dir: string
   readonly overviewPath: string
   private readonly results = new Map<string, { chars: number; file?: string }>()
+  /** 总览上次写进去的内容，没变就不重写 */
+  private lastOverview?: string
   /** 每个群聊文件写到第几条 */
   private readonly transcriptCounts = new Map<string, number>()
   /** 团名对应的群聊文件名 */
@@ -127,10 +145,12 @@ export class SubAgentWorkspace {
         const kept = this.results.get(c.name)
         const who = [c.role, c.team && `「${c.team}」`].filter(Boolean).join(' ')
         const task = who ? `[${who}] ${c.description}` : c.description
-        return [c.name, statusLabel(c.status), kept ? String(kept.chars) : '-', kept?.file ?? '-', task].join(' | ')
+        return [c.name, statusCell(c), kept ? String(kept.chars) : '-', kept?.file ?? '-', task].join(' | ')
       }),
     ]
-    this.write('overview.md', lines.join('\n') + '\n')
+    const content = lines.join('\n') + '\n'
+    if (content === this.lastOverview) return
+    if (this.write('overview.md', content)) this.lastOverview = content
   }
 
   teamTranscriptPath(team: ExpertTeam): string {
@@ -333,6 +353,7 @@ export function spawnDeps(
   if (!roster) return { error: 'dispatch_agents 需要主人花名册（内部错误）' }
   const workspace = workspaceOf(roster)
   workspace.attachChats(executor.getExpertTeamChats?.(), executor.getSessionId?.())
+  const overviewProgress = new ProgressThrottle(() => workspace.writeOverview(roster.list()), OVERVIEW_INTERVAL_MS)
   const progress = new ProgressThrottle(() => {
     const names = ownedNames ?? new Set(roster.list().map(c => c.name))
     for (const team of roster.listTeams()) workspace.writeTeamChat(team)
@@ -359,7 +380,10 @@ export function spawnDeps(
     },
     openingFor: expertOpening,
     teamTexts: createTeamTexts(team => workspace.teamTranscriptPath(team)),
-    onProgress: () => progress.schedule(),
+    onProgress: () => {
+      progress.schedule()
+      overviewProgress.schedule()
+    },
     ownedNames,
     isParentAborted: () => executor.isAborted(),
     sanitize: sanitizeParentMessages,
@@ -374,12 +398,13 @@ function optionalName(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined
 }
 
-function isBatchArgs(value: unknown): value is { instruction: string } {
-  return !!value && typeof value === 'object' && typeof (value as { instruction?: unknown }).instruction === 'string'
+/** 一句话简述：折成一行（它要摆进总览的一行和每位专家开场里的团员名单） */
+function oneLine(value: unknown): string | undefined {
+  return typeof value === 'string' ? tidyLabel(value) || undefined : undefined
 }
 
-function optionalText(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+function isBatchArgs(value: unknown): value is { instruction: string } {
+  return !!value && typeof value === 'object' && typeof (value as { instruction?: unknown }).instruction === 'string'
 }
 
 /**
@@ -388,6 +413,7 @@ function optionalText(value: unknown): string | undefined {
  */
 export function parseDispatchTasks(args: Record<string, unknown>): { tasks: ParsedSpawnTask[]; team?: string } | { error: string } {
   const tasks: ParsedSpawnTask[] = []
+  const problems: string[] = []
   const rawTasks = args.tasks
   const rawBatch = args.batch
   if (rawTasks !== undefined && !Array.isArray(rawTasks)) {
@@ -402,11 +428,14 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
       const forkTurns = parseForkTurns(task.fork_turns)
       if ('error' in forkTurns) return { error: `子任务 ${i + 1}：${forkTurns.error}` }
       const name = optionalName(task.name)
-      const role = optionalText(task.role)
+      const role = typeof task.role === 'string' ? tidyLabel(task.role) || undefined : undefined
       if (role && (name?.trim() === TEAM_LEADER || role === TEAM_LEADER)) {
         return { error: `「${TEAM_LEADER}」留给派出专家团的你，专家的名字和角色都不能用它（子任务 ${i + 1}）` }
       }
-      const description = typeof task.description === 'string' && task.description ? task.description : undefined
+      if (role && labelLength(role) > MAX_ROLE_CHARS) {
+        problems.push(`子任务 ${i + 1} 的 role 最长 ${MAX_ROLE_CHARS} 个字，这次 ${labelLength(role)} 个字。`)
+      }
+      const description = oneLine(task.description)
       tasks.push({
         name,
         description: description ?? (role ? name ?? role : 'task'),
@@ -437,7 +466,7 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
       const name = optionalName(item.name)
       tasks.push({
         name,
-        description: typeof item.description === 'string' && item.description ? item.description : (name ?? `${i + 1}`),
+        description: oneLine(item.description) ?? (name ?? `${i + 1}`),
         prompt: `${batch.instruction}\n${item.input}`,
         shownPrompt: item.input,
         forkTurns,
@@ -447,9 +476,11 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
   if (tasks.length === 0) {
     return { error: 'tasks 和 batch 至少给一个，且不能为空' }
   }
-  const team = optionalText(args.team)
-  if (!team) return { tasks }
-  const problems: string[] = []
+  const team = teamNameFrom(args.team)
+  if (!team) return problems.length ? { error: `没派：${problems.join('')}` } : { tasks }
+  if (labelLength(team) > MAX_TEAM_NAME_CHARS) {
+    problems.push(`团名最长 ${MAX_TEAM_NAME_CHARS} 个字，这次 ${labelLength(team)} 个字。`)
+  }
   if (rawBatch !== undefined) problems.push('带 team 时只用 tasks 写每位专家，不能用 batch。')
   const noRole = tasks.findIndex(task => !task.role)
   if (noRole >= 0) problems.push(`带 team 时每位都要有 role（专家角色），第 ${noRole + 1} 位没有。`)
@@ -529,7 +560,7 @@ export async function dispatchSubAgents(
   })
 
   log.info(`Dispatched ${names.length} sub-agents${created ? ` as team ${created.name}` : ''}: ${names.join(', ')}`)
-  const blankTeam = typeof args.team === 'string' && !args.team.trim()
+  const blankTeam = typeof args.team === 'string' && !teamNameFrom(args.team)
   return {
     success: true,
     output: formatSpawned(names, snapshots, roster, created?.name) + (blankTeam ? `\n\n${t('expert.blank_team')}` : '')
