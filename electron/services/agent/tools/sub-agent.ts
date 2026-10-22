@@ -19,6 +19,7 @@ import { getScratchPath } from './file'
 import { createLogger } from '../../../utils/logger'
 import { t } from '../i18n'
 import type { ExpertTeam } from '../expert-team'
+import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
 import { createTeamTexts, expertOpening, formatTranscript } from './expert-team-text'
 
 const log = createLogger('SubAgent')
@@ -65,10 +66,40 @@ export class SubAgentWorkspace {
   private readonly transcriptCounts = new Map<string, number>()
   /** 团名对应的群聊文件名 */
   private readonly transcriptFiles = new Map<string, string>()
+  /** 随会话保存的群聊全文：团名对应的文件和写到第几条 */
+  private readonly chatFiles = new Map<string, { file: string; written: number }>()
+  private chats?: { store: ExpertTeamChatStore; sessionId: string }
 
   constructor(dir = buildArtifactDir()) {
     this.dir = dir
     this.overviewPath = path.join(dir, 'overview.md')
+  }
+
+  /** 有会话才存群聊全文；只认第一次挂上的 */
+  attachChats(store: ExpertTeamChatStore | undefined, sessionId: string | undefined): void {
+    if (this.chats || !store || !sessionId) return
+    this.chats = { store, sessionId }
+  }
+
+  /** 群里的新消息追加进随会话保存的全文 */
+  writeTeamChat(team: ExpertTeam): void {
+    if (!this.chats) return
+    let chat = this.chatFiles.get(team.name)
+    if (!chat) {
+      const stem = `${path.basename(this.dir)}-${this.teamTranscriptFile(team).replace(/\.md$/, '')}`
+      const file = this.chats.store.create(this.chats.sessionId, stem)
+      if (!file) return
+      chat = { file, written: 0 }
+      this.chatFiles.set(team.name, chat)
+    }
+    const fresh = team.messagesAfter(chat.written)
+    if (fresh.length && this.chats.store.append(chat.file, fresh)) chat.written = fresh[fresh.length - 1].seq
+  }
+
+  /** 写进去过才给界面，否则界面用派出那一步里的那一小段 */
+  teamChatFile(team: ExpertTeam): string | undefined {
+    const chat = this.chatFiles.get(team.name)
+    return chat && chat.written > 0 ? chat.file : undefined
   }
 
   /** 直接带回对话的字数上限：这一轮派得越多越紧 */
@@ -243,9 +274,12 @@ export function dispatchStepView(roster: SubAgentRoster, names: ReadonlySet<stri
   const mine = roster.list().filter(c => names.has(c.name))
   const teamName = mine.find(c => c.team)?.team
   const team = teamName ? roster.getTeam(teamName) : undefined
+  const workspace = workspaceOf(roster)
   return {
     subAgents: mine.map(toSubAgentView),
-    ...(team ? { expertTeam: team.view(workspaceOf(roster).teamTranscriptPath(team)) } : {}),
+    ...(team ? {
+      expertTeam: team.view({ transcriptPath: workspace.teamTranscriptPath(team), chatFile: workspace.teamChatFile(team) }),
+    } : {}),
   }
 }
 
@@ -288,8 +322,10 @@ export function spawnDeps(
   const roster = executor.getSubAgentRoster?.()
   if (!roster) return { error: 'dispatch_agents 需要主人花名册（内部错误）' }
   const workspace = workspaceOf(roster)
+  workspace.attachChats(executor.getExpertTeamChats?.(), executor.getSessionId?.())
   const progress = new ProgressThrottle(() => {
     const names = ownedNames ?? new Set(roster.list().map(c => c.name))
+    for (const team of roster.listTeams()) workspace.writeTeamChat(team)
     executor.updateStep(progressStepId, dispatchStepView(roster, names))
     for (const team of roster.listTeams()) workspace.writeTeamTranscript(team)
   })
@@ -305,7 +341,10 @@ export function spawnDeps(
     knock: (message) => {
       progress.flush()
       workspace.writeOverview(roster.list())
-      for (const team of roster.listTeams()) workspace.writeTeamTranscript(team)
+      for (const team of roster.listTeams()) {
+        workspace.writeTeamChat(team)
+        workspace.writeTeamTranscript(team)
+      }
       executor.knockParent?.(message)
     },
     openingFor: expertOpening,

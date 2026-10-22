@@ -855,6 +855,8 @@ export default {
       omittedNoPath: '后面还有 {count} 字没放进来',
       waitingLeaderNote: '专家互相点名已满 {limit} 次，等组长看过再接着叫醒',
       jumpLatest: '有新消息',
+      loadEarlier: '看更早的消息',
+      loadingEarlier: '正在读更早的消息…',
     },
     subAgentCount: {
       completed: '{count} 做完',

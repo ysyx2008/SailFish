@@ -5383,6 +5383,10 @@ ipcMain.handle('history:getCompanionMergedView', async () => {
   return agentService.getCompanionMergedViewRecord()
 })
 
+ipcMain.handle('history:readExpertTeamChat', async (_event, file: string, cursor?: import('@shared/types').ExpertTeamChatCursor) => {
+  return historyService.getAgentRecordStore().expertTeamChats.read(file, cursor ?? {})
+})
+
 ipcMain.handle('history:deleteAgentRecord', async (_event, id: string) => {
   const ok = (await conv()).delete(id)
   if (ok && knowledgeService) {

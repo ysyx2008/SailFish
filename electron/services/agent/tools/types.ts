@@ -54,6 +54,8 @@ export interface ToolExecutorConfig {
    * 伙计跟主人这场，不跟自己的临时会话，避免把「动手前」那份备份盖成改过的稿。
    */
   getDocumentConversationId?: () => string | undefined
+  /** 专家团群聊全文随会话存的地方；没有历史服务时没有 */
+  getExpertTeamChats?: () => import('../../history/expert-team-chat-store').ExpertTeamChatStore | undefined
   /** 是否为子 Agent 执行上下文（dispatch_agents 派生的子任务）。硬墙直接拦；高风险跟主人这场同一道门 */
   isSubAgent?: boolean
   /** 统一终端服务（支持 PTY 和 SSH） */

@@ -1,16 +1,19 @@
 <script setup lang="ts">
 /**
  * 专家团完整群聊：每条「角色·名字 → 谁」+ 全文，长的先显示几行。
+ * 全文从随会话保存的群聊文件里翻页读：先读最近一页，翻到顶再往前读，有新消息往后补；
+ * 读不到时用派出那一步里的那一小段。
  * 贴着底部时跟着新消息走，往上翻时不动。
  * 助手页开在右侧面板，终端页和联络盖在对话栏上，同一个组件。
  */
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft, X, ArrowDown } from 'lucide-vue-next'
-import { EXPERT_TEAM_LEADER, type ExpertTeamMessageView } from '@shared/types'
+import { EXPERT_TEAM_LEADER, type ExpertTeamChatCursor, type ExpertTeamMessageView } from '@shared/types'
 import { useTerminalStore } from '../../stores/terminal'
 import { useMarkdown } from '../../composables/useMarkdown'
 import { messageRoute } from '../../utils/expert-team-view'
+import { ExpertTeamChatPages } from '../../utils/expert-team-chat-pages'
 
 const props = withDefaults(defineProps<{
   tabId: string
@@ -30,13 +33,28 @@ const FOLD_CHARS = 600
 const FOLD_LINES = 10
 /** 离底部这么近算贴着底 */
 const STICK_SLACK_PX = 24
+/** 离顶部这么近就往前读一页 */
+const EARLIER_SLACK_PX = 80
 
 const step = computed(() => terminalStore.tabs
   .find(tab => tab.id === props.tabId)?.agentState?.steps
   .find(s => s.id === props.stepId))
 const team = computed(() => step.value?.expertTeam)
 const agents = computed(() => step.value?.subAgents ?? [])
-const messages = computed<ExpertTeamMessageView[]>(() => team.value?.messages ?? [])
+
+const readPage = (file: string, cursor: ExpertTeamChatCursor) =>
+  window.electronAPI.history.readExpertTeamChat(file, cursor)
+const pages = shallowRef<ExpertTeamChatPages | null>(null)
+/** 全文读进来了就看全文，否则看派出那一步里的那一小段 */
+const paged = computed(() => {
+  const p = pages.value
+  if (!p?.loaded || p.failed) return false
+  return p.messages.length > 0 || !team.value?.messages.length
+})
+const messages = computed<ExpertTeamMessageView[]>(() =>
+  paged.value ? pages.value!.messages : team.value?.messages ?? [])
+/** 单条没放全时，全文在哪 */
+const fullTextPath = computed(() => paged.value ? pages.value!.path : team.value?.transcriptPath)
 const labels = computed(() => ({
   leader: t('ai.expertTeam.leader'),
   toNobody: t('ai.expertTeam.toNobody'),
@@ -59,6 +77,39 @@ function onScroll() {
   if (!el) return
   stuckToBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_SLACK_PX
   if (stuckToBottom.value) unseen.value = 0
+  if (el.scrollTop <= EARLIER_SLACK_PX) void loadEarlier()
+}
+
+/** 往前读一页，补进来后原来最上面那条留在眼前原处 */
+async function loadEarlier() {
+  const p = pages.value
+  const el = listEl.value
+  if (!p || !el || !paged.value || !p.hasEarlier || p.loadingEarlier) return
+  const anchor = el.querySelector<HTMLElement>('.etc-message')
+  const anchorTop = anchor?.offsetTop ?? 0
+  const added = await p.loadEarlier()
+  if (!added || pages.value !== p) return
+  await nextTick()
+  if (anchor?.isConnected) el.scrollTop += anchor.offsetTop - anchorTop
+  void renderMermaidBlocks(el)
+}
+
+/** 打开这个团的群聊：有全文文件就读末尾一页，然后贴底 */
+async function openChat(force = false) {
+  const file = team.value?.chatFile
+  if (!force && pages.value?.file === file) return
+  expanded.clear()
+  unseen.value = 0
+  const p = file ? reactive(new ExpertTeamChatPages(file, readPage)) as ExpertTeamChatPages : null
+  pages.value = p
+  if (p) {
+    await p.loadLatest()
+    if (viewLastSeq.value > p.lastSeq) await p.loadNewer()
+  }
+  if (pages.value !== p) return
+  await nextTick()
+  void renderMermaidBlocks(listEl.value)
+  scrollToBottom()
 }
 
 function scrollToBottom() {
@@ -78,21 +129,23 @@ watch(lastSeq, async (seq, before) => {
   else if (seq > before) unseen.value += seq - before
 })
 
-/** 换了一个团：从头看这个团，贴底 */
-watch(() => props.stepId, async () => {
-  expanded.clear()
-  await nextTick()
-  void renderMermaidBlocks(listEl.value)
-  scrollToBottom()
+/** 群里有新消息：看全文时去文件里补 */
+const viewLastSeq = computed(() => {
+  const view = team.value?.messages ?? []
+  return view[view.length - 1]?.seq ?? 0
 })
+watch(viewLastSeq, (seq) => {
+  const p = pages.value
+  if (p?.loaded && !p.failed && seq > p.lastSeq) void p.loadNewer()
+})
+
+/** 换了一个团就从头打开；这个团的全文文件刚有时换成看全文 */
+watch(() => props.stepId, () => { void openChat(true) })
+watch(() => team.value?.chatFile, () => { void openChat() })
 
 watch(() => !!team.value, (has, had) => { if (had && !has) emit('close') })
 
-onMounted(async () => {
-  await nextTick()
-  void renderMermaidBlocks(listEl.value)
-  scrollToBottom()
-})
+onMounted(() => { void openChat(true) })
 </script>
 
 <template>
@@ -126,7 +179,13 @@ onMounted(async () => {
 
     <div ref="listEl" class="etc-list" @scroll.passive="onScroll">
       <p v-if="messages.length === 0" class="etc-empty">{{ t('ai.expertTeam.empty') }}</p>
-      <p v-if="team?.earlierOmitted" class="etc-omitted etc-earlier">
+      <template v-if="paged">
+        <p v-if="pages?.loadingEarlier" class="etc-omitted etc-earlier">{{ t('ai.expertTeam.loadingEarlier') }}</p>
+        <button v-else-if="pages?.hasEarlier" type="button" class="etc-fold-btn etc-earlier-btn" @click="loadEarlier">
+          {{ t('ai.expertTeam.loadEarlier') }}
+        </button>
+      </template>
+      <p v-else-if="team?.earlierOmitted" class="etc-omitted etc-earlier">
         {{ team.transcriptPath
           ? t('ai.expertTeam.earlierOmitted', { count: team.earlierOmitted, path: team.transcriptPath })
           : t('ai.expertTeam.earlierOmittedNoPath', { count: team.earlierOmitted }) }}
@@ -149,8 +208,8 @@ onMounted(async () => {
           v-html="renderMarkdown(m.text)"
         />
         <p v-if="m.omitted" class="etc-omitted">
-          {{ team?.transcriptPath
-            ? t('ai.expertTeam.omitted', { count: m.omitted, path: team.transcriptPath })
+          {{ fullTextPath
+            ? t('ai.expertTeam.omitted', { count: m.omitted, path: fullTextPath })
             : t('ai.expertTeam.omittedNoPath', { count: m.omitted }) }}
         </p>
         <button v-if="isLong(m)" type="button" class="etc-fold-btn" @click="toggle(m.seq)">
@@ -311,6 +370,10 @@ onMounted(async () => {
 
 .etc-earlier {
   text-align: center;
+}
+
+.etc-earlier-btn {
+  align-self: center;
 }
 
 .etc-fold-btn {

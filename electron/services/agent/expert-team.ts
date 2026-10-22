@@ -12,13 +12,13 @@ export const WAKES_PER_CHECKPOINT = 30
 export const MIN_TEAM_SIZE = 2
 export const MAX_TEAM_SIZE = 15
 
-/** 推给界面、随会话落盘的那份里，单条群消息最多这么多字，全文在群聊文件里 */
-export const VIEW_MESSAGE_MAX = 20000
 /**
- * 那份里所有群消息合起来最多这么多字，只留最近的，更早的去群聊文件里看。
- * 派出那一步存盘时是一行，单行太大读回时整步都会被略掉。
+ * 推给界面、随派出那一步落盘的那份只留最近一小段：单条和合计各有上限。
+ * 那一步存盘是一行，单行太大读回时整步都会被略掉；还会被频繁推给界面。
+ * 完整群聊另存，界面翻页读。
  */
-export const VIEW_TOTAL_MAX = 60000
+export const VIEW_MESSAGE_MAX = 4000
+export const VIEW_TOTAL_MAX = 16000
 
 export interface TeamMember {
   name: string
@@ -158,8 +158,14 @@ export class ExpertTeam {
     return this.messages.slice(-count).map(copyMessage)
   }
 
+  /** seq 大于 after 的 */
+  messagesAfter(after: number): TeamMessage[] {
+    return this.messages.filter(m => m.seq > after).map(copyMessage)
+  }
+
   /** 给界面看、随会话落盘的那份：从最新往前取，单条和总字数都有上限 */
-  view(transcriptPath?: string): ExpertTeamView {
+  view(files: { transcriptPath?: string; chatFile?: string } = {}): ExpertTeamView {
+    const { transcriptPath, chatFile } = files
     const kept: ExpertTeamView['messages'] = []
     let budget = VIEW_TOTAL_MAX
     for (let i = this.messages.length - 1; i >= 0; i--) {
@@ -178,6 +184,7 @@ export class ExpertTeam {
       wakeLimit: WAKES_PER_CHECKPOINT,
       waitingLeader: this.waitingLeader,
       ...(transcriptPath ? { transcriptPath } : {}),
+      ...(chatFile ? { chatFile } : {}),
     }
   }
 

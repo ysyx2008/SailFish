@@ -5901,6 +5901,7 @@ export abstract class Agent {
       getSessionId: () => this.getSessionId(),
       getRecallingConversation: () => this.recallingConversation(),
       getDocumentConversationId: () => this.documentConversationId(),
+      getExpertTeamChats: () => this.services.historyService?.getAgentRecordStore().expertTeamChats,
       terminalService: this.services.unifiedTerminalService || this.services.ptyService as any,
       hostProfileService: this.services.hostProfileService,
       mcpService: this.services.mcpService,

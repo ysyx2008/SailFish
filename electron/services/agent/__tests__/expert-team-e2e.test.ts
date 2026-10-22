@@ -35,6 +35,7 @@ vi.mock('../../knowledge', () => ({
 }))
 
 import { SailFish } from '../sailfish'
+import { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
 
 type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } }
 type LlmResponse = { content?: string; tool_calls?: ToolCall[] }
@@ -183,6 +184,10 @@ describe('专家团端到端（真实 SailFish.run）', () => {
     const parent = new SailFish(services)
     parent.setAgentId('e2e-expert-parent')
     parent.updateConfig({ executionMode: 'free' })
+    const chats = new ExpertTeamChatStore(path.join(tmpDir, 'history', 'expert-teams'))
+    const withChats = parent as unknown as { createToolExecutorConfig: (run: unknown) => object }
+    const baseConfig = withChats.createToolExecutorConfig.bind(parent)
+    withChats.createToolExecutorConfig = (run) => ({ ...baseConfig(run), getExpertTeamChats: () => chats })
 
     const steps: AgentStep[] = []
     const result = await parent.run('做个 hello 小工具', ctx(), {
@@ -212,6 +217,10 @@ describe('专家团端到端（真实 SailFish.run）', () => {
     expect(last.subAgents?.map(s => s.role).sort()).toEqual(['产品专家', '开发专家'])
     expect(last.expertTeam?.name).toBe('小工具组')
     expect(last.expertTeam?.messages.map(m => `${m.from}→${m.to.join(',')}`)).toEqual(['定需求→写代码', '写代码→组长'])
+
+    const chatFile = last.expertTeam?.chatFile
+    expect(chatFile).toMatch(/team-小工具组\.jsonl$/)
+    expect(chats.read(chatFile!)!.messages.map(m => m.text)).toEqual([`需求：在 ${target} 写入 hi`, 'hello.txt 写好了'])
 
     const transcript = findFile(tmpDir, 'team-小工具组.md')
     expect(transcript).toBeTruthy()

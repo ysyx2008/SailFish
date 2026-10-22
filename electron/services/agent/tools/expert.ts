@@ -115,7 +115,10 @@ export async function dispatchExperts(
   const workspace = workspaceOf(roster)
   workspace.writeOverview(roster.list())
   const created = teamName ? roster.getTeam(teamName) : undefined
-  if (created) workspace.writeTeamTranscript(created)
+  if (created) {
+    workspace.writeTeamChat(created)
+    workspace.writeTeamTranscript(created)
+  }
 
   executor.updateStep(progressStep.id, {
     content: expertDispatchTitle(names.length, teamName),

@@ -854,6 +854,8 @@ export default {
       omittedNoPath: '{count} more characters not shown',
       waitingLeaderNote: 'Experts have mentioned each other {limit} times; waiting for the lead before waking anyone else',
       jumpLatest: 'New messages',
+      loadEarlier: 'Show earlier messages',
+      loadingEarlier: 'Loading earlier messages…',
     },
     subAgentCount: {
       completed: '{count} done',
