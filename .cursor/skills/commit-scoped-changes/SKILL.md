@@ -1,6 +1,6 @@
 ---
 name: commit-scoped-changes
-description: When committing or staging changes, only include files related to the current task or conversation; do not stage or commit unrelated modifications. Before committing, update docs/ideas.md when the change matches an existing idea. Use when a stage of work is done and checked (committing is the agent's job), when the user asks to commit, stage, 提交, or when preparing to run git add/commit.
+description: When committing or staging changes, only include files related to the current task or conversation; do not stage or commit unrelated modifications. Before committing, update docs/ideas.md when the change matches an existing idea. After a commit lands on develop or main, retitle the chat to 「【已合入】<what this work does>」, a short line in the conversation's language. Use when a stage of work is done and checked (committing is the agent's job), when the user asks to commit, stage, 提交, or when preparing to run git add/commit.
 ---
 
 # 只提交当前相关修改
@@ -35,6 +35,10 @@ description: When committing or staging changes, only include files related to t
 ## 提交标题
 
 按 `CONTRIBUTING.md` 的提交规范写，不带类型前缀的不合规。
+
+## 对话标题
+
+提交落在 `develop` 或 `main` 上时，和协作规范里工作树合入之后一样，整句标题改成「【已合入】<这一路做什么>」，用对话的语言写成一句短的。
 
 ## 要求
 
