@@ -290,6 +290,14 @@ describe('dispatch_agents 派出那一步的标题与回执', () => {
     expect(result.output.startsWith(receipt)).toBe(true)
   })
 
+  it('team 是空串：照常各干各的派出，回执里说明没组团', async () => {
+    const { roster, executor } = setup()
+    const result = await dispatchSubAgents({ team: '  ', tasks: TEAM_ARGS.tasks }, CONFIG, executor)
+    expect(result.output.startsWith('已派出 3 位专家')).toBe(true)
+    expect(result.output).toContain('team 是空的')
+    expect(roster.list().every(c => !c.team)).toBe(true)
+  })
+
   it('组团不成立时预卡片不写团名', () => {
     const one = { team: 't', tasks: [TEAM_ARGS.tasks[0]] }
     expect(render(one)).toBe('派出 1 位专家')

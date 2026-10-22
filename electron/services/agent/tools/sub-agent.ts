@@ -529,9 +529,10 @@ export async function dispatchSubAgents(
   })
 
   log.info(`Dispatched ${names.length} sub-agents${created ? ` as team ${created.name}` : ''}: ${names.join(', ')}`)
+  const blankTeam = typeof args.team === 'string' && !args.team.trim()
   return {
     success: true,
-    output: formatSpawned(names, snapshots, roster, created?.name)
+    output: formatSpawned(names, snapshots, roster, created?.name) + (blankTeam ? `\n\n${t('expert.blank_team')}` : '')
   }
 }
 
