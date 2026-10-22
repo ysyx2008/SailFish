@@ -1223,7 +1223,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
                 type: 'object',
                 properties: {
                   name: { type: 'string', description: SUB_AGENT_NAME_DESCRIPTION },
-                  role: { type: 'string', description: `专家角色，几个字。带了就是专家，名字不能叫「${TEAM_LEADER}」` },
+                  role: { type: 'string', description: `专家角色，几个字。带了就是专家；专家的名字和角色都不能用「${TEAM_LEADER}」` },
                   description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
                   prompt: { type: 'string', description: '详细任务指令' },
                   fork_turns: { type: 'string', description: FORK_TURNS_DESCRIPTION }
@@ -1232,7 +1232,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
               },
               description: '每人各写一份指令'
             },
-            team: { type: 'string', description: `团名。${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位，每位都带 role，不用 batch` },
+            team: { type: 'string', description: `团名，几个字。一个团 ${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位专家，每位都带 role，不能和 batch 一起用` },
             batch: {
               type: 'object',
               description: '一份共同指令加一批条目。交给每个伙计的指令是 instruction、换行、再接本条目的 input',

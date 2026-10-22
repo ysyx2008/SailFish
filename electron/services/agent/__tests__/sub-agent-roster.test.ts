@@ -146,6 +146,36 @@ describe('interrupt', () => {
     expect(roster.get('alice')?.status).toBe('interrupted')
     expect(knocks).toEqual(['knock:alice:interrupted'])
   })
+
+  it('打断后伙计照常返回（不抛错）也记成已打断', async () => {
+    const knocks: string[] = []
+    const roster = new SubAgentRoster()
+    let stop: () => void = () => {}
+    const child: ChildAgentHandle = {
+      isRunning: () => true,
+      abort: () => { stop(); return true },
+      addUserMessage: () => true,
+      run: () => new Promise<string>(resolve => { stop = () => resolve('操作已中止') }),
+    }
+    roster.spawn(
+      [{ name: 'alice', description: '慢任务', prompt: '慢慢做' }],
+      {
+        createChild: () => child,
+        getParentMessages: () => [] as AiMessage[],
+        getParentContext: () => context,
+        knock: (message) => knocks.push(message),
+        onProgress: () => {},
+        isParentAborted: () => false,
+        sanitize: () => [] as AiMessage[],
+        formatKnock: (snap) => `knock:${snap.name}:${snap.status}`,
+      }
+    )
+    expect(roster.interrupt('alice').ok).toBe(true)
+    await roster.waitUntil(['alice'], new AbortController().signal)
+    expect(roster.get('alice')?.status).toBe('interrupted')
+    expect(roster.get('alice')?.result).toBeUndefined()
+    expect(knocks).toEqual(['knock:alice:interrupted'])
+  })
 })
 
 describe('waitUntil', () => {

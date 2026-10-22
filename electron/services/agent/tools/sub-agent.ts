@@ -403,8 +403,8 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
       if ('error' in forkTurns) return { error: `子任务 ${i + 1}：${forkTurns.error}` }
       const name = optionalName(task.name)
       const role = optionalText(task.role)
-      if (role && name?.trim() === TEAM_LEADER) {
-        return { error: `「${TEAM_LEADER}」留给派出专家团的你，专家不能叫这个名字` }
+      if (role && (name?.trim() === TEAM_LEADER || role === TEAM_LEADER)) {
+        return { error: `「${TEAM_LEADER}」留给派出专家团的你，专家的名字和角色都不能用它（子任务 ${i + 1}）` }
       }
       const description = typeof task.description === 'string' && task.description ? task.description : undefined
       tasks.push({
@@ -449,17 +449,17 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
   }
   const team = optionalText(args.team)
   if (!team) return { tasks }
-  if (rawBatch !== undefined) return { error: '带 team 时只用 tasks 写每位专家，不能用 batch' }
+  const problems: string[] = []
+  if (rawBatch !== undefined) problems.push('带 team 时只用 tasks 写每位专家，不能用 batch。')
   const noRole = tasks.findIndex(task => !task.role)
-  if (noRole >= 0) return { error: `带 team 时每位都要有 role（专家角色），第 ${noRole + 1} 位没有` }
+  if (noRole >= 0) problems.push(`带 team 时每位都要有 role（专家角色），第 ${noRole + 1} 位没有。`)
   if (tasks.length < MIN_TEAM_SIZE || tasks.length > MAX_TEAM_SIZE) {
-    return {
-      error: `没派：一个专家团 ${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位专家，这次 ${tasks.length} 位。`
-        + (tasks.length < MIN_TEAM_SIZE
-          ? '一位专家没有可交接的人，不带 team 就是单独派。'
-          : '可以拆成几个团，或不带 team 各干各的。'),
-    }
+    problems.push(`一个专家团 ${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位专家，这次 ${tasks.length} 位。`
+      + (tasks.length < MIN_TEAM_SIZE
+        ? '一位专家没有可交接的人，不带 team 就是单独派。'
+        : '可以拆成几个团，或不带 team 各干各的。'))
   }
+  if (problems.length) return { error: `没派：${problems.join('')}` }
   return { tasks, team }
 }
 

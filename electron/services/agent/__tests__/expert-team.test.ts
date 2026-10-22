@@ -241,6 +241,11 @@ describe('dispatch_agents 带角色和团', () => {
       batch: { instruction: '审', items: [{ description: 'x', input: 'a' }] },
     })
     expect('error' in withBatch && withBatch.error).toContain('batch')
+    const leaderRole = parseDispatchTasks({ tasks: [{ role: TEAM_LEADER, name: '探针', description: 'x', prompt: 'y' }] })
+    expect('error' in leaderRole && leaderRole.error).toContain(TEAM_LEADER)
+    const twoProblems = parseDispatchTasks({ team: 't', tasks: [{ description: 'x', prompt: 'y' }] })
+    expect('error' in twoProblems && twoProblems.error).toContain('第 1 位没有')
+    expect('error' in twoProblems && twoProblems.error).toContain('2 到 15')
     const mixed = parseDispatchTasks({ tasks: [{ role: '测试专家', description: 'x', prompt: 'y' }, { description: 'x', prompt: 'y' }] })
     expect('tasks' in mixed && mixed.tasks.map(task => task.role)).toEqual(['测试专家', undefined])
     const leader = parseDispatchTasks({ tasks: [{ role: '测试专家', name: TEAM_LEADER, description: 'x', prompt: 'y' }] })

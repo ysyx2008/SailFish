@@ -103,6 +103,8 @@ interface ChildSlot extends ChildSnapshot {
   forkTurns: ForkTurns
   /** 第几段；每次开跑加一 */
   segment: number
+  /** 这一段被打断了：它收干净回来时记成已打断，不管它是抛错还是照常返回 */
+  interruptRequested?: boolean
 }
 
 interface TeamEntry {
@@ -533,6 +535,7 @@ export class SubAgentRoster {
       this.wake()
       return { ok: true, finalized: true }
     }
+    slot.interruptRequested = true
     slot.handle.abort()
     return { ok: true, finalized: false }
   }
@@ -615,6 +618,7 @@ export class SubAgentRoster {
     if (!handle) return
     // 上一段刚跑完、还没记账时又被叫起一段：旧的这段回来时不再改状态、不再敲门
     const segment = ++slot.segment
+    slot.interruptRequested = false
     try {
       const raw = await handle.run(message, deps.getParentContext(), {
         callbacks: {
@@ -623,7 +627,7 @@ export class SubAgentRoster {
         }
       })
       if (segment !== slot.segment) return
-      if (slot.status === 'interrupted' || deps.isParentAborted()) {
+      if (slot.interruptRequested || slot.status === 'interrupted' || deps.isParentAborted()) {
         slot.status = 'interrupted'
         slot.error = slot.error || '已打断'
       } else {
@@ -633,7 +637,7 @@ export class SubAgentRoster {
     } catch (err) {
       if (segment !== slot.segment) return
       const msg = err instanceof Error ? err.message : String(err)
-      if (slot.status === 'interrupted' || deps.isParentAborted() || /abort/i.test(msg)) {
+      if (slot.interruptRequested || slot.status === 'interrupted' || deps.isParentAborted() || /abort/i.test(msg)) {
         slot.status = 'interrupted'
         slot.error = slot.error || '已打断'
       } else {
