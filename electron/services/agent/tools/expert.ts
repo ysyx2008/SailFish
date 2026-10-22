@@ -5,7 +5,7 @@ import type { AgentConfig, ToolExecutorConfig, ToolResult } from './types'
 import { MAX_LIVE_CHILDREN, type SpawnTask } from '../sub-agent-roster'
 import { MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER, WAKES_PER_CHECKPOINT } from '../expert-team'
 import { parseForkTurns, type ForkTurns } from '../sanitize-parent-messages'
-import { spawnDeps, toSubAgentView, workspaceOf } from './sub-agent'
+import { dispatchStepView, spawnDeps, workspaceOf } from './sub-agent'
 import { expertDispatchTitle } from '../tools'
 import { createLogger } from '../../../utils/logger'
 import { t } from '../i18n'
@@ -119,7 +119,7 @@ export async function dispatchExperts(
 
   executor.updateStep(progressStep.id, {
     content: expertDispatchTitle(names.length, teamName),
-    subAgents: roster.list().filter(c => names.includes(c.name)).map(toSubAgentView),
+    ...dispatchStepView(roster, new Set(names)),
   })
 
   log.info(`Dispatched ${names.length} experts${teamName ? ` as team ${teamName}` : ''}: ${names.join(', ')}`)

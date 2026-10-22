@@ -2,15 +2,23 @@
  * 一个专家团：团员、群消息、每人读到哪、这一段专家互相叫醒了几次。
  * 只管群里的事，谁在跑、怎么叫醒由花名册管。
  */
+import { EXPERT_TEAM_LEADER, type ExpertTeamView } from '@shared/types'
 
-/** 组长（派出专家团的秘书）在群里的名字。专家不能叫这个名字。 */
-export const TEAM_LEADER = '组长'
+export const TEAM_LEADER = EXPERT_TEAM_LEADER
 
 /** 专家互相叫醒每满这么多次，停下来等组长看一眼 */
 export const WAKES_PER_CHECKPOINT = 30
 
 export const MIN_TEAM_SIZE = 2
 export const MAX_TEAM_SIZE = 15
+
+/** 推给界面、随会话落盘的那份里，单条群消息最多这么多字，全文在群聊文件里 */
+export const VIEW_MESSAGE_MAX = 20000
+/**
+ * 那份里所有群消息合起来最多这么多字，只留最近的，更早的去群聊文件里看。
+ * 派出那一步存盘时是一行，单行太大读回时整步都会被略掉。
+ */
+export const VIEW_TOTAL_MAX = 60000
 
 export interface TeamMember {
   name: string
@@ -150,6 +158,29 @@ export class ExpertTeam {
     return this.messages.slice(-count).map(copyMessage)
   }
 
+  /** 给界面看、随会话落盘的那份：从最新往前取，单条和总字数都有上限 */
+  view(transcriptPath?: string): ExpertTeamView {
+    const kept: ExpertTeamView['messages'] = []
+    let budget = VIEW_TOTAL_MAX
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const m = this.messages[i]
+      const text = clipText(m.text, VIEW_MESSAGE_MAX)
+      if (text.length > budget) break
+      kept.unshift(text.length < m.text.length ? { ...copyMessage(m), text, omitted: m.text.length - text.length } : copyMessage(m))
+      budget -= text.length
+    }
+    const earlier = this.messages.length - kept.length
+    return {
+      name: this.name,
+      messages: kept,
+      ...(earlier > 0 ? { earlierOmitted: earlier } : {}),
+      wakes: this.wakesThisStretch,
+      wakeLimit: WAKES_PER_CHECKPOINT,
+      waitingLeader: this.waitingLeader,
+      ...(transcriptPath ? { transcriptPath } : {}),
+    }
+  }
+
   /** 名字前带上角色，给人和模型看 */
   label(name: string): string {
     const m = this.members.find(x => x.name === name)
@@ -165,6 +196,13 @@ export class ExpertTeam {
 
 function dedupe(names: string[]): string[] {
   return [...new Set(names.map(n => n.trim()).filter(Boolean))]
+}
+
+/** 截到 max 个 UTF-16 单元以内，不把表情这类成对的字符切成半个 */
+function clipText(text: string, max: number): string {
+  if (text.length <= max) return text
+  const code = text.charCodeAt(max - 1)
+  return text.slice(0, code >= 0xd800 && code <= 0xdbff ? max - 1 : max)
 }
 
 function copyMessage(m: TeamMessage): TeamMessage {

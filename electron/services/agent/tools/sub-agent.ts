@@ -6,7 +6,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import type { ToolDefinition } from '../../ai.service'
-import type { SubAgentResult } from '@shared/types'
+import type { AgentStep, SubAgentResult } from '@shared/types'
 import type { AgentContext } from '../types'
 import { getDefaultShell, getLocalOS } from '../../../utils/platform'
 import { getMetaByName } from '../tool-metadata'
@@ -234,6 +234,18 @@ export function toSubAgentView(c: ChildSnapshot): SubAgentResult {
     steps: c.steps.map(({ id, tool, args, status }) => ({ id, tool, args, status })),
     blockedReason: c.blockedReason,
     waitingForModel: c.waitingForModel,
+    ...(c.role ? { role: c.role } : {}),
+  }
+}
+
+/** 派出那一步上显示的人和群聊：只看这一次派的人；他们组了团就带上群聊 */
+export function dispatchStepView(roster: SubAgentRoster, names: ReadonlySet<string>): Pick<AgentStep, 'subAgents' | 'expertTeam'> {
+  const mine = roster.list().filter(c => names.has(c.name))
+  const teamName = mine.find(c => c.team)?.team
+  const team = teamName ? roster.getTeam(teamName) : undefined
+  return {
+    subAgents: mine.map(toSubAgentView),
+    ...(team ? { expertTeam: team.view(workspaceOf(roster).teamTranscriptPath(team)) } : {}),
   }
 }
 
@@ -277,9 +289,8 @@ export function spawnDeps(
   if (!roster) return { error: 'dispatch_agents 需要主人花名册（内部错误）' }
   const workspace = workspaceOf(roster)
   const progress = new ProgressThrottle(() => {
-    const children = roster.list()
-    const visible = ownedNames ? children.filter(c => ownedNames.has(c.name)) : children
-    executor.updateStep(progressStepId, { subAgents: visible.map(toSubAgentView) })
+    const names = ownedNames ?? new Set(roster.list().map(c => c.name))
+    executor.updateStep(progressStepId, dispatchStepView(roster, names))
     for (const team of roster.listTeams()) workspace.writeTeamTranscript(team)
   })
   const createChild = executor.createChildAgent

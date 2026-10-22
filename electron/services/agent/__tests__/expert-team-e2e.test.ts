@@ -208,6 +208,10 @@ describe('专家团端到端（真实 SailFish.run）', () => {
 
     const dispatched = steps.filter(s => s.toolName === 'dispatch_experts')
     expect(dispatched.length).toBeGreaterThan(0)
+    const last = dispatched[dispatched.length - 1]
+    expect(last.subAgents?.map(s => s.role).sort()).toEqual(['产品专家', '开发专家'])
+    expect(last.expertTeam?.name).toBe('小工具组')
+    expect(last.expertTeam?.messages.map(m => `${m.from}→${m.to.join(',')}`)).toEqual(['定需求→写代码', '写代码→组长'])
 
     const transcript = findFile(tmpDir, 'team-小工具组.md')
     expect(transcript).toBeTruthy()

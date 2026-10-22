@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./ai-panel": "./src/ai-panel.ts",
+    "./expert-team": "./src/expert-team.ts",
     "./terminal-tab-view": "./src/terminal-tab-view.ts",
     "./terminal-pane-host": "./src/terminal-pane-host.ts",
     "./workbench-shell": "./src/workbench-shell.ts",

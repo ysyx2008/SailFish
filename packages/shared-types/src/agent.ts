@@ -470,6 +470,41 @@ export interface SubAgentResult {
   steps?: SubAgentToolStep[]
   /** 这会儿在排队等模型空位 */
   waitingForModel?: boolean
+  /** 专家角色（派专家时才有），跟名字一起显示 */
+  role?: string
+}
+
+/** 组长（派出专家团的秘书）在群里的名字。专家不能叫这个名字。 */
+export const EXPERT_TEAM_LEADER = '组长'
+
+/** 专家团群里的一条话 */
+export interface ExpertTeamMessageView {
+  seq: number
+  /** 说话的专家名字，或「组长」 */
+  from: string
+  /** 点名要谁接手；空表示只是告知 */
+  to: string[]
+  text: string
+  at: number
+  /** 正文太长没放进来的字数，全文在群聊文件里 */
+  omitted?: number
+}
+
+/** 专家团群聊（dispatch_experts 组团时挂在派出那一步上，实时更新） */
+export interface ExpertTeamView {
+  name: string
+  /** 最近的一段群消息（总字数有上限） */
+  messages: ExpertTeamMessageView[]
+  /** 更早的、没放进来的条数，全文在群聊文件里 */
+  earlierOmitted?: number
+  /** 这一段专家互相叫醒了几次 */
+  wakes: number
+  /** 每段叫醒满这么多次就等组长 */
+  wakeLimit: number
+  /** 正在等组长看过再接着叫醒 */
+  waitingLeader: boolean
+  /** 群聊全文落盘的位置 */
+  transcriptPath?: string
 }
 
 /**
@@ -557,6 +592,8 @@ export interface AgentStep {
   canvasData?: import('./canvas').CanvasData
   /** 并行子 Agent 状态（dispatch_agents 工具专用，实时更新） */
   subAgents?: SubAgentResult[]
+  /** 专家团群聊（dispatch_experts 组团时，实时更新） */
+  expertTeam?: ExpertTeamView
   /** Web 搜索结果（web_search 工具专用，供 UI 可展开渲染） */
   webSearchResults?: WebSearchResultItem[]
   /**

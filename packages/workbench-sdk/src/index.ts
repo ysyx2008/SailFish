@@ -28,6 +28,7 @@ export type { WorkbenchBootstrapResult } from './bootstrap'
 /**
  * 平台壳请从子路径导入（勿塞进主入口，以免拉入 Vue 巨石）：
  * - `@sailfish/workbench-sdk/ai-panel`
+ * - `@sailfish/workbench-sdk/expert-team`
  * - `@sailfish/workbench-sdk/terminal-tab-view`
  * - `@sailfish/workbench-sdk/terminal-pane-host`
  * - `@sailfish/workbench-sdk/workbench-shell`
