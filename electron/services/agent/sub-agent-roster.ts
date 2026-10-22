@@ -5,12 +5,14 @@ import type { AiMessage } from '../ai.service'
 import type { SubAgentResult, SubAgentToolStep, TokenUsage } from '@shared/types'
 import type { AgentContext, AgentStep, RunOptions } from './types'
 import { applyForkTurns, type ForkTurns } from './sanitize-parent-messages'
-import { ExpertTeam, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER, type TeamMessage } from './expert-team'
+import { ExpertTeam, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER, tidyLabel, type TeamMessage } from './expert-team'
 
 export type ChildStatus = 'pending' | 'running' | 'completed' | 'failed' | 'interrupted'
 
 export interface ChildSnapshot {
   name: string
+  /** 派的时候指定的名字没用上（已被占用、或带了不能当名字的符号）时，当时指定的那个 */
+  askedName?: string
   description: string
   prompt: string
   /** 专家角色；伙计没有 */
@@ -40,7 +42,17 @@ export interface ChildAgentHandle {
 }
 
 export type TeamSayResult =
-  | { ok: true; woke: string[]; queued: string[]; skipped: string[]; toLeader: boolean; checkpointReached: boolean }
+  | {
+      ok: true
+      /** 已经停下、这次重新开了一段的 */
+      woke: string[]
+      /** 还在干、话转给他了的：手上这一步走完才会看到 */
+      handed: string[]
+      queued: string[]
+      skipped: string[]
+      toLeader: boolean
+      checkpointReached: boolean
+    }
   | { ok: false; error: string; members?: string[] }
 
 /** 专家在团里的座位：知道自己是谁、在哪个团，能在群里说话 */
@@ -356,8 +368,10 @@ export class SubAgentRoster {
     for (const task of tasks) {
       const name = allocateChildName(task.description, used, task.name)
       used.add(name)
+      const asked = task.name ? tidyLabel(task.name) : ''
       this.children.set(name, {
         name,
+        askedName: asked && asked !== name ? asked : undefined,
         description: task.description || name,
         prompt: task.prompt,
         role: task.role,
@@ -375,7 +389,7 @@ export class SubAgentRoster {
       const finalName = uniqueName(teamName, n => this.teams.has(n))
       team = new ExpertTeam(finalName, names.map(n => {
         const slot = this.children.get(n)!
-        return { name: n, role: slot.role!, description: slot.description }
+        return { name: n, askedName: slot.askedName, role: slot.role!, description: slot.description }
       }))
       this.teams.set(finalName, { team, deps })
       for (const n of names) this.children.get(n)!.team = finalName
@@ -433,8 +447,12 @@ export class SubAgentRoster {
     if (deps.isParentAborted()) return { ok: false, error: '已中止' }
 
     const outcome = team.post(from, to, text, this.interruptedIn(team))
+    const woke: string[] = []
+    const handed: string[] = []
     for (const name of outcome.wakeNow) {
-      this.deliverToMember(name, team, deps, outcome.message)
+      const delivered = this.deliverToMember(name, team, deps, outcome.message)
+      if (delivered === 'started') woke.push(name)
+      else if (delivered === 'handed') handed.push(name)
     }
     const texts = deps.teamTexts!
     if (outcome.toLeader) {
@@ -449,7 +467,8 @@ export class SubAgentRoster {
     if (outcome.toLeader || outcome.checkpointReached) this.wake()
     return {
       ok: true,
-      woke: outcome.wakeNow,
+      woke,
+      handed,
       queued: outcome.queued,
       skipped: outcome.skipped,
       toLeader: outcome.toLeader,
@@ -503,18 +522,22 @@ export class SubAgentRoster {
     return new Set(team.memberNames().filter(n => this.children.get(n)?.status === 'interrupted'))
   }
 
-  /** 叫醒一位专家：交给他点到他的那条和他没看过的群消息。在跑就先记下，已停就在同一条线上接着跑 */
-  private deliverToMember(name: string, team: ExpertTeam, deps: RunDeps, trigger?: TeamMessage): void {
+  /**
+   * 叫醒一位专家：交给他点到他的那条和他没看过的群消息。在跑就先记下，已停就在同一条线上接着跑。
+   * 返回这句话怎么到的：重新开了一段 / 转给了还在干的人 / 没送到（还没有开工的人）。
+   */
+  private deliverToMember(name: string, team: ExpertTeam, deps: RunDeps, trigger?: TeamMessage): 'started' | 'handed' | 'none' {
     const slot = this.children.get(name)
-    if (!slot?.handle) return
+    if (!slot?.handle) return 'none'
     const text = deps.teamTexts!.wake(team, name, team.takeUnread(name), trigger)
     if (slot.handle.isRunning()) {
       slot.handle.addUserMessage(text)
       slot.status = 'running'
-      return
+      return 'handed'
     }
     this.beginSegment(slot)
     slot.runPromise = this.runExisting(slot, text, deps)
+    return 'started'
   }
 
   /** 已停的人再开一段：上一段的失败和被拦原因不带过来 */
@@ -678,6 +701,7 @@ export class SubAgentRoster {
 function snapshotOf(slot: ChildSlot): ChildSnapshot {
   return {
     name: slot.name,
+    askedName: slot.askedName,
     description: slot.description,
     prompt: slot.prompt,
     role: slot.role,

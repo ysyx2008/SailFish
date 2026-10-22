@@ -171,6 +171,13 @@ function setup() {
   return { roster, children, child, knocks, steps, executor }
 }
 
+/** 回执里「- 名字（角色）：」那一行的第一位的名字 */
+function allocatedNameOf(receipt: string): string {
+  const m = /^- (.+?)（/m.exec(receipt)
+  if (!m) throw new Error(`回执里找不到名单：${receipt}`)
+  return m[1]
+}
+
 const TEAM_ARGS = {
   team: '小工具组',
   tasks: [
@@ -541,6 +548,89 @@ describe('专家团', () => {
     child('定需求').seat!.say(['写代码'], '顺便看下接口')
     expect(child('写代码').runs).toHaveLength(1)
     expect(child('写代码').supplements[0]).toContain('顺便看下接口')
+  })
+
+  it('点名的返回按对方当时的样子写：已停的写重新开了一段，还在干的写话转给他了', async () => {
+    const { child, executor } = setup()
+    await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
+    child('写代码').finish('等需求')
+    await flush()
+
+    const result = await teamSay(
+      { to: ['写代码', '测一遍'], message: '看一下接口' },
+      { teamSeat: child('定需求').seat } as ToolExecutorConfig,
+    )
+    expect(result.output).toContain('叫醒了：写代码（他已经停下，这次重新开了一段）')
+    expect(result.output).toContain('测一遍 还在干，话已转给他，手上这一步走完会看到')
+    expect(result.output).not.toContain('叫醒了：测一遍')
+    expect(child('写代码').runs).toHaveLength(2)
+    expect(child('写代码').runs[1]).toContain('看一下接口')
+    expect(child('测一遍').runs).toHaveLength(1)
+    expect(child('测一遍').supplements[0]).toContain('看一下接口')
+  })
+
+  it('指定的名字已被占用（先来的已经做完，还在名册里）：改了名的写在回执里，同团每人的开场也写明，开场开头仍逐字一样', async () => {
+    const { child, executor } = setup()
+    await dispatchSubAgents({ tasks: [{ name: '甲', role: '产品专家', description: '先来的', prompt: 'p' }] }, CONFIG, executor)
+    child('甲').finish('做完了')
+    await flush()
+
+    const result = await dispatchSubAgents({
+      team: '二组',
+      tasks: [
+        { name: '甲', role: '产品专家', description: '写需求', prompt: '写完点名乙' },
+        { name: '乙', role: '开发专家', description: '实现', prompt: '等甲点名' },
+      ],
+    }, CONFIG, executor)
+    expect(result.output).toContain('这几位的名字和指定的不一样：甲 → 甲-2')
+    expect(result.output).not.toContain('乙 →')
+
+    const a = child('甲-2').runs[0]
+    const b = child('乙').runs[0]
+    expect(a).toContain('这几位的名字和任务里写的不一样：甲 → 甲-2')
+    expect(a).not.toContain('乙 →')
+    expect(a.slice(0, a.indexOf('你是 甲-2'))).toBe(b.slice(0, b.indexOf('你是 乙')))
+  })
+
+  it('名字里的空格和符号会折成「-」：写明指定的和现在的；没指定名字（用简述起名）的不提', async () => {
+    const { child, executor } = setup()
+    const result = await dispatchSubAgents({
+      team: '三组',
+      tasks: [
+        { name: '读 nginx 配置', role: '运维专家', description: '读配置', prompt: '读' },
+        { name: '审核', role: '安全专家', description: '审一遍', prompt: '审' },
+        { role: '测试专家', description: '读 日志', prompt: '读日志' },
+      ],
+    }, CONFIG, executor)
+    expect(result.output).toContain('这几位的名字和指定的不一样：读 nginx 配置 → 读-nginx-配置。')
+    expect(result.output.match(/→/g)).toHaveLength(1)
+    expect(child('审核').runs[0]).toContain('这几位的名字和任务里写的不一样：读 nginx 配置 → 读-nginx-配置。')
+    expect(child('读-日志').runs[0]).toContain('读 nginx 配置 → 读-nginx-配置')
+  })
+
+  it('指定的名字带换行或特别长：折成一行、截短再写进回执和开场，不拆行', async () => {
+    const { child, executor } = setup()
+    const asked = `甲\n乙${'长'.repeat(100)}`
+    const result = await dispatchSubAgents({
+      team: '四组',
+      tasks: [
+        { name: asked, role: '产品专家', description: '写', prompt: 'p' },
+        { name: '丙', role: '开发专家', description: '做', prompt: 'q' },
+      ],
+    }, CONFIG, executor)
+    const line = result.output.split('\n').find(l => l.startsWith('这几位的名字和指定的不一样'))!
+    expect(line).toContain('甲 乙')
+    expect(line).toContain('…')
+    expect(line.length).toBeLessThan(200)
+    const opened = child(allocatedNameOf(result.output)).runs[0]
+    expect(opened.split('\n').filter(l => l.includes('→')).every(l => l.startsWith('这几位的名字和任务里写的不一样'))).toBe(true)
+  })
+
+  it('名字都用上了：回执和开场都不提改名', async () => {
+    const { child, executor } = setup()
+    const result = await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
+    expect(result.output).not.toContain('和指定的不一样')
+    expect(child('定需求').runs[0]).not.toContain('和任务里写的不一样')
   })
 
   it('写错名字：失败并列出能点的名字', async () => {

@@ -49,6 +49,8 @@ export const VIEW_TOTAL_MAX = 16000
 
 export interface TeamMember {
   name: string
+  /** 派的时候指定的名字没用上时，当时指定的那个 */
+  askedName?: string
   role: string
   description: string
 }

@@ -23,7 +23,7 @@ import {
   teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT, type ExpertTeam
 } from '../expert-team'
 import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
-import { createTeamTexts, expertOpening, formatTranscript } from './expert-team-text'
+import { createTeamTexts, expertOpening, formatTranscript, renamedList } from './expert-team-text'
 
 const log = createLogger('SubAgent')
 /** 直接带回对话的结果：各人上限乘这一轮派过的人数，大致不超过这个预算 */
@@ -274,8 +274,10 @@ function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubA
     : snapshots.every(c => !!c.role)
       ? t('expert.spawned', { count, list })
       : t('dispatch.spawned', { count, list })
+  const renamed = renamedList(snapshots)
   return [
     head,
+    ...(renamed ? [t('dispatch.renamed', { list: renamed })] : []),
     t('dispatch.capacity', { live: roster.liveCount(), room: roster.room() }),
     t('dispatch.overview_at', { path: workspaceOf(roster).overviewPath }),
   ].join('\n')

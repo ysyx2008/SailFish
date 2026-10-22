@@ -28,6 +28,17 @@ function clip(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max)}…`
 }
 
+/** 指定的名字最多写这么长，再长的截掉（实际名字最长 32 个字） */
+const ASKED_NAME_MAX = 40
+
+/** 名字和指定的不一样的人，写成「指定的 → 现在的」；没有就是空串 */
+export function renamedList(items: ReadonlyArray<{ name: string; askedName?: string }>): string {
+  return items
+    .filter(m => m.askedName)
+    .map(m => `${clip(m.askedName!, ASKED_NAME_MAX)} → ${m.name}`)
+    .join('、')
+}
+
 export function formatTeamMessage(team: ExpertTeam, m: TeamMessage, max?: number): string {
   return t('expert.message_line', {
     from: team.label(m.from),
@@ -47,7 +58,9 @@ export function expertOpening(child: ChildSnapshot, team?: ExpertTeam): string {
   const roster = team.roster()
     .map(m => t('expert.list_item', { name: m.name, role: m.role, description: m.description }))
     .join('\n')
+  const renamed = renamedList(team.roster())
   const brief = t('expert.team_brief', { team: team.name, roster })
+    + (renamed ? `\n${t('expert.team_renamed', { list: renamed })}` : '')
   return `${brief}\n\n${youAre}\n\n${child.prompt}`
 }
 

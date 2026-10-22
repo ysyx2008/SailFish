@@ -23,6 +23,7 @@ export async function teamSay(args: Record<string, unknown>, executor: ToolExecu
   }
   const parts = [t('expert.say_ok')]
   if (result.woke.length) parts.push(t('expert.say_woke', { names: result.woke.join('、') }))
+  if (result.handed.length) parts.push(t('expert.say_handed', { names: result.handed.join('、') }))
   if (result.queued.length) parts.push(t('expert.say_queued', { names: result.queued.join('、') }))
   if (result.skipped.length) parts.push(t('expert.say_skipped', { names: result.skipped.join('、') }))
   if (result.toLeader) parts.push(t('expert.say_leader'))
