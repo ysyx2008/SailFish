@@ -418,10 +418,8 @@ export async function main(argv: string[]): Promise<number> {
     const r = await reviewer.review(buildRequest(s, i, profile?.id))
     const row = { s, r, ms: Date.now() - started }
     const a = r.kind === 'cancelled' ? undefined : r.assessment
-    const m = r.kind === 'cancelled' ? undefined : r.modelAssessment
     console.log(`· ${s.name}  →  ${outcomeOf(r)}  ${(row.ms / 1000).toFixed(1)}s`
-      + (a ? `\n    风险 ${a.risk} · 授权 ${a.authorization} · ${a.rationale}` : '')
-      + (m ? `\n    模型原分 ${m.risk}/${m.authorization}/${m.outcome}` : ''))
+      + (a ? `\n    风险 ${a.risk} · 授权 ${a.authorization} · ${a.rationale}` : ''))
     return row
   })
 
