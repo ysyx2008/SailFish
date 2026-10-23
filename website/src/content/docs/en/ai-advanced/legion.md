@@ -19,7 +19,7 @@ For small jobs, it just does the work itself.
 
 ## How many
 
-Within one task, up to 200 helpers can be unfinished at a time. A dispatch that would go over is sent back with an explanation, and the secretary dispatches more once some have finished.
+Within one task, up to 1000 helpers can be unfinished at a time. A dispatch that would go over is sent back with an explanation, and the secretary dispatches more once some have finished.
 
 Every helper that is dispatched gets started. How many model requests run at the same moment is adjusted automatically from the API's feedback: opened up gradually while nothing is rate-limited, slowed down when it is. Extra requests wait in line and show as "Waiting for model" — nothing is stuck. There is no concurrency number to set, and nowhere to set it.
 
