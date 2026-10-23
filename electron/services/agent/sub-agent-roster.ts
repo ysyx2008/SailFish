@@ -150,7 +150,7 @@ interface TeamEntry {
 const LIVE: ReadonlySet<ChildStatus> = new Set(['pending', 'running'])
 
 /** 一场任务里同时没做完的伙计最多这么多个。只防失控，不管该派几个。 */
-export const MAX_LIVE_CHILDREN = 200
+export const MAX_LIVE_CHILDREN = 1000
 
 /** 第一声敲门之后再等这么久，让陆续做完的一起进来，主人只被叫醒一次 */
 const KNOCK_SETTLE_MS = 1500
