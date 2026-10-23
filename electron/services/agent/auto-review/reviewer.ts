@@ -37,9 +37,13 @@ export type AutoReviewChat = (
 
 export type HandOverReason = AutoReviewHandOverReason
 
+/**
+ * `assessment` 是用审计下限抬过之后的分（对表用的、也是界面上展示的）；
+ * `modelAssessment` 是模型自己打的原分，只进日志，用来看模型和审计下限差在哪。
+ */
 export type AutoReviewResult =
-  | { kind: 'approved'; assessment: ReviewAssessment; usage?: TokenUsageInfo }
-  | { kind: 'handed_over'; reason: HandOverReason; assessment?: ReviewAssessment; detail?: string; usage?: TokenUsageInfo }
+  | { kind: 'approved'; assessment: ReviewAssessment; modelAssessment: ReviewAssessment; usage?: TokenUsageInfo }
+  | { kind: 'handed_over'; reason: HandOverReason; assessment?: ReviewAssessment; modelAssessment?: ReviewAssessment; detail?: string; usage?: TokenUsageInfo }
   | { kind: 'cancelled'; usage?: TokenUsageInfo }
 
 export interface AutoReviewRequest {
@@ -330,9 +334,9 @@ export class AutoApprovalReviewer {
     }
     const assessment = effectiveAssessment(parsed, req.riskLevel)
     if (!assessmentApproves(assessment)) {
-      return { kind: 'handed_over', reason: 'not_approved', assessment, usage }
+      return { kind: 'handed_over', reason: 'not_approved', assessment, modelAssessment: parsed, usage }
     }
-    return { kind: 'approved', assessment, usage }
+    return { kind: 'approved', assessment, modelAssessment: parsed, usage }
   }
 
   /**

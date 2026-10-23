@@ -6575,7 +6575,10 @@ export abstract class Agent {
         }
     this.updateStep(step.id, { content: this.formatAutoReviewTrail(trail, action), autoReview: trail, isStreaming: false })
     const detail = result.kind === 'handed_over' && result.detail ? ` detail=${result.detail}` : ''
-    log.info(`[auto-review] ${trail.outcome}${trail.reason ? `(${trail.reason})` : ''} tool=${toolName} risk=${trail.risk ?? '-'} auth=${trail.authorization ?? '-'}${detail}`)
+    const raw = result.modelAssessment
+    // 模型自己打的分和旗鱼抬过之后的分分开记：差在哪才看得出是模型没理解，还是审计下限卡的
+    const rawScores = raw ? ` model=${raw.risk}/${raw.authorization}/${raw.outcome}` : ''
+    log.info(`[auto-review] ${trail.outcome}${trail.reason ? `(${trail.reason})` : ''} tool=${toolName} audit=${riskLevel} risk=${trail.risk ?? '-'} auth=${trail.authorization ?? '-'}${rawScores}${detail}`)
     return result.kind === 'approved' ? { kind: 'approved' } : { kind: 'handed_over', trail }
     } catch (e) {
       const trail: AutoReviewTrail = { outcome: 'handed_over', reason: 'failed' }

@@ -221,6 +221,28 @@ describe('替我审批 · 评审员', () => {
     expect(sent[1].content).toContain('rm -rf /tmp/build')
   })
 
+  it('审计下限把模型的低分抬上去：对表用抬过的分，模型原分另外带回供日志', async () => {
+    const chat = vi.fn<AutoReviewChat>(async () => reply(verdictJson('low', 'low', 'allow', '清理中间产物')))
+    const reviewer = new AutoApprovalReviewer({ chat })
+    const r = await reviewer.review(makeRequest(baseSteps(), baseMessages(), { riskLevel: 'dangerous' }))
+    expect(r).toMatchObject({
+      kind: 'handed_over',
+      reason: 'not_approved',
+      assessment: { risk: 'high', authorization: 'low' },
+      modelAssessment: { risk: 'low', authorization: 'low', outcome: 'allow' },
+    })
+    const ok = await new AutoApprovalReviewer({ chat: async () => reply(verdictJson('low', 'high', 'allow')) })
+      .review(makeRequest(baseSteps(), baseMessages(), { riskLevel: 'dangerous' }))
+    expect(ok).toMatchObject({ kind: 'approved', assessment: { risk: 'high' }, modelAssessment: { risk: 'low' } })
+  })
+
+  it('说明书写明审计定级是风险分的下限，交回用户时要写清卡在哪里', () => {
+    const policy = buildReviewerPolicy('zh-CN')
+    expect(policy).toContain('旗鱼命令审计定级')
+    expect(policy).toContain('下限')
+    expect(policy).toContain('写明卡在哪里')
+  })
+
   it('模型说问人、看不懂、出错、超时，都交回用户', async () => {
     const cases: Array<[AutoReviewChat, string]> = [
       [async () => reply(verdictJson('high', 'low', 'ask_user')), 'not_approved'],
