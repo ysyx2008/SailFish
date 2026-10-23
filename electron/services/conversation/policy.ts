@@ -117,6 +117,14 @@ export interface ConversationPolicy {
   hasArtifactPanel: boolean
 
   /**
+   * 这类会话的界面上有没有终端座位（能请真终端入座、开关窗格）。没有就不给管理窗格的工具。
+   * - task=true：独立助手页能请终端入座，终端页本身就是终端。
+   * - companion=false：联络只有聊天区，不论从桌面、网页还是 IM 来。
+   * - watch/wakeup=false：后台执行，没有界面，需要跑命令时直接用本机命令。
+   */
+  hasTerminalSeat: boolean
+
+  /**
    * 发往模型的请求在缓冲池里排哪一档。
    * - task/companion=urgent：用户当面等，不排队。
    * - watch/wakeup=queued：后台自己跑，晚一点不要紧，别挤掉当面的请求。
@@ -127,12 +135,12 @@ export interface ConversationPolicy {
 /**
  * 四类会话的行为策略。
  *
- * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview | autoReviewEarlierWordsWithinMs | restoreSkillsOnReopen | skillNotesOnUserMessage | supportsGoal | hasArtifactPanel | modelRequestPriority |
- * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|--------------------------------|-----------------------|-------------------------|--------------|------------------|----------------------|
- * | task      | true        | false                      | true          | main        | false              | true               | null（整场）                    | true                  | true                    | true         | true             | urgent               |
- * | companion | true        | true                       | true          | main        | false              | true               | 24h                            | false                 | true                    | false        | false            | urgent               |
- * | watch     | false       | false                      | false         | watch       | false（预留）       | false              | null                           | false                 | false                   | false        | false            | queued               |
- * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              | null                           | false                 | false                   | false        | false            | queued               |
+ * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview | autoReviewEarlierWordsWithinMs | restoreSkillsOnReopen | skillNotesOnUserMessage | supportsGoal | hasArtifactPanel | hasTerminalSeat | modelRequestPriority |
+ * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|--------------------------------|-----------------------|-------------------------|--------------|------------------|-----------------|----------------------|
+ * | task      | true        | false                      | true          | main        | false              | true               | null（整场）                    | true                  | true                    | true         | true             | true            | urgent               |
+ * | companion | true        | true                       | true          | main        | false              | true               | 24h                            | false                 | true                    | false        | false            | false           | urgent               |
+ * | watch     | false       | false                      | false         | watch       | false（预留）       | false              | null                           | false                 | false                   | false        | false            | false           | queued               |
+ * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              | null                           | false                 | false                   | false        | false            | false           | queued               |
  *
  * 注：wakeup 从 watch 中独立出来——关切是用户配置的一次性任务（prompt 自带指令，逐次失忆，
  * 避免 A 关切串味到 B），wakeup 是 Agent 自主循环（需要历史记忆辅助决策「该不该主动找人、
@@ -153,6 +161,7 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     skillNotesOnUserMessage: true,
     supportsGoal: true,
     hasArtifactPanel: true,
+    hasTerminalSeat: true,
     modelRequestPriority: 'urgent'
   },
   companion: {
@@ -167,6 +176,7 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     skillNotesOnUserMessage: true,
     supportsGoal: false,
     hasArtifactPanel: false,
+    hasTerminalSeat: false,
     modelRequestPriority: 'urgent'
   },
   watch: {
@@ -181,6 +191,7 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     skillNotesOnUserMessage: false,
     supportsGoal: false,
     hasArtifactPanel: false,
+    hasTerminalSeat: false,
     modelRequestPriority: 'queued'
   },
   wakeup: {
@@ -195,6 +206,7 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     skillNotesOnUserMessage: false,
     supportsGoal: false,
     hasArtifactPanel: false,
+    hasTerminalSeat: false,
     modelRequestPriority: 'queued'
   }
 }

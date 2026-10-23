@@ -1,5 +1,5 @@
 /**
- * 联络没有产出物面板：它手里没有查看 / 维护面板的工具，系统说明里也不提这块面板；
+ * 联络没有产出物面板、也没有终端座位：它手里没有查看 / 维护面板、管理终端窗格的工具，系统说明里也不提这块面板；
  * 即便照着旧记录硬调，也被当作「没有这个工具」拒绝，不会被告知「已在面板打开」。
  * 对照：独立助手页的任务照旧有面板、能打开。
  * 真实 SailFish.run() + 脚本化模型，经真实工具执行链路。
@@ -46,6 +46,7 @@ type LlmResponse = {
 }
 
 const PANEL_TOOLS = ['list_workbench_artifacts', 'manage_workbench_artifacts']
+const SEAT_TOOLS = ['manage_pane', 'list_ssh_sessions']
 
 function openCall(filePath: string): LlmResponse {
   return {
@@ -138,7 +139,7 @@ const systemPromptOf = (messages: Msg[]) =>
 const toolReplyIn = (messages: Msg[], id: string) =>
   String(messages.find(m => m.role === 'tool' && m.tool_call_id === id)?.content ?? '')
 
-describe('联络没有产出物面板', () => {
+describe('联络没有产出物面板，也没有终端座位', () => {
   let doc: string
 
   beforeEach(() => {
@@ -161,7 +162,8 @@ describe('联络没有产出物面板', () => {
     await agent.run('把方案给我看看', ctx(), {})
 
     expect(calls.length).toBe(2)
-    for (const name of PANEL_TOOLS) expect(calls[0].toolNames).not.toContain(name)
+    for (const name of [...PANEL_TOOLS, ...SEAT_TOOLS]) expect(calls[0].toolNames).not.toContain(name)
+    expect(calls[0].toolNames).toContain('exec') // 本机命令还在
     expect(calls[0].toolNames).toContain('manage_tasks') // 联络自己的工具还在
     expect(systemPromptOf(calls[0].messages)).not.toContain('产出物面板')
 
@@ -181,7 +183,7 @@ describe('联络没有产出物面板', () => {
 
     await agent.run('把方案打开', ctx(), {})
 
-    for (const name of PANEL_TOOLS) expect(calls[0].toolNames).toContain(name)
+    for (const name of [...PANEL_TOOLS, ...SEAT_TOOLS]) expect(calls[0].toolNames).toContain(name)
     expect(toolReplyIn(calls[1].messages, 'tc-open')).toContain('已在产出物面板打开')
     expect(steps.some(s => s.canvasData?.action === 'open' && s.canvasData.filePath === doc)).toBe(true)
   }, 15000)

@@ -437,6 +437,11 @@ export interface AgentServices {
    * AgentService 构造时注入；基类仅依赖其接口，不关心具体实现。
    */
   taskSupervisor?: import('./task-supervisor').TaskSupervisor
+  /**
+   * 这个程序本身有没有窗口，缺省为有。命令行没有：没有产出物面板，也没有终端座位，
+   * 不论哪一类对话。
+   */
+  hostHasUi?: boolean
 }
 
 /**

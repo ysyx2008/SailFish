@@ -1335,6 +1335,7 @@ async function agentRun(args: string[], surface: 'plain' | 'screen' = 'plain'): 
   }
 
   const agent = new AgentService(ai, pty, hostProfile, mcp, config, ssh)
+  agent.setHostWithoutUi() // 命令行没有窗口：不给产出物面板、终端窗格这类界面上的工具
   const history = getHistory()
   agent.setHistoryService(history)
 
@@ -1956,6 +1957,7 @@ async function companionChat(args: string[]): Promise<void> {
   const ssh = new SshService()
 
   const agent = new AgentService(ai, pty, hostProfile, mcp, config, ssh)
+  agent.setHostWithoutUi() // 命令行没有窗口：不给产出物面板、终端窗格这类界面上的工具
   agent.setHistoryService(getHistory())
 
   const modeRaw = String(flags.mode || (flags.free ? 'free' : 'relaxed'))

@@ -98,6 +98,9 @@ export interface ToolMeta {
   /** 支持的运行模式（不指定则支持所有模式） */
   supportedModes?: AgentMode[]
 
+  /** 用途是请终端入座、开关窗格：这场对话的界面上没有终端座位时，不给 */
+  needsTerminalSeat?: boolean
+
   /** 流式预卡片展示配置（不指定则用通用兜底「调用: {toolName}」） */
   streamDisplay?: ToolStreamDisplay
 
@@ -507,6 +510,11 @@ export interface GetAgentToolsOptions {
    * 没有时不给查看、维护面板的工具：联络只有聊天区，不该摸到一块不存在的面板。
    */
   hasArtifactPanel?: boolean
+  /**
+   * 这场对话的界面上有没有终端座位，缺省为有。
+   * 没有时不给管理终端窗格的工具：联络只有聊天区，请不动终端入座。
+   */
+  hasTerminalSeat?: boolean
 }
 
 /**
@@ -1442,6 +1450,7 @@ SSH 断线：ensure_connected 或依赖用时懒重连（结果会告知，不�
       },
       _meta: {
         supportedModes: ['local', 'ssh', 'assistant'],
+        needsTerminalSeat: true,
         // streaming-tool-executor 只看工具名：合并后整体不可并行（list 失去并行是可接受代价）
         parallelizable: false,
         allowedForSubAgent: false,
@@ -1467,6 +1476,7 @@ ${sshUsageDesc}
       },
       _meta: {
         supportedModes: ['local', 'ssh', 'assistant'],
+        needsTerminalSeat: true,
         parallelizable: true,
         allowedForSubAgent: false,
         streamDisplay: { titleKey: 'tool.list_ssh_sessions' },
@@ -1513,6 +1523,9 @@ ${sshUsageDesc}
       // 检查当前模式是否在支持列表中
       return meta.supportedModes.includes(options.mode!)
     })
+  }
+  if (options?.hasTerminalSeat === false) {
+    filteredTools = filteredTools.filter(tool => !(tool as ToolDefinitionWithMeta)._meta?.needsTerminalSeat)
   }
 
   // IM 通道专属工具：所有 IM 平台均可发送文件和图片
