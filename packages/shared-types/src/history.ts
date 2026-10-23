@@ -49,6 +49,12 @@ export interface AgentStepRecord {
   hugeOutput?: import('./agent').HugeOutputStub
 }
 
+/** 某次请求发出时的真实用量：那批消息（含固定前缀）总共多少 token，以及当时一共带了多少条消息 */
+export interface PromptUsageMark {
+  promptTokens: number
+  messageCount: number
+}
+
 export interface AgentRecord {
   id: string
   timestamp: number
@@ -131,6 +137,11 @@ export interface AgentRecord {
   }>
   /** 任务会话上的目标契约。缺省（老记录 / 非任务）视为没有目标。 */
   goal?: GoalContract
+  /**
+   * 最近一次请求的真实用量。重开时历史原样带回，就以它为准判断装不装得下，不整段重估。
+   * 字段缺失（老记录）按估算，行为不变。
+   */
+  lastPromptUsage?: PromptUsageMark
 }
 
 /** 输入区胶囊用的技能快照（不含外部工具包） */

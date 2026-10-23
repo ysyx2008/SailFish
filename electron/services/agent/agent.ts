@@ -2174,6 +2174,7 @@ export abstract class Agent {
     this._conversation?.adoptCompressedArchives(record.compressedArchives as AgentRun['compressedArchives'])
     this._conversation?.adoptApproval(record.approval)
     this._conversation?.adoptAssignedBy(record.assignedBy)
+    this._conversation?.restoreSavedPromptUsage(record.lastPromptUsage)
 
     // 任务重开才按清单把技能装回来。联络关掉再开不带上次的；关切 / 唤醒自己预装。
     const kind = record.kind ?? inferConversationKind(record.agentKey ?? this._agentId)
@@ -3396,10 +3397,18 @@ export abstract class Agent {
 
     await assemble(history)
 
+    // 上次请求的真实用量还对得上这次装好的历史：以它为准判断装不装得下，不整段重估。
+    // 对不上（历史被裁剪、降级）就仍按估算。
+    if (!run.context.wakeup && this._conversation?.adoptSavedPromptUsage(run.messages)) {
+      log.info(`[Cache] Cold start anchored on saved prompt usage (${this._lastPromptTokens} tokens)`)
+    }
+
     // 任务原文装不下：这一次改用五档（近处完整、远处收短、最远只留问答）重装，
     // 而不是让用户的这句话发不出去。此时 system prompt 已量过实际规模，预算更准。
     if (history.tookOriginal && this._contextWindow.needsRequestCompaction(run)) {
       log.warn('[Cache] Cold start: original task text does not fit, rebuilding history with process levels')
+      // 重装后消息变了，上次的真实用量不再对应
+      this._conversation?.setLastPromptTokens(undefined)
       run.messages.length = baseMessageCount
       run.taskMessageLog.length = baseLogCount
       history = this.selectColdStartHistory(run, message, preserveCheckpoint, true)

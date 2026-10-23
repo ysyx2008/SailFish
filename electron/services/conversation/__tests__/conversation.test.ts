@@ -752,4 +752,86 @@ describe('Conversation 聚合根（领域模型）', () => {
     expect(notice?.systemInjected).toBe(true)
     expect(notice?.content).toContain('已暂停')
   })
+
+  describe('最近一次请求的真实用量随记录落盘', () => {
+    const tail = (userText: string): AiMessage[] => [
+      { role: 'user', content: userText },
+      { role: 'assistant', content: '好的' }
+    ]
+    const convWithTurn = (): Conversation => {
+      const conv = Conversation.create({ agentKey: 'tab-u', terminalType: 'local' })
+      conv.commitRun({
+        runId: 'r1',
+        userRequest: '第一件',
+        steps: [userStep('第一件'), finalStep('好的')],
+        taskMessageLog: tail('第一件'),
+        runMessages: tail('第一件'),
+        taskStatus: 'success',
+        result: '好的'
+      })
+      return conv
+    }
+
+    it('记下的用量写进 toRecord，fromRecord 带回', () => {
+      const conv = convWithTurn()
+      conv.recordPromptUsage(2, 4321)
+      const record = conv.toRecord()!
+      expect(record.lastPromptUsage).toEqual({ promptTokens: 4321, messageCount: 2 })
+      const back = Conversation.fromRecord(JSON.parse(JSON.stringify(record)))
+      expect(back.toRecord()!.lastPromptUsage).toEqual({ promptTokens: 4321, messageCount: 2 })
+    })
+
+    it('没有用量的老记录：不凭空写出这一项', () => {
+      const conv = convWithTurn()
+      expect(conv.toRecord()!.lastPromptUsage).toBeUndefined()
+    })
+
+    it('读盘时不合格的数当没有', () => {
+      const conv = convWithTurn()
+      const record = conv.toRecord()!
+      for (const bad of [
+        { promptTokens: -1, messageCount: 2 },
+        { promptTokens: 100, messageCount: 0 },
+        { promptTokens: 100, messageCount: 1.5 },
+        { promptTokens: Number.NaN, messageCount: 2 }
+      ]) {
+        const back = Conversation.fromRecord({ ...record, lastPromptUsage: bad })
+        expect(back.toRecord()!.lastPromptUsage).toBeUndefined()
+      }
+    })
+
+    it('adoptSavedPromptUsage：最后一条 assistant 恰好排在记下的条数位置才采用', () => {
+      const conv = Conversation.fromRecord({
+        ...convWithTurn().toRecord()!,
+        lastPromptUsage: { promptTokens: 9000, messageCount: 3 }
+      })
+      const fits: AiMessage[] = [
+        { role: 'system', content: 's' }, { role: 'user', content: 'a' }, { role: 'tool', content: 'x' },
+        { role: 'assistant', content: 'r' }, { role: 'user', content: '新的一句' }
+      ]
+      expect(conv.adoptSavedPromptUsage(fits)).toBe(true)
+      expect(conv.lastPromptTokens).toBe(9000)
+
+      const other = Conversation.fromRecord({
+        ...convWithTurn().toRecord()!,
+        lastPromptUsage: { promptTokens: 9000, messageCount: 5 }
+      })
+      expect(other.adoptSavedPromptUsage(fits)).toBe(false)
+      expect(other.lastPromptTokens).toBeUndefined()
+    })
+
+    it('没有记下的用量、或消息里没有 assistant：不采用', () => {
+      const none = convWithTurn()
+      expect(none.adoptSavedPromptUsage([{ role: 'system', content: 's' }, { role: 'user', content: 'a' }])).toBe(false)
+    })
+
+    it('reset 清掉', () => {
+      const conv = convWithTurn()
+      conv.recordPromptUsage(2, 500)
+      const fits: AiMessage[] = [{ role: 'system', content: 's' }, { role: 'user', content: 'a' }, { role: 'assistant', content: 'r' }]
+      expect(conv.adoptSavedPromptUsage(fits)).toBe(true)
+      conv.reset()
+      expect(conv.adoptSavedPromptUsage(fits)).toBe(false)
+    })
+  })
 })

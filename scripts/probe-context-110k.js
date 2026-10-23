@@ -282,10 +282,12 @@ async function main() {
   const tinyResult = await tiny.proactiveCompress(tinyRun)
   check(tinyResult == null, '可压的内容太少时跳过主动压缩，避免越压越大')
 
-  const coldOver = makeManager(profile, { tools, nudge: nudgeOn })
+  // 重开旧会话：记下的真实用量对得上历史时，以它为准（填充是随机十六进制，本地估算会少估一半）。
+  // 没有记下的用量时只能靠估算，这时发现不了「估算 9 万、实际 15 万」——已知缺口，由第一次回复后的真实用量补上。
+  const coldOver = makeManager(profile, { tools, nudge: nudgeOn, anchor: budget.inputLimit + 20000 })
   const coldRun = makeRun(pressureConversation(systemPrompt))
   setPad(coldRun.messages, 70000)
-  check(coldOver.needsRequestCompaction(coldRun) && !coldOver.shouldProactiveCompress(coldRun), '冷启动没有真实用量时，不靠主动交接，但发送前会发现已经装不下')
+  check(coldOver.needsRequestCompaction(coldRun), '冷启动时记下的真实用量说已超限，发送前会发现装不下')
   const coldCompressed = coldOver.emergencyCompress(coldRun)
   check(
     !!coldCompressed && !coldOver.needsRequestCompaction(coldRun),

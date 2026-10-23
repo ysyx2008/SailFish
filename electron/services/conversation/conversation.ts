@@ -27,13 +27,23 @@ import type {
   TerminalType,
   ConversationKind,
   ApprovalMode,
-  AssignedBy
+  AssignedBy,
+  PromptUsageMark
 } from '@shared/types'
 import { inferConversationKind, filterPersistableSteps, isApprovalMode, isAssignedBy } from '@shared/types'
 import type { AiMessage } from '../ai.service'
 import { TaskMemoryStore, type LookupToolMeta } from '../agent/task-memory'
 import { GoalContract } from '../agent/goal/goal-contract'
 import { splitMessagesIntoTasks, splitStepsIntoTasks, stepRecordToStep, chunkStepsByUserTask, chunkStepsForCompanionExtract, restoreSpokenRepliesMissingFromMessages } from './messages'
+
+/** 读盘边界：两个数都得是正的整数 / 有限数，否则当没有 */
+function parsePromptUsageMark(raw: PromptUsageMark | undefined): PromptUsageMark | undefined {
+  if (!raw) return undefined
+  const { promptTokens, messageCount } = raw
+  if (!Number.isFinite(promptTokens) || promptTokens <= 0) return undefined
+  if (!Number.isInteger(messageCount) || messageCount <= 0) return undefined
+  return { promptTokens, messageCount }
+}
 
 function lastTaskStatus(
   record: AgentRecord,
@@ -177,6 +187,13 @@ export class Conversation {
    * 这次能释放多少」，替代估算。压缩 / 冷启动重建后作废（见 setLastPromptTokens）。
    */
   private _tokenLedger: Array<{ messageCount: number; promptTokens: number }> = []
+  /**
+   * 最近一次请求的真实用量，随记录落盘（重开时由 loadFromRecord 带回）。
+   * 与 _lastPromptTokens 分开：后者是「眼下能当锚点」的读数，冷启动重建会把它作废；
+   * 这份是「上次发出去时有多大」的事实，重开后是否还对得上由 adoptSavedPromptUsage 判断。
+   */
+  private _savedPromptUsage?: PromptUsageMark
+
   /** ledger 条数上限。长任务几百轮也只是几百个小对象，留个上限防极端会话无限增长。 */
   private static readonly MAX_TOKEN_LEDGER_ENTRIES = 500
 
@@ -254,8 +271,8 @@ export class Conversation {
    * 移植自 Agent.restoreFromSessionRecord，供 Agent 在已建会话后从 latest 记录恢复续写状态
    *（持久命名 Agent 的 restoreRecentTaskMemory 另写同一注入 taskMemory，两者叠加）。
    *
-   * **刻意不恢复 token 账**：与现状 restoreFromSessionRecord 对齐——重开会话后 _sessionTokenUsage
-   * 保持空白、从零累积（保留当前行为；是否改为持久化累积是另一项独立决策，不在本次重构内）。
+   * **不恢复累计用量账**：重开会话后 _tokenUsage 保持空白、从零累积。
+   * **只带回最近一次请求的真实用量**（`lastPromptUsage`），供冷启动判断装不装得下，见 adoptSavedPromptUsage。
    */
   loadFromRecord(record: AgentRecord): void {
     // 记录里的消息是磁盘上读回来的宽松形状；装载边界上统一认作 AiMessage（两个分支都要）
@@ -290,6 +307,12 @@ export class Conversation {
     this.adoptApproval(record.approval)
     this.adoptAssignedBy(record.assignedBy)
     this._goal = GoalContract.fromStored(record.goal) ?? undefined
+    this.restoreSavedPromptUsage(record.lastPromptUsage)
+  }
+
+  /** 从记录接回最近一次请求的真实用量：已经有的不覆盖 */
+  restoreSavedPromptUsage(mark?: PromptUsageMark): void {
+    if (!this._savedPromptUsage) this._savedPromptUsage = parsePromptUsageMark(mark)
   }
 
   /** 从记录接回审批方式：已经定了的不覆盖 */
@@ -356,7 +379,8 @@ export class Conversation {
       ...(opts?.userDismissedSkills?.length ? { userDismissedSkills: [...opts.userDismissedSkills] } : {}),
       ...this.workingContextField(),
       ...this.compressedArchivesField(),
-      ...(this._goal ? { goal: this._goal.snapshot() } : {})
+      ...(this._goal ? { goal: this._goal.snapshot() } : {}),
+      ...this.savedPromptUsageField()
     }
   }
 
@@ -412,8 +436,13 @@ export class Conversation {
       ...(run.userDismissedSkills?.length ? { userDismissedSkills: [...run.userDismissedSkills] } : {}),
       ...this.workingContextField(),
       ...this.compressedArchivesField(),
-      ...(this._goal ? { goal: this._goal.snapshot() } : {})
+      ...(this._goal ? { goal: this._goal.snapshot() } : {}),
+      ...this.savedPromptUsageField()
     }
+  }
+
+  private savedPromptUsageField(): Pick<AgentRecord, 'lastPromptUsage'> {
+    return this._savedPromptUsage ? { lastPromptUsage: { ...this._savedPromptUsage } } : {}
   }
 
   // ==================== fork / extractTask（数据变换：产新会话） ====================
@@ -552,6 +581,7 @@ export class Conversation {
     // 继续说的第一轮才会冷启动、按这场任务重做系统提示。
     delete record.workingContext
     delete record.compressedArchives
+    delete record.lastPromptUsage
 
     const conversation = Conversation.fromRecord(record)
     return { conversation, record }
@@ -1293,6 +1323,7 @@ export class Conversation {
     this._lastPromptTokens = undefined
     this._lastCacheHitRate = undefined
     this._tokenLedger = []
+    this._savedPromptUsage = undefined
     this._taskMemory.clear()
     this._dirty = true
   }
@@ -1315,6 +1346,7 @@ export class Conversation {
    */
   recordPromptUsage(messageCount: number, promptTokens: number): void {
     this._lastPromptTokens = promptTokens
+    this._savedPromptUsage = { promptTokens, messageCount }
     const last = this._tokenLedger[this._tokenLedger.length - 1]
     // 同一条数重复上报（如剥图重试）以最后一次为准，避免同一位置出现两个读数
     if (last && last.messageCount === messageCount) {
@@ -1329,6 +1361,28 @@ export class Conversation {
     if (this._tokenLedger.length > Conversation.MAX_TOKEN_LEDGER_ENTRIES) {
       this._tokenLedger.shift()
     }
+  }
+
+  /**
+   * 重开后、冷启动刚装好这一次的消息之后调用：上次记下的真实用量若还对得上，就当锚点用。
+   *
+   * 「对得上」= 上次那个请求带的消息，在这一次装好的消息里原样排在前面：上次请求发出时带了
+   * N 条，模型的回复紧跟其后，所以这一次装好的消息里，最后一条 assistant 恰好排在第 N 位。
+   * 历史被裁剪、降级、换了写法，位置都会错开，这时不采用，仍按估算。系统提示词每次重做，
+   * 与上次略有出入，但同一会话里它高度稳定，由此带来的误差远小于整段重估。
+   *
+   * 返回是否采用。
+   */
+  adoptSavedPromptUsage(messages: readonly AiMessage[]): boolean {
+    const saved = this._savedPromptUsage
+    if (!saved) return false
+    let lastAssistantIdx = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') { lastAssistantIdx = i; break }
+    }
+    if (lastAssistantIdx !== saved.messageCount) return false
+    this._lastPromptTokens = saved.promptTokens
+    return true
   }
 
   /**
