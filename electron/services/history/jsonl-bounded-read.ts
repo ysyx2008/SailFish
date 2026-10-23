@@ -5,7 +5,9 @@
 import * as fs from 'fs'
 import type { HugeOutputStub } from '@shared/types'
 
-export const HUGE_JSONL_LINE_BYTES = 512 * 1024
+// 派一大队人那一步（每人的任务、结果、最近几步 + 群聊）正常就有几百 KB，
+// 上限太紧会把整步换成占位，卡片和群聊跟着丢；真正要挡的是几百 MB 的工具输出。
+export const HUGE_JSONL_LINE_BYTES = 4 * 1024 * 1024
 export const JSONL_PEEK_CHARS = 4096
 export const HUGE_OUTPUT_PREVIEW_CHARS = 400
 

@@ -284,10 +284,24 @@ function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubA
 }
 
 /**
- * 推给界面、随会话落盘的那份：步骤只留工具名、对象、状态，不带工具输出；
- * 结果只带直接带回的那段（超长时里面有文件位置）。
+ * 派出那一步存盘是一行，单行超过上限读回时整步会被换成占位（卡片和群聊都没了），
+ * 还会每 250ms 推一次界面。所以每位只留最近的几步，一批人合计也有上限；
+ * 完整过程另存在他自己的记录里。
  */
-export function toSubAgentView(c: ChildSnapshot): SubAgentResult {
+export const VIEW_STEPS_PER_AGENT = 20
+export const VIEW_STEPS_TOTAL = 300
+export const VIEW_STEPS_MIN = 3
+
+export function viewStepsPerAgent(agentCount: number): number {
+  if (agentCount <= 0) return VIEW_STEPS_PER_AGENT
+  return Math.max(VIEW_STEPS_MIN, Math.min(VIEW_STEPS_PER_AGENT, Math.floor(VIEW_STEPS_TOTAL / agentCount)))
+}
+
+/**
+ * 推给界面、随会话落盘的那份：步骤只留工具名、对象、状态，不带工具输出，
+ * 且只留最近一小段；结果只带直接带回的那段（超长时里面有文件位置）。
+ */
+export function toSubAgentView(c: ChildSnapshot, stepLimit: number = VIEW_STEPS_PER_AGENT): SubAgentResult {
   return {
     id: c.name,
     name: c.name,
@@ -296,7 +310,7 @@ export function toSubAgentView(c: ChildSnapshot): SubAgentResult {
     status: c.status,
     result: c.result,
     error: c.error,
-    steps: c.steps.map(({ id, tool, args, status }) => ({ id, tool, args, status })),
+    steps: c.steps.slice(-stepLimit).map(({ id, tool, args, status }) => ({ id, tool, args, status })),
     blockedReason: c.blockedReason,
     waitingForModel: c.waitingForModel,
     ...(c.role ? { role: c.role } : {}),
@@ -310,7 +324,7 @@ export function dispatchStepView(roster: SubAgentRoster, names: ReadonlySet<stri
   const team = teamName ? roster.getTeam(teamName) : undefined
   const workspace = workspaceOf(roster)
   return {
-    subAgents: mine.map(toSubAgentView),
+    subAgents: mine.map(c => toSubAgentView(c, viewStepsPerAgent(mine.length))),
     ...(team ? {
       expertTeam: team.view({ transcriptPath: workspace.teamTranscriptPath(team), chatFile: workspace.teamChatFile(team) }),
     } : {}),
