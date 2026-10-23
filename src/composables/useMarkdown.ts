@@ -299,6 +299,17 @@ const isHttpUrl = (text: string): boolean => {
 }
 
 /**
+ * 放进标签正文的文字。marked 交给自定义 renderer 的是原文，默认实现会转义；
+ * 换掉默认实现之后得自己转，否则行内代码、语言名里的尖括号会变成真标签。
+ */
+const escapeHtml = (text: string): string => {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+/**
  * HTML 属性值转义
  */
 const escapeAttr = (text: string): string => {
@@ -467,37 +478,34 @@ export function useMarkdown() {
       return `<div class="mermaid-block" data-mermaid-src="${enc}"></div>`
     }
 
-    // 转义 HTML 特殊字符用于显示
-    const escapedCode = code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
+    const escapedCode = escapeHtml(code)
     
     // 始终渲染按钮，通过事件委托在点击时获取代码内容
     const copyBtn = `<button class="code-copy-btn" data-action="copy" title="复制代码"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>`
     
     const sendBtn = `<button class="code-send-btn" data-action="send" title="发送到终端"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg></button>`
     
-    return `<div class="code-block"><div class="code-header"><span>${lang}</span><div class="code-actions">${sendBtn}${copyBtn}</div></div><pre><code>${escapedCode}</code></pre></div>`
+    return `<div class="code-block"><div class="code-header"><span>${escapeHtml(lang)}</span><div class="code-actions">${sendBtn}${copyBtn}</div></div><pre><code>${escapedCode}</code></pre></div>`
   }
 
   // 自定义行内代码渲染 - 检测文件路径 / URL 并添加可点击标记
   renderer.codespan = (codeOrToken: string | { text: string }) => {
     const text = typeof codeOrToken === 'object' ? (codeOrToken.text || '') : codeOrToken
-    // 解码 HTML 实体后检测是否为文件路径或 URL
+    // 解码 HTML 实体后检测是否为文件路径或 URL。展示时仍转义原文，检测归检测。
     const decoded = decodeHtmlEntities(text)
+    const shown = escapeHtml(text)
 
     if (isLocalFilePath(decoded)) {
-      return `<code class="inline-code file-path-link" data-file-path="${escapeAttr(normalizeUncForOpen(decoded))}" title="点击打开文件">${text}</code>`
+      return `<code class="inline-code file-path-link" data-file-path="${escapeAttr(normalizeUncForOpen(decoded))}" title="点击打开文件">${shown}</code>`
     }
 
     // HTTP(S) URL：用 <a> 代替 <code>，复用 inline-code 样式以保留代码块外观，
     // 同时天然支持点击跳转（Electron setWindowOpenHandler 会调用 shell.openExternal）
     if (isHttpUrl(decoded)) {
-      return `<a href="${escapeAttr(decoded)}" target="_blank" rel="noopener noreferrer" class="inline-code external-url-link" title="点击在浏览器中打开">${text}</a>`
+      return `<a href="${escapeAttr(decoded)}" target="_blank" rel="noopener noreferrer" class="inline-code external-url-link" title="点击在浏览器中打开">${shown}</a>`
     }
 
-    return `<code class="inline-code">${text}</code>`
+    return `<code class="inline-code">${shown}</code>`
   }
 
   // 自定义链接渲染 - 检测文件路径链接
