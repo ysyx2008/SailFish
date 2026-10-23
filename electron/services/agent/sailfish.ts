@@ -158,7 +158,18 @@ export class SailFish extends Agent {
       commandRiskPolicy: this.commandRiskPolicy,
       profileId: this.profileId,
     })
+    this.attachRecorderTo(child, name)
     return child
+  }
+
+  /** 伙计的对话记录存在这场会话下面；没有会话或没有历史服务时这位就不存 */
+  private attachRecorderTo(child: SailFish, name: string): void {
+    const sessionId = this.getSessionId()
+    const startedAt = this.getSessionStartTime()
+    const store = this.services.historyService?.getAgentRecordStore().subAgents
+    if (!sessionId || startedAt === undefined || !store) return
+    const recorder = store.recorderFor({ sessionId, startedAt, name })
+    if (recorder) child.attachChildRecorder(recorder)
   }
   
   /**

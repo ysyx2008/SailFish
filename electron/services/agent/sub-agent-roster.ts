@@ -1,8 +1,10 @@
 /**
  * 这场 run 里活着的伙计花名册。只活在父 Agent 的当前 run，不进会话表。
+ * 每位的状态和对话由各自的存盘人记在主会话下面（花名册只告知状态变化）。
  */
 import type { AiMessage } from '../ai.service'
 import type { SubAgentResult, SubAgentToolStep, TokenUsage } from '@shared/types'
+import type { ChildRecorder, ChildStateInput } from '../history/sub-agent-record-store'
 import type { AgentContext, AgentStep, RunOptions } from './types'
 import { applyForkTurns, type ForkTurns } from './sanitize-parent-messages'
 import { ExpertTeam, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER, tidyLabel, type TeamMessage } from './expert-team'
@@ -37,6 +39,8 @@ export interface ChildAgentHandle {
   abort(): boolean
   isRunning(): boolean
   seedOpeningMessages?(messages: AiMessage[]): void
+  /** 这位的存盘人；没有就不存 */
+  readonly childRecorder?: ChildRecorder
   /** 进专家团：之后能在群里说话 */
   joinTeam?(seat: TeamSeat): void
 }
@@ -545,6 +549,7 @@ export class SubAgentRoster {
     slot.status = 'running'
     slot.error = undefined
     slot.blockedReason = undefined
+    persistSlot(slot)
   }
 
   private entryOf(name: string): TeamEntry | undefined {
@@ -559,6 +564,7 @@ export class SubAgentRoster {
     if (slot.status === 'pending' || !slot.handle) {
       slot.status = 'interrupted'
       slot.error = slot.error || '已打断'
+      persistSlot(slot)
       this.enqueueNews(slot.name)
       this.wake()
       return { ok: true, finalized: true }
@@ -573,6 +579,7 @@ export class SubAgentRoster {
       if (!LIVE.has(slot.status)) continue
       slot.handle?.abort()
       slot.status = 'interrupted'
+      persistSlot(slot)
     }
     this.wake()
   }
@@ -632,6 +639,8 @@ export class SubAgentRoster {
     }
     const seed = applyForkTurns(deps.sanitize(deps.getParentMessages()), slot.forkTurns)
     handle.seedOpeningMessages?.(seed)
+    handle.childRecorder?.noteOpening(seed)
+    persistSlot(slot)
     deps.onProgress()
     const opening = deps.openingFor ? deps.openingFor(snapshotOf(slot), team) : slot.prompt
     slot.runPromise = this.runExisting(slot, opening, deps)
@@ -674,6 +683,7 @@ export class SubAgentRoster {
       }
     }
     slot.waitingForModel = undefined
+    persistSlot(slot)
     deps.onProgress()
     this.reportFinished(slot, deps)
     this.wake()
@@ -696,6 +706,25 @@ export class SubAgentRoster {
     deps.knock(deps.formatKnock(snapshotOf(slot)))
     this.enqueueNews(slot.name)
   }
+}
+
+/** 这位的状态变了：交给他的存盘人记下来。没有存盘人（没有会话、或不存盘）就什么也不做 */
+function persistSlot(slot: ChildSlot): void {
+  const recorder = slot.handle?.childRecorder
+  if (!recorder) return
+  const input: ChildStateInput = {
+    name: slot.name,
+    askedName: slot.askedName,
+    description: slot.description,
+    prompt: slot.prompt,
+    shownPrompt: slot.shownPrompt,
+    role: slot.role,
+    status: slot.status,
+    result: slot.result,
+    error: slot.error,
+    blockedReason: slot.blockedReason,
+  }
+  recorder.saveState(input)
 }
 
 function snapshotOf(slot: ChildSlot): ChildSnapshot {
