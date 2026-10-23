@@ -210,4 +210,21 @@ describe('端到端：重开旧会话，用记下的真实用量判断装不装�
     expect(adopt).toHaveBeenCalled()
     expect(adopt.mock.results.some(r => r.value === true)).toBe(true)
   })
+
+  it('带交接检查点重开（直接接着上次的完整请求）：同样按记下的真实用量判断', async () => {
+    const history = new HistoryService()
+    seedRecord(history, 2, { promptTokens: 12_000, messageCount: 8 })
+    // 检查点 = 上次发出的完整序列（含 system）+ 模型的回复
+    const record = history.getAgentRecordById('sess_saved_usage')!
+    history.saveAgentRecord({
+      ...record,
+      workingContext: [{ role: 'system', content: SYSTEM_PROMPT }, ...longTaskMessages(2)]
+    } as AgentRecord)
+
+    const adopt = vi.spyOn(Conversation.prototype, 'adoptSavedPromptUsage')
+    const text = await reopenAndRun('接着查')
+
+    expect(adopt.mock.results.some(r => r.value === true)).toBe(true)
+    expect(text).toContain('接着查')
+  })
 })

@@ -36,8 +36,7 @@ export interface ToolOutputBudget {
 export const TOOL_OUTPUT_FLAT_CAP = 16_000
 
 export function getTierOutputCap(contextLength: number): number {
-  const windowCap = contextLength <= 32_000 ? 8_192 : TOOL_OUTPUT_FLAT_CAP
-  return Math.min(windowCap, TOOL_OUTPUT_FLAT_CAP)
+  return contextLength <= 32_000 ? 8_192 : TOOL_OUTPUT_FLAT_CAP
 }
 
 export function getPressureMultiplier(usageRatio: number): number {

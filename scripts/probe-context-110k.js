@@ -627,19 +627,23 @@ async function main() {
   const estimateOnly = makeManager(profile, { tools })
   const estimateSnap = snapshot(estimateOnly, coldSend)
   say(`  冷启动估算 ${estimateSnap.tokens}，占输入上限 ${estimateSnap.percent}%`)
-  // 上次请求的真实用量：估算说装得下就先这样发一次，看接口实报多少（相当于上次留在记录里的读数）；
-  // 估算已说装不下的，没有这份读数，走原来的紧急压缩。
+  // 上次请求的真实用量：锚点是「最后一条 assistant 之前」那次请求的实报，之后新增的（回复和这一句）才靠估算。
+  // 估算已说装不下的没有这份读数，走原来的紧急压缩。
   let savedReal
+  let actualFull
   if (!estimateSnap.over) {
-    const first = await ai.chatWithTools(coldSend.messages, tools, profile.id, undefined, { maxOutputTokens: 200 })
-    savedReal = first.usage && first.usage.prompt_tokens
-    say(`  先照估算发一次，接口实报 prompt=${savedReal}（输入上限 ${budget.inputLimit}，窗口 ${budget.contextLength}）`)
+    const lastAssistantIdx = coldSend.messages.map((m) => m.role).lastIndexOf('assistant')
+    const prior = await ai.chatWithTools(coldSend.messages.slice(0, lastAssistantIdx), tools, profile.id, undefined, { maxOutputTokens: 200 })
+    savedReal = prior.usage && prior.usage.prompt_tokens
+    const full = await ai.chatWithTools(coldSend.messages, tools, profile.id, undefined, { maxOutputTokens: 200 })
+    actualFull = full.usage && full.usage.prompt_tokens
+    say(`  先照估算发两次：上次那份实报 prompt=${savedReal}，这一次整份实报 ${actualFull}（输入上限 ${budget.inputLimit}，窗口 ${budget.contextLength}）`)
   }
   const coldMgr = makeManager(profile, { tools, anchor: savedReal })
   const coldSnap = snapshot(coldMgr, coldSend)
   if (savedReal !== undefined) {
-    say(`  按记下的真实用量重开：占输入上限 ${coldSnap.percent}%，发送前还要再压：${coldSnap.over ? '要' : '不要'}`)
-    check(coldSnap.over === (savedReal + 200 > budget.inputLimit), '重开时按记下的真实用量判断装不装得下，与接口实报一致', `实报 ${savedReal}`)
+    say(`  按记下的真实用量重开：约 ${coldSnap.tokens}（整份实报 ${actualFull}），发送前还要再压：${coldSnap.over ? '要' : '不要'}`)
+    check(coldSnap.over === (actualFull > budget.inputLimit), '重开时按记下的真实用量判断装不装得下，与整份的实报一致', `估 ${coldSnap.tokens} / 实报 ${actualFull}`)
   } else {
     say('  估算已经说装不下，走紧急压缩')
   }

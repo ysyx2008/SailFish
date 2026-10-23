@@ -3263,6 +3263,11 @@ export abstract class Agent {
         run.taskMessageLog.push({ ...userMsg })
         this.injectGoalReminder(run)
 
+        // 重开后复用交接检查点：上次请求的真实用量若还对得上，就以它为准（不整段重估）
+        if (this._conversation?.adoptSavedPromptUsage(run.messages)) {
+          log.info(`[Cache] Reused prefix anchored on saved prompt usage (${this._lastPromptTokens} tokens)`)
+        }
+
         log.info(`[Cache] Reusing ${this._previousRunMessages.length} messages (~${prevTokens} tokens, ${Math.round(prevTokens / contextLength * 100)}% of context)${this._conversation?.hasHandoff() ? ' [handoff]' : ''}`)
         return
       }
@@ -3402,7 +3407,7 @@ export abstract class Agent {
     await assemble(history)
 
     // 上次请求的真实用量还对得上这次装好的历史：以它为准判断装不装得下，不整段重估。
-    // 对不上（历史被裁剪、降级）就仍按估算。
+    // 对不上（历史被裁剪、降级）就仍按估算。唤醒只带一句话概要，不是上次那份历史，不采用。
     if (!run.context.wakeup && this._conversation?.adoptSavedPromptUsage(run.messages)) {
       log.info(`[Cache] Cold start anchored on saved prompt usage (${this._lastPromptTokens} tokens)`)
     }
@@ -3411,7 +3416,7 @@ export abstract class Agent {
     // 而不是让用户的这句话发不出去。此时 system prompt 已量过实际规模，预算更准。
     if (history.tookOriginal && this._contextWindow.needsRequestCompaction(run)) {
       log.warn('[Cache] Cold start: original task text does not fit, rebuilding history with process levels')
-      // 重装后消息变了，上次的真实用量不再对应
+      // 只作废本轮锚点：落盘的历史没被这次重装改写，记下的读数对下次重开仍然有效
       this._conversation?.setLastPromptTokens(undefined)
       run.messages.length = baseMessageCount
       run.taskMessageLog.length = baseLogCount
