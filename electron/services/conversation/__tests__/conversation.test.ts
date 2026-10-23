@@ -825,6 +825,13 @@ describe('Conversation 聚合根（领域模型）', () => {
       expect(none.adoptSavedPromptUsage([{ role: 'system', content: 's' }, { role: 'user', content: 'a' }])).toBe(false)
     })
 
+    it('压缩改写消息后丢掉，不再带进落盘记录', () => {
+      const conv = convWithTurn()
+      conv.recordPromptUsage(2, 500)
+      conv.discardSavedPromptUsage()
+      expect(conv.toRecord()!.lastPromptUsage).toBeUndefined()
+    })
+
     it('reset 清掉', () => {
       const conv = convWithTurn()
       conv.recordPromptUsage(2, 500)

@@ -623,10 +623,26 @@ async function main() {
     ...built.recentTaskMessages,
     { role: 'user', content: '只回答最新那件事情里的口令，不要展开旧事。' },
   ]
-  const coldMgr = makeManager(profile, { tools })
   const coldSend = makeRun(coldMessages)
+  const estimateOnly = makeManager(profile, { tools })
+  const estimateSnap = snapshot(estimateOnly, coldSend)
+  say(`  冷启动估算 ${estimateSnap.tokens}，占输入上限 ${estimateSnap.percent}%`)
+  // 上次请求的真实用量：估算说装得下就先这样发一次，看接口实报多少（相当于上次留在记录里的读数）；
+  // 估算已说装不下的，没有这份读数，走原来的紧急压缩。
+  let savedReal
+  if (!estimateSnap.over) {
+    const first = await ai.chatWithTools(coldSend.messages, tools, profile.id, undefined, { maxOutputTokens: 200 })
+    savedReal = first.usage && first.usage.prompt_tokens
+    say(`  先照估算发一次，接口实报 prompt=${savedReal}（输入上限 ${budget.inputLimit}，窗口 ${budget.contextLength}）`)
+  }
+  const coldMgr = makeManager(profile, { tools, anchor: savedReal })
   const coldSnap = snapshot(coldMgr, coldSend)
-  say(`  冷启动估算 ${coldSnap.tokens}，占输入上限 ${coldSnap.percent}% ，发送前还要再压：${coldSnap.over ? '要' : '不要'}`)
+  if (savedReal !== undefined) {
+    say(`  按记下的真实用量重开：占输入上限 ${coldSnap.percent}%，发送前还要再压：${coldSnap.over ? '要' : '不要'}`)
+    check(coldSnap.over === (savedReal + 200 > budget.inputLimit), '重开时按记下的真实用量判断装不装得下，与接口实报一致', `实报 ${savedReal}`)
+  } else {
+    say('  估算已经说装不下，走紧急压缩')
+  }
   if (coldSnap.over) {
     const saved = coldMgr.emergencyCompress(coldSend)
     const after = snapshot(coldMgr, coldSend)

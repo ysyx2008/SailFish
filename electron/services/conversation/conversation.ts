@@ -1363,6 +1363,11 @@ export class Conversation {
     }
   }
 
+  /** 消息序列被压缩改写后：记下的用量对不上落盘的历史了，丢掉，等下一次请求重新记 */
+  discardSavedPromptUsage(): void {
+    this._savedPromptUsage = undefined
+  }
+
   /**
    * 重开后、冷启动刚装好这一次的消息之后调用：上次记下的真实用量若还对得上，就当锚点用。
    *

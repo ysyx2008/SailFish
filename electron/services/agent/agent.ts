@@ -463,7 +463,11 @@ export abstract class Agent {
       getProfileId: () => this.resolveContextBudgetProfileId(),
       getLastPromptTokens: () => this._lastPromptTokens,
       getLastCacheHitRate: () => this._lastCacheHitRate,
-      invalidateTokenAnchor: () => this._conversation?.setLastPromptTokens(undefined),
+      invalidateTokenAnchor: () => {
+        this._conversation?.setLastPromptTokens(undefined)
+        // 压缩改写了消息序列，记下的那次用量不再对应落盘的历史
+        this._conversation?.discardSavedPromptUsage()
+      },
       measureMessageRange: (from, to) => this._conversation?.measureMessageRange(from, to),
       getTools: () => this.getAvailableTools(),
       shouldNudgeModelToCompact: () =>
