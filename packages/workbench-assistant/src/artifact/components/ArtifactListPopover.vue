@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * 钉在对话区右上的产出物清单小面板。点选一项即打开产出物面板并显示该项。
+ * 产出物清单小面板，从对话区右上的按钮下方弹出。点选一项即打开产出物面板并显示该项。
+ * 面板挂到 body 上、按按钮位置固定定位：浮在终端、对话栏等一切区域之上，不被它们的边界裁掉。
  */
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -15,6 +16,8 @@ const props = defineProps<{
   showTerminal?: boolean
   terminalTitle?: string
   terminalActive?: boolean
+  /** 弹出位置的参照元素（清单按钮所在的槽位） */
+  anchor?: HTMLElement | null
 }>()
 
 const emit = defineEmits<{
@@ -25,6 +28,16 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+/** 面板右缘对齐参照元素右缘，顶在其下方 6px */
+const floatStyle = computed(() => {
+  const rect = props.anchor?.getBoundingClientRect()
+  if (!rect) return { top: '38px', right: '8px' }
+  return {
+    top: `${Math.round(rect.bottom + 6)}px`,
+    right: `${Math.max(8, Math.round(window.innerWidth - rect.right))}px`,
+  }
+})
 
 const items = computed(() => sortArtifactsByRecent(props.artifacts))
 
@@ -49,7 +62,7 @@ function onRemove(id: string, e: Event) {
 
 function onDocMouseDown(e: MouseEvent) {
   const target = e.target as HTMLElement | null
-  if (target?.closest('.artifact-chrome')) return
+  if (target?.closest('.artifact-chrome, .artifact-list-pop')) return
   emit('close')
 }
 
@@ -69,7 +82,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="artifact-list-pop" role="menu" :aria-label="t('canvas.artifactListTitle')">
+  <div class="artifact-list-pop" role="menu" :style="floatStyle" :aria-label="t('canvas.artifactListTitle')">
     <div class="artifact-list-pop-head">{{ t('canvas.artifactListTitle') }}</div>
     <div class="artifact-list-pop-body">
       <button
@@ -118,14 +131,13 @@ onUnmounted(() => {
 
 <style scoped>
 .artifact-list-pop {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 6;
+  position: fixed;
+  /* 高于终端、对话栏与产出物面板；仍低于悬浮提示 */
+  z-index: 9000;
   box-sizing: border-box;
   width: max-content;
   min-width: 240px;
-  max-width: min(560px, calc(100cqi - 16px));
+  max-width: min(560px, calc(100vw - 16px));
   padding: 8px;
   border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
   border-radius: 12px;

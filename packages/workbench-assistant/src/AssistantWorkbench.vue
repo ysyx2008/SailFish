@@ -172,6 +172,8 @@ const panelToggleTitle = computed(() =>
   docExpanded.value ? t('canvas.minimizePanel') : t('canvas.expandPanel')
 )
 const listOpen = ref(false)
+/** 清单按钮所在槽位；清单浮层挂在 body 上，靠它定位 */
+const listSlotRef = ref<HTMLElement | null>(null)
 let listHideTimer: ReturnType<typeof setTimeout> | null = null
 const artifacts = computed(() => artifactStore.getArtifacts(props.tab.id))
 const activeArtifactId = computed(() => artifactStore.getActiveArtifact(props.tab.id)?.id ?? null)
@@ -319,9 +321,10 @@ function closeList() {
 }
 
 function onListFocusOut(e: FocusEvent) {
-  const next = e.relatedTarget as Node | null
-  const slot = e.currentTarget as HTMLElement
-  if (next && slot.contains(next)) return
+  const next = e.relatedTarget as HTMLElement | null
+  const here = e.currentTarget as HTMLElement
+  // 焦点在按钮槽位与浮出的清单之间移动，不算离开
+  if (next && (here.contains(next) || listSlotRef.value?.contains(next) || next.closest?.('.artifact-list-pop'))) return
   closeList()
 }
 
@@ -458,6 +461,7 @@ defineExpose({
                 <div v-if="showDeskChrome && !focusActive" class="artifact-chrome artifact-chrome--cluster">
                   <div
                     v-if="showDeskList"
+                    ref="listSlotRef"
                     class="artifact-list-slot"
                     @mouseenter="openList"
                     @mouseleave="closeList"
@@ -473,20 +477,27 @@ defineExpose({
                     >
                       <List :size="14" />
                     </button>
-                    <Transition name="artifact-list-pop">
-                      <ArtifactListPopover
-                        v-if="listOpen"
-                        :artifacts="artifacts"
-                        :active-artifact-id="activeArtifactId"
-                        :show-terminal="hasHostedTerminal"
-                        :terminal-title="deskTerminalTitle"
-                        :terminal-active="terminalSeated"
-                        @select="openArtifact"
-                        @select-terminal="seatTerminal"
-                        @remove="removeFromDesk"
-                        @close="listOpen = false"
-                      />
-                    </Transition>
+                    <Teleport to="body">
+                      <Transition name="artifact-list-pop">
+                        <ArtifactListPopover
+                          v-if="listOpen"
+                          :artifacts="artifacts"
+                          :active-artifact-id="activeArtifactId"
+                          :show-terminal="hasHostedTerminal"
+                          :terminal-title="deskTerminalTitle"
+                          :terminal-active="terminalSeated"
+                          :anchor="listSlotRef"
+                          @select="openArtifact"
+                          @select-terminal="seatTerminal"
+                          @remove="removeFromDesk"
+                          @close="listOpen = false"
+                          @mouseenter="openList"
+                          @mouseleave="closeList"
+                          @focusin="openList"
+                          @focusout="onListFocusOut"
+                        />
+                      </Transition>
+                    </Teleport>
                   </div>
                   <button
                     v-if="showArtifactFold && !docExpanded"
@@ -543,6 +554,7 @@ defineExpose({
     <div v-if="(showArtifactFold && docExpanded && !focusActive) || (focusActive && showDeskList)" class="artifact-chrome artifact-chrome--fold">
       <div
         v-if="focusActive && showDeskList"
+        ref="listSlotRef"
         class="artifact-list-slot"
         @mouseenter="openList"
         @mouseleave="closeList"
@@ -558,20 +570,27 @@ defineExpose({
         >
           <List :size="14" />
         </button>
-        <Transition name="artifact-list-pop">
-          <ArtifactListPopover
-            v-if="listOpen"
-            :artifacts="artifacts"
-            :active-artifact-id="activeArtifactId"
-            :show-terminal="hasHostedTerminal"
-            :terminal-title="deskTerminalTitle"
-            :terminal-active="terminalSeated"
-            @select="openArtifact"
-            @select-terminal="seatTerminal"
-            @remove="removeFromDesk"
-            @close="listOpen = false"
-          />
-        </Transition>
+        <Teleport to="body">
+          <Transition name="artifact-list-pop">
+            <ArtifactListPopover
+              v-if="listOpen"
+              :artifacts="artifacts"
+              :active-artifact-id="activeArtifactId"
+              :show-terminal="hasHostedTerminal"
+              :terminal-title="deskTerminalTitle"
+              :terminal-active="terminalSeated"
+              :anchor="listSlotRef"
+              @select="openArtifact"
+              @select-terminal="seatTerminal"
+              @remove="removeFromDesk"
+              @close="listOpen = false"
+              @mouseenter="openList"
+              @mouseleave="closeList"
+              @focusin="openList"
+              @focusout="onListFocusOut"
+            />
+          </Transition>
+        </Teleport>
       </div>
       <button
         v-if="showArtifactFold && !focusActive"
