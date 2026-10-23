@@ -6,6 +6,7 @@ import {
   getMaxReadLines,
   TOOL_OUTPUT_MIN_CHARS,
   TOOL_OUTPUT_CRITICAL_FLOOR,
+  TOOL_OUTPUT_FLAT_CAP,
 } from '../tool-output-budget'
 
 describe('computeToolOutputBudget', () => {
@@ -57,6 +58,15 @@ describe('computeToolOutputBudget', () => {
     expect(budget.maxChars).toBeGreaterThan(0)
     expect(budget.maxChars).toBeLessThan(TOOL_OUTPUT_MIN_CHARS)
     expect(budget.maxChars).toBeGreaterThanOrEqual(TOOL_OUTPUT_CRITICAL_FLOOR)
+  })
+
+  it('单次上限与窗口大小无关：110K 与 1M 窗口相同，小窗口不超过自己的档位', () => {
+    const at = (contextLength: number) =>
+      computeToolOutputBudget({ contextLength, currentTokens: 1_000 }).maxChars
+    expect(at(110_000)).toBe(TOOL_OUTPUT_FLAT_CAP)
+    expect(at(128_000)).toBe(TOOL_OUTPUT_FLAT_CAP)
+    expect(at(1_000_000)).toBe(TOOL_OUTPUT_FLAT_CAP)
+    expect(at(32_000)).toBeLessThan(TOOL_OUTPUT_FLAT_CAP)
   })
 
   it('uses smaller tier for 32K models', () => {

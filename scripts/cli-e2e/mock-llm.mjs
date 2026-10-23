@@ -16,7 +16,7 @@ function sse(res, usage, delta, finish) {
   res.writeHead(200, { 'Content-Type': 'text/event-stream', Connection: 'close' })
   res.write(`data: ${JSON.stringify({ id: 'x', object: 'chat.completion.chunk', choices: [{ index: 0, delta }] })}\n\n`)
   res.write(`data: ${JSON.stringify({ id: 'x', object: 'chat.completion.chunk', choices: [{ index: 0, delta: {}, finish_reason: finish }] })}\n\n`)
-  res.write(`data: ${JSON.stringify({ id: 'x', object: 'chat.completion.chunk', choices: [], usage: { ...usage, total_tokens: usage.prompt_tokens + usage.completion_tokens } })}\n\n`)
+  if (usage) res.write(`data: ${JSON.stringify({ id: 'x', object: 'chat.completion.chunk', choices: [], usage: { ...usage, total_tokens: usage.prompt_tokens + usage.completion_tokens } })}\n\n`)
   res.write('data: [DONE]\n\n')
   res.end()
 }
@@ -31,6 +31,8 @@ export const hang = () => ({ kind: 'hang' })
  * @param script.onUser    用户（含命令行里敲的话）开头的一轮：(text, n, entry) => 动作；entry 是这次请求的全部内容
  * @param script.onContinue 目标续跑的一轮：(n) => 动作
  * 工具返回后的那一次请求默认回一句话；要换脚本，给 afterTool。
+ * script.usage：(entry, action) => { prompt_tokens, completion_tokens }，要模拟「接口报多少真实用量」时给；
+ *   返回 null = 这次不报用量（有的服务商就是不报），返回 undefined = 用默认值。
  */
 export function startMockLlm(script) {
   const requests = []
@@ -72,15 +74,17 @@ export function startMockLlm(script) {
         entry.phase = `user-${userTurns}`
       }
       entry.action = action.kind
+      const custom = script.usage?.(entry, action)
+      const usageFor = (kind) => (custom === undefined ? USAGE[kind] : custom)
 
       if (action.kind === 'tool') {
-        sse(res, USAGE.tool, { role: 'assistant', tool_calls: [{ index: 0, id: `call_${requests.length}`, type: 'function', function: { name: action.name, arguments: JSON.stringify(action.args) } }] }, 'tool_calls')
+        sse(res, usageFor('tool'), { role: 'assistant', tool_calls: [{ index: 0, id: `call_${requests.length}`, type: 'function', function: { name: action.name, arguments: JSON.stringify(action.args) } }] }, 'tool_calls')
       } else if (action.kind === 'hang') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', Connection: 'close' })
         const timer = setTimeout(() => res.end(), 120_000)
         req.on('close', () => clearTimeout(timer))
       } else {
-        sse(res, USAGE.text, { role: 'assistant', content: action.content }, 'stop')
+        sse(res, usageFor('text'), { role: 'assistant', content: action.content }, 'stop')
       }
     })
   })

@@ -925,6 +925,18 @@ Companion 语义是「一条跨重启、多渠道汇流的连续关系线」，�
 - 不为每个模型硬编码各自的系数。锚点法下厂商差异由真实用量吸收，硬编码只会变成新的维护负担
 - 不因为估算变准就放松三层兜底（模型自主压缩 / 本地预测压缩 / API 报错紧急压缩）。估算再准也只是估算，兜底是另一条防线
 
+### 估算偏差不能让第一个请求超限（2026-10-23 设计）
+
+**问题**：本地估算对不同内容偏差很大。实测火山 Deepseek 4.1 flash：日志、哈希、JSON 这类密集内容，真实用量约是估算的两倍；散文反而估多了三成。运维任务里工具输出占大头，所以「估算 9 万、实际 15 万」在日常就会遇到。对话进行中不受影响（以上一轮真实用量为准），受影响的是没有真实用量的时刻：重开旧会话的第一个请求，以及一步里读进一大块密集内容。
+
+**成功标准**：
+- 重开旧会话时，记着上次的真实用量；历史原样带回的，第一个请求就以它为准，不整段重估
+- 单次读进来的内容有固定上限，与窗口大小无关；窗口越满上限越小
+- 没有记录的老会话和新会话行为不变；历史被裁剪、对不上记录时仍靠估算，由发送前拦截和三层兜底接住
+- 上次是中途打断（工具结果之后没有最终回复）、或程序被强杀的，重开时历史末尾会多一句收尾说明，对不上记录，那一次仍靠估算；再重开一次就用上了。唤醒不用记录；分叉、从联络抽取出的新任务不继承
+
+**明确不做**：不引入分词器；不为每个模型硬编码系数；不按内容类型或关键词去猜密度；不放松发送前拦截和三层兜底。
+
 ### 一次任务里该压几次就压几次（2026-08-21 设计）
 
 **目标**：本地预测压缩不设次数上限，压完还涨就再压。
@@ -971,7 +983,7 @@ Companion 语义是「一条跨重启、多渠道汇流的连续关系线」，�
 
 在工具结果**写入 `run.messages` 前**，按模型 `contextLength` 与当前已用量计算单次 output 字符/行上限，防止「最后一读把窗口撑爆」。旧 tool 结果不再做每步微压缩（曾用 `tool-result-budget`，会提前丢信息并破坏 prompt cache）；上下文紧张时统一走下方 compress 体系。
 
-- **计算**：`computeToolOutputBudget({ contextLength, currentTokens })` → `{ maxChars, maxLines, critical, usagePercent }`；档位上限 × 压力系数（70%/85%）与 `remaining − reserve` 取 min；reserve 为窗口 15%（最少 4K token）。
+- **计算**：`computeToolOutputBudget({ contextLength, currentTokens })` → `{ maxChars, maxLines, critical, usagePercent }`；档位上限（2026-10-23 起大窗口不再多给：所有窗口统一不超过 16,000 字符，≤32K 小窗口仍是 8192）× 压力系数（70%/85%）与 `remaining − reserve` 取 min；reserve 为窗口 15%（最少 4K token）。
 - **注入**：`ToolExecutorConfig.getToolOutputBudget` 由 `agent.ts` 在 `createToolExecutorConfig` 提供；子 Agent 继承父配置。
 - **并行 batch**：`executeToolBatchParallel` 与流式预执行 `StreamingToolExecutor` 均通过 `applyParallelShare(budget, N)` 分摊预算，避免 N 个只读工具各拿满额。
 - **消费方（v1）**：`tools/file.ts` 的 `read_file` / 文档解析结果在返回前按预算截断；`maxChars ≤ 0` 时仅返回摘要与压缩指引。

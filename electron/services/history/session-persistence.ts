@@ -66,6 +66,7 @@ export interface SessionMeta {
   userDismissedSkills?: AgentRecord['userDismissedSkills']
   workingContext?: AgentRecord['workingContext']
   compressedArchives?: AgentRecord['compressedArchives']
+  lastPromptUsage?: AgentRecord['lastPromptUsage']
   /** 已持久化的 steps 条数（jsonl 行数） */
   stepCount: number
   /** 已持久化的 messages 条数 */
@@ -128,6 +129,7 @@ function recordToMeta(record: AgentRecord, stepCount: number, messageCount: numb
   if (Array.isArray(record.compressedArchives)) {
     meta.compressedArchives = record.compressedArchives.map(a => JSON.parse(JSON.stringify(a)))
   }
+  if (record.lastPromptUsage) meta.lastPromptUsage = { ...record.lastPromptUsage }
   return meta
 }
 
@@ -157,6 +159,7 @@ function metaToRecord(meta: SessionMeta, steps: AgentStepRecord[], messages: Age
     userDismissedSkills: meta.userDismissedSkills,
     workingContext: meta.workingContext,
     compressedArchives: meta.compressedArchives,
+    ...(meta.lastPromptUsage ? { lastPromptUsage: meta.lastPromptUsage } : {}),
   })
 }
 
