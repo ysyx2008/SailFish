@@ -12,7 +12,7 @@ import { getDefaultShell } from './utils/platform'
 import { requestLocalNetworkAccess } from './utils/local-network-permission'
 import { isAbortError } from './utils/abort'
 import { createTerminalDataCoalescer } from './utils/terminal-data-coalescer'
-import type { AttachmentInfo, DocumentParseProgress, UiThemeMode, UiThemeName, WebSearchSettings, IMProcessMode, SayResult, TerminalType } from '@shared/types'
+import type { AttachmentInfo, DocumentParseProgress, UiThemeMode, UiThemeName, WebSearchSettings, IMProcessMode, SayResult, TerminalType, QuitConfirmCounts } from '@shared/types'
 import { clampUiZoomFactor, isApprovalMode, stepUiZoomFactor, UI_ZOOM_DEFAULT } from '@shared/types'
 import { getAppTitle as buildAppTitle, getBrandName } from '@shared/brand'
 import { oemResolved } from '@shared/oem-resolve'
@@ -919,24 +919,24 @@ function beginQuitTerminalCountRequest(): void {
   quitTerminalCountTimer = setTimeout(() => {
     quitTerminalCountTimer = null
     const loaded = getAgentRuntimeOrNull()
-    const n = (loaded?.ptyService.getActiveInstanceCount() ?? 0)
+    const terminals = (loaded?.ptyService.getActiveInstanceCount() ?? 0)
       + (loaded?.sshService.getActiveInstanceCount() ?? 0)
-    log.warn('[Quit] 渲染进程未及时返回终端数量，使用主进程会话数兜底:', n)
-    void proceedQuitAfterTerminalCount(n)
+    log.warn('[Quit] 渲染进程未及时返回数量，终端数用主进程会话数兜底:', terminals)
+    void proceedQuitAfterCount({ terminals, runningTasks: 0 })
   }, 2500)
 }
 
-async function proceedQuitAfterTerminalCount(terminalCount: number): Promise<void> {
+async function proceedQuitAfterCount(counts: QuitConfirmCounts): Promise<void> {
   if (quitTerminalCountHandled) {
     return
   }
   quitTerminalCountHandled = true
   clearQuitTerminalCountWatchdog()
 
-  const messageBoxOptions = menuService.getQuitConfirmDialogOptions(terminalCount)
+  const messageBoxOptions = menuService.getQuitConfirmDialogOptions(counts)
 
-  if (terminalCount > 0) {
-    // 有终端：弹确认对话框，用户确认后直接退出
+  if (counts.terminals > 0 || counts.runningTasks > 0) {
+    // 有终端没关或有任务在跑：弹确认对话框，用户确认后直接退出
     const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
     const result = parent
       ? await dialog.showMessageBox(parent, messageBoxOptions)
@@ -950,7 +950,7 @@ async function proceedQuitAfterTerminalCount(terminalCount: number): Promise<voi
       quitNeedsAntiMistouch = false
     }
   } else if (quitNeedsAntiMistouch) {
-    // 无终端 + Cmd+Q 首次：进入防误触等待
+    // 无终端无任务 + Cmd+Q 首次：进入防误触等待
     isQuitting = false
     quitNeedsAntiMistouch = false
     sendQuitToast(true)
@@ -959,7 +959,7 @@ async function proceedQuitAfterTerminalCount(terminalCount: number): Promise<voi
       sendQuitToast(false)
     }, 2000)
   } else {
-    // 无终端 + 托盘/Dock 退出：直接退出
+    // 无终端无任务 + 托盘/Dock 退出：直接退出
     forceQuit = true
     app.quit()
   }
@@ -2902,9 +2902,9 @@ ipcMain.handle('window:isFullScreen', async () => {
 })
 
 // 响应终端数量查询，决定是否需要确认退出
-ipcMain.on('window:terminalCountResponse', (_event, terminalCount: number) => {
-  const n = typeof terminalCount === 'number' && !Number.isNaN(terminalCount) ? terminalCount : 0
-  void proceedQuitAfterTerminalCount(n)
+ipcMain.on('window:terminalCountResponse', (_event, counts: Partial<QuitConfirmCounts> | undefined) => {
+  const safe = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0)
+  void proceedQuitAfterCount({ terminals: safe(counts?.terminals), runningTasks: safe(counts?.runningTasks) })
 })
 
 // 强制退出（跳过确认）

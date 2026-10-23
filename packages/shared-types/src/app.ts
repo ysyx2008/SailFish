@@ -10,3 +10,11 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'silent'
 
 /** 更新源 */
 export type UpdateSource = 'github' | 'oss'
+
+/** 退出前会被带走的东西：界面数好，主进程据此决定要不要问、怎么说 */
+export interface QuitConfirmCounts {
+  /** 还开着的终端（本机 + 远程），与侧栏「终端」上的数字一致 */
+  terminals: number
+  /** 界面上看得见、AI 还在干活的对话 */
+  runningTasks: number
+}

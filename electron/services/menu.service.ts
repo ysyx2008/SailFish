@@ -14,6 +14,7 @@ import { type KeyboardShortcuts, DEFAULT_KEYBOARD_SHORTCUTS } from './config.ser
 import { oemResolved } from '@shared/oem-resolve'
 import { oemConfig } from '@shared/oem-runtime'
 import { createLogger } from '../utils/logger'
+import type { QuitConfirmCounts } from '@shared/types'
 
 const log = createLogger('Menu')
 
@@ -98,8 +99,8 @@ const menuI18n = {
     // 退出确认
     quitConfirmTitle: '确认退出',
     quitConfirmMessage: '确定要退出程序吗？',
-    quitConfirmDetail: '当前有 {count} 个终端没关，退出会把这些终端关掉。',
-    quitConfirmDetailOne: '当前有 1 个终端没关，退出会把这个终端关掉。',
+    quitConfirmTerminals: '还有 {count} 个终端没关，退出会把它们关掉。',
+    quitConfirmTasks: '有 {count} 个任务正在进行，退出会把它们打断。',
     quitConfirmCancel: '取消',
     quitConfirmExit: '退出',
 
@@ -186,8 +187,8 @@ const menuI18n = {
     // Quit confirmation
     quitConfirmTitle: 'Confirm Quit',
     quitConfirmMessage: 'Are you sure you want to quit?',
-    quitConfirmDetail: '{count} terminals are still open. Quitting will close them.',
-    quitConfirmDetailOne: '1 terminal is still open. Quitting will close it.',
+    quitConfirmTerminals: 'Terminals still open: {count}. Quitting will close them.',
+    quitConfirmTasks: 'Tasks in progress: {count}. Quitting will interrupt them.',
     quitConfirmCancel: 'Cancel',
     quitConfirmExit: 'Quit',
 
@@ -810,10 +811,15 @@ export class MenuService {
   /**
    * 退出确认对话框文案（跟随应用语言设置）
    */
-  getQuitConfirmDialogOptions(terminalCount: number) {
-    const detail = terminalCount === 1
-      ? this.t('quitConfirmDetailOne')
-      : this.t('quitConfirmDetail').replace('{count}', String(terminalCount))
+  getQuitConfirmDialogOptions(counts: QuitConfirmCounts) {
+    const lines: string[] = []
+    if (counts.terminals > 0) {
+      lines.push(this.t('quitConfirmTerminals').replace('{count}', String(counts.terminals)))
+    }
+    if (counts.runningTasks > 0) {
+      lines.push(this.t('quitConfirmTasks').replace('{count}', String(counts.runningTasks)))
+    }
+    const detail = lines.join('\n')
     return {
       type: 'question' as const,
       buttons: [this.t('quitConfirmCancel'), this.t('quitConfirmExit')],

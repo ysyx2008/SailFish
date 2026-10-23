@@ -59,7 +59,7 @@ export interface SshSession {
 }
 
 // 定时任务相关类型
-import type { ScheduleType, TaskRunStatus } from '@shared/types'
+import type { ScheduleType, TaskRunStatus, QuitConfirmCounts } from '@shared/types'
 export type { ScheduleType, TaskRunStatus }
 export type { TerminalType } from '@shared/types'
 /** @deprecated Use TerminalType from @shared/types */
@@ -355,8 +355,8 @@ const electronAPI = {
       }
     },
     // 响应终端数量
-    responseTerminalCount: (count: number) => {
-      ipcRenderer.send('window:terminalCountResponse', count)
+    responseTerminalCount: (counts: QuitConfirmCounts) => {
+      ipcRenderer.send('window:terminalCountResponse', counts)
     },
     // 查询窗口是否处于全屏
     isFullScreen: () => ipcRenderer.invoke('window:isFullScreen') as Promise<boolean>,

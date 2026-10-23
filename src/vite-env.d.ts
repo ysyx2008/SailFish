@@ -141,7 +141,7 @@ interface Window {
       // Windows 汉堡菜单：弹出应用菜单（frame:false 下原生菜单栏不显示，由此 IPC 替代）
       popupAppMenu: (position?: { x: number; y: number }) => void
       onRequestTerminalCount: (callback: () => void) => () => void
-      responseTerminalCount: (count: number) => void
+      responseTerminalCount: (counts: import('@shared/types').QuitConfirmCounts) => void
       isFullScreen: () => Promise<boolean>
       onFullScreenChange: (callback: (isFullScreen: boolean) => void) => () => void
     }

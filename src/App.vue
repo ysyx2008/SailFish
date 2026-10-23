@@ -648,9 +648,14 @@ onMounted(async () => {
     }
   } catch { /* ignore */ }
 
-  // 退出确认只数开着的终端，和侧栏「终端」上的数字是同一个
+  // 退出确认：终端数与侧栏「终端」上的数字一致；任务数只数看得见、AI 还在干活的对话（联络常驻不算）
   cleanupTerminalCountListener = window.electronAPI.window.onRequestTerminalCount(() => {
-    window.electronAPI.window.responseTerminalCount(terminalStore.terminalTabs.length)
+    window.electronAPI.window.responseTerminalCount({
+      terminals: terminalStore.terminalTabs.length,
+      runningTasks: terminalStore.tabs.filter(
+        t => t.agentId !== COMPANION_TAB_AGENT_ID && t.agentState?.isRunning === true
+      ).length,
+    })
   })
 
   // ── 备份 / 恢复进度（复用知识库进度条，无百分比，只显示文字）──────────────
