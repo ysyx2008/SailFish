@@ -23,7 +23,7 @@ function makeExecutor(overrides?: Partial<ToolExecutorConfig>): ToolExecutorConf
       keepRecent: 4
     }),
     ...overrides
-  } as ToolExecutorConfig
+  } as ToolExecutorConfig & { steps: AgentStep[] }
 }
 
 describe('dispatchContext', () => {

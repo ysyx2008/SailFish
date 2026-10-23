@@ -18,6 +18,7 @@ import type { SkillSession } from '../skills'
 import type { McpToolSession } from '../mcp-tool-session'
 import type { TaskMemoryStore } from '../task-memory'
 import type { BackgroundWatch } from '../background-watch'
+import type { CompressResult } from '../context-window'
 import type { QueuedReplyTake } from '../pending-user-reply'
 
 // 错误分类
@@ -141,12 +142,7 @@ export interface ToolExecutorConfig {
   getContextUsage?: () => { used: number; total: number; remaining: number }
   // 上下文管理（context 压缩 / recall 取回归档）
   /** 和人按压缩同一套交接。hint 是要重点留下的补充，不是交接正文。 */
-  compressCurrentContext?: (hint?: string) => Promise<{
-    beforeTokens: number
-    afterTokens: number
-    freedTokens: number
-    archiveId: string
-  } | null>
+  compressCurrentContext?: (hint?: string) => Promise<CompressResult | null>
   getCompressedArchives?: () => Array<{ id: string; summary: string; messageCount: number; timestamp: number }>
   getCompressedArchive?: (archiveId: string) => import('../../ai.service').AiMessage[] | null
   // 历史记录服务（search_history 工具使用）

@@ -41,7 +41,8 @@ import type {
   PromptOptions,
   AgentCallbacks,
   AgentStep,
-  RunOptions
+  RunOptions,
+  TokenUsage
 } from '../types'
 import { TaskMemoryStore } from '../task-memory'
 import { Conversation, ConversationManager, ConversationStore } from '../../conversation'
@@ -3301,6 +3302,7 @@ describe('伙计的用量算进主人这场', () => {
       realtimeOutputBuffer: [] as string[],
       config: { enabled: true, maxSteps: 0, commandTimeout: 30000, autoExecuteSafe: true, autoExecuteModerate: true, executionMode: 'strict' as const, debugMode: false },
       context: createMockContext(),
+      tokenUsage: undefined as TokenUsage | undefined,
     }
   }
 
