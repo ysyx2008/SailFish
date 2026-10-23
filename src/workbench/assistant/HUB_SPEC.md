@@ -290,21 +290,9 @@ Watch 触发、Gateway 远程任务、IM 消息等触发的助手任务：
 
 ---
 
-## 九、退出确认计数
+## 九、退出确认
 
-退出时弹框中"有意义的开放 tab"计数规则：
-
-```
-有意义 = t.type !== 'assistant'          // 终端 tab
-        || t.isRemote                    // 远程助手
-        || t.isPromoted                  // 已提升助手
-        || (t.type === 'assistant' 
-            && !t.isRemote 
-            && !t.isPromoted 
-            && t.agentState?.isRunning)  // Hub 中正在运行的助手
-```
-
-未提升、未运行的 Hub 会话不计入（用户随时可从历史恢复，无丢失风险）。
+还有终端没关才弹这句，数字和侧栏「终端」上的是同一个。对话还在进行也不算进去。
 
 ---
 

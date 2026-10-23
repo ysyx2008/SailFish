@@ -98,7 +98,8 @@ const menuI18n = {
     // 退出确认
     quitConfirmTitle: '确认退出',
     quitConfirmMessage: '确定要退出程序吗？',
-    quitConfirmDetail: '当前有 {count} 个标签页未关闭，退出将关闭所有标签页。',
+    quitConfirmDetail: '当前有 {count} 个终端没关，退出会把这些终端关掉。',
+    quitConfirmDetailOne: '当前有 1 个终端没关，退出会把这个终端关掉。',
     quitConfirmCancel: '取消',
     quitConfirmExit: '退出',
 
@@ -185,7 +186,8 @@ const menuI18n = {
     // Quit confirmation
     quitConfirmTitle: 'Confirm Quit',
     quitConfirmMessage: 'Are you sure you want to quit?',
-    quitConfirmDetail: '{count} tab(s) are still open. Quitting will close all tabs.',
+    quitConfirmDetail: '{count} terminals are still open. Quitting will close them.',
+    quitConfirmDetailOne: '1 terminal is still open. Quitting will close it.',
     quitConfirmCancel: 'Cancel',
     quitConfirmExit: 'Quit',
 
@@ -808,8 +810,10 @@ export class MenuService {
   /**
    * 退出确认对话框文案（跟随应用语言设置）
    */
-  getQuitConfirmDialogOptions(tabCount: number) {
-    const detail = this.t('quitConfirmDetail').replace('{count}', String(tabCount))
+  getQuitConfirmDialogOptions(terminalCount: number) {
+    const detail = terminalCount === 1
+      ? this.t('quitConfirmDetailOne')
+      : this.t('quitConfirmDetail').replace('{count}', String(terminalCount))
     return {
       type: 'question' as const,
       buttons: [this.t('quitConfirmCancel'), this.t('quitConfirmExit')],

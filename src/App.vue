@@ -648,16 +648,9 @@ onMounted(async () => {
     }
   } catch { /* ignore */ }
 
-  // 注册标签页数量查询响应（用于退出确认）
-  // 只计「有意义」的 tab：终端、已提升助手 tab、运行中的 Hub 助手；纯空闲的 Hub 助手不计
+  // 退出确认只数开着的终端，和侧栏「终端」上的数字是同一个
   cleanupTerminalCountListener = window.electronAPI.window.onRequestTerminalCount(() => {
-    const count = terminalStore.tabs.filter(t => {
-      if (t.agentId === COMPANION_TAB_AGENT_ID) return false // 联络常驻 tab 不可关闭，不计入退出确认
-      if (t.type !== 'assistant') return true           // 终端 tab 始终计
-      if (t.isRemote || t.isPromoted) return true       // 远程 / 已提升助手计
-      return t.agentState?.isRunning === true           // Hub 内运行中的助手计
-    }).length
-    window.electronAPI.window.responseTerminalCount(count)
+    window.electronAPI.window.responseTerminalCount(terminalStore.terminalTabs.length)
   })
 
   // ── 备份 / 恢复进度（复用知识库进度条，无百分比，只显示文字）──────────────
