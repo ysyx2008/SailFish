@@ -466,6 +466,7 @@ export default {
     newChat: 'New Chat',
     companion: 'Reach',
     terminal: 'Terminal',
+    terminalWithCount: 'Terminal, {n} open',
     recent: 'Recent',
     toggleSidebar: 'Collapse recent chats',
     expandSidebar: 'Expand recent chats',

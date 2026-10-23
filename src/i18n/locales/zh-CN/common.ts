@@ -465,6 +465,7 @@ export default {
     newChat: '新对话',
     companion: '联络',
     terminal: '终端',
+    terminalWithCount: '终端，已打开 {n} 个',
     recent: '最近对话',
     toggleSidebar: '收起最近对话',
     expandSidebar: '展开最近对话',

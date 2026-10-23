@@ -92,6 +92,12 @@ const faceTitle = computed(() => {
 
 const place = computed(() => terminalStore.shellPlace)
 
+/** 本机和远程终端都收在「终端」里，不在最近对话列表上，所以用数量告诉人这里开着 */
+const terminalOpenCount = computed(() => terminalStore.terminalTabs.length)
+const terminalCountText = computed(() =>
+  terminalOpenCount.value > 99 ? '99+' : String(terminalOpenCount.value)
+)
+
 /**
  * 「新对话」只在主区真是空白起点时高亮。
  * 正在看某条会话时高亮落在最近对话列表里那条，避免两处同时亮。
@@ -176,11 +182,19 @@ function pick(action: 'open-todos' | 'open-contacts' | 'open-memory' | 'open-wat
         type="button"
         class="place-item"
         :class="{ active: place === 'terminal' }"
+        :aria-label="terminalOpenCount > 0 ? t('shell.terminalWithCount', { n: terminalOpenCount }) : undefined"
         @click="goTerminal"
       >
         <SquareTerminal :size="16" :stroke-width="1.75" />
-        <span>{{ t('shell.terminal') }}</span>
-        <span v-if="terminalStore.hasTerminalPlaceAttention" class="dot" />
+        <span class="place-label">{{ t('shell.terminal') }}</span>
+        <span v-if="terminalOpenCount > 0 || terminalStore.hasTerminalPlaceAttention" class="place-trail">
+          <span
+            v-if="terminalOpenCount > 0"
+            class="place-count"
+            :title="t('shell.terminalWithCount', { n: terminalOpenCount })"
+          >{{ terminalCountText }}</span>
+          <span v-if="terminalStore.hasTerminalPlaceAttention" class="dot" />
+        </span>
       </button>
     </nav>
 
@@ -298,6 +312,42 @@ function pick(action: 'open-todos' | 'open-contacts' | 'open-memory' | 'open-wat
   background: var(--bg-active, rgba(127, 127, 127, 0.18));
   color: var(--text-primary);
   font-weight: 600;
+}
+
+.place-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.place-trail {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.place-trail .dot {
+  position: static;
+}
+
+.place-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--bg-tertiary, rgba(127, 127, 127, 0.22));
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .recent-slot {
