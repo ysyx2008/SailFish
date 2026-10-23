@@ -142,6 +142,15 @@ const SUB_AGENT_RATE_LIMIT_RETRIES = 20
 /** 下一轮开始前，最多等上一轮没收尾的伙计这么久 */
 const PREVIOUS_CHILDREN_SETTLE_MS = 5000
 
+/** 冷启动要带进上下文的历史（摘要区 + 往期消息），以及这次是不是把任务原文原样装回 */
+interface ColdStartHistory {
+  taskSummaries: string
+  relatedTaskDigests: string
+  recentTaskMessages: AiMessage[]
+  availableTaskIds: Array<{ id: string; summary: string }>
+  tookOriginal: boolean
+}
+
 /**
  * 去除流式输出中因 API 代理重复发送 reasoning_content 而产生的连续相同思考块。
  * 仅移除内容完全相同的相邻 <details> 块，保留不同的块。
@@ -3303,34 +3312,7 @@ export abstract class Agent {
     })()
 
     // 同步操作在异步请求进行期间并发执行
-    let taskSummaries = ''
-    let relatedTaskDigests = ''
-    let recentTaskMessages: AiMessage[] = []
-    let availableTaskIds: Array<{ id: string; summary: string }> = []
-    
-    if (!preserveCheckpoint && this.taskMemory.getTaskCount() > 0) {
-      const contextLength = this._contextWindow.getContextLength()
-      // wakeup：广度优先 + 一句话概要，最多 30 条。见 SPEC。
-      // 历史预算在「窗口减去固定开销（工具 schema + system prompt）」的剩余空间里分配
-      const fixedPrefixTokens = this._contextWindow.getFixedPrefixTokens(this.systemPromptScope(run.context))
-      const historyOptions: TaskHistoryOptions = run.context.wakeup
-        ? { maxTasks: 30, summaryOnly: true, fixedPrefixTokens }
-        : inferConversationKind(this._agentId) === 'companion'
-          ? { processLevels: true, fixedPrefixTokens }
-          : { fixedPrefixTokens }
-      const contextResult = buildTaskHistoryContext(this.taskMemory, contextLength, message, historyOptions)
-      
-      recentTaskMessages = contextResult.recentTaskMessages
-      if (contextResult.taskSummarySection) {
-        taskSummaries = contextResult.taskSummarySection
-      }
-      availableTaskIds = contextResult.availableTaskIds
-      
-      const relatedDigests = this.taskMemory.getRelatedDigests(message, 3)
-      if (relatedDigests.length > 0) {
-        relatedTaskDigests = this.taskMemory.formatRelatedDigestsForContext(relatedDigests)
-      }
-    }
+    let history = this.selectColdStartHistory(run, message, preserveCheckpoint, false)
     
     let contextKnowledgeDoc = ''
     try {
@@ -3363,47 +3345,107 @@ export abstract class Agent {
 
     const isOnboarding = !(this.services.configService?.getAgentOnboardingCompleted() ?? true)
 
-    const promptOptions: PromptOptions = {
-      mbtiType: this.services.configService?.getAgentMbti() ?? undefined,
-      knowledgeContext: knowledgeResult.context,
-      knowledgeEnabled: knowledgeResult.enabled,
-      conversationHistory: conversationHistory.length > 0 ? conversationHistory : undefined,
-      contextKnowledgeDoc,
-      aiRules: this.services.configService?.getAiRules() ?? '',
-      proactiveCompact: this.services.configService?.getProactiveCompact?.(),
-      agentName: this.services.configService?.getAgentName() ?? '',
-      taskSummaries,
-      relatedTaskDigests,
-      availableTaskIds,
-      watchListSummary: watchListSummary || undefined,
-      bondContext: this.resolveBondContext(),
-      isOnboarding,
-      goal: this._conversation?.goal?.snapshot(),
-    }
-    
-    const systemPrompt = this.buildSystemPrompt(run.context, promptOptions)
-    this.recordAnnouncedCwd(run)
-    // 量下本轮规模，供下一轮预算分配（打破「预算→摘要→system prompt→预算」的循环）
-    this._contextWindow.recordSystemPromptTokens(systemPrompt, this.systemPromptScope(run.context))
-    run.messages.push({ role: 'system', content: systemPrompt })
-
-    if (preserveCheckpoint && previousRun) {
-      for (const msg of previousRun) {
-        if (msg.role === 'system') continue
-        const copy = { ...msg }
-        delete copy._cacheBreakpoint
-        run.messages.push(copy)
+    const baseMessageCount = run.messages.length
+    const baseLogCount = run.taskMessageLog.length
+    let builtUserMsg: AiMessage | undefined
+    const assemble = async (h: ColdStartHistory): Promise<void> => {
+      const promptOptions: PromptOptions = {
+        mbtiType: this.services.configService?.getAgentMbti() ?? undefined,
+        knowledgeContext: knowledgeResult.context,
+        knowledgeEnabled: knowledgeResult.enabled,
+        conversationHistory: conversationHistory.length > 0 ? conversationHistory : undefined,
+        contextKnowledgeDoc,
+        aiRules: this.services.configService?.getAiRules() ?? '',
+        proactiveCompact: this.services.configService?.getProactiveCompact?.(),
+        agentName: this.services.configService?.getAgentName() ?? '',
+        taskSummaries: h.taskSummaries,
+        relatedTaskDigests: h.relatedTaskDigests,
+        availableTaskIds: h.availableTaskIds,
+        watchListSummary: watchListSummary || undefined,
+        bondContext: this.resolveBondContext(),
+        isOnboarding,
+        goal: this._conversation?.goal?.snapshot(),
       }
-    } else if (recentTaskMessages.length > 0) {
-      for (const msg of recentTaskMessages) {
-        run.messages.push(msg)
+
+      const systemPrompt = this.buildSystemPrompt(run.context, promptOptions)
+      this.recordAnnouncedCwd(run)
+      // 量下本轮规模，供下一轮预算分配（打破「预算→摘要→system prompt→预算」的循环）
+      this._contextWindow.recordSystemPromptTokens(systemPrompt, this.systemPromptScope(run.context))
+      run.messages.push({ role: 'system', content: systemPrompt })
+
+      if (preserveCheckpoint && previousRun) {
+        for (const msg of previousRun) {
+          if (msg.role === 'system') continue
+          const copy = { ...msg }
+          delete copy._cacheBreakpoint
+          run.messages.push(copy)
+        }
+      } else {
+        for (const msg of h.recentTaskMessages) {
+          run.messages.push(msg)
+        }
       }
+
+      // 用户这句话只生成一次：生成时会取走一次性的东西（联络刚主动说过的话、被按停的提示），重装时复用
+      builtUserMsg ??= await this.buildUserMessage(run, message, false)
+      const userMsg = { ...builtUserMsg }
+      this.markContinuationMessage(userMsg)
+      run.messages.push(userMsg)
+      run.taskMessageLog.push({ ...userMsg })
     }
 
-    const userMsg = await this.buildUserMessage(run, message, false)
-    this.markContinuationMessage(userMsg)
-    run.messages.push(userMsg)
-    run.taskMessageLog.push({ ...userMsg })
+    await assemble(history)
+
+    // 任务原文装不下：这一次改用五档（近处完整、远处收短、最远只留问答）重装，
+    // 而不是让用户的这句话发不出去。此时 system prompt 已量过实际规模，预算更准。
+    if (history.tookOriginal && this._contextWindow.needsRequestCompaction(run)) {
+      log.warn('[Cache] Cold start: original task text does not fit, rebuilding history with process levels')
+      run.messages.length = baseMessageCount
+      run.taskMessageLog.length = baseLogCount
+      history = this.selectColdStartHistory(run, message, preserveCheckpoint, true)
+      await assemble(history)
+    }
+  }
+
+  /**
+   * 冷启动要带进上下文的历史：按会话类型选装法。
+   * 联络、以及任务原文装不下的降级（forceProcessLevels）走五档；唤醒只要一句话概要；任务平时带原文。
+   * 预算按这次真正能发的输入量算，不按整窗。
+   */
+  private selectColdStartHistory(
+    run: AgentRun,
+    message: string,
+    preserveCheckpoint: boolean,
+    forceProcessLevels: boolean
+  ): ColdStartHistory {
+    const empty: ColdStartHistory = {
+      taskSummaries: '',
+      relatedTaskDigests: '',
+      recentTaskMessages: [],
+      availableTaskIds: [],
+      tookOriginal: false,
+    }
+    if (preserveCheckpoint || this.taskMemory.getTaskCount() === 0) return empty
+
+    // wakeup：广度优先 + 一句话概要，最多 30 条。见 SPEC。
+    // 历史预算在「能发的输入减去固定开销（工具 schema + system prompt）」的剩余空间里分配
+    const fixedPrefixTokens = this._contextWindow.getFixedPrefixTokens(this.systemPromptScope(run.context))
+    const isCompanion = inferConversationKind(this._agentId) === 'companion'
+    const historyOptions: TaskHistoryOptions = run.context.wakeup
+      ? { maxTasks: 30, summaryOnly: true, fixedPrefixTokens }
+      : isCompanion || forceProcessLevels
+        ? { processLevels: true, fixedPrefixTokens }
+        : { fixedPrefixTokens }
+    const contextResult = buildTaskHistoryContext(this.taskMemory, this._contextWindow.getInputLimit(), message, historyOptions)
+
+    const relatedDigests = this.taskMemory.getRelatedDigests(message, 3)
+    return {
+      taskSummaries: contextResult.taskSummarySection || '',
+      relatedTaskDigests: relatedDigests.length > 0 ? this.taskMemory.formatRelatedDigestsForContext(relatedDigests) : '',
+      recentTaskMessages: contextResult.recentTaskMessages,
+      availableTaskIds: contextResult.availableTaskIds,
+      tookOriginal: !historyOptions.summaryOnly && !historyOptions.processLevels && contextResult.recentTaskMessages.length > 0,
+    }
   }
 
   private markContinuationMessage(userMsg: AiMessage): void {

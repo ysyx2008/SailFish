@@ -292,12 +292,14 @@ export class ContextWindowManager {
   }
 
   /**
-   * 这一次发出去会占多少：有真实锚点跟账单走；冷启动补上 system prompt
-   *（全量估算本来只计消息 + 工具 schema）。
+   * 这一次发出去会占多少：有真实锚点跟账单走；冷启动全量估算。
+   * 消息里已带着 system prompt 的不再补（补了就把它算了两遍）；
+   * 只有消息里没有 system 消息时才按上一轮实测值补上。
    */
   private estimateSendableTokens(messages: AiMessage[]): number {
     const used = this.estimateCurrentPromptTokens(messages)
     if (this.deps.getLastPromptTokens() !== undefined) return used
+    if (messages.some(m => m.role === 'system')) return used
     const systemTokens = this._lastSystemPromptTokens ?? DEFAULT_SYSTEM_PROMPT_TOKENS
     return used + systemTokens
   }
@@ -670,9 +672,9 @@ export class ContextWindowManager {
     // 放到请求之前会让时序错乱。这个位置同时让角色天然交替——成对历史以
     // assistant 收尾、接 user、再接 assistant 摘要，不会出现连续同角色。
     const preserved = run.messages.slice(lastUserIndex + 1 + toCompress.length)
-    if (toCompress.length === 0 && preserved.length === 0) {
-      // 冷启动：当前这句话就是最后一条，后面没有执行步骤，被归档的只有它之前的历史。
-      // 摘要放在这句话前面，免得请求以 assistant 结尾。
+    if (preserved.length === 0) {
+      // 冷启动：当前这句话之后没有要保留的执行步骤（后面最多只有被归档的系统提醒），
+      // 摘要覆盖的主要是它之前的历史。摘要放在这句话前面，免得请求以 assistant 结尾。
       run.messages = [...systemMessages, ...preservedHistory, summaryMessage, run.messages[lastUserIndex]]
     } else {
       run.messages = [
