@@ -41,7 +41,7 @@ import type {
 import { DEFAULT_AGENT_CONFIG } from './types'
 import { TaskMemoryStore } from './task-memory'
 import { Conversation, conversationPolicy } from '../conversation'
-import { broadcastConversationTitle, generateConversationTitle, shouldRefreshConversationTitle, userMessageCanSeedTitle } from '../conversation/title-generator'
+import { broadcastConversationTitle, generateConversationTitle, shouldRefreshConversationTitle } from '../conversation/title-generator'
 import { ContextWindowManager, peelOpenToolTurn } from './context-window'
 import { beginUserCompactTurn, cancelUserCompactTurn, failUserCompactTurn, finishUserCompactTurn } from './tools/context'
 import { SUMMARY_OUTPUT_BUDGET_CHARS } from './compression-summary'
@@ -221,8 +221,6 @@ export abstract class Agent {
 
   /** 第一句起的侧栏标题（后台进行中） */
   private _initialTitle?: Promise<string | null>
-  /** 第一句起不出标题，等这一轮结束再用整段对话补一次 */
-  private _deferOpeningTitle = false
 
   /** 审批方式：会话还没建好时先记在这里，建好后交给会话 */
   private _armedApproval?: ApprovalMode
@@ -2328,7 +2326,6 @@ export abstract class Agent {
     this.persistChildRecord()
     if (!this._isSubAgent && !this._sessionDiscarded) {
       this.saveSessionToHistory()
-      this.scheduleDeferredOpeningTitle()
       this.scheduleTitleRefreshIfDue()
 
       // 诞生引导完成判定：调用了任何被标注 lifecycle.marksOnboardingComplete 的工具
@@ -2695,38 +2692,7 @@ export abstract class Agent {
   }
 
   /**
-   * 第一句起不出标题（没写字、只发了图、系统占位）：这一轮结束后用整段对话补一次。
-   * 只补这一次；没前缀或这一轮被丢掉就不写。不阻塞 run。
-   */
-  private scheduleDeferredOpeningTitle(): void {
-    if (!this._deferOpeningTitle) return
-    this._deferOpeningTitle = false
-    const conv = this._conversation
-    const historyService = this.services.historyService
-    const configService = this.services.configService
-    if (!conv || !historyService || !configService) return
-    if (conv.kind !== 'task' || conv.title || conv.titleLocked || conv.userTaskCount !== 1) return
-
-    const cachePrefix = conv.getCachePrefix()
-    if (!cachePrefix?.length) return
-
-    this._initialTitle = generateConversationTitle(
-      this.titleGeneratorDeps(conv, configService, historyService),
-      {
-        sessionId: conv.id,
-        mode: 'refresh',
-        cachePrefix,
-        tools: this.getAvailableTools(),
-        profileId: this.profileId,
-      }
-    ).catch(err => {
-      log.warn('Opening conversation title failed:', err)
-      return null
-    })
-  }
-
-  /**
-   * 任务会话每完整三轮后，复用刚结束的前缀异步重写侧栏标题。
+   * 第一轮结束还没有标题，或每完整三轮，复用刚结束的前缀写侧栏标题。
    * 不阻塞 run；手改过的 / 无前缀的跳过。
    */
   private scheduleTitleRefreshIfDue(): void {
@@ -2735,7 +2701,8 @@ export abstract class Agent {
     const configService = this.services.configService
     if (!conv || !historyService || !configService) return
     if (conv.kind !== 'task' || conv.titleLocked) return
-    if (!shouldRefreshConversationTitle(conv.userTaskCount)) return
+    const missingAfterFirstRound = conv.userTaskCount === 1 && !conv.title
+    if (!missingAfterFirstRound && !shouldRefreshConversationTitle(conv.userTaskCount)) return
 
     const cachePrefix = conv.getCachePrefix()
     if (!cachePrefix?.length) return
@@ -2763,31 +2730,16 @@ export abstract class Agent {
     const conv = this._conversation
     const historyService = this.services.historyService
     const configService = this.services.configService
-    if (this._isSubAgent || run.workerOptions || run.internalNotice) {
-      this._deferOpeningTitle = false
-      return
-    }
-    if (!conv || !historyService || !configService) {
-      this._deferOpeningTitle = false
-      return
-    }
-    if (conv.kind !== 'task' || conv.title || conv.titleLocked || conv.userTaskCount > 0) {
-      this._deferOpeningTitle = false
-      return
-    }
+    if (this._isSubAgent || run.workerOptions || run.internalNotice) return
+    if (!conv || !historyService || !configService) return
+    if (conv.kind !== 'task' || conv.title || conv.titleLocked || conv.userTaskCount > 0) return
 
     if (message.trim() === '__onboarding__') {
-      this._deferOpeningTitle = false
       const title = t('conversation.onboarding_title')
       conv.setTitle(title)
       if (historyService.updateConversationTitle(conv.id, title)) broadcastConversationTitle(conv.id, title)
       return
     }
-    if (!userMessageCanSeedTitle(message)) {
-      this._deferOpeningTitle = true
-      return
-    }
-    this._deferOpeningTitle = false
     this._initialTitle = generateConversationTitle(
       this.titleGeneratorDeps(conv, configService, historyService),
       { sessionId: conv.id, userMessage: message, profileId: this.profileId }
@@ -3198,7 +3150,6 @@ export abstract class Agent {
     this.persistChildRecord()
     if (!this._isSubAgent && !this._sessionDiscarded) {
       this.saveSessionToHistory()
-      this.scheduleDeferredOpeningTitle()
       this.scheduleTitleRefreshIfDue()
 
       // L3: 异步索引失败的对话（失败经验同样有检索价值）

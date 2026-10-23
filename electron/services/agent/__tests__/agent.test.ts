@@ -2893,7 +2893,7 @@ describe('新任务会话的第一句', () => {
 
     await agent.run('   ', createMockContext())
 
-    await expect(agent.waitForInitialTitle()).resolves.toBe('整理日志')
+    await expect(agent.waitForInitialTitle()).resolves.toBeNull()
     expect(ai.chat).toHaveBeenCalledTimes(1)
     const messages = ai.chat.mock.calls[0][0] as Array<{ content?: string }>
     expect(messages.length).toBeGreaterThan(1)

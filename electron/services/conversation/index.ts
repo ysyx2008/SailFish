@@ -32,7 +32,6 @@ export {
   sanitizeConversationTitle,
   shouldRefreshConversationTitle,
   titlesEquivalent,
-  userMessageCanSeedTitle,
 } from './title-generator'
 export type {
   GenerateConversationTitleDeps,
