@@ -2692,7 +2692,7 @@ export abstract class Agent {
   }
 
   /**
-   * 任务会话每完整三轮后，复用刚结束的前缀异步重写侧栏标题。
+   * 第一轮结束还没有标题，或每完整三轮，复用刚结束的前缀写侧栏标题。
    * 不阻塞 run；手改过的 / 无前缀的跳过。
    */
   private scheduleTitleRefreshIfDue(): void {
@@ -2701,7 +2701,8 @@ export abstract class Agent {
     const configService = this.services.configService
     if (!conv || !historyService || !configService) return
     if (conv.kind !== 'task' || conv.titleLocked) return
-    if (!shouldRefreshConversationTitle(conv.userTaskCount)) return
+    const missingAfterFirstRound = conv.userTaskCount === 1 && !conv.title
+    if (!missingAfterFirstRound && !shouldRefreshConversationTitle(conv.userTaskCount)) return
 
     const cachePrefix = conv.getCachePrefix()
     if (!cachePrefix?.length) return
