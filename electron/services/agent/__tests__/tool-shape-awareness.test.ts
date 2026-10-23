@@ -48,21 +48,21 @@ describe('manage_pane 说明按形态裁剪', () => {
     const desc = describeOf('assistant', 'manage_pane')
     expect(desc).toContain('可以关掉最后一扇')
     expect(desc).not.toContain('终端页不能关最后一扇')
-    // 助手没有终端时需要请终端入座，这句只对助手成立
-    expect(desc).toContain('请终端入座')
+    // 助手页还没有终端时才需要打开，这句只对助手成立
+    expect(desc).toContain('还没有终端时用它打开')
   })
 
   it.each<AgentMode>(['local', 'ssh'])('终端页（%s）：只讲终端那套，不出现助手的例外', (mode) => {
     const desc = describeOf(mode, 'manage_pane')
     expect(desc).toContain('不能关掉最后一扇')
     expect(desc).not.toContain('可以关掉最后一扇')
-    expect(desc).not.toContain('请终端入座')
+    expect(desc).not.toContain('还没有终端时用它打开')
   })
 
   it('形态未指定：说不准是哪一种，两边规矩都留着', () => {
     const desc = describeOf(undefined, 'manage_pane')
     expect(desc).toContain('终端页不能关最后一扇')
-    expect(desc).toContain('助手可以关最后一扇')
+    expect(desc).toContain('助手页可以关最后一扇')
   })
 
   it('同样的形态给出完全一样的说明——描述不能成为变量，否则前缀缓存每轮作废', () => {
@@ -72,16 +72,31 @@ describe('manage_pane 说明按形态裁剪', () => {
 })
 
 describe('list_ssh_sessions 说明同样按形态裁剪', () => {
-  it('助手页：保留「请终端入座」', () => {
-    expect(describeOf('assistant', 'list_ssh_sessions')).toContain('请真终端入座')
+  it('助手页：保留「还没有终端时用 open」', () => {
+    expect(describeOf('assistant', 'list_ssh_sessions')).toContain('还没有终端时用 open')
   })
 
-  it.each<AgentMode>(['local', 'ssh'])('终端页（%s）：眼前已有终端，不提入座', (mode) => {
+  it.each<AgentMode>(['local', 'ssh'])('终端页（%s）：眼前已有终端，不提还没有终端的情形', (mode) => {
     const desc = describeOf(mode, 'list_ssh_sessions')
-    expect(desc).not.toContain('请真终端入座')
+    expect(desc).not.toContain('还没有终端时用 open')
     expect(desc).toContain('开一扇连过去')
     // 拿 sessionId 再开窗这条主路径在哪种形态下都得说清
     expect(desc).toContain('先调本工具拿 sessionId')
+  })
+})
+
+describe('exec 说明：密码和需要人确认的操作', () => {
+  it('主人的 exec 说明写明接不住密码提示，并指向打开真终端', () => {
+    const desc = describeOf('assistant', 'exec')
+    expect(desc).toContain('接不住密码提示')
+    expect(desc).toContain('manage_pane(action=open)')
+  })
+
+  it('伙计开不了终端窗，它的 exec 说明里不提', () => {
+    const tools = getAgentTools(undefined, { mode: 'assistant' })
+    const exec = tools.find(t => t.function.name === 'exec') as { _meta?: { descriptionForSubAgent?: string } } | undefined
+    expect(exec?._meta?.descriptionForSubAgent).toBeTruthy()
+    expect(exec?._meta?.descriptionForSubAgent).not.toContain('manage_pane')
   })
 })
 
