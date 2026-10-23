@@ -399,6 +399,7 @@ export default {
     updateLater: '稍后提醒',
     updateDeferredToast: '版本 {version} 将在您退出应用时安装',
     updateSnoozedToast: '已跳过本次提醒，可在「设置 → 关于」中手动安装',
+    updateRemindLaterToast: '先不安装，下次启动后再提醒你。也可以随时在「设置 → 关于」中安装',
     goToDownload: '前往下载',
     viewChangelog: '查看更新日志',
     updateNotifyAvailableHint: '版本 {version} 已发布。可先下载，不会打断当前操作。',
