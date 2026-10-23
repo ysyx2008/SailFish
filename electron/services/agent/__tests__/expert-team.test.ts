@@ -30,7 +30,7 @@ vi.mock('../../im/im.service', () => ({
 }))
 
 vi.mock('../../user-skill.service', () => ({
-  getUserSkillService: () => ({ getEnabledSkills: () => [] })
+  getUserSkillService: () => ({ getEnabledSkills: () => [], buildSkillsSummary: () => '' })
 }))
 
 vi.mock('../../config.service', () => ({
@@ -449,6 +449,49 @@ describe('dispatch_agents 工具说明里的数字各归各处', () => {
 
   it('角色那栏写明字数上限', () => {
     expect(roleDescription).toContain('最长 20 个字')
+  })
+})
+
+describe('伙计和专家的区别写给秘书看（用户说「专家团」却被派成伙计过）', () => {
+  const prompt = new PromptBuilder({ context: CONTEXT }).build()
+  const tool = (getAgentTools(undefined, { mode: 'assistant' }) as ToolDefinitionWithMeta[])
+    .find(def => def.function.name === 'dispatch_agents')!
+  const props = (tool.function.parameters as { properties: Record<string, any> }).properties
+
+  it('系统说明把两种人并列讲：各自带不带 role、界面上看到什么；用户的话指的是什么', () => {
+    expect(prompt).toContain('派出的人有两种')
+    expect(prompt).toContain('伙计：不带 role')
+    expect(prompt).toContain('界面上只是一行进度')
+    expect(prompt).toContain('专家：带 role')
+    expect(prompt).toContain('名字前的角色标签')
+    expect(prompt).toContain('用户点开能看到完整群聊')
+  })
+
+  it('如实说角色给了专家什么：显示的称呼和开场一句话，别的和伙计一样，专长看指令；不替用户猜他想要什么', () => {
+    expect(prompt).toContain('也写进专家的开场「你是 名字（role）」')
+    expect(prompt).toContain('除此之外专家和伙计一样（同样的模型和权限，工具也一样，团里的专家多一个在群里说话的）')
+    expect(prompt).toContain('取决于你写给他的指令')
+    expect(prompt).not.toContain('他想看到的是')
+  })
+
+  it('先各自独立判断再组团的安排：独立判断那步也可以是专家；带 team 时每位都带 role', () => {
+    expect(prompt).toContain('独立判断那一步派不带 team 的专家，一样有角色标签')
+    expect(prompt).toContain('带 team 时 tasks 里每一位都要带 role，主持、协调这类位置也一样')
+  })
+
+  it('不再用「分头就能做完的活派伙计」去压用户明说的专家', () => {
+    expect(prompt).not.toContain('分头就能做完的同类活照旧派伙计')
+    expect(prompt).not.toContain('各看各的就够的不组团')
+  })
+
+  it('工具说明开头就分开：不带 role 的是伙计，带 role 的是专家；角色那栏写明界面上是标签、带 team 时每项都带', () => {
+    expect(tool.function.description.startsWith('派出这场任务里的同事并行干活：不带 role 的是伙计，带 role 的是专家')).toBe(true)
+    expect(props.tasks.items.properties.role.description).toContain('界面上显示为角色标签')
+    expect(props.tasks.items.properties.role.description).toContain('带 team 时 tasks 里每一项都要带')
+  })
+
+  it('伙计和专家自己的系统说明里没有这一段', () => {
+    expect(PromptBuilder.buildSubAgentSystemPrompt({ context: CONTEXT })).not.toContain('派出的人有两种')
   })
 })
 
