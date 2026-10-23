@@ -241,6 +241,7 @@ describe('替我审批 · 评审员', () => {
     expect(policy).toContain('旗鱼命令审计定级')
     expect(policy).toContain('下限')
     expect(policy).toContain('写明卡在哪里')
+    expect(policy).toContain('cd 失败')
   })
 
   it('模型说问人、看不懂、出错、超时，都交回用户', async () => {
