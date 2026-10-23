@@ -158,6 +158,24 @@ export function getBuiltinTempRoots(): string[] {
   return [...getTempRoots()]
 }
 
+/**
+ * 内置自由区目录：工作区里的 scratch/charts/migrations + 系统临时目录。
+ * 设置页展示和评审员的「事先放开的目录」共用这一份，与 getWorkspaceZone 的判定同源。
+ */
+export function getBuiltinFreeDirs(): string[] {
+  const workspace = getWorkspacePath()
+  return [
+    ...[...WORKSPACE_FREE_DIRS].map(d => path.join(workspace, d)).sort(),
+    ...getTempRoots(),
+  ]
+}
+
+/** 免确认的全部目录：内置自由区 + 用户在设置里加的额外自由区（去重，原样保留用户写的路径） */
+export function listFreeZoneDirs(extraFreeDirs: readonly string[] = []): string[] {
+  const extra = extraFreeDirs.filter(d => typeof d === 'string' && d.trim()).map(d => d.trim())
+  return [...new Set([...getBuiltinFreeDirs(), ...extra])]
+}
+
 function getTempRoots(): string[] {
   if (cachedTempRoots) return cachedTempRoots
   const roots = new Set<string>()
