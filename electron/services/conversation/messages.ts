@@ -113,6 +113,7 @@ export function stepRecordToStep(s: AgentStepRecord): AgentStep {
     askingAnswer: s.askingAnswer,
     autoReview: s.autoReview,
     subAgents: s.subAgents,
+    expertTeam: s.expertTeam,
     canvasData: s.canvasData,
     hugeOutput: s.hugeOutput,
   }

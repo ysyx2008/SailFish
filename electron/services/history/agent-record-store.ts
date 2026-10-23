@@ -41,6 +41,7 @@ import {
 } from './session-persistence'
 import { getDateString } from './date-util'
 import { AgentIndexLog } from './agent-index-log'
+import { ExpertTeamChatStore } from './expert-team-chat-store'
 import { throwIfAborted } from '../../utils/abort'
 import {
   isWatchAgentKey,
@@ -171,6 +172,8 @@ export class AgentRecordStore {
   private readonly agentDir: string
   private readonly watchDir: string
   private readonly imagesDir: string
+  /** 专家团群聊全文，跟着会话删、按天清理 */
+  readonly expertTeamChats: ExpertTeamChatStore
   private readonly agentStore: AgentIndexStore
   private readonly watchStore: AgentIndexStore
 
@@ -179,6 +182,7 @@ export class AgentRecordStore {
     this.agentDir = path.join(historyDir, 'agent')
     this.watchDir = path.join(historyDir, 'watch')
     this.imagesDir = path.join(historyDir, 'images')
+    this.expertTeamChats = new ExpertTeamChatStore(path.join(historyDir, 'expert-teams'))
 
     this.agentStore = {
       dir: this.agentDir,
@@ -814,6 +818,7 @@ export class AgentRecordStore {
     if (fs.existsSync(sessionImagesDir)) {
       fs.rmSync(sessionImagesDir, { recursive: true, force: true })
     }
+    this.expertTeamChats.deleteSession(id)
 
     log.info(`已删除 Agent 历史记录: ${id}`)
     return true
@@ -1164,6 +1169,7 @@ export class AgentRecordStore {
           }
         }
       }
+      this.expertTeamChats.deleteAll()
     } else {
       const cutoffDate = new Date()
       cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
@@ -1184,9 +1190,16 @@ export class AgentRecordStore {
           }
         }
       }
+      this.expertTeamChats.deleteBefore(cutoffStr)
     }
 
     return agentDeleted
+  }
+
+  /** 删掉会话已经不在的专家团群聊；按天清理并重建索引之后调 */
+  pruneExpertTeamChats(): void {
+    const live = [...this.getIndexFor(this.agentStore), ...this.getIndexFor(this.watchStore)].map(e => e.id)
+    this.expertTeamChats.deleteOrphans(new Set(live))
   }
 
   // ==================== 存储统计（供 HistoryService.getStorageStats 复用） ====================

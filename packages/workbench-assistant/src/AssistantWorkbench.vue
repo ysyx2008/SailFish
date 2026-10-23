@@ -14,6 +14,7 @@ import type { WorkbenchRendererProps } from '@sailfish/workbench-sdk'
 import { AiPanel } from '@sailfish/workbench-sdk/ai-panel'
 import { WorkbenchShell } from '@sailfish/workbench-sdk/workbench-shell'
 import { TerminalPaneHost } from '@sailfish/workbench-sdk/terminal-pane-host'
+import { ExpertTeamChat } from '@sailfish/workbench-sdk/expert-team'
 import type { ArtifactComposerQuote } from './artifact/composer-quote'
 import { consumeSelectionScope } from './artifact/selection-scope'
 import type { WorkbenchContext } from '@shared/types'
@@ -93,8 +94,16 @@ const stageResizing = ref(false)
 const stageRef = ref<HTMLElement | null>(null)
 const MIN_CHAT_WIDTH = 300
 
-type DeskSeat = 'none' | 'terminal' | 'artifact'
+type DeskSeat = 'none' | 'terminal' | 'artifact' | 'team'
 const seat = ref<DeskSeat>('none')
+/** 右侧在看哪个专家团的群聊（派出那一步的 id） */
+const teamStepId = ref<string | null>(null)
+/** 打开群聊前坐的是谁，关掉群聊回到它 */
+let seatBeforeTeam: DeskSeat = 'none'
+const teamSeated = computed(() => seat.value === 'team' && !!teamStepId.value)
+watch(seat, (now, before) => {
+  if (before === 'team' && now !== 'team') teamStepId.value = null
+})
 /** 文件在座时的看法：铺满只活在这一次入座。跨页签能保住，是因为工作台用 v-show 常驻、不卸载。 */
 const focusMode = ref(false)
 
@@ -199,7 +208,7 @@ const deskTerminalTitle = computed(() => {
 
 watch(hasArtifacts, (has, had) => {
   if (!has) listOpen.value = false
-  if (had && !has && hasHostedTerminal.value) {
+  if (had && !has && hasHostedTerminal.value && !teamSeated.value) {
     seat.value = 'terminal'
     chatVisible.value = true
     artifactStore.dismissPanel(props.tab.id)
@@ -217,7 +226,8 @@ watch(hasHostedTerminal, (hosted, wasHosted) => {
     return
   }
   if (hosted && !wasHosted) {
-    seat.value = 'terminal'
+    if (teamSeated.value) seatBeforeTeam = 'terminal'
+    else seat.value = 'terminal'
     chatVisible.value = true
     listOpen.value = false
     artifactStore.minimizePanel(props.tab.id)
@@ -230,7 +240,7 @@ watch(hasHostedTerminal, (hosted, wasHosted) => {
 
 watch(() => artifactStore.isVisible(props.tab.id), (visible) => {
   if (visible) {
-    if (seat.value === 'terminal') {
+    if (seat.value === 'terminal' || teamSeated.value) {
       const steal = artifactStore.lastCanvasOpen
       if (steal?.tabId === props.tab.id && steal.stealSeat) {
         artifactStore.lastCanvasOpen = null
@@ -337,6 +347,22 @@ function seatTerminal() {
   artifactStore.minimizePanel(props.tab.id)
 }
 
+function openExpertTeam(stepId: string) {
+  if (seat.value !== 'team') seatBeforeTeam = seat.value
+  teamStepId.value = stepId
+  seat.value = 'team'
+  listOpen.value = false
+  chatVisible.value = true
+}
+
+function closeExpertTeam() {
+  teamStepId.value = null
+  if (seat.value !== 'team') return
+  if (seatBeforeTeam === 'terminal' && hasHostedTerminal.value) seat.value = 'terminal'
+  else if (seatBeforeTeam === 'artifact' && artifactStore.isVisible(props.tab.id)) seat.value = 'artifact'
+  else seat.value = 'none'
+}
+
 function togglePanel() {
   if (terminalSeated.value) return
   listOpen.value = false
@@ -412,7 +438,7 @@ defineExpose({
       />
       <WorkbenchShell
         class="assistant-shell"
-        :toggle-visible="docExpanded && hasArtifacts"
+        :toggle-visible="(docExpanded && hasArtifacts) || teamSeated"
         v-model:toggle-ratio="ratio"
         toggle-side="right"
       >
@@ -427,6 +453,7 @@ defineExpose({
                   :hide-avatar="terminalSeated || focusActive"
                   :peek="focusActive"
                   :consume-workbench-context="consumeWorkbenchContext"
+                  :open-expert-team="openExpertTeam"
                 />
                 <div v-if="showDeskChrome && !focusActive" class="artifact-chrome artifact-chrome--cluster">
                   <div
@@ -479,9 +506,17 @@ defineExpose({
         </template>
         <template #toggle>
           <div class="assistant-teleport-slot">
+            <ExpertTeamChat
+              v-if="teamSeated"
+              mode="panel"
+              :tab-id="tab.id"
+              :step-id="teamStepId!"
+              @close="closeExpertTeam"
+            />
             <Teleport :disabled="!focusActive" :to="artifactFocusEl || 'body'">
               <ArtifactPanel
                 v-if="hasArtifacts"
+                v-show="!teamSeated"
                 ref="artifactPanelRef"
                 :tab-id="tab.id"
                 :focus-active="focusActive"

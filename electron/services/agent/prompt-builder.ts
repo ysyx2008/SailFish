@@ -20,7 +20,6 @@ import { wrapCompositionSection } from './context-composition'
 import { t } from './i18n'
 import { formatRecalledConversations, type RecalledConversation } from '../knowledge/conversation-index'
 import { buildGoalSystemSection } from './goal/goal-prompts'
-
 const log = createLogger('PromptBuilder')
 const IDENTITY_FILENAME = 'IDENTITY.md'
 const SOUL_FILENAME = 'SOUL.md'
@@ -920,7 +919,12 @@ export class PromptBuilder {
   private buildParallelAgentRule(): string {
     return [
       '**并行同事**（`dispatch_agents`）：',
-      '- 任务可拆成互不依赖的子问题时，派出伙计并行干，立刻拿到名字，自己继续干，不必马上等',
+      '- 任务可拆成互不依赖的子问题时，派人并行干，立刻拿到名字，自己继续干，不必马上等',
+      '- 派出的人有两种：',
+      '  - 伙计：不带 role。分头干活的人手，各干各的，互相不说话，干完敲门；界面上只是一行进度',
+      '  - 专家：带 role（几个字，如「测试专家」「数据库性能专家」）。role 显示给用户（名字前的角色标签），也写进专家的开场「你是 名字（role）」；除此之外专家和伙计一样（同样的模型和权限，工具也一样，团里的专家多一个在群里说话的），他按什么专长、什么标准做，取决于你写给他的指令。不带 team 的专家各干各的，干完敲门，和伙计一样；再带 team（2 到 15 位）组成专家团：专家在群里点名交接，你当组长，用户点开能看到完整群聊',
+      '- 先让几个人各自独立判断、之后再组团对撞，这种安排里，独立判断那一步派不带 team 的专家，一样有角色标签',
+      '- 带 team 时 tasks 里每一位都要带 role，主持、协调这类位置也一样',
       '- 给每个人起的名字要能反映出他在干什么，让用户一眼看懂。用人名、编号或跟任务无关的代号不行。不填则从任务简述生成',
       '- 把活分清楚，一个人一块，别交叉。一起派几个人时，科学、精确安排每个人的分工，也跟每个人简要说一声这次还有谁、各干什么',
       '- 用 fork_turns 决定带多少对话：all（默认）全带；正整数只带最近几轮；none 不带，伙计只看见这条任务。后面还有还没轮到的安排时，不要把整段原文转过去',

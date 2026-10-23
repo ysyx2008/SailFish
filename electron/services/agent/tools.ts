@@ -25,6 +25,10 @@ import type { TerminalType, RemoteChannel } from '@shared/types'
 import { ASSISTANT_WORKBENCH_AGENT_TOOLS } from '@sailfish/workbench-assistant/agent-tools'
 import { getAllTerminalTools } from './skills/terminal/tools'
 import { MAX_LIVE_CHILDREN } from './sub-agent-roster'
+import {
+  labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER,
+  teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT
+} from './expert-team'
 
 const SUB_AGENT_NAME_DESCRIPTION = '能反映出他在干什么的短名字，让用户一眼看懂（如「读 nginx 配置」）。不要用人名、编号或跟任务无关的代号。可选，不填则从任务简述生成'
 const FORK_TURNS_DESCRIPTION = '带多少对话。默认 all。none=不带，all=全带，正整数字符串（如 1、3）=只带最近几轮。'
@@ -46,6 +50,11 @@ export type AgentMode = TerminalType
  *
  * 两种模式都支持 progressFields 共同的字符数尾缀。
  */
+export interface ToolDisplayContext {
+  /** 这场任务里派出过的伙计和专家（名字、角色、状态）；标题要认「对象是不是专家」时用 */
+  subAgents?: () => ReadonlyArray<{ name: string; role?: string; status: string }>
+}
+
 export interface ToolStreamDisplay {
   /**
    * 标题前缀的 i18n 键，或根据 args 动态返回 i18n 键的函数。
@@ -69,7 +78,7 @@ export interface ToolStreamDisplay {
    * 返回 null 表示当前 args 还不足以构造（如 dispatch_agents 的 tasks 数组还没到），
    * 让调用方保留上一次缓存内容，避免"闪一下又消失"。
    */
-  customRender?: (args: Record<string, unknown>) => string | null
+  customRender?: (args: Record<string, unknown>, context?: ToolDisplayContext) => string | null
   /**
    * 自定义字符数计算（可选），用于 progressFields 表达不了的嵌套字段累计场景
    *（如 dispatch_agents 的 tasks[].prompt + tasks[].description）。
@@ -129,6 +138,11 @@ export interface ToolMeta {
    * 规划锁预留同一套过滤钩子，本次不实现锁本身。
    */
   allowedForSubAgent?: boolean
+
+  /**
+   * 只给专家团里的专家。主人、伙计、不组团的专家都看不到，执行时也会硬拦。
+   */
+  onlyForTeamMember?: boolean
 
   /**
    * 伙计看到的工具说明。处境和主人不同时写这一份，避免共用说明骗人。
@@ -196,12 +210,6 @@ function writeTextFilePrefix(args: Record<string, unknown>): string {
   }
 }
 
-/**
- * dispatch_agents 的预卡片渲染。
- * 内容格式必须与 tools/sub-agent.ts 执行器 addStep 的 content 对齐：
- *   t('dispatch.running', { count, type })
- * tasks 数组还没到或为空时返回 null（上层调用方保留缓存）。
- */
 /** dispatch_agents 两种写法各自的条目：tasks[] 与 batch.items[]。 */
 function dispatchAgentsEntries(args: Record<string, unknown>): { tasks: unknown[]; batchItems: unknown[]; instruction?: string } {
   const tasks = Array.isArray(args.tasks) ? (args.tasks as unknown[]) : []
@@ -211,11 +219,60 @@ function dispatchAgentsEntries(args: Record<string, unknown>): { tasks: unknown[
   return { tasks, batchItems, instruction }
 }
 
+/**
+ * dispatch_agents 的预卡片渲染，与 tools/sub-agent.ts 执行器 addStep 的 content 逐字对齐（同用 dispatchTitle）。
+ * 条目还没到或为空时返回 null（上层调用方保留缓存）；组团不成立的参数不写团名，执行器会整批退回。
+ */
 function dispatchAgentsPrefix(args: Record<string, unknown>): string | null {
   const { tasks, batchItems } = dispatchAgentsEntries(args)
   const count = tasks.length + batchItems.length
   if (count === 0) return null
-  return t('dispatch.running', { count })
+  const allExperts = batchItems.length === 0 && tasks.every(task => {
+    const role = (task as { role?: unknown } | null)?.role
+    return typeof role === 'string' && tidyLabel(role) !== ''
+  })
+  const team = teamNameFrom(args.team)
+  const teamFits = allExperts && count >= MIN_TEAM_SIZE && count <= MAX_TEAM_SIZE
+    && team !== undefined && labelLength(team) <= MAX_TEAM_NAME_CHARS
+  return dispatchTitle(count, allExperts, teamFits ? team : undefined)
+}
+
+/**
+ * 等待 / 再交代 / 打断那几张卡的对象是不是全是专家（有角色）：
+ * 没给名字就看还在干的所有人（都不在干了就看全部）；名字对不上花名册的按伙计。
+ */
+function targetsAreExperts(names: string[] | undefined, context?: ToolDisplayContext): boolean {
+  const all = context?.subAgents?.() ?? []
+  if (names?.length) return names.every(name => !!all.find(c => c.name === name)?.role)
+  const live = all.filter(c => c.status === 'pending' || c.status === 'running')
+  const pool = live.length > 0 ? live : all
+  return pool.length > 0 && pool.every(c => !!c.role)
+}
+
+/** wait_agents 那一张卡的标题：等的全是专家写「等待专家」，否则「等待伙计」 */
+export function waitAgentsTitle(args: Record<string, unknown>, context?: ToolDisplayContext): string {
+  const names = Array.isArray(args.names)
+    ? args.names.filter((n): n is string => typeof n === 'string' && n.trim() !== '')
+    : undefined
+  return t(targetsAreExperts(names, context) ? 'tool.wait_experts' : 'tool.wait_agents')
+}
+
+/** followup_agent / interrupt_agent 那一张卡的标题：对象是专家写「专家」，否则「伙计」，后面跟名字 */
+function namedAgentTitle(expertKey: 'tool.followup_expert' | 'tool.interrupt_expert', helperKey: 'tool.followup_agent' | 'tool.interrupt_agent') {
+  return (args: Record<string, unknown>, context?: ToolDisplayContext): string => {
+    const name = typeof args.name === 'string' ? args.name : undefined
+    const title = t(name && targetsAreExperts([name], context) ? expertKey : helperKey)
+    return `${title}: ${name ?? getStreamPlaceholder()}`
+  }
+}
+export const followupAgentTitle = namedAgentTitle('tool.followup_expert', 'tool.followup_agent')
+export const interruptAgentTitle = namedAgentTitle('tool.interrupt_expert', 'tool.interrupt_agent')
+
+/** 派出那一步的标题：组了团写团名，全是专家写专家，否则写伙计 */
+export function dispatchTitle(count: number, allExperts: boolean, team?: string): string {
+  const name = team?.trim()
+  if (name) return t('expert.running_team', { team: name, count })
+  return allExperts ? t('expert.running', { count }) : t('dispatch.running', { count })
 }
 
 /**
@@ -262,8 +319,8 @@ function dispatchAgentsCharCount(args: Record<string, unknown>): number {
   let chars = instruction?.length ?? 0
   for (const entry of [...tasks, ...batchItems]) {
     if (!entry || typeof entry !== 'object') continue
-    const rec = entry as { prompt?: unknown; input?: unknown; description?: unknown }
-    for (const field of [rec.prompt, rec.input, rec.description]) {
+    const rec = entry as { prompt?: unknown; input?: unknown; description?: unknown; role?: unknown }
+    for (const field of [rec.prompt, rec.input, rec.description, rec.role]) {
       if (typeof field === 'string') chars += field.length
     }
   }
@@ -1197,7 +1254,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       type: 'function',
       function: {
         name: 'dispatch_agents',
-        description: `派出这场任务里的同事（伙计）并行干活，派出的都立刻开工。立刻返回每个人的名字。两种写法：tasks 每人各写一份指令；batch 一份共同指令加一批条目，每个条目派一个人。同一次可以两种一起用。同时向模型发几个请求由系统按接口的承受情况调节，暂时发不出去的排队，轮到了再发。每个伙计各自占用对话上下文和费用。一场任务里没做完的伙计最多 ${MAX_LIVE_CHILDREN} 个，这次要派的加上没做完的超过这个数时，整批不派。`,
+        description: `派出这场任务里的同事并行干活：不带 role 的是伙计，带 role 的是专家。派出的都立刻开工，立刻返回每个人的名字。两种写法：tasks 每人各写一份指令；batch 一份共同指令加一批条目，每个条目派一个人。同一次可以两种一起用。再带 team，这次 tasks 里的专家（${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位，每位都带 role，不和 batch 同用）组成专家团，在群里点名交接，你是组长，团里的规矩在派出后的回执里。同时向模型发几个请求由系统按接口的承受情况调节，暂时发不出去的排队，轮到了再发。每个伙计各自占用对话上下文和费用。一场任务里没做完的伙计最多 ${MAX_LIVE_CHILDREN} 个，这次要派的加上没做完的超过这个数时，整批不派。`,
         parameters: {
           type: 'object',
           properties: {
@@ -1207,6 +1264,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
                 type: 'object',
                 properties: {
                   name: { type: 'string', description: SUB_AGENT_NAME_DESCRIPTION },
+                  role: { type: 'string', description: `专家角色，几个字，最长 ${MAX_ROLE_CHARS} 个字。带了就是专家，界面上显示为角色标签；专家的名字和角色都不能用「${TEAM_LEADER}」。带 team 时 tasks 里每一项都要带，主持、协调这类位置也一样` },
                   description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
                   prompt: { type: 'string', description: '详细任务指令' },
                   fork_turns: { type: 'string', description: FORK_TURNS_DESCRIPTION }
@@ -1215,6 +1273,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
               },
               description: '每人各写一份指令'
             },
+            team: { type: 'string', description: `团名，几个字，最长 ${MAX_TEAM_NAME_CHARS} 个字` },
             batch: {
               type: 'object',
               description: '一份共同指令加一批条目。交给每个伙计的指令是 instruction、换行、再接本条目的 input',
@@ -1266,7 +1325,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       _meta: {
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
-        streamDisplay: { titleKey: 'tool.followup_agent', titleField: 'name' }
+        streamDisplay: { customRender: followupAgentTitle }
       }
     } as ToolDefinitionWithMeta,
     {
@@ -1292,7 +1351,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       _meta: {
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
-        streamDisplay: { titleKey: 'tool.wait_agents' }
+        streamDisplay: { customRender: waitAgentsTitle }
       }
     } as ToolDefinitionWithMeta,
     {
@@ -1311,7 +1370,26 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       _meta: {
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
-        streamDisplay: { titleKey: 'tool.interrupt_agent', titleField: 'name' }
+        streamDisplay: { customRender: interruptAgentTitle }
+      }
+    } as ToolDefinitionWithMeta,
+    {
+      type: 'function',
+      function: {
+        name: 'team_say',
+        description: `在专家团的群里说一句。群里的话全团都看得见，用户也看得见。to 写要谁接手（专家名字，或「${TEAM_LEADER}」）：被点到的专家会接着干，他正忙着就等手上这一步走完再看；点到组长，组长会收到。不写 to 就只是告知，不叫醒任何人。专家之间互相叫醒每满 ${WAKES_PER_CHECKPOINT} 次会停下来等组长看过，这期间点名只记在群里、先不叫醒人。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            to: { type: 'array', items: { type: 'string' }, description: `要谁接手：专家名字，或「${TEAM_LEADER}」。可以为空` },
+            message: { type: 'string', description: '要说的话' }
+          },
+          required: ['message']
+        }
+      },
+      _meta: {
+        onlyForTeamMember: true,
+        streamDisplay: { titleKey: 'tool.team_say' }
       }
     } as ToolDefinitionWithMeta,
     // ==================== 分屏管理（仅终端 Agent 可用） ====================
@@ -1553,6 +1631,14 @@ export function filterUnattendedTools(tools: readonly ToolDefinition[]): ToolDef
   return tools.filter(
     tool => !(tool as ToolDefinitionWithMeta)._meta?.lifecycle?.blocksUntilUserInput
   )
+}
+
+/**
+ * 只给专家团成员的工具：不在专家团里就去掉。只看元数据，不认工具名。
+ */
+export function filterTeamMemberTools(tools: readonly ToolDefinition[], inTeam: boolean): ToolDefinition[] {
+  if (inTeam) return [...tools]
+  return tools.filter(tool => !(tool as ToolDefinitionWithMeta)._meta?.onlyForTeamMember)
 }
 
 /**

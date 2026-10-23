@@ -33,6 +33,8 @@ import { SUB_AGENT_FOLD_THRESHOLD, SUB_AGENT_PAGE_SIZE, SUB_AGENT_SUMMARY_ORDER,
 import { chatTimeParts } from '../utils/chat-time-marker'
 import { formatProcessFoldCaption, type ProcessFoldSay } from '../utils/process-fold-label'
 import ToolCallContent from './ToolCallContent.vue'
+import ExpertTeamCard from './ExpertTeam/ExpertTeamCard.vue'
+import ExpertTeamChat from './ExpertTeam/ExpertTeamChat.vue'
 import ImageContextMenu from './ImageContextMenu.vue'
 import AttachmentContextMenu from './AttachmentContextMenu.vue'
 import AttachmentFileIcon from './AttachmentFileIcon.vue'
@@ -92,6 +94,8 @@ const props = withDefaults(defineProps<{
   hideAvatar?: boolean
   /** 文档铺满：藏对话流，只留一句提醒和输入 */
   peek?: boolean
+  /** 外壳有地方放专家团群聊时由它打开；不给就盖在对话栏上 */
+  openExpertTeam?: (stepId: string) => void
 }>(), {
   visible: true,
   tabActive: true,
@@ -578,8 +582,17 @@ const formatSubAgentSummary = (list: readonly SubAgentResult[]): string => {
   const parts = SUB_AGENT_SUMMARY_ORDER
     .filter(bucket => counts[bucket] > 0)
     .map(bucket => t(`ai.subAgentCount.${bucket}`, { count: counts[bucket] }))
-  return t('ai.subAgentSummary', { count: list.length, parts: parts.join(' / ') })
+  const key = list.length > 0 && list.every(agent => !!agent.role) ? 'ai.expertSummary' : 'ai.subAgentSummary'
+  return t(key, { count: list.length, parts: parts.join(' / ') })
 }
+
+/** 盖在对话栏上的专家团群聊（外壳没接手时） */
+const overlayTeamStepId = ref<string | null>(null)
+const openExpertTeam = (stepId: string) => {
+  if (props.openExpertTeam) props.openExpertTeam(stepId)
+  else overlayTeamStepId.value = stepId
+}
+watch(() => props.tabId, () => { overlayTeamStepId.value = null })
 
 /** 获取子 Agent 当前活动摘要（最新的 running 或最后一个已完成步骤的 tool+args） */
 const getSubAgentActivity = (sa: SubAgentResult): string | null => {
@@ -2942,7 +2955,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                             <span v-else class="sa-icon-failed">✗</span>
                           </span>
                           <span class="sub-agent-header-text">
-                            <span class="sub-agent-desc">{{ sa.name ? `${sa.name} · ${sa.description}` : sa.description }}</span>
+                            <span class="sub-agent-desc"><span v-if="sa.role" class="sub-agent-role">{{ sa.role }}</span>{{ sa.name ? `${sa.name} · ${sa.description}` : sa.description }}</span>
                             <span v-if="sa.status === 'running' && getSubAgentActivity(sa)" class="sub-agent-activity">⟳ {{ getSubAgentActivity(sa) }}</span>
                             <span v-if="sa.blockedReason" class="sub-agent-activity">{{ sa.blockedReason }}</span>
                           </span>
@@ -2980,6 +2993,11 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                       >
                         {{ t('ai.subAgentShowMore', { count: Math.min(SUB_AGENT_PAGE_SIZE, hiddenSubAgentCount(item.step!.id, item.step!.subAgents)), rest: hiddenSubAgentCount(item.step!.id, item.step!.subAgents) }) }}
                       </button>
+                      <ExpertTeamCard
+                        v-if="item.step!.expertTeam"
+                        :team="item.step!.expertTeam"
+                        @open="openExpertTeam(item.step!.id)"
+                      />
                     </div>
                     <div v-if="item.step!.type === 'user_supplement' && splitSentMessage(item.step!.content, item.step!.attachments).rest.length > 0" class="message-attachments">
                       <span
@@ -3557,6 +3575,15 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         </div>
       </div>
     </div>
+
+    <ExpertTeamChat
+      v-if="overlayTeamStepId"
+      class="expert-team-overlay"
+      mode="overlay"
+      :tab-id="tabId"
+      :step-id="overlayTeamStepId"
+      @close="overlayTeamStepId = null"
+    />
   </div>
 
   <!-- group 操作菜单：Teleport 到 body 避免被滚动容器 overflow 裁掉 -->
@@ -5828,6 +5855,18 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sub-agent-role {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  vertical-align: 1px;
+  color: var(--accent-primary);
+  background: rgba(var(--accent-rgb, 137, 180, 250), 0.12);
 }
 
 .sub-agent-activity {

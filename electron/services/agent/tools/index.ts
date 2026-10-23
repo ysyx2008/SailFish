@@ -25,7 +25,8 @@ import { createPlan, updatePlan, clearPlan, dispatchPlan } from './plan'
 import { recallTask, deepRecall, searchHistory, dispatchRecall } from './memory'
 import { checkContext, compressContext, dispatchContext, recallCompressed, manageMemory } from './context'
 import { wait, askUser, sendFileToChat, sendImageToChat, sendToChat, awaitFileTransfer, messageUser, executeMcpTool, loadMcpServer, loadSkillTool, unloadSkillTool, dispatchSkill, loadUserSkillTool, executeSkillTool } from './misc'
-import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, denyIfParentOnly } from './sub-agent'
+import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, denyIfNotForThisAgent } from './sub-agent'
+import { teamSay } from './expert'
 import { manageTasks } from './task-manager'
 import { executeWebSearch } from './web-search'
 import { executeWebFetch } from './web-fetch'
@@ -129,7 +130,7 @@ export async function executeTool(
     return { success: false, output: '', error: t('error.tool_param_parse_failed') }
   }
 
-  const denied = denyIfParentOnly(executor, name)
+  const denied = denyIfNotForThisAgent(executor, name)
   if (denied) return denied
 
   notePaneHostOperationIfNeeded(name, args, ptyId, executor, toolCall.id)
@@ -302,6 +303,8 @@ async function dispatchTool(
       return waitAgents(args, executor)
     case 'interrupt_agent':
       return interruptAgent(args, executor)
+    case 'team_say':
+      return teamSay(args, executor)
 
     case 'web_search':
       return executeWebSearch(args, executor)

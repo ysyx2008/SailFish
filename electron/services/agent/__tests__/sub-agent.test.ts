@@ -270,6 +270,58 @@ describe('dispatch_agents 异步派出', () => {
     roster.abortAll()
   })
 
+  it('等的时候用户说话：这次等待先停下、说明原因，伙计照旧在跑；用户没说话才等到超时', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, stubChild('ok', 5000))
+    let userSpoke = false
+    executor.hasPendingUserSpeech = () => userSpoke
+    await dispatchSubAgents({ tasks: [{ name: 'a', description: 'a', prompt: 'a' }] }, defaultConfig, executor)
+
+    setTimeout(() => { userSpoke = true }, 300)
+    const started = Date.now()
+    const waited = await waitAgents({ timeout: 120 }, executor)
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(waited.success).toBe(true)
+    expect(waited.output).toContain('用户发来了新消息，这次等待先停下')
+    expect(waited.output).toContain('在干 1')
+    expect(roster.hasLive()).toBe(true)
+
+    // 用户那句已经处理掉了：再等就是正常的等，到超时才返回
+    userSpoke = false
+    const quiet = await waitAgents({ timeout: 1 }, executor)
+    expect(quiet.output).toContain('等了 1 秒，还没有新消息')
+    roster.abortAll()
+  })
+
+  it('等之前用户已经说了话：谁都没做完也立刻返回，不等到超时', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, stubChild('ok', 5000))
+    executor.hasPendingUserSpeech = () => true
+    await dispatchSubAgents({ tasks: [{ name: 'slow', description: 'slow', prompt: 'b' }] }, defaultConfig, executor)
+    const started = Date.now()
+    const waited = await waitAgents({ timeout: 120 }, executor)
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect(waited.output).toContain('用户发来了新消息，这次等待先停下')
+    expect(waited.output).toContain('在干 1')
+    roster.abortAll()
+  })
+
+  it('用户说话的同时刚好有人做完：新到的照报', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, (name) => stubChild('ok', name === 'quick' ? 5 : 5000))
+    executor.hasPendingUserSpeech = () => true
+    await dispatchSubAgents({
+      tasks: [
+        { name: 'quick', description: 'quick', prompt: 'a' },
+        { name: 'slow', description: 'slow', prompt: 'b' },
+      ]
+    }, defaultConfig, executor)
+    await new Promise(r => setTimeout(r, 60))
+    const waited = await waitAgents({ timeout: 120 }, executor)
+    expect(waited.output).toContain('新到：quick（已完成）')
+    roster.abortAll()
+  })
+
   it('fork_turns=none 时伙计开局不带这场对话', async () => {
     const roster = new SubAgentRoster()
     const child = stubChild('ok', 1)
@@ -425,7 +477,7 @@ describe('两种写法', () => {
   it('工具说明里写着保险丝的数', () => {
     const tool = getAgentTools(undefined, { mode: 'assistant' }).find(t => t.function.name === 'dispatch_agents')!
     expect(tool.function.description).toContain(String(MAX_LIVE_CHILDREN))
-    expect(Object.keys((tool.function.parameters as { properties: object }).properties).sort()).toEqual(['batch', 'tasks'])
+    expect(Object.keys((tool.function.parameters as { properties: object }).properties).sort()).toEqual(['batch', 'tasks', 'team'])
   })
 })
 
@@ -462,6 +514,26 @@ describe('结果落文件与总览', () => {
       expect(overview).toHaveLength(5)
       expect(overview[3]).toContain(`长的 | 已完成 | 5000 | ${path.join(dir, '长的.md')} | 读 b`)
       expect(overview[4]).toContain('还在干 | 还在做 | - | - | 读 c')
+
+      ws.writeOverview([
+        {
+          name: '忙的', description: '读 d', prompt: 'd', status: 'running',
+          steps: [
+            { tool: 'read_file', status: 'completed' },
+            { tool: 'exec', status: 'running' },
+          ],
+        },
+        { name: '排队的', description: '读 e', prompt: 'e', status: 'running', steps: [], waitingForModel: true },
+        { name: '排队又忙', description: '读 f', prompt: 'f', status: 'running', steps: [{ tool: 'grep', status: 'completed' }], waitingForModel: true },
+        { name: '没开工', description: '读 g', prompt: 'g', status: 'pending', steps: [] },
+        { name: '做完了', description: '读 h', prompt: 'h', status: 'completed', steps: [{ tool: 'exec', status: 'completed' }] },
+      ])
+      const live = writes.get(ws.overviewPath)!.trim().split('\n')
+      expect(live[2]).toContain('忙的 | 还在做（已 2 步，最近：exec） | - | - | 读 d')
+      expect(live[3]).toContain('排队的 | 还在做（排队等模型） | - | - | 读 e')
+      expect(live[4]).toContain('排队又忙 | 还在做（已 1 步，最近：grep；排队等模型）')
+      expect(live[5]).toContain('没开工 | 还没开工 | - | - | 读 g')
+      expect(live[6]).toContain('做完了 | 已完成 | - | - | 读 h')
     } finally {
       vi.mocked(fs.writeFileSync).mockReset()
       realFs.rmSync(dir, { recursive: true, force: true })
@@ -519,6 +591,41 @@ describe('进度推给界面', () => {
     expect(step.subAgents![0].steps!.every(st => st.result === undefined)).toBe(true)
     expect(step.subAgents![3].prompt).toBe('条目 3')
     expect((step.toolArgs as { batch?: { instruction: string } }).batch?.instruction).toBe('很长的共同指令'.repeat(50))
+  })
+
+  it('总览随进展重写：还在干的写做到第几步、最近的工具，不用等有人做完', async () => {
+    const writes = new Map<string, string>()
+    vi.mocked(fs.writeFileSync).mockImplementation((file, data) => { writes.set(String(file), String(data)) })
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const busy: ChildAgentHandle = {
+      isRunning: () => true,
+      abort: () => true,
+      addUserMessage: () => true,
+      async run(_message, _context, options) {
+        const cb = options?.callbacks
+        cb?.onStep?.('child', { id: 't0', type: 'tool_call', toolName: 'read_file', toolArgs: { path: '/a' }, content: '', timestamp: 0 } as AgentStep)
+        cb?.onStep?.('child', { id: 't0', type: 'tool_call', toolName: 'read_file', toolArgs: { path: '/a' }, success: true, toolResult: 'x', content: '', timestamp: 0 } as AgentStep)
+        await new Promise(r => setTimeout(r, 100))
+        cb?.onStep?.('child', { id: 't1', type: 'tool_call', toolName: 'exec', toolArgs: { command: 'sleep 60' }, content: '', timestamp: 0 } as AgentStep)
+        await gate
+        return 'ok'
+      },
+    }
+    try {
+      const roster = new SubAgentRoster({ knockSettleMs: 0 })
+      const executor = createExecutor(roster, () => busy)
+      await dispatchSubAgents({ tasks: [{ name: 'a', description: '读配置', prompt: 'a' }] }, defaultConfig, executor)
+      const overviewOf = () => [...writes].find(([file]) => file.endsWith('overview.md'))?.[1] ?? ''
+      expect(overviewOf()).not.toContain('最近：exec')
+      await new Promise(r => setTimeout(r, 1300))
+      expect(overviewOf()).toContain('a | 还在做（已 2 步，最近：exec） | - | - | 读配置')
+      release()
+      await roster.waitUntil(undefined, new AbortController().signal)
+    } finally {
+      release()
+      vi.mocked(fs.writeFileSync).mockReset()
+    }
   })
 
   it('伙计在排队等模型时卡片上看得出来，拿到名额后恢复', async () => {

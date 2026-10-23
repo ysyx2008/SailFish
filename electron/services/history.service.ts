@@ -427,6 +427,7 @@ export class HistoryService {
 
     if (chatDeleted > 0 || agentDeleted > 0) {
       this.rebuildAgentIndex()
+      this.agentRecordStore.pruneExpertTeamChats()
     }
 
     return { chatDeleted, agentDeleted }

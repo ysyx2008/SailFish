@@ -6,18 +6,24 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import type { ToolDefinition } from '../../ai.service'
-import type { SubAgentResult } from '@shared/types'
+import type { AgentStep, SubAgentResult } from '@shared/types'
 import type { AgentContext } from '../types'
 import { getDefaultShell, getLocalOS } from '../../../utils/platform'
 import { getMetaByName } from '../tool-metadata'
 import { MAX_LIVE_CHILDREN, type ChildSnapshot, type RosterSpawnDeps, type SpawnTask, type SubAgentRoster } from '../sub-agent-roster'
 import { parseForkTurns, sanitizeParentMessages, type ForkTurns } from '../sanitize-parent-messages'
 import type { ToolExecutorConfig, ToolResult, AgentConfig } from './types'
-import { getAgentTools, filterSubAgentTools } from '../tools'
+import { getAgentTools, filterSubAgentTools, dispatchTitle } from '../tools'
 import { truncateFromEnd, truncateFromEndWithNotice } from './utils'
 import { getScratchPath } from './file'
 import { createLogger } from '../../../utils/logger'
 import { t } from '../i18n'
+import {
+  labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER,
+  teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT, type ExpertTeam
+} from '../expert-team'
+import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
+import { createTeamTexts, expertOpening, formatTranscript, renamedList } from './expert-team-text'
 
 const log = createLogger('SubAgent')
 /** 直接带回对话的结果：各人上限乘这一轮派过的人数，大致不超过这个预算 */
@@ -26,6 +32,10 @@ const INLINE_RESULT_MAX = 8000
 const INLINE_RESULT_MIN = 1000
 /** 伙计进度推给界面最多约每秒 4 次 */
 const PROGRESS_INTERVAL_MS = 250
+/** 总览是给秘书读的文件，不用像界面那样勤；伙计多时每次重写都要把所有人的步骤过一遍 */
+const OVERVIEW_INTERVAL_MS = 1000
+/** 等伙计时多久看一次用户有没有说话 */
+const USER_SPEECH_POLL_MS = 200
 
 function buildArtifactDir(): string {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
@@ -41,6 +51,17 @@ function statusLabel(status: ChildSnapshot['status']): string {
     case 'pending': return t('dispatch.status_pending')
     default: return t('dispatch.status_running')
   }
+}
+
+/** 总览里的状态一格：还在干的写做到第几步、最近用了什么工具，看得出是在忙还是停住了 */
+function statusCell(c: ChildSnapshot): string {
+  if (c.status !== 'running' && c.status !== 'pending') return statusLabel(c.status)
+  const last = c.steps[c.steps.length - 1]
+  const detail = [
+    last && t('dispatch.overview_steps', { steps: c.steps.length, tool: last.tool }),
+    c.waitingForModel && t('dispatch.overview_queued'),
+  ].filter(Boolean).join('；')
+  return detail ? t('dispatch.overview_live', { status: statusLabel(c.status), detail }) : statusLabel(c.status)
 }
 
 /** 做完 / 在干 / 失败 / 已打断各几个 */
@@ -59,10 +80,46 @@ export class SubAgentWorkspace {
   private readonly dir: string
   readonly overviewPath: string
   private readonly results = new Map<string, { chars: number; file?: string }>()
+  /** 总览上次写进去的内容，没变就不重写 */
+  private lastOverview?: string
+  /** 每个群聊文件写到第几条 */
+  private readonly transcriptCounts = new Map<string, number>()
+  /** 团名对应的群聊文件名 */
+  private readonly transcriptFiles = new Map<string, string>()
+  /** 随会话保存的群聊全文：团名对应的文件和写到第几条 */
+  private readonly chatFiles = new Map<string, { file: string; written: number }>()
+  private chats?: { store: ExpertTeamChatStore; sessionId: string }
 
   constructor(dir = buildArtifactDir()) {
     this.dir = dir
     this.overviewPath = path.join(dir, 'overview.md')
+  }
+
+  /** 有会话才存群聊全文；只认第一次挂上的 */
+  attachChats(store: ExpertTeamChatStore | undefined, sessionId: string | undefined): void {
+    if (this.chats || !store || !sessionId) return
+    this.chats = { store, sessionId }
+  }
+
+  /** 群里的新消息追加进随会话保存的全文 */
+  writeTeamChat(team: ExpertTeam): void {
+    if (!this.chats) return
+    let chat = this.chatFiles.get(team.name)
+    if (!chat) {
+      const stem = `${path.basename(this.dir)}-${this.teamTranscriptFile(team).replace(/\.md$/, '')}`
+      const file = this.chats.store.create(this.chats.sessionId, stem)
+      if (!file) return
+      chat = { file, written: 0 }
+      this.chatFiles.set(team.name, chat)
+    }
+    const fresh = team.messagesAfter(chat.written)
+    if (fresh.length && this.chats.store.append(chat.file, fresh)) chat.written = fresh[fresh.length - 1].seq
+  }
+
+  /** 写进去过才给界面，否则界面用派出那一步里的那一小段 */
+  teamChatFile(team: ExpertTeam): string | undefined {
+    const chat = this.chatFiles.get(team.name)
+    return chat && chat.written > 0 ? chat.file : undefined
   }
 
   /** 直接带回对话的字数上限：这一轮派得越多越紧 */
@@ -88,10 +145,37 @@ export class SubAgentWorkspace {
       t('dispatch.overview_header'),
       ...children.map(c => {
         const kept = this.results.get(c.name)
-        return [c.name, statusLabel(c.status), kept ? String(kept.chars) : '-', kept?.file ?? '-', c.description].join(' | ')
+        const who = [c.role, c.team && `「${c.team}」`].filter(Boolean).join(' ')
+        const task = who ? `[${who}] ${c.description}` : c.description
+        return [c.name, statusCell(c), kept ? String(kept.chars) : '-', kept?.file ?? '-', task].join(' | ')
       }),
     ]
-    this.write('overview.md', lines.join('\n') + '\n')
+    const content = lines.join('\n') + '\n'
+    if (content === this.lastOverview) return
+    if (this.write('overview.md', content)) this.lastOverview = content
+  }
+
+  teamTranscriptPath(team: ExpertTeam): string {
+    return path.join(this.dir, this.teamTranscriptFile(team))
+  }
+
+  /** 群里有新消息才重写 */
+  writeTeamTranscript(team: ExpertTeam): void {
+    const count = team.messageCount()
+    if (this.transcriptCounts.get(team.name) === count) return
+    if (this.write(this.teamTranscriptFile(team), formatTranscript(team))) this.transcriptCounts.set(team.name, count)
+  }
+
+  /** 一个团一个文件名：团名去掉不能进文件名的字符、截短，撞了加序号（不分大小写） */
+  private teamTranscriptFile(team: ExpertTeam): string {
+    const known = this.transcriptFiles.get(team.name)
+    if (known) return known
+    const safe = team.name.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'team'
+    const taken = new Set([...this.transcriptFiles.values()].map(f => f.toLowerCase()))
+    let file = `team-${safe}.md`
+    for (let i = 2; taken.has(file.toLowerCase()); i++) file = `team-${safe}-${i}.md`
+    this.transcriptFiles.set(team.name, file)
+    return file
   }
 
   private write(fileName: string, content: string): string | undefined {
@@ -109,7 +193,7 @@ export class SubAgentWorkspace {
 
 const workspaces = new WeakMap<SubAgentRoster, SubAgentWorkspace>()
 
-function workspaceOf(roster: SubAgentRoster): SubAgentWorkspace {
+export function workspaceOf(roster: SubAgentRoster): SubAgentWorkspace {
   let workspace = workspaces.get(roster)
   if (!workspace) {
     workspace = new SubAgentWorkspace()
@@ -150,6 +234,7 @@ export function toSubAgentContext(parent: AgentContext): AgentContext {
 }
 
 function formatKnock(child: ChildSnapshot): string {
+  if (child.role) return formatExpertKnock(child, child.role)
   if (child.status === 'completed') {
     return t('dispatch.knock_done', {
       name: child.name,
@@ -170,10 +255,29 @@ function formatKnock(child: ChildSnapshot): string {
   })
 }
 
-function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubAgentRoster): string {
-  const lines = snapshots.map(c => `- ${c.name}：${c.description}`)
+function formatExpertKnock(child: ChildSnapshot, role: string): string {
+  const base = { name: child.name, role, description: child.description }
+  if (child.status === 'completed') return t('expert.knock_done', { ...base, result: child.result || '(no output)' })
+  if (child.status === 'interrupted') return t('expert.knock_interrupted', base)
+  return t('expert.knock_fail', { ...base, error: child.error || 'Unknown error' })
+}
+
+function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubAgentRoster, team?: string): string {
+  const list = snapshots
+    .map(c => c.role
+      ? t('expert.list_item', { name: c.name, role: c.role, description: c.description })
+      : `- ${c.name}：${c.description}`)
+    .join('\n')
+  const count = names.length
+  const head = team
+    ? t('expert.spawned_team', { team, count, list, limit: WAKES_PER_CHECKPOINT })
+    : snapshots.every(c => !!c.role)
+      ? t('expert.spawned', { count, list })
+      : t('dispatch.spawned', { count, list })
+  const renamed = renamedList(snapshots)
   return [
-    t('dispatch.spawned', { count: names.length, list: lines.join('\n') }),
+    head,
+    ...(renamed ? [t('dispatch.renamed', { list: renamed })] : []),
     t('dispatch.capacity', { live: roster.liveCount(), room: roster.room() }),
     t('dispatch.overview_at', { path: workspaceOf(roster).overviewPath }),
   ].join('\n')
@@ -183,7 +287,7 @@ function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubA
  * 推给界面、随会话落盘的那份：步骤只留工具名、对象、状态，不带工具输出；
  * 结果只带直接带回的那段（超长时里面有文件位置）。
  */
-function toSubAgentView(c: ChildSnapshot): SubAgentResult {
+export function toSubAgentView(c: ChildSnapshot): SubAgentResult {
   return {
     id: c.name,
     name: c.name,
@@ -195,6 +299,21 @@ function toSubAgentView(c: ChildSnapshot): SubAgentResult {
     steps: c.steps.map(({ id, tool, args, status }) => ({ id, tool, args, status })),
     blockedReason: c.blockedReason,
     waitingForModel: c.waitingForModel,
+    ...(c.role ? { role: c.role } : {}),
+  }
+}
+
+/** 派出那一步上显示的人和群聊：只看这一次派的人；他们组了团就带上群聊 */
+export function dispatchStepView(roster: SubAgentRoster, names: ReadonlySet<string>): Pick<AgentStep, 'subAgents' | 'expertTeam'> {
+  const mine = roster.list().filter(c => names.has(c.name))
+  const teamName = mine.find(c => c.team)?.team
+  const team = teamName ? roster.getTeam(teamName) : undefined
+  const workspace = workspaceOf(roster)
+  return {
+    subAgents: mine.map(toSubAgentView),
+    ...(team ? {
+      expertTeam: team.view({ transcriptPath: workspace.teamTranscriptPath(team), chatFile: workspace.teamChatFile(team) }),
+    } : {}),
   }
 }
 
@@ -229,7 +348,7 @@ class ProgressThrottle {
   }
 }
 
-function spawnDeps(
+export function spawnDeps(
   executor: ToolExecutorConfig,
   progressStepId: string,
   ownedNames?: Set<string>
@@ -237,10 +356,13 @@ function spawnDeps(
   const roster = executor.getSubAgentRoster?.()
   if (!roster) return { error: 'dispatch_agents 需要主人花名册（内部错误）' }
   const workspace = workspaceOf(roster)
+  workspace.attachChats(executor.getExpertTeamChats?.(), executor.getSessionId?.())
+  const overviewProgress = new ProgressThrottle(() => workspace.writeOverview(roster.list()), OVERVIEW_INTERVAL_MS)
   const progress = new ProgressThrottle(() => {
-    const children = roster.list()
-    const visible = ownedNames ? children.filter(c => ownedNames.has(c.name)) : children
-    executor.updateStep(progressStepId, { subAgents: visible.map(toSubAgentView) })
+    const names = ownedNames ?? new Set(roster.list().map(c => c.name))
+    for (const team of roster.listTeams()) workspace.writeTeamChat(team)
+    executor.updateStep(progressStepId, dispatchStepView(roster, names))
+    for (const team of roster.listTeams()) workspace.writeTeamTranscript(team)
   })
   const createChild = executor.createChildAgent
   if (!createChild) return { error: 'dispatch_agents 需要能创建伙计（内部错误）' }
@@ -254,9 +376,18 @@ function spawnDeps(
     knock: (message) => {
       progress.flush()
       workspace.writeOverview(roster.list())
+      for (const team of roster.listTeams()) {
+        workspace.writeTeamChat(team)
+        workspace.writeTeamTranscript(team)
+      }
       executor.knockParent?.(message)
     },
-    onProgress: () => progress.schedule(),
+    openingFor: expertOpening,
+    teamTexts: createTeamTexts(team => workspace.teamTranscriptPath(team)),
+    onProgress: () => {
+      progress.schedule()
+      overviewProgress.schedule()
+    },
     ownedNames,
     isParentAborted: () => executor.isAborted(),
     sanitize: sanitizeParentMessages,
@@ -271,13 +402,22 @@ function optionalName(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined
 }
 
+/** 一句话简述：折成一行（它要摆进总览的一行和每位专家开场里的团员名单） */
+function oneLine(value: unknown): string | undefined {
+  return typeof value === 'string' ? tidyLabel(value) || undefined : undefined
+}
+
 function isBatchArgs(value: unknown): value is { instruction: string } {
   return !!value && typeof value === 'object' && typeof (value as { instruction?: unknown }).instruction === 'string'
 }
 
-/** tasks 每人一份指令；batch 一份共同指令加一批条目，交给伙计的是共同指令、换行、本条目。两种可同次混用。 */
-export function parseDispatchTasks(args: Record<string, unknown>): { tasks: ParsedSpawnTask[] } | { error: string } {
+/**
+ * tasks 每人一份指令；batch 一份共同指令加一批条目，交给伙计的是共同指令、换行、本条目。两种可同次混用。
+ * tasks 里带 role 的是专家；带 team 时这次 tasks 里的人组成专家团（每位都带 role，不用 batch）。
+ */
+export function parseDispatchTasks(args: Record<string, unknown>): { tasks: ParsedSpawnTask[]; team?: string } | { error: string } {
   const tasks: ParsedSpawnTask[] = []
+  const problems: string[] = []
   const rawTasks = args.tasks
   const rawBatch = args.batch
   if (rawTasks !== undefined && !Array.isArray(rawTasks)) {
@@ -291,11 +431,21 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
       }
       const forkTurns = parseForkTurns(task.fork_turns)
       if ('error' in forkTurns) return { error: `子任务 ${i + 1}：${forkTurns.error}` }
+      const name = optionalName(task.name)
+      const role = typeof task.role === 'string' ? tidyLabel(task.role) || undefined : undefined
+      if (role && (name?.trim() === TEAM_LEADER || role === TEAM_LEADER)) {
+        return { error: `「${TEAM_LEADER}」留给派出专家团的你，专家的名字和角色都不能用它（子任务 ${i + 1}）` }
+      }
+      if (role && labelLength(role) > MAX_ROLE_CHARS) {
+        problems.push(`子任务 ${i + 1} 的 role 最长 ${MAX_ROLE_CHARS} 个字，这次 ${labelLength(role)} 个字。`)
+      }
+      const description = oneLine(task.description)
       tasks.push({
-        name: optionalName(task.name),
-        description: typeof task.description === 'string' && task.description ? task.description : 'task',
+        name,
+        description: description ?? (role ? name ?? role : 'task'),
         prompt: task.prompt,
         forkTurns,
+        ...(role ? { role } : {}),
       })
     }
   }
@@ -320,7 +470,7 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
       const name = optionalName(item.name)
       tasks.push({
         name,
-        description: typeof item.description === 'string' && item.description ? item.description : (name ?? `${i + 1}`),
+        description: oneLine(item.description) ?? (name ?? `${i + 1}`),
         prompt: `${batch.instruction}\n${item.input}`,
         shownPrompt: item.input,
         forkTurns,
@@ -330,7 +480,22 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
   if (tasks.length === 0) {
     return { error: 'tasks 和 batch 至少给一个，且不能为空' }
   }
-  return { tasks }
+  const team = teamNameFrom(args.team)
+  if (!team) return problems.length ? { error: `没派：${problems.join('')}` } : { tasks }
+  if (labelLength(team) > MAX_TEAM_NAME_CHARS) {
+    problems.push(`团名最长 ${MAX_TEAM_NAME_CHARS} 个字，这次 ${labelLength(team)} 个字。`)
+  }
+  if (rawBatch !== undefined) problems.push('带 team 时只用 tasks 写每位专家，不能用 batch。')
+  const noRole = tasks.findIndex(task => !task.role)
+  if (noRole >= 0) problems.push(`带 team 时每位都要有 role（专家角色），第 ${noRole + 1} 位没有。`)
+  if (tasks.length < MIN_TEAM_SIZE || tasks.length > MAX_TEAM_SIZE) {
+    problems.push(`一个专家团 ${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位专家，这次 ${tasks.length} 位。`
+      + (tasks.length < MIN_TEAM_SIZE
+        ? '一位专家没有可交接的人，不带 team 就是单独派。'
+        : '可以拆成几个团，或不带 team 各干各的。'))
+  }
+  if (problems.length) return { error: `没派：${problems.join('')}` }
+  return { tasks, team }
 }
 
 export async function dispatchSubAgents(
@@ -348,7 +513,8 @@ export async function dispatchSubAgents(
   if ('error' in parsed) {
     return { success: false, output: '', error: parsed.error }
   }
-  const parsedTasks = parsed.tasks
+  const { tasks: parsedTasks, team } = parsed
+  const allExperts = parsedTasks.every(task => !!task.role)
   if (parsedTasks.length > roster.room()) {
     return {
       success: false,
@@ -364,10 +530,11 @@ export async function dispatchSubAgents(
 
   const progressStep = executor.addStep({
     type: 'tool_call',
-    content: t('dispatch.running', { count: parsedTasks.length }),
+    content: dispatchTitle(parsedTasks.length, allExperts, team),
     toolName: 'dispatch_agents',
     toolArgs: {
-      tasks: parsedTasks.map(task => ({ name: task.name, description: task.description })),
+      tasks: parsedTasks.map(task => ({ name: task.name, description: task.description, ...(task.role ? { role: task.role } : {}) })),
+      ...(team ? { team } : {}),
       ...(isBatchArgs(args.batch) ? { batch: { instruction: args.batch.instruction } } : {}),
     },
     riskLevel: 'safe',
@@ -381,19 +548,26 @@ export async function dispatchSubAgents(
     return { success: false, output: '', error: deps.error }
   }
 
-  const names = roster.spawn(parsedTasks, deps)
-  workspaceOf(roster).writeOverview(roster.list())
+  const names = roster.spawn(parsedTasks, deps, team ? { team } : undefined)
+  const workspace = workspaceOf(roster)
+  workspace.writeOverview(roster.list())
+  const created = team ? roster.teamOf(names[0]) : undefined
+  if (created) {
+    workspace.writeTeamChat(created)
+    workspace.writeTeamTranscript(created)
+  }
 
   const snapshots = roster.list().filter(c => names.includes(c.name))
   executor.updateStep(progressStep.id, {
-    content: t('dispatch.running', { count: names.length }),
-    subAgents: snapshots.map(toSubAgentView),
+    content: dispatchTitle(names.length, allExperts, created?.name),
+    ...dispatchStepView(roster, new Set(names)),
   })
 
-  log.info(`Dispatched ${names.length} sub-agents: ${names.join(', ')}`)
+  log.info(`Dispatched ${names.length} sub-agents${created ? ` as team ${created.name}` : ''}: ${names.join(', ')}`)
+  const blankTeam = typeof args.team === 'string' && !teamNameFrom(args.team)
   return {
     success: true,
-    output: formatSpawned(names, snapshots, roster)
+    output: formatSpawned(names, snapshots, roster, created?.name) + (blankTeam ? `\n\n${t('expert.blank_team')}` : '')
   }
 }
 
@@ -432,13 +606,23 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
     : undefined
   const timeoutSec = Math.min(Math.max(1, Number(args.timeout) || 120), 600)
 
+  // 等的时候用户说话：这次等待先停下，让主人先回应；伙计照旧在后台干
+  const userSpoke = new AbortController()
+  const spoke = () => executor.hasPendingUserSpeech?.() ?? false
   const parentSignal = executor.getAbortSignal?.()
   const timeout = AbortSignal.timeout(timeoutSec * 1000)
-  const signal = parentSignal
-    ? AbortSignal.any([parentSignal, timeout])
-    : timeout
+  const signal = AbortSignal.any([...(parentSignal ? [parentSignal] : []), timeout, userSpoke.signal])
+  if (spoke()) userSpoke.abort()
+  const poll = executor.hasPendingUserSpeech
+    ? setInterval(() => { if (spoke()) userSpoke.abort() }, USER_SPEECH_POLL_MS)
+    : undefined
 
-  const news = await roster.waitForNews(names, signal)
+  let news: Awaited<ReturnType<SubAgentRoster['waitForNews']>>
+  try {
+    news = await roster.waitForNews(names, signal)
+  } finally {
+    if (poll) clearInterval(poll)
+  }
   if (executor.isAborted()) {
     return { success: false, output: '', error: t('error.operation_aborted') }
   }
@@ -449,9 +633,11 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
   const stillWorking = news.targets.some(c => c.status === 'pending' || c.status === 'running')
   const headline = news.arrived.length > 0
     ? t('dispatch.wait_arrived', { list: news.arrived.map(c => `${c.name}（${statusLabel(c.status)}）`).join('、') })
-    : stillWorking
-      ? t('dispatch.wait_news_timeout', { seconds: timeoutSec })
-      : t('dispatch.wait_all_done')
+    : userSpoke.signal.aborted
+      ? t('dispatch.wait_user_spoke')
+      : stillWorking
+        ? t('dispatch.wait_news_timeout', { seconds: timeoutSec })
+        : t('dispatch.wait_all_done')
   return {
     success: true,
     output: [
@@ -477,12 +663,15 @@ export async function interruptAgent(args: Record<string, unknown>, executor: To
   return { success: true, output: t('dispatch.interrupt_ok', { name }) }
 }
 
-export function denyIfParentOnly(executor: ToolExecutorConfig, toolName: string): ToolResult | null {
-  if (!executor.isSubAgent) return null
+/** 工具不给这位用时硬拦：仅主人可用的不给伙计，只给专家团成员的不给团外 */
+export function denyIfNotForThisAgent(executor: ToolExecutorConfig, toolName: string): ToolResult | null {
   const catalog = executor.getToolCatalog?.()
   if (!catalog) return null
   const meta = getMetaByName(catalog, toolName)
-  if (meta?.allowedForSubAgent === false) {
+  if (meta?.onlyForTeamMember && !executor.teamSeat) {
+    return { success: false, output: '', error: t('expert.say_denied') }
+  }
+  if (executor.isSubAgent && meta?.allowedForSubAgent === false) {
     return { success: false, output: '', error: t('dispatch.tool_denied') }
   }
   return null

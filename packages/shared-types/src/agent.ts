@@ -470,6 +470,62 @@ export interface SubAgentResult {
   steps?: SubAgentToolStep[]
   /** 这会儿在排队等模型空位 */
   waitingForModel?: boolean
+  /** 专家角色（派专家时才有），跟名字一起显示 */
+  role?: string
+}
+
+/** 组长（派出专家团的秘书）在群里的名字。专家不能叫这个名字。 */
+export const EXPERT_TEAM_LEADER = '组长'
+
+/** 专家团群里的一条话 */
+export interface ExpertTeamMessageView {
+  seq: number
+  /** 说话的专家名字，或「组长」 */
+  from: string
+  /** 点名要谁接手；空表示只是告知 */
+  to: string[]
+  text: string
+  at: number
+  /** 正文太长没放进来的字数，全文在群聊文件里 */
+  omitted?: number
+}
+
+/** 专家团群聊（dispatch_agents 带 team 组团时挂在派出那一步上，实时更新） */
+export interface ExpertTeamView {
+  name: string
+  /** 最近的一小段群消息（总字数有上限），完整的按 chatFile 翻页读 */
+  messages: ExpertTeamMessageView[]
+  /** 更早的、没放进来的条数 */
+  earlierOmitted?: number
+  /** 这一段专家互相叫醒了几次 */
+  wakes: number
+  /** 每段叫醒满这么多次就等组长 */
+  wakeLimit: number
+  /** 正在等组长看过再接着叫醒 */
+  waitingLeader: boolean
+  /** 给模型读的群聊文件（临时区，过些天会清掉） */
+  transcriptPath?: string
+  /** 随会话保存的群聊全文，在群聊存储里的相对位置；没有会话时不存 */
+  chatFile?: string
+}
+
+/** 从哪里接着读群聊全文：都不给读末尾一页；before 往前一页；after 往后补 */
+export interface ExpertTeamChatCursor {
+  before?: number
+  after?: number
+}
+
+/** 群聊全文的一页 */
+export interface ExpertTeamChatPage {
+  messages: ExpertTeamMessageView[]
+  /** 这一页第一条在文件里的位置，往前翻从这里接着读 */
+  start: number
+  /** 这一页最后一条之后的位置，往后补从这里接着读 */
+  end: number
+  hasEarlier: boolean
+  hasLater: boolean
+  /** 文件的完整路径，提示「全文在哪」用 */
+  path: string
 }
 
 /**
@@ -557,6 +613,8 @@ export interface AgentStep {
   canvasData?: import('./canvas').CanvasData
   /** 并行子 Agent 状态（dispatch_agents 工具专用，实时更新） */
   subAgents?: SubAgentResult[]
+  /** 专家团群聊（dispatch_agents 带 team 组团时，实时更新） */
+  expertTeam?: ExpertTeamView
   /** Web 搜索结果（web_search 工具专用，供 UI 可展开渲染） */
   webSearchResults?: WebSearchResultItem[]
   /**
