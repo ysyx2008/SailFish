@@ -166,7 +166,7 @@ export async function openTerminalTool(
     ? `已连接 SSH 会话 ${target.sessionId}`
     : '已打开本地终端'
   return ok(
-    `${targetDesc}。这是用户看得见的真终端，后续命令请用 execute_command（pane_id=${ptyId || '见返回数据'}），不要再用 exec 幕后执行。`,
+    `${targetDesc}。这是用户看得见的真终端。终端工具（execute_command、send_input、wait 等）从你下一步起就在工具清单里，之前没有也不用再说没有；后续命令请用 execute_command（pane_id=${ptyId || '见返回数据'}），不要再用 exec 幕后执行。`,
     result.data
   )
 }

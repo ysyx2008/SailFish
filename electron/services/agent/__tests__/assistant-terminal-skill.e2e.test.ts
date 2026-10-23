@@ -241,6 +241,9 @@ describe('独立助手的「终端」技能（真终端端到端）', () => {
     expect(mine[0].system).not.toContain(SKILL_DOC_MARK)
     hasTerminalTools(mine[1])
     expect(mine[1].system).toContain(SKILL_DOC_MARK)
+    // 开窗那句回话明说终端工具已到手，而且说的是真的：下一步请求里它们就在
+    const openOut = mine[1].messages.filter(m => m.role === 'tool').map(m => String(m.content)).pop() ?? ''
+    expect(openOut).toContain('从你下一步起就在工具清单里')
 
     const toolOut = mine[2].messages.filter(m => m.role === 'tool').map(m => String(m.content))
     expect(toolOut.join('\n---\n')).toContain('SF_TERM_27')
