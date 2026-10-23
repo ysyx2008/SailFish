@@ -170,6 +170,13 @@ export class AgentService {
   }
 
   /**
+   * 声明这个程序没有窗口（命令行）。Agent 手里不再有产出物面板和终端窗格的工具。
+   */
+  setHostWithoutUi(): void {
+    this.services.hostHasUi = false
+  }
+
+  /**
    * 设置 SFTP 服务
    */
   setSftpService(sftpService: SftpService): void {

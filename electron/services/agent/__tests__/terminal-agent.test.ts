@@ -273,6 +273,49 @@ describe('SailFish', () => {
       expect(toolNames(tools)).not.toContain('execute_command')
       expect(toolNames(tools)).toContain('manage_pane')
     })
+
+    it('界面上的工具只给有那块界面的对话：任务有，联络、关切、唤醒没有', () => {
+      const surfaceTools = ['list_workbench_artifacts', 'manage_workbench_artifacts', 'manage_pane', 'list_ssh_sessions']
+      const namesFor = (agentKey: string) => {
+        const a = new SailFish(createMockServices(), 'test-pty')
+        a.setAgentId(agentKey)
+        return toolNames(a.getAvailableTools())
+      }
+
+      for (const name of surfaceTools) expect(namesFor('assistant-tab-1')).toContain(name)
+      for (const key of ['__companion__', '__watch__:w1', '__wakeup__']) {
+        const names = namesFor(key)
+        for (const name of surfaceTools) expect(names).not.toContain(name)
+        // 本机命令等其他助手能力照旧
+        expect(names).toContain('exec')
+        expect(names).toContain('read_file')
+      }
+    })
+
+    it('程序本身没有窗口（命令行）：任务也没有面板和窗格工具，本机命令照旧', () => {
+      const surfaceTools = ['list_workbench_artifacts', 'manage_workbench_artifacts', 'manage_pane', 'list_ssh_sessions']
+      for (const terminalType of ['assistant', 'local'] as const) {
+        const a = new SailFish(createMockServices({ hostHasUi: false }), 'test-pty')
+        a.setAgentId('cli-task')
+        if (terminalType === 'local') setRunTerminalType(a, 'local')
+        const names = toolNames(a.getAvailableTools())
+        for (const name of surfaceTools) expect(names).not.toContain(name)
+        expect(names).toContain(terminalType === 'local' ? 'execute_command' : 'exec')
+      }
+    })
+
+    it('终端页的任务照旧有窗格工具', () => {
+      const a = new SailFish(createMockServices(), 'test-pty')
+      a.setAgentId('tab-1')
+      setRunTerminalType(a, 'ssh')
+      expect(toolNames(a.getAvailableTools())).toContain('manage_pane')
+    })
+
+    it('联络照旧带着自己的任务管理工具', () => {
+      const a = new SailFish(createMockServices(), 'test-pty')
+      a.setAgentId('__companion__')
+      expect(toolNames(a.getAvailableTools())).toContain('manage_tasks')
+    })
   })
 
   describe('agent methods', () => {

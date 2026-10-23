@@ -321,6 +321,15 @@ describe('PromptBuilder', () => {
       const prompt = new PromptBuilder({ context: createMockContext() }).build()
       expect(prompt).not.toContain('# 界面能力（产出物面板）')
     })
+
+    it('没有工作台说明时，助手的系统说明里不提产出物面板（联络没有这块界面）', () => {
+      const prompt = new PromptBuilder({
+        context: createMockContext({ terminalType: 'assistant' })
+      }).build()
+
+      expect(prompt).toContain('文件名即用户可见名')
+      expect(prompt).not.toContain('产出物面板')
+    })
   })
 
   describe('skills content', () => {

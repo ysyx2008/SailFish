@@ -119,7 +119,9 @@ export class SailFish extends Agent {
       includeContextTools: this.contextManagementEnabled,
       mcpToolSession: this.getMcpToolSession(),
       unattended,
-      supportsGoal: this.supportsGoal()
+      supportsGoal: this.supportsGoal(),
+      hasArtifactPanel: this.hasArtifactPanel(),
+      hasTerminalSeat: this.hasTerminalSeat()
     }, this.services.pluginRegistry)
 
     // 联络专属工具由联络工作台贡献（manage_tasks 任务管理），不进 agent 通用注册表

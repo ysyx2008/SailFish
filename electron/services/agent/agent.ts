@@ -2540,6 +2540,20 @@ export abstract class Agent {
     return agentSupportsGoal(this._agentId ?? '', this._conversation?.kind)
   }
 
+  /** 这场对话的界面上有没有产出物面板（按会话种类和程序形态，一场对话里不变） */
+  hasArtifactPanel(): boolean {
+    return this.services.hostHasUi !== false && this.policyOfThisConversation().hasArtifactPanel
+  }
+
+  /** 这场对话的界面上有没有终端座位（同上） */
+  hasTerminalSeat(): boolean {
+    return this.services.hostHasUi !== false && this.policyOfThisConversation().hasTerminalSeat
+  }
+
+  private policyOfThisConversation() {
+    return conversationPolicy(this._conversation?.kind ?? inferConversationKind(this._agentId))
+  }
+
   getLastContext(): AgentContext | undefined {
     return this._lastContext
   }
