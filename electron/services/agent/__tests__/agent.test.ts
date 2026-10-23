@@ -2888,6 +2888,19 @@ describe('新任务会话的第一句', () => {
     expect(titleCalls()).toHaveLength(0)
   })
 
+  it('第一句没写字：这一轮结束才按整段对话起标题', async () => {
+    const { agent, history, ai } = setup()
+
+    await agent.run('   ', createMockContext())
+
+    await expect(agent.waitForInitialTitle()).resolves.toBe('整理日志')
+    expect(ai.chat).toHaveBeenCalledTimes(1)
+    const messages = ai.chat.mock.calls[0][0] as Array<{ content?: string }>
+    expect(messages.length).toBeGreaterThan(1)
+    expect(String(messages.at(-1)?.content)).toContain('整段对话')
+    expect(history.updateConversationTitle).toHaveBeenCalledWith(expect.stringMatching(/^session_/), '整理日志')
+  })
+
   it('引导会话用固定标题，不问模型', async () => {
     const { agent, history, titleCalls } = setup()
 

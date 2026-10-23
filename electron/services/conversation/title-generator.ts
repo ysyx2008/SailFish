@@ -1,5 +1,7 @@
 /**
- * 任务侧栏短标题 —— 首条消息异步生成；每完整三轮后复用刚结束的对话前缀再写一次。
+ * 任务侧栏短标题 —— 有字的首条消息异步生成；
+ * 第一句起不出标题的，等这一轮结束用整段对话补一次；
+ * 每完整三轮后复用刚结束的对话前缀再写一次。
  * 不阻塞 Agent run；用户手改过的不覆盖；失败静默回退到已有 title / userTask。
  */
 import type { AiMessage, AiService, ToolDefinition } from '../ai.service'
@@ -117,6 +119,13 @@ function isPlaceholderUserMessage(userMessage: string): boolean {
   return userMessage.startsWith('__') && userMessage.endsWith('__')
 }
 
+/** 第一句的文字本身能不能拿来起标题。没写字、或系统占位（两端都是 __）不行。 */
+export function userMessageCanSeedTitle(userMessage: string): boolean {
+  const text = userMessage.trim()
+  if (!text) return false
+  return !isPlaceholderUserMessage(text)
+}
+
 export function broadcastConversationTitle(sessionId: string, title: string): void {
   try {
     // CLI / 单测没有真实窗口时静默
@@ -173,8 +182,7 @@ export async function generateConversationTitle(
   const mode = input.mode ?? 'initial'
   const userMessage = input.userMessage?.trim() ?? ''
   if (mode === 'initial') {
-    if (!userMessage) return null
-    if (isPlaceholderUserMessage(userMessage)) return null
+    if (!userMessageCanSeedTitle(userMessage)) return null
   } else if (!input.cachePrefix?.length) {
     return null
   }

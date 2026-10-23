@@ -8,6 +8,7 @@ import {
   resetTitleGeneratorInflightForTest,
   shouldRefreshConversationTitle,
   titlesEquivalent,
+  userMessageCanSeedTitle,
 } from '../title-generator'
 import type { AiService } from '../../ai.service'
 import type { ConfigService } from '../../config.service'
@@ -33,6 +34,16 @@ describe('sanitizeConversationTitle', () => {
     expect(sanitizeConversationTitle('')).toBeNull()
     expect(sanitizeConversationTitle('   ')).toBeNull()
     expect(sanitizeConversationTitle('""')).toBeNull()
+  })
+})
+
+describe('userMessageCanSeedTitle', () => {
+  it('有字就能起，没字或系统占位不行', () => {
+    expect(userMessageCanSeedTitle('帮我看看这张图')).toBe(true)
+    expect(userMessageCanSeedTitle('  ')).toBe(false)
+    expect(userMessageCanSeedTitle('')).toBe(false)
+    expect(userMessageCanSeedTitle('__onboarding__')).toBe(false)
+    expect(userMessageCanSeedTitle('__proactive__')).toBe(false)
   })
 })
 
