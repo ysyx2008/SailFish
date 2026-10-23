@@ -244,6 +244,19 @@ describe('ContextWindowManager.getInputLimit / needsRequestCompaction', () => {
     expect(m.needsRequestCompaction(run)).toBe(true)
   })
 
+  it('消息里已带着 system prompt 时，估算不再把它算第二遍', () => {
+    const m = new ContextWindowManager(makeDeps({ getLastPromptTokens: () => undefined }))
+    const sys = { role: 'system' as const, content: 'S'.repeat(40_000) } // ≈ 10000 tokens
+    const withSystem = makeRun([sys, user('hi')])
+    const sendable = m.estimateTotalTokens(withSystem.messages)
+    // 恰好卡在「只算一遍装得下、算两遍装不下」的区间
+    const limit = m.getInputLimit()
+    const filler = 'x'.repeat((limit - sendable - 2000) * 4)
+    const run = makeRun([sys, user('hi'), asst(filler)])
+    expect(m.estimateTotalTokens(run.messages)).toBeLessThanOrEqual(limit)
+    expect(m.needsRequestCompaction(run)).toBe(false)
+  })
+
   it('短对话不需要先压', () => {
     const m = new ContextWindowManager(makeDeps({ getLastPromptTokens: () => undefined }))
     expect(m.needsRequestCompaction(makeRun([user('hi')]))).toBe(false)
@@ -605,6 +618,22 @@ describe('ContextWindowManager.emergencyCompress', () => {
     // 中间过程进了归档，不再占上下文
     expect(run.messages.some(msg => msg.role === 'tool')).toBe(false)
     expect(JSON.stringify(run.messages)).toContain('recall(archive_id')
+  })
+
+  it('冷启动：这句话后面只剩一条系统提醒时，摘要也放在它前面，请求不以 assistant 结尾', () => {
+    const m = new ContextWindowManager(makeDeps())
+    const big = 'x'.repeat(2000)
+    const run = makeRun([
+      { role: 'system', content: 'sys prompt' },
+      user('任务一：排查登录'),
+      asst('', [tc('c1', 'exec')]), tool('c1', big),
+      asst('任务一完成'),
+      user('任务二：开个终端窗格跑 ls'),
+      { role: 'user', content: '[系统] 上下文用量告警', _systemInjected: true }
+    ])
+    expect(m.emergencyCompress(run)).not.toBeNull()
+    expect(run.messages[run.messages.length - 1].role).toBe('user')
+    expect(run.messages.some(msg => msg.role === 'tool')).toBe(false)
   })
 
   it('多次调用：每次产生新 archiveId，归档累积', () => {
