@@ -139,6 +139,8 @@ const log = createLogger('Agent')
 
 /** 伙计在后台干活，没人当面等：被限流时多等几轮（约一刻钟），慢一点比失败好 */
 const SUB_AGENT_RATE_LIMIT_RETRIES = 20
+/** 下一轮开始前，最多等上一轮没收尾的伙计这么久 */
+const PREVIOUS_CHILDREN_SETTLE_MS = 5000
 
 /**
  * 去除流式输出中因 API 代理重复发送 reasoning_content 而产生的连续相同思考块。
@@ -202,6 +204,8 @@ export abstract class Agent {
 
   /** 这场 run 里的伙计花名册（仅主人持有） */
   private _subAgentRoster?: SubAgentRoster
+  /** 上一轮收工时还没收尾的伙计：他们都写完盘之前，下一轮不去盘上叫醒老伙计 */
+  private _previousChildrenSettling?: Promise<void>
 
   /** 交办标题：会话聚合根建好之前先记在这里 */
   private _armedTitle?: string
@@ -1094,6 +1098,7 @@ export abstract class Agent {
     const taskStartTime = Date.now()
     
     try {
+      await this.waitForPreviousChildren()
       // 历史恢复带出的技能清单要在组上下文 / 取工具表之前装上，否则模型会看见旧工具名却没有对应工具
       await this.applyRestoredSkills()
       await this.ensureTerminalSkill(run)
@@ -3048,8 +3053,26 @@ export abstract class Agent {
     
     run.isRunning = false
     this.currentStreamingExecutor = undefined
-    this._subAgentRoster?.abortAll()
+    const roster = this._subAgentRoster
+    roster?.abortAll()
+    this._previousChildrenSettling = roster?.settled()
     this._subAgentRoster = undefined
+  }
+
+  /**
+   * 上一轮被按停（或出错）时伙计只是收到了中止，写最后一段对话要稍后。
+   * 下一轮要叫醒他们之前先等一下，免得读到的是没写完的盘。等不到就不再等。
+   */
+  private async waitForPreviousChildren(): Promise<void> {
+    const settling = this._previousChildrenSettling
+    if (!settling) return
+    this._previousChildrenSettling = undefined
+    let timer: ReturnType<typeof setTimeout> | undefined
+    await Promise.race([
+      settling,
+      new Promise<void>(resolve => { timer = setTimeout(resolve, PREVIOUS_CHILDREN_SETTLE_MS) }),
+    ])
+    if (timer) clearTimeout(timer)
   }
   
   /**

@@ -114,6 +114,28 @@ describe('花名册把状态变化交给存盘人', () => {
     expect(recorder.states.at(-1)).toMatchObject({ status: 'interrupted', error: '已打断' })
   })
 
+  it('settled：被中止的伙计都收尾（该写的盘写完）后才兑现；已经收尾的立刻兑现', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    await expect(roster.settled()).resolves.toBeUndefined()
+
+    let finishedWriting = false
+    roster.spawn([{ name: 'alice', description: 'a', prompt: 'a' }], deps(() => {
+      const handle = child({ hang: true })
+      // 中止后还要一会儿才收尾：收尾时的最后一次写盘在这之后
+      return {
+        ...handle,
+        abort: () => { setTimeout(() => handle.abort(), 30); return true },
+        async run(...args: Parameters<ChildAgentHandle['run']>) {
+          try { return await handle.run(...args) } finally { finishedWriting = true }
+        },
+      }
+    }))
+    roster.abortAll()
+    expect(finishedWriting).toBe(false)
+    await roster.settled()
+    expect(finishedWriting).toBe(true)
+  })
+
   it('没有存盘人的伙计照常干活，不报错', async () => {
     const roster = new SubAgentRoster({ knockSettleMs: 0 })
     roster.spawn([{ name: 'alice', description: 'a', prompt: 'a' }], deps(() => child({ result: '好了' })))
@@ -193,6 +215,13 @@ describe('花名册里的休眠伙计', () => {
     expect(roster.followup('alice', '再补一条', d)).toEqual({ ok: true })
     await settle()
     expect(sent).toEqual(['再补一条'])
+  })
+
+  it('对休眠的老伙计用打断：说他已经不在跑了，不说没有这个人', () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const restoreDormant = () => [sleeper('alice')]
+    expect(roster.interrupt('alice', { restoreDormant })).toEqual({ ok: false, error: 'alice 已经不在跑了' })
+    expect(roster.interrupt('nobody', { restoreDormant })).toEqual({ ok: false, error: '没有叫 nobody 的伙计' })
   })
 
   it('没有这个名字的老伙计：照旧说没有', () => {

@@ -79,6 +79,8 @@ export class ChildRecorder {
   /** 自己在这个进程里已经写到第几条 */
   private written?: { steps: number; messages: number }
   private superseded = false
+  /** 这位的目录里已经写过东西（目录之后不见了，说明是被清理掉的） */
+  private wroteAnything = false
 
   constructor(
     private readonly store: SubAgentRecordStore,
@@ -94,6 +96,11 @@ export class ChildRecorder {
   /** 同一位后来又有了新的存盘人（重新叫起来的）：这个不再写，免得两边写进同一个目录 */
   retire(): void {
     this.superseded = true
+  }
+
+  /** 写过东西、目录却已经不在了：被清理掉了，这位不该再把它写回来 */
+  get wasCleanedUp(): boolean {
+    return this.wroteAnything && !fs.existsSync(this.dir)
   }
 
   /** 开局带的主人对话；内容相同的只存一份。没带对话就什么也不记 */
@@ -121,6 +128,7 @@ export class ChildRecorder {
     if (this.superseded) return
     try {
       saveSessionRecordToDir(this.dir, record, this.written ? { knownCounts: this.written } : undefined)
+      this.wroteAnything = true
       this.written = { steps: record.steps?.length ?? 0, messages: record.messages?.length ?? 0 }
     } catch (err) {
       this.written = undefined
@@ -162,6 +170,7 @@ export class ChildRecorder {
     try {
       fs.mkdirSync(this.dir, { recursive: true })
       writeFileAtomic(path.join(this.dir, STATE_FILE), JSON.stringify(state))
+      this.wroteAnything = true
     } catch (err) {
       log.warn(`Sub-agent state save failed (${this.dir}): ${err}`)
     }
@@ -241,15 +250,26 @@ export class SubAgentRecordStore {
 
   deleteBefore(cutoff: string): void {
     this.tree.deleteBefore(cutoff)
+    this.retireCleanedUp()
   }
 
   deleteOrphans(liveSessionIds: ReadonlySet<string>, now = Date.now()): void {
     this.tree.deleteOrphans(liveSessionIds, now)
+    this.retireCleanedUp()
   }
 
   deleteAll(): void {
     this.tree.deleteAll()
     this.recorders.clear()
+  }
+
+  /** 目录被按天清理或孤儿清理删掉的存盘人退下，迟到的写入不会把已删的会话目录重新建出来 */
+  private retireCleanedUp(): void {
+    for (const [dir, recorder] of [...this.recorders]) {
+      if (!recorder.wasCleanedUp) continue
+      recorder.retire()
+      this.recorders.delete(dir)
+    }
   }
 
   private register(dir: string, recorder: ChildRecorder): ChildRecorder {

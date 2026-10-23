@@ -227,6 +227,23 @@ describe('跟着会话删、按天过期', () => {
     expect(store.list('sess_1')).toEqual([])
     expect(store.list('sess_2')).toHaveLength(1)
   })
+
+  it('被按天清理掉目录的伙计，迟到的写入不会把目录重新建出来', () => {
+    const late = store.recorderFor({ sessionId: 'sess_1', startedAt: AT, name: 'alice' })!
+    late.saveState(state('alice'))
+    store.deleteBefore('2026-10-24')
+    late.saveRecord(record('alice', 2))
+    late.saveState(state('alice', { status: 'completed' }))
+    expect(fs.existsSync(late.dir)).toBe(false)
+    expect(store.list('sess_1')).toEqual([])
+  })
+
+  it('还没写过东西的伙计，清理不影响他之后正常存盘', () => {
+    const fresh = store.recorderFor({ sessionId: 'sess_3', startedAt: AT, name: 'bob' })!
+    store.deleteBefore('2026-10-24')
+    fresh.saveState(state('bob'))
+    expect(store.list('sess_3')).toHaveLength(1)
+  })
 })
 
 describe('不进最近对话和历史搜索，跟着主会话的删除', () => {

@@ -632,9 +632,13 @@ export class SubAgentRoster {
     return teamName ? this.teams.get(teamName) : undefined
   }
 
-  interrupt(name: string): { ok: boolean; error?: string; finalized?: boolean } {
+  interrupt(name: string, deps?: Pick<RosterSpawnDeps, 'restoreDormant'>): { ok: boolean; error?: string; finalized?: boolean } {
     const slot = this.children.get(name)
-    if (!slot) return { ok: false, error: `没有叫 ${name} 的伙计` }
+    if (!slot) {
+      if (deps) this.ensureDormant(deps)
+      if (this.dormant.has(name)) return { ok: false, error: `${name} 已经不在跑了` }
+      return { ok: false, error: `没有叫 ${name} 的伙计` }
+    }
     if (!LIVE.has(slot.status)) return { ok: false, error: `${name} 已经不在跑了` }
     if (slot.status === 'pending' || !slot.handle) {
       slot.status = 'interrupted'
@@ -657,6 +661,14 @@ export class SubAgentRoster {
       persistSlot(slot)
     }
     this.wake()
+  }
+
+  /** 每位当前这一段都收尾（该写的盘都写完）之后兑现；不会拒绝。已经收尾的立刻兑现 */
+  settled(): Promise<void> {
+    const pending = [...this.children.values()]
+      .map(slot => slot.runPromise)
+      .filter((p): p is Promise<void> => !!p)
+    return Promise.allSettled(pending).then(() => undefined)
   }
 
   recordStep(name: string, step: AgentStep, onProgress: () => void): void {

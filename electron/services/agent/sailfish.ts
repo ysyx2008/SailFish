@@ -216,11 +216,11 @@ export class SailFish extends Agent {
     const child = this.newChildAgent(state.name)
     const recorder = store.recorderForRestored({ sessionId, startedAt, name: state.name }, state)
     if (recorder) child.attachChildRecorder(recorder)
-    const history = own.length > 0
-      ? sanitizeToolCallSequence(own.map(({ _cacheBreakpoint, ...rest }) => rest))
-      : [{ role: 'user' as const, content: state.prompt }]
+    // 没有留下对话的，他的第一句就是原来的指令；也记进他的会话，下次再叫醒时仍在
+    const ownMessages: AiMessage[] = own.length > 0 ? own : [{ role: 'user', content: state.prompt }]
+    const history = sanitizeToolCallSequence(ownMessages.map(({ _cacheBreakpoint, ...rest }) => rest))
     child.seedOpeningMessages([...opening, ...history])
-    if (own.length > 0) child.restoreChildTranscript(own, record?.steps)
+    child.restoreChildTranscript(ownMessages, record?.steps)
     return { handle: child, steps: toolStepsFromRecords(record?.steps ?? []) }
   }
 

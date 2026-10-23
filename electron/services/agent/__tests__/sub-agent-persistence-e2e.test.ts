@@ -370,6 +370,59 @@ describe('伙计的对话随主会话存盘（真实 SailFish.run）', () => {
     expect(fs.readFileSync(target, 'utf-8')).toBe('half')
   })
 
+  it('按停止后马上又开口叫醒：等被停的伙计把最后一段对话写完再接回，不读到半截的盘', async () => {
+    const history = new HistoryService()
+    const target = path.join(tmpDir, 'quick.txt')
+    let aliceTurn = 0
+    let phase: 'first' | 'second' = 'first'
+    let dispatched = false
+    let followedUp = false
+    let slowToolAnnounced = false
+
+    const services = makeServices((who) => {
+      if (who === 'parent') {
+        if (!dispatched) {
+          dispatched = true
+          return { tool_calls: [tc('dispatch_agents', { tasks: [{ name: 'alice', description: '写文件', prompt: '我是alice，写一份文件然后做一件很慢的事' }] })] }
+        }
+        if (phase === 'second' && !followedUp) {
+          followedUp = true
+          return { tool_calls: [tc('followup_agent', { name: 'alice', message: '把剩下的做完' })] }
+        }
+        return { content: '等他' }
+      }
+      aliceTurn++
+      if (aliceTurn === 1) return { tool_calls: [tc('write_text_file', { path: target, content: 'half', mode: 'create' })] }
+      if (aliceTurn === 2) {
+        slowToolAnnounced = true
+        return { tool_calls: [tc('exec', { command: 'sleep 30' })] }
+      }
+      return { content: '做完了' }
+    })
+
+    const parent = newParent(services, history, 'e2e-persist-quick')
+    const first = parent.run('派 alice 去干活', ctx()).catch(() => undefined)
+    await until(() => slowToolAnnounced)
+    await sleep(300)
+    parent.abort()
+    await first
+
+    // 不等她收尾，立刻开口叫醒
+    phase = 'second'
+    await parent.run('让 alice 接着做', ctx())
+
+    const revived = calls.filter(c => c.who === 'alice').at(-1)!
+    const sent = revived.messages
+    const sentCalls = sent.flatMap(m => (m.tool_calls as ToolCall[] | undefined)?.map(t => t.function.name) ?? [])
+    // 停之前的两步都在她接回的对话里（被停的那条命令有结果，请求是完整的）
+    expect(sentCalls).toEqual(['write_text_file', 'exec'])
+    const answered = new Set(sent.filter(m => m.role === 'tool').map(m => m.tool_call_id))
+    const announced = sent.flatMap(m => (m.tool_calls as ToolCall[] | undefined)?.map(t => t.id) ?? [])
+    expect(announced.every(id => answered.has(id))).toBe(true)
+    expect(String(sent[sent.length - 1].content)).toContain('中断')
+    await until(() => history.getAgentRecordStore().subAgents.list(parent.getSessionId()!)[0].state.status === 'completed')
+  })
+
   it('程序异常退出后重开：盘上还写着「在干」的，叫醒时被告知上次异常退出，对话照样接回', async () => {
     const history = new HistoryService()
     let aliceTurn = 0
@@ -426,5 +479,62 @@ describe('伙计的对话随主会话存盘（真实 SailFish.run）', () => {
     expect(text(revived.messages)).toContain('读一下配置')
     expect(revived.messages.flatMap(m => (m.tool_calls as ToolCall[] | undefined)?.map(t => t.function.name) ?? [])).toEqual(['list_directory'])
     await until(() => history2.getAgentRecordStore().subAgents.list(sessionId)[0].state.status === 'completed')
+  })
+
+  it('一位没留下对话就被叫醒、又被叫醒一次：原来的指令一直在他的对话里', async () => {
+    const history = new HistoryService()
+    let dispatched = false
+    const services = makeServices((who) => {
+      if (who === 'parent') {
+        if (!dispatched) {
+          dispatched = true
+          return { tool_calls: [tc('dispatch_agents', { tasks: [{ name: 'alice', description: '读东西', prompt: '我是alice，读一下配置' }] })] }
+        }
+        return { content: '好' }
+      }
+      return { content: '读完了' }
+    })
+    const parent = newParent(services, history, 'e2e-persist-twice')
+    await parent.run('派 alice', ctx())
+    const sessionId = parent.getSessionId()!
+    const startedAt = parent.getSessionStartTime()!
+    const aliceDir = history.getAgentRecordStore().subAgents.list(sessionId)[0].dir
+
+    // 她第一轮还没做完就没了：盘上没有对话，状态还写着「在干」
+    for (const file of ['messages.jsonl', 'steps.jsonl']) fs.rmSync(path.join(aliceDir, file), { force: true })
+    const stateFile = path.join(aliceDir, 'state.json')
+    const state = JSON.parse(fs.readFileSync(stateFile, 'utf-8'))
+    fs.writeFileSync(stateFile, JSON.stringify({ ...state, status: 'running', result: undefined }), 'utf-8')
+
+    // 用一个全新的进程叫醒她一次，让她做完；再用另一个全新的进程叫醒第二次
+    const wakeOnce = async (label: string, message: string): Promise<HistoryService> => {
+      let followedUp = false
+      const hist = new HistoryService()
+      const svc = makeServices((who) => {
+        if (who === 'parent') {
+          if (!followedUp) {
+            followedUp = true
+            return { tool_calls: [tc('followup_agent', { name: 'alice', message })] }
+          }
+          return { content: '等她' }
+        }
+        return { content: `${label}做完了` }
+      })
+      const p = newParent(svc, hist, 'e2e-persist-twice')
+      await p.run('继续', { ...ctx(), sessionId, sessionStartTime: startedAt })
+      await until(() => {
+        const alice = hist.getAgentRecordStore().subAgents.list(sessionId)[0]
+        return alice.state.status === 'completed' && String(alice.state.result).includes(label)
+      })
+      return hist
+    }
+    await wakeOnce('第一次', '先做这个')
+    await wakeOnce('第二次', '再做那个')
+
+    const second = calls.filter(c => c.who === 'alice').at(-1)!
+    const sent = text(second.messages)
+    expect(sent).toContain('读一下配置')
+    expect(sent).toContain('先做这个')
+    expect(String(second.messages[second.messages.length - 1].content)).toContain('再做那个')
   })
 })

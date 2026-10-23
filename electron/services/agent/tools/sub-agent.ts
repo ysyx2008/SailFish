@@ -681,7 +681,7 @@ export async function interruptAgent(args: Record<string, unknown>, executor: To
   if (!roster) return { success: false, output: '', error: '没有花名册' }
   const name = typeof args.name === 'string' ? args.name.trim() : ''
   if (!name) return { success: false, output: '', error: '需要 name' }
-  const result = roster.interrupt(name)
+  const result = roster.interrupt(name, { restoreDormant: executor.restoreDormantChildren })
   if (!result.ok) return { success: false, output: '', error: result.error }
   if (result.finalized) {
     const snap = roster.get(name)
