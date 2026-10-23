@@ -11,8 +11,8 @@
  * - ARGV_COMMAND_RULES（whitelist.ts）
  * - SYSTEM_PATH_PATTERNS（types.ts）
  * - ALLOWED_USERDATA_ENTRIES / READONLY_USERDATA_ENTRIES（userdata-guard.ts）
- * - PROTECTED_WORKSPACE_FILES / PROTECTED_WORKSPACE_DIRS / WORKSPACE_FREE_DIRS（types.ts）
- * - 系统临时目录（workspace-guard getBuiltinTempRoots）
+ * - PROTECTED_WORKSPACE_FILES / PROTECTED_WORKSPACE_DIRS（types.ts）
+ * - 自由区目录（workspace-guard getBuiltinFreeDirs：WORKSPACE_FREE_DIRS + 系统临时目录）
  * - Agent workspace 根：{userData}/agent-workspace
  */
 import { app } from 'electron'
@@ -23,10 +23,9 @@ import {
   SYSTEM_PATH_PATTERNS,
   PROTECTED_WORKSPACE_FILES,
   PROTECTED_WORKSPACE_DIRS,
-  WORKSPACE_FREE_DIRS,
 } from './types'
 import { ALLOWED_USERDATA_ENTRIES, READONLY_USERDATA_ENTRIES } from './userdata-guard'
-import { getBuiltinTempRoots } from './workspace-guard'
+import { getBuiltinFreeDirs } from './workspace-guard'
 import type { RiskLevel } from '@shared/types/agent'
 
 /** 单条 argv 命令规则的只读展示 */
@@ -122,10 +121,7 @@ export function getBuiltInRulesView(): BuiltInRulesView {
       const workspaceRoot = path.join(app.getPath('userData'), 'agent-workspace')
       return {
         workspaceRoot,
-        free: [
-          ...[...WORKSPACE_FREE_DIRS].map(d => path.join(workspaceRoot, d)).sort(),
-          ...getBuiltinTempRoots(),
-        ],
+        free: getBuiltinFreeDirs(),
         protectedDirs: [...PROTECTED_WORKSPACE_DIRS].map(d => path.join(workspaceRoot, d)).sort(),
         protectedFiles: [...PROTECTED_WORKSPACE_FILES].map(f => path.join(workspaceRoot, f)).sort(),
       }

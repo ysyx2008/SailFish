@@ -11,6 +11,7 @@ import { parseAssessment, tableAllows, assessmentApproves, effectiveAssessment }
 import { collectUserWords, cursorAt, cursorStillValid, formatProcess, formatUserWords } from '../auto-review/evidence'
 import { runInspection, checkReadOnlyCommand, type InspectorDeps } from '../auto-review/inspector'
 import { getWorkspacePath } from '../workspace-paths'
+import { buildReviewerPolicy } from '../auto-review/policy'
 import {
   AutoApprovalReviewer,
   USER_WORDS_BUDGET_CHARS,
@@ -50,6 +51,7 @@ function makeRequest(steps: AgentStep[], messages: AiMessage[], overrides: Parti
     getSteps: () => steps,
     getMessages: () => messages,
     aiRules: '',
+    freeDirs: ['/work/agent-workspace/scratch', '/tmp'],
     environment: { terminalType: 'local', cwd: '/tmp' },
     inspector: makeInspector(),
     ...overrides,
@@ -219,6 +221,13 @@ describe('替我审批 · 评审员', () => {
     expect(sent[1].content).toContain('rm -rf /tmp/build')
   })
 
+  it('说明书写明事先放开的目录怎么算，以及 cd 失败后的下一句仍会执行', () => {
+    const policy = buildReviewerPolicy('zh-CN')
+    expect(policy).toContain('【用户事先放开的目录】')
+    expect(policy).toContain('不必再到【你的原话】里找依据')
+    expect(policy).toContain('cd 失败')
+  })
+
   it('模型说问人、看不懂、出错、超时，都交回用户', async () => {
     const cases: Array<[AutoReviewChat, string]> = [
       [async () => reply(verdictJson('high', 'low', 'ask_user')), 'not_approved'],
@@ -339,6 +348,31 @@ describe('替我审批 · 评审员', () => {
     expect(chat.mock.calls[1][0][1].content).toContain('别删生产库')
     await reviewer.review(makeRequest(baseSteps(), baseMessages(), { aiRules: '别删生产库', sessionId: 'session-2' }))
     expect(chat.mock.calls[2][0]).toHaveLength(2)
+  })
+
+  it('第一条消息带上用户事先放开的目录；说明书里写明这一栏怎么算', async () => {
+    const chat = vi.fn<AutoReviewChat>(async () => reply(verdictJson('medium', 'high', 'allow')))
+    const reviewer = new AutoApprovalReviewer({ chat })
+    await reviewer.review(makeRequest(baseSteps(), baseMessages(), { freeDirs: ['/work/scratch', '/data/shared'] }))
+    const sent = chat.mock.calls[0][0]
+    expect(sent[1].content).toContain('【用户事先放开的目录】')
+    expect(sent[1].content).toContain('- /work/scratch\n- /data/shared')
+    expect(String(sent[0].content)).toContain('【用户事先放开的目录】')
+  })
+
+  it('同一场再评不重复带目录；用户改了目录清单就从头来', async () => {
+    const chat = vi.fn<AutoReviewChat>(async () => reply(verdictJson('medium', 'high', 'allow')))
+    const reviewer = new AutoApprovalReviewer({ chat })
+    await reviewer.review(makeRequest(baseSteps(), baseMessages(), { freeDirs: ['/work/scratch'] }))
+    await reviewer.review(makeRequest(baseSteps(), baseMessages(), { freeDirs: ['/work/scratch'] }))
+    expect(chat.mock.calls[1][0].length).toBeGreaterThan(2)
+    // 说明书之外只有第一条消息带目录，第二次评审只补新增的部分
+    const afterPolicy = chat.mock.calls[1][0].slice(1).map(m => String(m.content)).join('\n')
+    expect(afterPolicy.match(/【用户事先放开的目录】/g)).toHaveLength(1)
+
+    await reviewer.review(makeRequest(baseSteps(), baseMessages(), { freeDirs: ['/work/scratch', '/data/shared'] }))
+    expect(chat.mock.calls[2][0]).toHaveLength(2)
+    expect(chat.mock.calls[2][0][1].content).toContain('/data/shared')
   })
 
   it('评审期间用户又说话：放行作废重评；再变就交给用户', async () => {

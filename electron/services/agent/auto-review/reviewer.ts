@@ -57,6 +57,8 @@ export interface AutoReviewRequest {
   getEarlierSteps?: () => readonly AgentStep[]
   getMessages: () => readonly AiMessage[]
   aiRules: string
+  /** 用户在旗鱼的安全规则里事先放开的目录（写、删不再问用户），旗鱼所在这台电脑上的路径 */
+  freeDirs: readonly string[]
   environment: ReviewEnvironment
   profileId?: string
   signal?: AbortSignal
@@ -74,6 +76,7 @@ interface ReviewSession {
   key: string
   locale: 'zh-CN' | 'en-US'
   aiRules: string
+  freeDirs: readonly string[]
   messages: AiMessage[]
   seenUserWordIds: Set<string>
   cursor: ProcessCursor
@@ -124,6 +127,14 @@ function withCacheBreakpoint(messages: readonly AiMessage[]): AiMessage[] {
     }
   }
   return out
+}
+
+function formatFreeDirs(dirs: readonly string[]): string {
+  return dirs.length ? dirs.map(d => `- ${d}`).join('\n') : '（无）'
+}
+
+function sameList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i])
 }
 
 function messageChars(m: AiMessage): number {
@@ -241,6 +252,7 @@ export class AutoApprovalReviewer {
     const sections: string[] = []
     if (isFirst) {
       sections.push(`【用户写给 AI 的规则】\n${req.aiRules.trim() || '（无）'}`)
+      sections.push(`【用户事先放开的目录】（旗鱼所在这台电脑上的路径）\n${formatFreeDirs(req.freeDirs)}`)
       sections.push(`【你的原话】（到目前为止全部）\n${newWords.length ? formatUserWords(newWords) : '（无）'}`)
       sections.push(`【最近过程】（线索）\n${formatProcess(messages, processFrom, processBudget)}`)
     } else {
@@ -338,6 +350,7 @@ export class AutoApprovalReviewer {
       || s.key !== req.sessionId
       || s.locale !== req.locale
       || s.aiRules !== req.aiRules
+      || !sameList(s.freeDirs, req.freeDirs)
       || !cursorStillValid(messages, s.cursor)
       || s.chars > SESSION_BUDGET_CHARS
       || [...s.seenUserWordIds].some(id => !inScope.has(id))
@@ -346,6 +359,7 @@ export class AutoApprovalReviewer {
       key: req.sessionId,
       locale: req.locale,
       aiRules: req.aiRules,
+      freeDirs: [...req.freeDirs],
       messages: [],
       seenUserWordIds: new Set(),
       cursor: { count: 0, fingerprint: '' },

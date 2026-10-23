@@ -107,6 +107,7 @@ import { SUMMARY_MAX_OUTPUT_TOKENS } from '../ai-request-budget'
 import { t, getLocale, type TranslationKey } from './i18n'
 import { AutoApprovalReviewer, buildInspectorDeps, resolveInspectPtyId, type AutoReviewResult } from './auto-review'
 import { resolveSubAgentBlockDangerous } from './command-audit/fail-closed-policy'
+import { listFreeZoneDirs } from './command-audit/workspace-guard'
 import { CommandExecutorService } from '../command-executor.service'
 import { createSkillSession, SkillSession, getSkill, isSystemManagedSkill, TERMINAL_SKILL_ID, BuiltinSkillEnablement, collectUserMessageNotes } from './skills'
 import type { SkillData } from './skills'
@@ -6540,6 +6541,7 @@ export abstract class Agent {
       getEarlierSteps: () => this.earlierStepsForAutoReview(),
       getMessages: () => run.messages,
       aiRules: this.services.configService?.getAiRules() ?? '',
+      freeDirs: listFreeZoneDirs(run.config.commandRiskPolicy?.extraFreeDirs),
       environment: forWorker
         ? { terminalType: 'assistant', cwd: place?.cwd, os: place?.os }
         : {

@@ -76,6 +76,12 @@ export interface AuditedCall {
   dynamicPaths?: boolean
   /** 出现过 `--`（其后都不是选项）。bash 解析时 `--` 本身不进 flags / paths；PowerShell 留在 flags 里 */
   endOfOptions?: boolean
+  /**
+   * 这条命令执行时的当前目录已被前面的 `cd 绝对路径 &&` 确定（词法绝对路径，已去转义、未展开 ~）。
+   * 只有「整条命令里唯一一个 cd、在最前面的 && 串里、本命令在它之后」才会带上，见 extract-calls。
+   * 带上后，相对路径按它解析并视同绝对路径（可降级自由区）；没带就按审计默认目录猜，不降级。
+   */
+  anchorCwd?: string
 }
 
 /**

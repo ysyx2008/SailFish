@@ -34,7 +34,9 @@ export { isWindowsNativeShellCommand } from './platform-detect'
 
 export {
   adjustRiskByPathZones,
+  getBuiltinFreeDirs,
   getBuiltinTempRoots,
+  listFreeZoneDirs,
   getWorkspaceZone,
   isLexicallyAbsolutePath,
   isSystemPath,
