@@ -1,5 +1,9 @@
 /**
- * 输出 token 速度：吐字中跟这一段走，停住后留下刚结束那一段的平均。
+ * 吐字时：这一段新出来的字，按已经过去的时间折成每秒，大约每秒跳一次。
+ * 停下来之后：均速是整场已经输出的 token ÷ 整场从开始到停住的时间。
+ *
+ * 屏幕上的输出只含这次开着之后新花的。以前的对话这次才接着聊时，
+ * 整场时间也从这次接着聊开始算。
  */
 import { computed, onBeforeUnmount, ref, toValue, watch, type MaybeRefOrGetter, type Ref } from 'vue'
 
@@ -10,8 +14,11 @@ export interface OutputRateState {
   rate: number | null
 }
 
-/** 开口后至少过这么久才报速度，避免首包把数字打飞 */
+/** 开口后至少过这么久才报速度，避免分母还没站稳就把数字打飞 */
 export const OUTPUT_RATE_MIN_ELAPSED_MS = 200
+
+/** 本页加载时刻。比这更早的对话起点不属于这次屏幕上的字数。 */
+const PAGE_LOADED_AT = Date.now()
 
 export function formatTokenRate(rate: number): string {
   if (!Number.isFinite(rate) || rate <= 0) return ''
@@ -24,14 +31,29 @@ export function computeTokenRate(tokens: number, elapsedMs: number): number | nu
   return tokens / (elapsedMs / 1000)
 }
 
+/** 这场用来当均速分母的起点。过早的起点（这次打开之前的旧对话）不用。 */
+export function resolveSessionStart(
+  startedAt: number | undefined,
+  now: number,
+  observedStart: number,
+  earliestKeptStart: number,
+): number {
+  if (
+    typeof startedAt === 'number'
+    && startedAt > 0
+    && startedAt <= now
+    && startedAt >= earliestKeptStart
+  ) {
+    return startedAt
+  }
+  return observedStart
+}
+
 export function createOutputRateTracker() {
   let lastTokens = 0
   let burstStartTokens = 0
   let burstStartAt = 0
-  let lastIncreaseAt = 0
   let outputting = false
-  let runStartedAt = -1
-  let runStartTokens = 0
   let state: OutputRateState = { kind: null, rate: null }
 
   function applyRate(kind: OutputRateKind, tokens: number, elapsedMs: number): OutputRateState {
@@ -44,21 +66,11 @@ export function createOutputRateTracker() {
     return lastTokens - burstStartTokens
   }
 
-  function promoteToAvg(): OutputRateState {
-    if (state.kind === 'live' && state.rate != null) {
-      state = { kind: 'avg', rate: state.rate }
-    }
-    return state
-  }
-
   function reset(tokens = 0): OutputRateState {
     lastTokens = Math.max(0, tokens)
     burstStartTokens = lastTokens
     burstStartAt = 0
-    lastIncreaseAt = 0
     outputting = false
-    runStartedAt = -1
-    runStartTokens = lastTokens
     state = { kind: null, rate: null }
     return state
   }
@@ -73,12 +85,6 @@ export function createOutputRateTracker() {
     },
 
     reset,
-
-    /** 这场开始跑：只跳一次数字就停时，用这场的墙钟当平均的分母 */
-    markRunStart(tokens: number, now: number): void {
-      runStartedAt = now
-      runStartTokens = Math.max(0, tokens)
-    },
 
     ingest(tokens: number, now: number): OutputRateState {
       const next = Math.max(0, tokens)
@@ -98,7 +104,6 @@ export function createOutputRateTracker() {
         burstStartAt = now
       }
       lastTokens = next
-      lastIncreaseAt = now
       return applyRate('live', burstTokens(), now - burstStartAt)
     },
 
@@ -108,25 +113,15 @@ export function createOutputRateTracker() {
       return applyRate('live', burstTokens(), now - burstStartAt)
     },
 
-    settle(now?: number): OutputRateState {
-      if (outputting) {
-        outputting = false
-        const span = lastIncreaseAt - burstStartAt
-        let elapsed = span
-        if (elapsed < OUTPUT_RATE_MIN_ELAPSED_MS && now != null) {
-          elapsed = now - burstStartAt
-        }
-        if (
-          elapsed < OUTPUT_RATE_MIN_ELAPSED_MS &&
-          now != null &&
-          runStartedAt >= 0 &&
-          burstStartTokens === runStartTokens
-        ) {
-          elapsed = now - runStartedAt
-        }
-        applyRate('avg', burstTokens(), elapsed)
-      }
-      return promoteToAvg()
+    /**
+     * 这一段吐完了。留下的均速用整场的输出和整场的时间，
+     * 不用这一段自己的速度。
+     */
+    settleSession(totalTokens: number, elapsedMs: number): OutputRateState {
+      outputting = false
+      const next = computeTokenRate(totalTokens, elapsedMs)
+      if (next != null) state = { kind: 'avg', rate: next }
+      return state
     },
   }
 }
@@ -135,14 +130,18 @@ export function useOutputTokenRate(
   completionTokens: MaybeRefOrGetter<number>,
   isRunning: MaybeRefOrGetter<boolean>,
   sessionKey: MaybeRefOrGetter<string>,
+  sessionStartedAt: MaybeRefOrGetter<number | undefined>,
+  sessionEndedAt: MaybeRefOrGetter<number | undefined>,
 ): {
   rateKind: Ref<OutputRateKind | null>
   rateText: Ref<string>
 } {
   const tracker = createOutputRateTracker()
   const snapshot = ref<OutputRateState>(tracker.getState())
+  let observedStart = 0
   let idleTimer = 0
-  let tickTimer = 0
+  let liveTimer = 0
+  let avgTimer = 0
   const IDLE_MS = 1200
   const TICK_MS = 200
 
@@ -150,66 +149,112 @@ export function useOutputTokenRate(
     snapshot.value = { ...tracker.getState() }
   }
 
+  function elapsedMs(now: number): number {
+    const tokens = toValue(completionTokens)
+    const running = toValue(isRunning)
+    if (observedStart === 0 && (running || tokens > 0)) observedStart = now
+    const start = resolveSessionStart(
+      toValue(sessionStartedAt),
+      now,
+      observedStart,
+      PAGE_LOADED_AT - 5000,
+    )
+    if (start <= 0) return 0
+    if (running) return now - start
+    const ended = toValue(sessionEndedAt)
+    if (typeof ended === 'number' && ended >= start) return ended - start
+    return now - start
+  }
+
   function clearIdle() {
-    if (idleTimer) {
-      clearTimeout(idleTimer)
-      idleTimer = 0
-    }
+    if (!idleTimer) return
+    clearTimeout(idleTimer)
+    idleTimer = 0
   }
 
-  function stopTicking() {
-    if (tickTimer) {
-      clearInterval(tickTimer)
-      tickTimer = 0
-    }
+  function stopLive() {
+    if (!liveTimer) return
+    clearInterval(liveTimer)
+    liveTimer = 0
   }
 
-  function startTicking() {
-    if (tickTimer) return
-    tickTimer = window.setInterval(() => {
-      tracker.tick(performance.now())
-      sync()
-    }, TICK_MS)
+  function stopAvg() {
+    if (!avgTimer) return
+    clearInterval(avgTimer)
+    avgTimer = 0
   }
 
   function settleNow() {
     clearIdle()
-    stopTicking()
-    tracker.settle(performance.now())
+    stopLive()
+    tracker.settleSession(toValue(completionTokens), elapsedMs(Date.now()))
     sync()
+    if (toValue(isRunning) && !tracker.isOutputting()) startAvg()
+    else stopAvg()
+  }
+
+  function startLive() {
+    if (liveTimer) return
+    stopAvg()
+    liveTimer = window.setInterval(() => {
+      tracker.tick(Date.now())
+      sync()
+    }, TICK_MS)
+  }
+
+  function startAvg() {
+    if (avgTimer || tracker.isOutputting()) return
+    avgTimer = window.setInterval(() => settleNow(), 1000)
+  }
+
+  function arm() {
+    if (tracker.isOutputting()) {
+      startLive()
+      clearIdle()
+      idleTimer = window.setTimeout(settleNow, IDLE_MS)
+      return
+    }
+    stopLive()
+    clearIdle()
+    if (toValue(isRunning)) startAvg()
+    else stopAvg()
   }
 
   watch(() => toValue(sessionKey), () => {
+    observedStart = 0
     clearIdle()
-    stopTicking()
+    stopLive()
+    stopAvg()
     tracker.reset(toValue(completionTokens))
-    sync()
+    settleNow()
   }, { immediate: true })
 
   watch(() => toValue(completionTokens), (tokens) => {
-    tracker.ingest(tokens, performance.now())
+    tracker.ingest(tokens, Date.now())
     sync()
-    if (tracker.isOutputting()) {
-      startTicking()
-      clearIdle()
-      idleTimer = window.setTimeout(settleNow, IDLE_MS)
-    } else {
-      clearIdle()
-      stopTicking()
-    }
+    arm()
   })
 
   watch(() => toValue(isRunning), (running) => {
     if (running) {
-      tracker.markRunStart(toValue(completionTokens), performance.now())
+      arm()
       return
     }
     settleNow()
   })
 
+  watch(
+    () => [toValue(sessionStartedAt), toValue(sessionEndedAt)] as const,
+    () => {
+      if (tracker.isOutputting()) return
+      settleNow()
+    },
+  )
+
   onBeforeUnmount(() => {
     clearIdle()
-    stopTicking()
+    stopLive()
+    stopAvg()
   })
 
   return {

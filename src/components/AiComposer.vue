@@ -133,6 +133,10 @@ const props = defineProps<{
   goalAgentKey?: string
   terminalType?: TerminalType
   sessionId?: string
+  /** 这场对话开始的时刻。均速用它当整场时间的起点 */
+  sessionStartedAt?: number
+  /** 已经停住时，最后有动静的时刻 */
+  sessionEndedAt?: number
   sshHost?: string
   resumeGoal?: () => void | Promise<void>
   /** 嵌入欢迎页等非面板场景：去掉顶部分割线，使用独立圆角容器 */
@@ -1761,7 +1765,9 @@ const consumedTokenLabel = computed(() => {
 const { rateKind: outputRateKind, rateText: outputRateText } = useOutputTokenRate(
   () => props.contextStats.consumedCompletionTokens ?? 0,
   () => props.isAgentRunning,
-  () => props.currentTabId,
+  () => props.sessionId || props.currentTabId,
+  () => props.sessionStartedAt,
+  () => props.sessionEndedAt,
 )
 
 function usageShare(part: number, whole: number): string | undefined {

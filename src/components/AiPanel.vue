@@ -1008,6 +1008,18 @@ const cacheBarWidth = computed(() => {
   return Math.round(cacheHitRate / 100 * percentage * 100) / 100
 })
 
+/** 这场已经停住时，均速的终点用最后一条的时间，不再把人留在屏幕前的时间算进去 */
+const sessionOutputEndedAt = computed(() => {
+  if (isAgentRunning.value) return undefined
+  const steps = agentState.value?.steps
+  if (!steps?.length) return undefined
+  let latest = 0
+  for (const step of steps) {
+    if (typeof step.timestamp === 'number' && step.timestamp > latest) latest = step.timestamp
+  }
+  return latest || undefined
+})
+
 // ==================== 配置相关 ====================
 
 const hasAiConfig = computed(() => configStore.hasAiConfig)
@@ -3479,6 +3491,8 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         :goal-agent-key="goalAgentKey"
         :terminal-type="terminalStore.tabs.find(t => t.id === currentTabId)?.type || 'assistant'"
         :session-id="terminalStore.tabs.find(t => t.id === currentTabId)?.agentState?.sessionId"
+        :session-started-at="agentState?.sessionStartTime"
+        :session-ended-at="sessionOutputEndedAt"
         :ssh-host="terminalStore.tabs.find(t => t.id === currentTabId)?.sshConfig?.host"
       >
         <template #goal>
