@@ -584,6 +584,29 @@ describe('ContextWindowManager.emergencyCompress', () => {
     expect(run.compressedArchives).toBeUndefined()
   })
 
+  it('冷启动：新一句话是最后一条、之后没有执行步骤，也能把它之前的历史归档', () => {
+    const m = new ContextWindowManager(makeDeps())
+    const big = 'x'.repeat(2000)
+    const run = makeRun([
+      { role: 'system', content: 'sys prompt' },
+      user('任务一：排查登录'),
+      asst('', [tc('c1', 'exec')]), tool('c1', big),
+      asst('', [tc('c2', 'exec')]), tool('c2', big),
+      asst('任务一完成：服务端端口不通'),
+      user('任务二：开个终端窗格跑 ls')
+    ])
+    const before = m.estimateMessagesTokens(run.messages)
+    const result = m.emergencyCompress(run)
+    expect(result).not.toBeNull()
+    expect(run.compressedArchives).toHaveLength(1)
+    expect(m.estimateMessagesTokens(run.messages)).toBeLessThan(before)
+    // 请求仍以用户这句话收尾（不能以 assistant 结尾）
+    expect(run.messages[run.messages.length - 1]).toMatchObject({ role: 'user', content: '任务二：开个终端窗格跑 ls' })
+    // 中间过程进了归档，不再占上下文
+    expect(run.messages.some(msg => msg.role === 'tool')).toBe(false)
+    expect(JSON.stringify(run.messages)).toContain('recall(archive_id')
+  })
+
   it('多次调用：每次产生新 archiveId，归档累积', () => {
     const m = new ContextWindowManager(makeDeps())
     const run = makeRun([

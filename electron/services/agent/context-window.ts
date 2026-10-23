@@ -627,10 +627,7 @@ export class ContextWindowManager {
     const beforeTokens = this.estimateTotalTokens(run.messages)
 
     // 编号按这场已有归档的最大号接着走，不按条数。条数在缺号时会撞上旧 ID。
-    if (!run.compressedArchives) {
-      run.compressedArchives = []
-    }
-    const archiveId = nextCompressedArchiveId(run.compressedArchives)
+    const archiveId = nextCompressedArchiveId(run.compressedArchives ?? [])
 
     // 段 A：当前任务之前的历史。成对提取「用户原话 + 最终答复」，按预算从近往远
     // 保留，其余（中间过程的 assistant/tool）连同段 B 一起进归档。
@@ -648,6 +645,7 @@ export class ContextWindowManager {
     if (toCompress.length === 0 && historyArchived.length === 0) return null
 
     // 归档原始消息(深拷贝,防止后续 run.messages 修改影响归档)
+    run.compressedArchives = run.compressedArchives ?? []
     run.compressedArchives.push({
       id: archiveId,
       messages: JSON.parse(JSON.stringify([...historyArchived, ...toCompress])),
@@ -672,13 +670,19 @@ export class ContextWindowManager {
     // 放到请求之前会让时序错乱。这个位置同时让角色天然交替——成对历史以
     // assistant 收尾、接 user、再接 assistant 摘要，不会出现连续同角色。
     const preserved = run.messages.slice(lastUserIndex + 1 + toCompress.length)
-    run.messages = [
-      ...systemMessages,
-      ...preservedHistory,
-      run.messages[lastUserIndex],
-      summaryMessage,
-      ...preserved
-    ]
+    if (toCompress.length === 0 && preserved.length === 0) {
+      // 冷启动：当前这句话就是最后一条，后面没有执行步骤，被归档的只有它之前的历史。
+      // 摘要放在这句话前面，免得请求以 assistant 结尾。
+      run.messages = [...systemMessages, ...preservedHistory, summaryMessage, run.messages[lastUserIndex]]
+    } else {
+      run.messages = [
+        ...systemMessages,
+        ...preservedHistory,
+        run.messages[lastUserIndex],
+        summaryMessage,
+        ...preserved
+      ]
+    }
 
     // 序列已变,上一轮的 prompt_tokens 不再对应当前 messages——继续拿它当锚点
     // 会把刚刚释放掉的部分又算回来,压缩看起来"没生效"。
@@ -931,7 +935,16 @@ export class ContextWindowManager {
     keepRecent: number,
     range?: { lastUserIndex: number; toCompress: AiMessage[] }
   ): CompressResult | null {
-    return this.doCompress(run, summary, keepRecent, range ?? this.findCompressibleRange(run, keepRecent))
+    return this.doCompress(run, summary, keepRecent, range ?? this.findCompressibleRange(run, keepRecent) ?? this.findHistoryOnlyRange(run))
+  }
+
+  /**
+   * 这句话之后还没有任何执行步骤（冷启动重装、刚开口就装不下）时，没有「当前任务」可压，
+   * 但这句话之前的历史照样可以归档。返回空的当前任务范围，让历史那一段能被处理。
+   */
+  private findHistoryOnlyRange(run: AgentRun): { lastUserIndex: number; toCompress: AiMessage[] } | null {
+    const lastUserIndex = this.findLastRealUserIndex(run.messages)
+    return lastUserIndex === -1 ? null : { lastUserIndex, toCompress: [] }
   }
 
   /**
