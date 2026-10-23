@@ -10,7 +10,7 @@ import type { AgentStep, SubAgentResult } from '@shared/types'
 import type { AgentContext } from '../types'
 import { getDefaultShell, getLocalOS } from '../../../utils/platform'
 import { getMetaByName } from '../tool-metadata'
-import { MAX_LIVE_CHILDREN, type ChildSnapshot, type RosterSpawnDeps, type SpawnTask, type SubAgentRoster } from '../sub-agent-roster'
+import { MAX_LIVE_CHILDREN, type ChildSnapshot, type DormantChild, type RosterSpawnDeps, type SpawnTask, type SubAgentRoster } from '../sub-agent-roster'
 import { parseForkTurns, sanitizeParentMessages, type ForkTurns } from '../sanitize-parent-messages'
 import type { ToolExecutorConfig, ToolResult, AgentConfig } from './types'
 import { getAgentTools, filterSubAgentTools, dispatchTitle } from '../tools'
@@ -348,6 +348,32 @@ class ProgressThrottle {
   }
 }
 
+const NOTICE_LISTED_CALLS = 5
+const NOTICE_TARGET_CHARS = 80
+
+/**
+ * 叫醒一位以前停下的伙计时，开口前告诉他上次是怎么停的。只讲事实：停在哪、什么没有记下来。
+ * 做完的没有可说的。
+ */
+export function resumeNoticeFor(child: DormantChild): string {
+  if (child.status === 'completed' && !child.abnormalExit) return ''
+  const head = child.abnormalExit
+    ? t('dispatch.resume_abnormal')
+    : child.status === 'failed'
+      ? t('dispatch.resume_failed', { error: child.error || '-' })
+      : t('dispatch.resume_interrupted')
+  const calls = child.interruptedCalls ?? []
+  if (calls.length === 0) return head
+  const shown = calls.slice(0, NOTICE_LISTED_CALLS).map(call => {
+    const target = call.target && call.target.length > NOTICE_TARGET_CHARS
+      ? `${call.target.slice(0, NOTICE_TARGET_CHARS)}…`
+      : call.target
+    return target ? `${call.tool} ${target}` : call.tool
+  })
+  const list = calls.length > shown.length ? `${shown.join('、')}…` : shown.join('、')
+  return `${head}\n${t('dispatch.resume_unanswered', { count: calls.length, list })}`
+}
+
 export function spawnDeps(
   executor: ToolExecutorConfig,
   progressStepId: string,
@@ -383,6 +409,8 @@ export function spawnDeps(
       executor.knockParent?.(message)
     },
     openingFor: expertOpening,
+    restoreDormant: executor.restoreDormantChildren,
+    resumeNotice: resumeNoticeFor,
     teamTexts: createTeamTexts(team => workspace.teamTranscriptPath(team)),
     onProgress: () => {
       progress.schedule()

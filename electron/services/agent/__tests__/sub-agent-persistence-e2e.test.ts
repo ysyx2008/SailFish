@@ -288,4 +288,143 @@ describe('伙计的对话随主会话存盘（真实 SailFish.run）', () => {
     expect(messagesOf(record)[execAt + 1].role).toBe('tool')
     expect(fs.readFileSync(target, 'utf-8')).toBe('half')
   })
+
+  it('被打断的伙计下一轮被点名再交代：从盘上接回自己的对话，先被告知上次的情形，再接着干', async () => {
+    const history = new HistoryService()
+    const target = path.join(tmpDir, 'half.txt')
+    let aliceTurn = 0
+    let phase: 'first' | 'second' = 'first'
+    let dispatched = false
+    let followedUp = false
+    let slowToolAnnounced = false
+
+    const services = makeServices((who) => {
+      if (who === 'parent') {
+        if (!dispatched) {
+          dispatched = true
+          return {
+            tool_calls: [tc('dispatch_agents', {
+              tasks: [{ name: 'alice', description: '写文件', prompt: '我是alice，写一份文件然后做一件很慢的事' }],
+            })],
+          }
+        }
+        if (phase === 'second' && !followedUp) {
+          followedUp = true
+          return { tool_calls: [tc('followup_agent', { name: 'alice', message: '换个快一点的办法，把剩下的做完' })] }
+        }
+        return { content: '等他' }
+      }
+      aliceTurn++
+      if (aliceTurn === 1) return { tool_calls: [tc('write_text_file', { path: target, content: 'half', mode: 'create' })] }
+      if (aliceTurn === 2) {
+        slowToolAnnounced = true
+        return { tool_calls: [tc('exec', { command: 'sleep 30' })] }
+      }
+      return { content: '换了办法，做完了' }
+    })
+
+    const parent = newParent(services, history, 'e2e-persist-revive')
+    const first = parent.run('派 alice 去干活', ctx()).catch(() => undefined)
+    await until(() => slowToolAnnounced)
+    await sleep(300)
+    parent.abort()
+    await first
+
+    const sessionId = parent.getSessionId()!
+    const store = history.getAgentRecordStore()
+    const alice = () => store.subAgents.list(sessionId).find(c => c.state.name === 'alice')!
+    await until(() => !!alice()?.state.error)
+    const before = messagesOf(store.subAgents.readRecord(alice())!)
+    expect(alice().state.status).toBe('interrupted')
+
+    // 第二轮：主人点名让 alice 接着干
+    phase = 'second'
+    await parent.run('让 alice 接着做', ctx())
+    await until(() => alice().state.status === 'completed')
+
+    // alice 这次开口时，请求里有她自己以前的整段对话，最后是上次的情形加主人的新话
+    const revived = calls.filter(c => c.who === 'alice').at(-1)!
+    const sent = revived.messages
+    const sentCalls = sent.flatMap(m => (m.tool_calls as ToolCall[] | undefined)?.map(t => t.function.name) ?? [])
+    expect(sentCalls).toEqual(['write_text_file', 'exec'])
+    const lastUser = String(sent[sent.length - 1].content)
+    expect(sent[sent.length - 1].role).toBe('user')
+    expect(lastUser).toContain('[上次的情形]')
+    expect(lastUser).toContain('中断')
+    expect(lastUser).toContain('换个快一点的办法')
+    expect(lastUser.indexOf('[上次的情形]')).toBeLessThan(lastUser.indexOf('换个快一点的办法'))
+    // 每个工具调用都有对应的结果，请求是完整的
+    const answered = new Set(sent.filter(m => m.role === 'tool').map(m => m.tool_call_id))
+    const announced = sent.flatMap(m => (m.tool_calls as ToolCall[] | undefined)?.map(t => t.id) ?? [])
+    expect(announced.every(id => answered.has(id))).toBe(true)
+    // 开局里带着当时主人的对话
+    expect(text(sent)).toContain('派 alice 去干活')
+
+    // 盘上：以前的对话原样在前，新的接在后面；状态回到做完，上次的错误不再带着
+    const after = messagesOf(store.subAgents.readRecord(alice())!)
+    expect(after.length).toBeGreaterThan(before.length)
+    expect(after.slice(0, before.length)).toEqual(before)
+    expect(String(after[after.length - 1].content)).toContain('做完了')
+    expect(alice().state.error).toBeUndefined()
+    expect(alice().state.interruptedCalls).toBeUndefined()
+    expect(fs.readFileSync(target, 'utf-8')).toBe('half')
+  })
+
+  it('程序异常退出后重开：盘上还写着「在干」的，叫醒时被告知上次异常退出，对话照样接回', async () => {
+    const history = new HistoryService()
+    let aliceTurn = 0
+    let dispatched = false
+
+    const services = makeServices((who) => {
+      if (who === 'parent') {
+        if (!dispatched) {
+          dispatched = true
+          return { tool_calls: [tc('dispatch_agents', { tasks: [{ name: 'alice', description: '读东西', prompt: '我是alice，读一下配置' }] })] }
+        }
+        return { content: '好' }
+      }
+      aliceTurn++
+      return aliceTurn === 1
+        ? { tool_calls: [tc('list_directory', { path: tmpDir })] }
+        : { content: '读完了' }
+    })
+
+    const parent = newParent(services, history, 'e2e-persist-crash')
+    await parent.run('派 alice', ctx())
+    const sessionId = parent.getSessionId()!
+    const startedAt = parent.getSessionStartTime()!
+    const store = history.getAgentRecordStore()
+    const aliceDir = store.subAgents.list(sessionId)[0].dir
+
+    // 模拟程序在她干活时被强杀：盘上最后一次写的是「在干」
+    const stateFile = path.join(aliceDir, 'state.json')
+    const state = JSON.parse(fs.readFileSync(stateFile, 'utf-8'))
+    fs.writeFileSync(stateFile, JSON.stringify({ ...state, status: 'running', result: undefined }), 'utf-8')
+
+    // 重开：全新的进程、全新的主人，接着同一场会话
+    let followedUp = false
+    const history2 = new HistoryService()
+    const services2 = makeServices((who) => {
+      if (who === 'parent') {
+        if (!followedUp) {
+          followedUp = true
+          return { tool_calls: [tc('followup_agent', { name: 'alice', message: '接着来' })] }
+        }
+        return { content: '等她' }
+      }
+      aliceTurn++
+      return { content: '接着做完了' }
+    })
+    const parent2 = newParent(services2, history2, 'e2e-persist-crash')
+    await parent2.run('继续', { ...ctx(), sessionId, sessionStartTime: startedAt })
+    expect(parent2.getSessionId()).toBe(sessionId)
+
+    const revived = calls.filter(c => c.who === 'alice').at(-1)!
+    const lastUser = String(revived.messages[revived.messages.length - 1].content)
+    expect(lastUser).toContain('异常退出')
+    expect(lastUser).toContain('接着来')
+    expect(text(revived.messages)).toContain('读一下配置')
+    expect(revived.messages.flatMap(m => (m.tool_calls as ToolCall[] | undefined)?.map(t => t.function.name) ?? [])).toEqual(['list_directory'])
+    await until(() => history2.getAgentRecordStore().subAgents.list(sessionId)[0].state.status === 'completed')
+  })
 })

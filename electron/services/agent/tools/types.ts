@@ -204,6 +204,8 @@ export interface ToolExecutorConfig {
   getToolCatalog?: () => import('../../ai.service').ToolDefinition[]
   /** 创建不进会话表的伙计实例 */
   createChildAgent?: (name: string) => import('../sub-agent-roster').ChildAgentHandle
+  /** 这场会话以前派出的、已经停下的伙计（存在盘上，点名再交代时叫醒） */
+  restoreDormantChildren?: () => import('../sub-agent-roster').DormantChild[]
   /**
    * 记下这次工具调用是对哪台主机动手。
    * 由会动手的工具经 hostScope 元数据触发，不按工具名分支。

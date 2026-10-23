@@ -55,6 +55,7 @@ import {
   approvalFromSettings,
   executionModeOfApproval,
   inferConversationKind,
+  type AgentStepRecord,
   type ApprovalMode,
   type AssignedBy,
   type AutoReviewTrail,
@@ -228,6 +229,8 @@ export abstract class Agent {
   private _isSubAgent = false
   /** 伙计的存盘人：对话记录和状态存在主会话下面，被打断后能接着干。没有它就不存 */
   private _childRecorder?: ChildRecorder
+  /** 叫醒时从盘上读回来的对话，第一次开跑装进自己的会话 */
+  private _restoredChildTranscript?: { messages: AiMessage[]; steps?: AgentStepRecord[] }
   /** 伙计已经发出过模型请求：之后的请求在缓冲池里排在新伙计前面 */
   private _subAgentHasRequested = false
 
@@ -551,6 +554,14 @@ export abstract class Agent {
 
   get childRecorder(): ChildRecorder | undefined {
     return this._childRecorder
+  }
+
+  /**
+   * 叫醒盘上的伙计：他以前的对话和步骤，等第一次开跑建好自己的会话后装进去，
+   * 这样往后每轮检查点写的是「旧的加新的」，不会把盘上的旧对话盖掉。
+   */
+  restoreChildTranscript(messages: AiMessage[], steps?: AgentStepRecord[]): void {
+    this._restoredChildTranscript = { messages, steps }
   }
 
   /** 这场会话开始的时间（伙计的记录按它放进日期目录） */
@@ -1947,6 +1958,11 @@ export abstract class Agent {
       this.applyArmedTitle()
       this.applyArmedAssignedBy()
       }
+    }
+
+    if (this._restoredChildTranscript && this._conversation) {
+      this._conversation.setRestoredTranscript(this._restoredChildTranscript.messages, this._restoredChildTranscript.steps)
+      this._restoredChildTranscript = undefined
     }
 
     if (this.attachPendingGoal()) {
