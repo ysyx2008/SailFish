@@ -1140,13 +1140,14 @@ describe('上下文开销', () => {
 })
 
 describe('伙计自己的工作契约', () => {
-  it('写明硬墙不确认、高风险跟这场同一道门、写删只认 scratch 绝对路径', () => {
+  it('写明硬墙不确认、高风险跟这场同一道门、写删免确认要位置事先能确定（绝对路径或 cd 绝对路径 &&）', () => {
     const prompt = PromptBuilder.buildSubAgentSystemPrompt({
       context: createMockContext({ terminalType: 'assistant' }),
     })
     expect(prompt).toContain('不会向用户确认')
     expect(prompt).toContain('不排除存在误报可能')
-    expect(prompt).toContain('只认绝对路径')
+    expect(prompt).toContain('目标位置在执行前就能确定')
+    expect(prompt).toContain('先 `cd 绝对路径`')
     expect(prompt).toContain('scratch')
     expect(prompt).toContain('桌面等正式目录')
     expect(prompt).toContain('同一道门')

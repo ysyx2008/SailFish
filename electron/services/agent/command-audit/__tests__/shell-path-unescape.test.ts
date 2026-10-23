@@ -81,7 +81,7 @@ describe('isLexicallyAbsolutePath', () => {
 })
 
 describe('自由区降级只认词法绝对路径', () => {
-  it('cd Desktop && rm 相对路径：宽松模式需确认（不按 scratch cwd 误判 free）', async () => {
+  it('cd Desktop && rm 相对路径：宽松模式需确认（按 cd 定下的桌面算，不按 scratch cwd 误判 free）', async () => {
     const ctx = defaultAuditContext()
     const assessment = await assessShellRisk(
       'cd /Users/yushen/Desktop && rm rm_test_relative.txt',
@@ -91,6 +91,16 @@ describe('自由区降级只认词法绝对路径', () => {
     expect(commandNeedsConfirm(assessment, 'relaxed')).toBe(true)
     const rm = assessment.calls.find(c => c.cmd === 'rm')
     expect(rm?.pathZones).toEqual(['outside'])
+    // 位置已由 cd 确定（就是桌面），原因只剩命令本身高危，不再说「相对路径」
+    expect(rm?.reasons.some(r => r.includes('高危命令') || r.includes('High-risk'))).toBe(true)
+  })
+
+  it('cd 目录写成变量：位置确定不了，仍按相对路径不降级', async () => {
+    const ctx = defaultAuditContext()
+    const assessment = await assessShellRisk('cd "$HOME/Desktop" && rm rm_test_relative.txt', ctx)
+    expect(assessment.level).toBe('dangerous')
+    expect(commandNeedsConfirm(assessment, 'relaxed')).toBe(true)
+    const rm = assessment.calls.find(c => c.cmd === 'rm')
     expect(rm?.reasons.some(r => r.includes('相对路径') || r.includes('relative path'))).toBe(true)
   })
 

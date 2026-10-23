@@ -181,6 +181,8 @@ export const ARGV_COMMAND_RULES: Record<string, CommandRule> = {
     pathMode: 'fixed',
     pathArgIndices: [0],
   }),
+  // cd 只换当前 shell 的目录，不碰任何文件。不收进来的话，每条带 cd 的命令都会被当成未识别命令拖到中危
+  cd: rule('cd', 'safe', { safeFlags: new Set(['-P', '-L']), pathMode: 'all' }),
   pwd: rule('pwd', 'safe', { pathMode: 'none' }),
   echo: rule('echo', 'safe', { pathMode: 'none' }),
   sleep: rule('sleep', 'safe', { pathMode: 'none' }),

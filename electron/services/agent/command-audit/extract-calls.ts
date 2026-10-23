@@ -7,6 +7,7 @@ import { parseShellCommand, getShellAstModule } from './parser'
 import type { AuditedCall, AuditedRedirect, AuditContext } from './types'
 import { basenameCommand } from './whitelist'
 import { unescapeShellWordLiteral } from './unescape-shell-literal'
+import { isLexicallyAbsolutePath } from './workspace-guard'
 
 function shellDialect(ctx: AuditContext): 'bash' | 'posix' | 'mksh' {
   if (ctx.shell === 'sh') return 'posix'
@@ -85,6 +86,97 @@ async function collectCallsWithRedirs(ast: ShellFile): Promise<CallsAndAllRedirs
     },
   })
   return { callsWithRedirs, allWriteRedirects }
+}
+
+// ==================== cd 锚点 ====================
+//
+// 唯一认得的形状：整条命令里有且只有一个 `cd 绝对路径`，它是最前面那串 `&&` 的一环，
+// 排在它后面的命令执行时的当前目录就确定了（cd 失败则后面不会跑）。
+// 其余一切（`;`/`||` 连接、子 shell、函数、管道、第二个 cd、变量或通配符……）都不认，
+// 照旧当作「不知道在哪个目录」。不去逐个堵 shell 的花样，只认这一种写得死的形状。
+
+/** 目录写法里不许出现的：变量、命令替换、通配符、花括号 */
+const UNSTABLE_DIR_CHARS = /[$`*?[\]{}]/
+/** 出现这些字样的命令，不论位置，整条命令都不认 cd */
+const CWD_WORDS = new Set(['cd', 'pushd', 'popd'])
+/** 会改当前 shell 的目录，或在当前 shell 里执行不明内容的命令 */
+const IN_SHELL_CMDS = new Set(['pushd', 'popd', 'source', '.', 'eval', 'alias', 'shopt'])
+
+/**
+ * 把一条语句展开成「纯 && 串」里按执行顺序排列的各环；不是纯 && 串（含后台、取反）返回 null。
+ * 每一环只能是普通命令，或普通命令组成的管道。
+ */
+function flattenAndChain(stmt: Stmt): Stmt[] | null {
+  if (stmt.negated || stmt.background || stmt.coprocess) return null
+  const cmd = stmt.cmd
+  if (!cmd) return null
+  if (cmd.type === 'BinaryCmd' && cmd.op === '&&') {
+    if (stmt.redirs.length > 0) return null
+    const left = flattenAndChain(cmd.x)
+    const right = flattenAndChain(cmd.y)
+    return left && right ? [...left, ...right] : null
+  }
+  return isPlainCallOrPipeline(stmt) ? [stmt] : null
+}
+
+function isPlainCallOrPipeline(stmt: Stmt): boolean {
+  if (stmt.negated || stmt.background || stmt.coprocess) return false
+  const cmd = stmt.cmd
+  if (!cmd) return false
+  if (cmd.type === 'CallExpr') return true
+  if (cmd.type === 'BinaryCmd' && (cmd.op === '|' || cmd.op === '|&')) {
+    return isPlainCallOrPipeline(cmd.x) && isPlainCallOrPipeline(cmd.y)
+  }
+  return false
+}
+
+function callsOfPipeline(stmt: Stmt): CallExprNode[] {
+  const cmd = stmt.cmd
+  if (!cmd) return []
+  if (cmd.type === 'CallExpr') return [cmd]
+  if (cmd.type === 'BinaryCmd') return [...callsOfPipeline(cmd.x), ...callsOfPipeline(cmd.y)]
+  return []
+}
+
+/** 找出能确定当前目录的命令：CallExpr → 它执行时所在的目录（词法绝对路径，已去转义） */
+async function findCdAnchors(ast: ShellFile): Promise<Map<CallExprNode, string>> {
+  const anchors = new Map<CallExprNode, string>()
+  const { walk, wordToLit } = await getShellAstModule()
+
+  let unsafe = false
+  const cdCalls: { call: CallExprNode; words: (string | null)[] }[] = []
+  walk(ast as unknown as import('@questi0nm4rk/shell-ast').ShellNode, {
+    FuncDecl: () => { unsafe = true },
+    CallExpr: (call: CallExprNode) => {
+      if (call.args.length === 0) { unsafe = true; return } // 纯赋值（HOME=… 之类）
+      const words = call.args.map(w => wordToLit(w))
+      const name = words[0]
+      if (name === null) { unsafe = true; return } // 命令名运行时才知道
+      if (IN_SHELL_CMDS.has(name)) unsafe = true
+      if ((name === 'builtin' || name === 'command') && words.length > 1 && words[1] === null) unsafe = true
+      if (words.some(w => w !== null && CWD_WORDS.has(w))) cdCalls.push({ call, words })
+    },
+  })
+  if (unsafe || cdCalls.length !== 1) return anchors
+
+  const { call: cdCall, words } = cdCalls[0]
+  if (words.length !== 2 || words[0] !== 'cd' || words[1] === null) return anchors
+  const dir = unescapeShellWordLiteral(words[1])
+  if (UNSTABLE_DIR_CHARS.test(dir)) return anchors
+  if (!isLexicallyAbsolutePath(dir)) return anchors
+  if (dir.split(/[\\/]/).includes('..')) return anchors
+
+  for (const stmt of ast.stmts) {
+    const links = flattenAndChain(stmt)
+    if (!links) continue
+    const at = links.findIndex(link => link.cmd === cdCall)
+    if (at < 0) continue
+    for (const link of links.slice(at + 1)) {
+      for (const call of callsOfPipeline(link)) anchors.set(call, dir)
+    }
+    break
+  }
+  return anchors
 }
 
 async function resolvedArgs(args: UnwrappedCall['args']): Promise<{ strings: string[]; hasDynamic: boolean }> {
@@ -199,6 +291,7 @@ async function collectFromCallExpr(
   ctx: AuditContext,
   out: AuditedCall[],
   redirects: AuditedRedirect[],
+  anchorCwd?: string,
 ): Promise<void> {
   const { unwrapCallParsed } = await getShellAstModule()
   const u = await unwrapCallParsed(node)
@@ -249,7 +342,10 @@ async function collectFromCallExpr(
 
   const resolved = await resolvedArgs(u.args)
   const endOfOptions = await hasEndOfOptions(u.kind === 'wrapped' ? u.innerRaw : u.raw)
-  out.push(unwrappedToAuditedCall(u, raw, source, redirects, resolved, endOfOptions))
+  const call = unwrappedToAuditedCall(u, raw, source, redirects, resolved, endOfOptions)
+  // 只有直接运行的命令才认 cd 定下的目录：sudo -D、env -C 这类包装器自己会换目录
+  if (anchorCwd && u.kind === 'plain') call.anchorCwd = anchorCwd
+  out.push(call)
 }
 
 /** 从 shell 字符串提取全部可审计子命令（unwrap wrapper + 递归 -c 脚本） */
@@ -261,9 +357,10 @@ export async function extractAuditedCalls(
   const dialect = shellDialect(ctx)
   const ast = await parseShellCommand(command, dialect)
   const { callsWithRedirs, allWriteRedirects } = await collectCallsWithRedirs(ast)
+  const anchors = await findCdAnchors(ast)
   const calls: AuditedCall[] = []
   for (const { callNode, redirs } of callsWithRedirs) {
-    await collectFromCallExpr(callNode, command, source, ctx, calls, redirs)
+    await collectFromCallExpr(callNode, command, source, ctx, calls, redirs, anchors.get(callNode))
   }
   return { calls, writeRedirects: allWriteRedirects }
 }

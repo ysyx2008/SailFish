@@ -103,6 +103,15 @@ function resolveRealPath(filePath: string): string {
   }
 }
 
+/**
+ * `cd 绝对路径 &&` 定下的当前目录 → 真实目录（展开 ~、跟随符号链接）。
+ * 后面的相对路径按这个真实目录解析：内核解析相对路径用的是进程所在的真实目录，
+ * 不是 shell 里记的逻辑目录，所以符号链接必须先跟随。
+ */
+export function resolveAnchorDir(rawDir: string): string {
+  return resolveRealPath(resolveCommandPath(rawDir))
+}
+
 function getRelativeWorkspacePath(filePath: string): string | null {
   if (!isInWorkspace(filePath)) return null
   let workspace: string
@@ -286,6 +295,8 @@ export function adjustRiskByPathZones(
     extraFreeDirs?: string[]
     cmd?: string
     redirectWritePaths?: string[]
+    /** cwd 是 `cd 绝对路径 &&` 定下的真实目录：相对路径的位置也能静态确定，视同绝对路径 */
+    cwdAnchored?: boolean
   },
 ): { level: RiskLevel; zones: WorkspaceZone[]; reasons: string[] } {
   const reasons: string[] = []
@@ -359,12 +370,13 @@ export function adjustRiskByPathZones(
   const effectiveZones = nonDevNullPaths.map(p => getWorkspaceZone(p, cwd, extraFreeDirs))
   // 相对路径无法静态证明执行时 cwd：即便按审计 cwd 落在 free，也不允许降级为 safe。
   // pathZones 返回 policyZones（与 level 决策一致），避免「显示 free、实际按 outside」误导调试。
+  const locationKnown = (p: string) => opts?.cwdAnchored === true || isLexicallyAbsolutePath(p)
   const relativeBlocksFree = nonDevNullPaths.some(
-    (p, i) => effectiveZones[i] === 'free' && !isLexicallyAbsolutePath(p),
+    (p, i) => effectiveZones[i] === 'free' && !locationKnown(p),
   )
   const policyZones: WorkspaceZone[] = nonDevNullPaths.map((p, i) => {
     const z = effectiveZones[i]!
-    if (z === 'free' && !isLexicallyAbsolutePath(p)) return 'outside'
+    if (z === 'free' && !locationKnown(p)) return 'outside'
     return z
   })
 

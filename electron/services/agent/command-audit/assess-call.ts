@@ -7,7 +7,7 @@ import { getScratchPath } from '../tools/file'
 import type { AuditContext, AuditedCall, AuditedRedirect, CallRiskAssessment } from './types'
 import { assessCommandFlags } from './whitelist'
 import { getArgvCommandRule } from './resolve-argv-rule'
-import { adjustRiskByPathZones } from './workspace-guard'
+import { adjustRiskByPathZones, resolveAnchorDir } from './workspace-guard'
 import { maxRisk } from './risk-level'
 import { checkIndirectionGuard } from './indirection-guard'
 import { assessSubcommandRisk } from './subcommand-risk'
@@ -24,6 +24,7 @@ function assessUnknownCall(
   call: AuditedCall,
   ctx: AuditContext,
   extraWritePaths: string[],
+  cwdAnchored: boolean,
 ): CallRiskAssessment {
   const cwd = ctx.cwd ?? getScratchPath()
   const allPaths = collectWritePaths(call, extraWritePaths)
@@ -38,6 +39,7 @@ function assessUnknownCall(
     const pathAdjust = adjustRiskByPathZones(baseLevel, allPaths, allPaths, true, cwd, {
       outsideWritesUpgrade: resolveOutsideWritesUpgrade(ctx),
       extraFreeDirs: resolveExtraFreeDirs(ctx),
+      cwdAnchored,
     })
     return {
       level: pathAdjust.level,
@@ -80,9 +82,14 @@ function assessUnknownCall(
  */
 export function assessAuditedCall(
   call: AuditedCall,
-  ctx: AuditContext = {},
+  auditCtx: AuditContext = {},
   extraWritePaths: string[] = [],
 ): CallRiskAssessment {
+  // 前面有 `cd 绝对路径 &&` 时，这条命令的当前目录是确定的：按它解析相对路径，并视同绝对路径
+  const anchorDir = call.anchorCwd ? resolveAnchorDir(call.anchorCwd) : undefined
+  const ctx: AuditContext = anchorDir ? { ...auditCtx, cwd: anchorDir } : auditCtx
+  const cwdAnchored = anchorDir !== undefined
+
   // 间接执行守卫：解释器内联 / 包装器 / 调度器 / 结构性 flag 规则
   // 命中后等级由用户策略决定（默认 strict→dangerous、relaxed→moderate）。
   // 若命令本身为 dangerous，保底 dangerous；用户升成硬拒则保底 blocked。
@@ -114,7 +121,7 @@ export function assessAuditedCall(
   const rule = getArgvCommandRule(call.cmd)
 
   if (!rule) {
-    return assessUnknownCall(call, ctx, extraWritePaths)
+    return assessUnknownCall(call, ctx, extraWritePaths, cwdAnchored)
   }
 
   if (call.dynamicPaths && rule.writesTo) {
@@ -179,6 +186,7 @@ export function assessAuditedCall(
       extraFreeDirs: resolveExtraFreeDirs(ctx),
       cmd: call.cmd,
       redirectWritePaths: redirectPaths,
+      cwdAnchored,
     },
   )
   reasons.push(...pathAdjust.reasons)
