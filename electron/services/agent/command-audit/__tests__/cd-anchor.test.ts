@@ -86,6 +86,46 @@ describe('认得 cd 绝对路径 && 相对路径', () => {
     expect(r.askRelaxed).toBe(true)
   })
 
+  it('验收时被问到的两条：末尾接 || 备选分支，不再需要确认', async () => {
+    const a = await level(
+      `cd "${SCRATCH}" && rm -rf rm-test && ls -d rm-test 2>/dev/null || echo "rm-test 已不存在"`,
+    )
+    expect(a.level).toBe('safe')
+    expect(a.askRelaxed).toBe(false)
+    const b = await level(
+      `cd "${SCRATCH}" && rm rm-file-test.txt && ls rm-file-test.txt 2>/dev/null || echo "rm-file-test.txt 已删除"`,
+    )
+    expect(b.level).toBe('safe')
+    expect(b.askRelaxed).toBe(false)
+  })
+
+  it('|| 备选分支里的命令不带锚点；可以接多个', async () => {
+    const { calls } = await extractAuditedCalls(
+      `cd "${SCRATCH}" && rm -f x && ls || echo a || echo b`,
+      defaultAuditContext(),
+    )
+    expect(calls.map(c => [c.cmd, c.anchorCwd])).toEqual([
+      ['cd', undefined],
+      ['rm', SCRATCH],
+      ['ls', SCRATCH],
+      ['echo', undefined],
+      ['echo', undefined],
+    ])
+  })
+
+  it('|| 备选分支里的相对路径删除：那一条不认锚点，整条仍要确认', async () => {
+    const cmd = `cd "${SCRATCH}" && rm -rf a || rm -rf b`
+    const { calls } = await extractAuditedCalls(cmd, defaultAuditContext())
+    expect(calls.map(c => [c.cmd, c.anchorCwd])).toEqual([
+      ['cd', undefined],
+      ['rm', SCRATCH],
+      ['rm', undefined],
+    ])
+    const r = await level(cmd)
+    expect(r.level).toBe('dangerous')
+    expect(r.askRelaxed).toBe(true)
+  })
+
   it('每条命令只带自己的锚点：cd 本身、cd 之前的命令没有', async () => {
     const { calls } = await extractAuditedCalls(
       `echo a && cd "${SCRATCH}" && rm -f x && ls`,
@@ -129,6 +169,11 @@ describe('认不出的写法：一律不降级（照旧要确认）', () => {
     ['env 包装（env -C 会换目录）', `cd "${SCRATCH}" && env -C /etc rm -rf out_test`],
     ['bash -c 内联脚本', `cd "${SCRATCH}" && bash -c 'rm -rf out_test'`],
     ['没有 cd 的相对路径', 'rm -rf out_test'],
+    // || 备选分支只在前面失败时才跑，那时 cd 可能没成功：备选分支里的删除不认锚点
+    ['cd 后面直接 ||，删除在备选分支里', `cd "${SCRATCH}" || rm -rf out_test`],
+    ['|| 之后又接 &&（最外层是 &&，左边不是纯 && 串）', `cd "${SCRATCH}" && rm -rf a || echo no && rm -rf b`],
+    ['cd 本身在 || 备选分支里', `echo a || cd "${SCRATCH}" && rm -rf out_test`],
+    ['|| 备选分支里又有一个 cd', `cd "${SCRATCH}" && rm -rf a || cd /tmp`],
   ]
 
   for (const [name, cmd] of cases) {
@@ -204,6 +249,31 @@ describe('对得上真实的 shell', () => {
       expect(out.trim()).toBe('done')
       expect(fs.existsSync(path.join(work, 'draft.txt'))).toBe(false)
       expect(fs.existsSync(path.join(elsewhere, 'draft.txt'))).toBe(true)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('末尾的 || 备选分支：cd 成功时不跑，cd 失败时只跑备选分支、不删任何东西', async () => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cd-anchor-alt-')))
+    try {
+      const work = path.join(root, 'work')
+      fs.mkdirSync(work)
+      fs.writeFileSync(path.join(work, 'f.txt'), 'x')
+      fs.writeFileSync(path.join(root, 'f.txt'), 'x') // 进程实际所在目录里的同名文件
+
+      const ok = `cd "${work}" && rm -f f.txt && ls f.txt 2>/dev/null || echo gone`
+      expect((await level(ok)).level).toBe('safe')
+      const out = execFileSync('/bin/bash', ['-c', ok], { cwd: root }).toString()
+      expect(out.trim()).toBe('gone') // ls 找不到文件才走 ||，说明 work 里的被删了
+      expect(fs.existsSync(path.join(work, 'f.txt'))).toBe(false)
+      expect(fs.existsSync(path.join(root, 'f.txt'))).toBe(true)
+
+      const miss = `cd "${root}/not-here" && rm -f f.txt || echo failed`
+      expect((await level(miss)).level).toBe('safe')
+      const out2 = execFileSync('/bin/bash', ['-c', miss], { cwd: root }).toString()
+      expect(out2.trim()).toBe('failed')
+      expect(fs.existsSync(path.join(root, 'f.txt'))).toBe(true)
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }

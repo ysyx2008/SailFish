@@ -91,8 +91,9 @@ async function collectCallsWithRedirs(ast: ShellFile): Promise<CallsAndAllRedirs
 // ==================== cd 锚点 ====================
 //
 // 唯一认得的形状：整条命令里有且只有一个 `cd 绝对路径`，它是最前面那串 `&&` 的一环，
-// 排在它后面的命令执行时的当前目录就确定了（cd 失败则后面不会跑）。
-// 其余一切（`;`/`||` 连接、子 shell、函数、管道、第二个 cd、变量或通配符……）都不认，
+// 排在它后面的命令执行时的当前目录就确定了（cd 失败则后面不会跑）。那一串后面可以接
+// `|| 备选命令`，备选命令自己不认这个目录。
+// 其余一切（`;`/`||` 连在 cd 前后、子 shell、函数、管道、第二个 cd、变量或通配符……）都不认，
 // 照旧当作「不知道在哪个目录」。不去逐个堵 shell 的花样，只认这一种写得死的形状。
 
 /** 目录写法里不许出现的：变量、命令替换、通配符、花括号 */
@@ -117,6 +118,23 @@ function flattenAndChain(stmt: Stmt): Stmt[] | null {
     return left && right ? [...left, ...right] : null
   }
   return isPlainCallOrPipeline(stmt) ? [stmt] : null
+}
+
+/**
+ * 语句最前面那串 `&&`。后面可以跟任意多个 `||` 备选分支（`A && B || echo 失败`）：
+ * 备选分支只在前面那串失败时才跑，不改变那一串里的目录；备选分支里的命令自己不认锚点
+ * （`cd` 失败时它们在原来的目录跑）。`&&` 与 `||` 同级、左结合，所以
+ * `A && B || C && D` 是 `((A && B) || C) && D`，最外层是 `&&`、左边不是纯 `&&` 串，整条不认。
+ */
+function leadingAndChain(stmt: Stmt): Stmt[] | null {
+  if (stmt.negated || stmt.background || stmt.coprocess) return null
+  const cmd = stmt.cmd
+  if (!cmd) return null
+  if (cmd.type === 'BinaryCmd' && cmd.op === '||') {
+    if (stmt.redirs.length > 0) return null
+    return leadingAndChain(cmd.x)
+  }
+  return flattenAndChain(stmt)
 }
 
 function isPlainCallOrPipeline(stmt: Stmt): boolean {
@@ -172,7 +190,7 @@ async function findCdAnchors(ast: ShellFile): Promise<Map<CallExprNode, string>>
   if (!isLexicallyAbsolutePath(dir)) return anchors
 
   for (const stmt of ast.stmts) {
-    const links = flattenAndChain(stmt)
+    const links = leadingAndChain(stmt)
     if (!links) continue
     const at = links.findIndex(link => link.cmd === cdCall)
     if (at < 0) continue
