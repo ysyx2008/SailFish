@@ -8,7 +8,7 @@
  */
 
 import { Agent } from './agent'
-import type { ToolDefinition } from '../ai.service'
+import type { AiMessage, ToolDefinition } from '../ai.service'
 import type {
   AgentContext,
   AgentServices,
@@ -17,7 +17,9 @@ import type {
 import { getAgentTools, filterUnattendedTools, filterSubAgentTools, filterTeamMemberTools, AgentMode } from './tools'
 import type { ToolExecutorConfig } from './tools/types'
 import type { AgentRun } from './types'
-import type { ChildAgentHandle, TeamSeat } from './sub-agent-roster'
+import { toolStepsFromRecords, type ChildAgentHandle, type DormantChild, type TeamSeat } from './sub-agent-roster'
+import type { PersistedChild } from '../history/sub-agent-record-store'
+import { sanitizeToolCallSequence } from './context-builder'
 import { COMPANION_WORKBENCH_AGENT_TOOLS } from '@sailfish/workbench-companion/agent-tools'
 import { COMPANION_AGENT_KEY } from '@shared/types'
 import { PromptBuilder } from './prompt-builder'
@@ -142,11 +144,18 @@ export class SailFish extends Agent {
     return {
       ...config,
       createChildAgent: (name) => this.spawnChild(name),
+      restoreDormantChildren: () => this.restoreDormantChildren(),
       teamSeat: this._teamSeat,
     }
   }
 
   private spawnChild(name: string): ChildAgentHandle {
+    const child = this.newChildAgent(name)
+    this.attachRecorderTo(child, name)
+    return child
+  }
+
+  private newChildAgent(name: string): SailFish {
     const child = new SailFish(this.services)
     child.setAgentId(`${this.getConversationAgentId()}:sub:${name}`)
     child.markAsSubAgent()
@@ -159,6 +168,70 @@ export class SailFish extends Agent {
       profileId: this.profileId,
     })
     return child
+  }
+
+  /**
+   * 这场会话以前派出的、已经停下的伙计。盘上还记着「在干」的，是程序没来得及收尾就没了。
+   * 这一轮自己派的也在盘上，由花名册按名字去重。
+   */
+  private restoreDormantChildren(): DormantChild[] {
+    const sessionId = this.getSessionId()
+    const store = this.services.historyService?.getAgentRecordStore().subAgents
+    if (!sessionId || !store) return []
+    return store.list(sessionId).map((persisted): DormantChild => {
+      const { state } = persisted
+      const stopped = state.status === 'completed' || state.status === 'failed' || state.status === 'interrupted'
+      return {
+        name: state.name,
+        askedName: state.askedName,
+        description: state.description,
+        prompt: state.prompt,
+        shownPrompt: state.shownPrompt,
+        role: state.role,
+        result: state.result,
+        error: state.error,
+        blockedReason: state.blockedReason,
+        interruptedCalls: state.interruptedCalls,
+        status: stopped ? state.status as DormantChild['status'] : 'interrupted',
+        ...(stopped ? {} : { abnormalExit: true }),
+        revive: () => this.reviveChild(persisted),
+      }
+    })
+  }
+
+  /**
+   * 从盘上叫醒一位：新建一个实例，会话里装回他自己的对话，开局是当时带的主人对话加他自己的对话
+   * （没有留下对话的，从他的指令重新开始）。
+   */
+  private reviveChild(persisted: PersistedChild): ReturnType<DormantChild['revive']> {
+    const { state } = persisted
+    const sessionId = this.getSessionId()
+    const startedAt = this.getSessionStartTime()
+    const store = this.services.historyService?.getAgentRecordStore().subAgents
+    if (!sessionId || startedAt === undefined || !store) throw new Error('这场会话没有存伙计的地方')
+    const record = store.readRecord(persisted)
+    const own = (record?.messages ?? []) as AiMessage[]
+    const opening = store.readOpening(sessionId, state.opening)
+
+    const child = this.newChildAgent(state.name)
+    const recorder = store.recorderForRestored({ sessionId, startedAt, name: state.name }, state)
+    if (recorder) child.attachChildRecorder(recorder)
+    // 没有留下对话的，他的第一句就是原来的指令；也记进他的会话，下次再叫醒时仍在
+    const ownMessages: AiMessage[] = own.length > 0 ? own : [{ role: 'user', content: state.prompt }]
+    const history = sanitizeToolCallSequence(ownMessages.map(({ _cacheBreakpoint, ...rest }) => rest))
+    child.seedOpeningMessages([...opening, ...history])
+    child.restoreChildTranscript(ownMessages, record?.steps)
+    return { handle: child, steps: toolStepsFromRecords(record?.steps ?? []) }
+  }
+
+  /** 伙计的对话记录存在这场会话下面；没有会话或没有历史服务时这位就不存 */
+  private attachRecorderTo(child: SailFish, name: string): void {
+    const sessionId = this.getSessionId()
+    const startedAt = this.getSessionStartTime()
+    const store = this.services.historyService?.getAgentRecordStore().subAgents
+    if (!sessionId || startedAt === undefined || !store) return
+    const recorder = store.recorderFor({ sessionId, startedAt, name })
+    if (recorder) child.attachChildRecorder(recorder)
   }
   
   /**

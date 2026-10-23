@@ -9,6 +9,7 @@ import * as path from 'path'
 import type { ExpertTeamChatCursor, ExpertTeamChatPage, ExpertTeamMessageView } from '@shared/types'
 import { createLogger } from '../../utils/logger'
 import { getDateString } from './date-util'
+import { SessionDateTree, isSafePathSegment } from './session-date-tree'
 
 const log = createLogger('ExpertTeamChat')
 
@@ -19,18 +20,18 @@ const PAGE_MAX_CHARS = 60000
 const MESSAGE_MAX_CHARS = 100000
 const READ_CHUNK_BYTES = 64 * 1024
 const NEWLINE = 0x0a
-/** 会话已不在的群聊，最近这么久里还写过的先不删 */
-const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000
-
-const SAFE_SEGMENT = /^[\p{L}\p{N}_-][\p{L}\p{N}._-]*$/u
 const CHAT_FILE = /^\d{4}-\d{2}-\d{2}\/[^/\\]+\/[^/\\]+\.jsonl$/
 
 export class ExpertTeamChatStore {
-  constructor(private readonly root: string) {}
+  private readonly tree: SessionDateTree
+
+  constructor(private readonly root: string) {
+    this.tree = new SessionDateTree(root)
+  }
 
   /** 给这场会话新开一份群聊文件，返回相对位置；会话号或名字不能当路径用时不开 */
   create(sessionId: string, name: string, at = Date.now()): string | undefined {
-    if (!SAFE_SEGMENT.test(sessionId) || !SAFE_SEGMENT.test(name)) return undefined
+    if (!isSafePathSegment(sessionId) || !isSafePathSegment(name)) return undefined
     return `${getDateString(at)}/${sessionId}/${name}.jsonl`
   }
 
@@ -72,67 +73,27 @@ export class ExpertTeamChatStore {
   }
 
   deleteSession(sessionId: string): void {
-    if (!SAFE_SEGMENT.test(sessionId)) return
-    for (const date of this.dateDirs()) {
-      const dir = path.join(this.root, date, sessionId)
-      if (!fs.existsSync(dir)) continue
-      fs.rmSync(dir, { recursive: true, force: true })
-      removeIfEmpty(path.join(this.root, date))
-    }
+    this.tree.deleteSession(sessionId)
   }
 
   /** 删掉开团日期早于 cutoff（YYYY-MM-DD）的 */
   deleteBefore(cutoff: string): void {
-    for (const date of this.dateDirs()) {
-      if (date < cutoff) fs.rmSync(path.join(this.root, date), { recursive: true, force: true })
-    }
+    this.tree.deleteBefore(cutoff)
   }
 
-  /**
-   * 删掉会话已经不在的群聊。会话可能很早开、近几天才开团，记录先按天清掉，群聊要靠这一步跟上。
-   * 最近改过的不动：正在跑的会话可能还没落盘。
-   */
+  /** 删掉会话已经不在的群聊；会话可能很早开、近几天才开团，记录先按天清掉，群聊要靠这一步跟上 */
   deleteOrphans(liveSessionIds: ReadonlySet<string>, now = Date.now()): void {
-    for (const date of this.dateDirs()) {
-      const dateDir = path.join(this.root, date)
-      let sessions: string[]
-      try {
-        sessions = fs.readdirSync(dateDir)
-      } catch {
-        continue
-      }
-      for (const sessionId of sessions) {
-        if (liveSessionIds.has(sessionId)) continue
-        const dir = path.join(dateDir, sessionId)
-        try {
-          if (now - fs.statSync(dir).mtimeMs < ORPHAN_GRACE_MS) continue
-          fs.rmSync(dir, { recursive: true, force: true })
-        } catch {
-          // 并发删掉了
-        }
-      }
-      removeIfEmpty(dateDir)
-    }
+    this.tree.deleteOrphans(liveSessionIds, now)
   }
 
   deleteAll(): void {
-    fs.rmSync(this.root, { recursive: true, force: true })
+    this.tree.deleteAll()
   }
 
   private resolve(file: string): string | undefined {
     if (typeof file !== 'string' || !CHAT_FILE.test(file)) return undefined
     const abs = path.resolve(this.root, file)
     return abs.startsWith(path.resolve(this.root) + path.sep) ? abs : undefined
-  }
-
-  private dateDirs(): string[] {
-    try {
-      return fs.readdirSync(this.root, { withFileTypes: true })
-        .filter(e => e.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(e.name))
-        .map(e => e.name)
-    } catch {
-      return []
-    }
   }
 }
 
@@ -290,12 +251,4 @@ function hasCompleteLine(fd: number, size: number, from: number): boolean {
     if (chunk.subarray(0, n).includes(NEWLINE)) return true
   }
   return false
-}
-
-function removeIfEmpty(dir: string): void {
-  try {
-    if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir)
-  } catch {
-    // 目录已经不在了
-  }
 }

@@ -55,6 +55,7 @@ import {
   approvalFromSettings,
   executionModeOfApproval,
   inferConversationKind,
+  type AgentStepRecord,
   type ApprovalMode,
   type AssignedBy,
   type AutoReviewTrail,
@@ -67,6 +68,8 @@ import { buildGoalSystemSection } from './goal/goal-prompts'
 import { estimateTextTokens } from './token-estimate'
 import { runUntilIdle } from './run-until-idle'
 import { SubAgentRoster } from './sub-agent-roster'
+import type { ChildRecorder } from '../history/sub-agent-record-store'
+import { findUnansweredToolCalls } from './unanswered-calls'
 import { isOemFeatureEnabled } from '@shared/oem-features'
 import { getBondService } from '../bond.service'
 import type { ConfirmationOptions, ToolExecutorConfig, ToolResult } from './tools/types'
@@ -136,6 +139,8 @@ const log = createLogger('Agent')
 
 /** 伙计在后台干活，没人当面等：被限流时多等几轮（约一刻钟），慢一点比失败好 */
 const SUB_AGENT_RATE_LIMIT_RETRIES = 20
+/** 下一轮开始前，最多等上一轮没收尾的伙计这么久 */
+const PREVIOUS_CHILDREN_SETTLE_MS = 5000
 
 /**
  * 去除流式输出中因 API 代理重复发送 reasoning_content 而产生的连续相同思考块。
@@ -199,6 +204,8 @@ export abstract class Agent {
 
   /** 这场 run 里的伙计花名册（仅主人持有） */
   private _subAgentRoster?: SubAgentRoster
+  /** 上一轮收工时还没收尾的伙计：他们都写完盘之前，下一轮不去盘上叫醒老伙计 */
+  private _previousChildrenSettling?: Promise<void>
 
   /** 交办标题：会话聚合根建好之前先记在这里 */
   private _armedTitle?: string
@@ -222,8 +229,12 @@ export abstract class Agent {
   /** 这一轮按渠道自己的设定问（替我审批也跟全局开关），不看会话记下的 */
   private _runFollowsChannel = false
 
-  /** 伙计：关掉落盘 / 侧栏 / L2 / L3 / 诞生引导 */
+  /** 伙计：不进侧栏 / L2 / L3 / 诞生引导；对话记录单独存（见 `_childRecorder`） */
   private _isSubAgent = false
+  /** 伙计的存盘人：对话记录和状态存在主会话下面，被打断后能接着干。没有它就不存 */
+  private _childRecorder?: ChildRecorder
+  /** 叫醒时从盘上读回来的对话，第一次开跑装进自己的会话 */
+  private _restoredChildTranscript?: { messages: AiMessage[]; steps?: AgentStepRecord[] }
   /** 伙计已经发出过模型请求：之后的请求在缓冲池里排在新伙计前面 */
   private _subAgentHasRequested = false
 
@@ -538,6 +549,28 @@ export abstract class Agent {
 
   seedOpeningMessages(messages: AiMessage[]): void {
     this._seedMessages = messages
+  }
+
+  /** 伙计的对话记录交给谁存 */
+  attachChildRecorder(recorder: ChildRecorder): void {
+    this._childRecorder = recorder
+  }
+
+  get childRecorder(): ChildRecorder | undefined {
+    return this._childRecorder
+  }
+
+  /**
+   * 叫醒盘上的伙计：他以前的对话和步骤，等第一次开跑建好自己的会话后装进去，
+   * 这样往后每轮检查点写的是「旧的加新的」，不会把盘上的旧对话盖掉。
+   */
+  restoreChildTranscript(messages: AiMessage[], steps?: AgentStepRecord[]): void {
+    this._restoredChildTranscript = { messages, steps }
+  }
+
+  /** 这场会话开始的时间（伙计的记录按它放进日期目录） */
+  getSessionStartTime(): number | undefined {
+    return this._sessionStartTime
   }
 
   
@@ -1065,6 +1098,7 @@ export abstract class Agent {
     const taskStartTime = Date.now()
     
     try {
+      await this.waitForPreviousChildren()
       // 历史恢复带出的技能清单要在组上下文 / 取工具表之前装上，否则模型会看见旧工具名却没有对应工具
       await this.applyRestoredSkills()
       await this.ensureTerminalSkill(run)
@@ -1931,6 +1965,11 @@ export abstract class Agent {
       }
     }
 
+    if (this._restoredChildTranscript && this._conversation) {
+      this._conversation.setRestoredTranscript(this._restoredChildTranscript.messages, this._restoredChildTranscript.steps)
+      this._restoredChildTranscript = undefined
+    }
+
     if (this.attachPendingGoal()) {
       this.notifyGoalChanged()
     }
@@ -2232,6 +2271,7 @@ export abstract class Agent {
    */
   protected finalizeRun(run: AgentRun, result: string): void {
     run.isRunning = false
+    if (this._isSubAgent && run.aborted) this.noteChildInterruptions(run)
 
     // 先添加 final_result 步骤到 run.steps，确保后续 commitRun 时 run.steps 已含完整数据
     // （纯文本最终回复的「补录到对话日志 / cache 快照」由 Conversation.commitRun 统一负责，
@@ -2269,6 +2309,7 @@ export abstract class Agent {
       tokenUsage: run.tokenUsage,
       imagesStripped: run.imagesStripped,
     })
+    this.persistChildRecord()
     if (!this._isSubAgent && !this._sessionDiscarded) {
       this.saveSessionToHistory()
       this.scheduleTitleRefreshIfDue()
@@ -2377,7 +2418,10 @@ export abstract class Agent {
    * 以及原 record 缺 `kind` 字段、两份实现都漏 `toolCallId` 字段的问题。
    */
   private saveCheckpoint(run: AgentRun): void {
-    if (this._isSubAgent) return
+    if (this._isSubAgent) {
+      this.saveChildCheckpoint(run)
+      return
+    }
     const historyService = this.services.historyService
     if (!historyService || !this._conversation) return
 
@@ -2403,6 +2447,33 @@ export abstract class Agent {
     }
   }
   
+  /** 伙计每轮工具调用后的检查点：和主智能体同一个点，写到自己的存盘人那里 */
+  private saveChildCheckpoint(run: AgentRun): void {
+    const recorder = this._childRecorder
+    if (!recorder || !this._conversation) return
+    const record = this._conversation.toCheckpointRecord({
+      steps: run.steps,
+      taskMessageLog: run.taskMessageLog,
+      tokenUsage: run.tokenUsage,
+    })
+    if (record) recorder.saveRecord(record)
+  }
+
+  /**
+   * 伙计这一段收尾时：记下没有记录结果的调用（按消息结构找），再把对话完整存一遍。
+   * 必须在补占位结果之前调用，否则「没记录结果」已经被占位盖掉。
+   */
+  private noteChildInterruptions(run: AgentRun): void {
+    this._childRecorder?.noteInterruptedCalls(findUnansweredToolCalls(run.messages))
+  }
+
+  private persistChildRecord(): void {
+    const recorder = this._childRecorder
+    if (!recorder || !this._conversation) return
+    const record = this._conversation.toRecord()
+    if (record) recorder.saveRecord(record)
+  }
+
   // ==================== Fork（另开一聊） ====================
 
   /**
@@ -2982,8 +3053,26 @@ export abstract class Agent {
     
     run.isRunning = false
     this.currentStreamingExecutor = undefined
-    this._subAgentRoster?.abortAll()
+    const roster = this._subAgentRoster
+    roster?.abortAll()
+    this._previousChildrenSettling = roster?.settled()
     this._subAgentRoster = undefined
+  }
+
+  /**
+   * 上一轮被按停（或出错）时伙计只是收到了中止，写最后一段对话要稍后。
+   * 下一轮要叫醒他们之前先等一下，免得读到的是没写完的盘。等不到就不再等。
+   */
+  private async waitForPreviousChildren(): Promise<void> {
+    const settling = this._previousChildrenSettling
+    if (!settling) return
+    this._previousChildrenSettling = undefined
+    let timer: ReturnType<typeof setTimeout> | undefined
+    await Promise.race([
+      settling,
+      new Promise<void>(resolve => { timer = setTimeout(resolve, PREVIOUS_CHILDREN_SETTLE_MS) }),
+    ])
+    if (timer) clearTimeout(timer)
   }
   
   /**
@@ -3007,6 +3096,7 @@ export abstract class Agent {
     // 修复运行抛错时可能遗留的悬空 tool_calls：assistant 已宣告调用工具但 tool result
     // 还没产生（典型场景：工具执行中崩溃、AI 流式输出后调下一轮 API 时网络超时）。
     // fixIncompleteToolCalls 会同步补占位到 run.messages 与 run.taskMessageLog
+    if (this._isSubAgent) this.noteChildInterruptions(run)
     this._contextWindow.fixIncompleteToolCalls(run, `[执行中断: ${errorMessage}]`)
 
     // 把错误作为一条 assistant 回复追加到对话日志（与 finalizeRun 的成功路径对称）
@@ -3042,6 +3132,7 @@ export abstract class Agent {
       imagesStripped: run.imagesStripped,
       aborted: run.aborted
     })
+    this.persistChildRecord()
     if (!this._isSubAgent && !this._sessionDiscarded) {
       this.saveSessionToHistory()
       this.scheduleTitleRefreshIfDue()

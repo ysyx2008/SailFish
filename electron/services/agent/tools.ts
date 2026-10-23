@@ -1325,7 +1325,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       type: 'function',
       function: {
         name: 'followup_agent',
-        description: `向已派出的伙计再交代一句。他还在跑就先记下，等当前这条命令或这一轮走完再消化，不会掐断正在跑的操作；已经做完就在同一条线上继续。急着停用 interrupt_agent。`,
+        description: `向已派出的伙计再交代一句。他还在跑就先记下，等当前这条命令或这一轮走完再消化，不会掐断正在跑的操作；已经做完或被打断的，在同一条线上继续，以前几轮派出的也可以。急着停用 interrupt_agent。`,
         parameters: {
           type: 'object',
           properties: {

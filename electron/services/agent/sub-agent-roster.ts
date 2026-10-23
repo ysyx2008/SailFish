@@ -1,8 +1,12 @@
 /**
- * 这场 run 里活着的伙计花名册。只活在父 Agent 的当前 run，不进会话表。
+ * 这场 run 里活着的伙计花名册，不进会话表；每场 run 一份。
+ * 每位的状态和对话由各自的存盘人记在主会话下面（花名册只告知状态变化）。
+ * 这场会话以前几轮派出的伙计、已经停下的，作为「休眠」的名册外成员：不占名额、不进总览，
+ * 点名再交代时从盘上叫醒，接着干。
  */
 import type { AiMessage } from '../ai.service'
 import type { SubAgentResult, SubAgentToolStep, TokenUsage } from '@shared/types'
+import type { ChildRecorder, ChildState, ChildStateInput } from '../history/sub-agent-record-store'
 import type { AgentContext, AgentStep, RunOptions } from './types'
 import { applyForkTurns, type ForkTurns } from './sanitize-parent-messages'
 import { ExpertTeam, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER, tidyLabel, type TeamMessage } from './expert-team'
@@ -37,9 +41,22 @@ export interface ChildAgentHandle {
   abort(): boolean
   isRunning(): boolean
   seedOpeningMessages?(messages: AiMessage[]): void
+  /** 这位的存盘人；没有就不存 */
+  readonly childRecorder?: ChildRecorder
   /** 进专家团：之后能在群里说话 */
   joinTeam?(seat: TeamSeat): void
 }
+
+/** 这场会话里以前派出的、已经停下的伙计（存在盘上，还没被叫起来） */
+export type DormantChild = Pick<ChildState,
+  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'result' | 'error' | 'blockedReason' | 'interruptedCalls'>
+  & {
+    status: 'completed' | 'failed' | 'interrupted'
+    /** 盘上记的还是「在干」：程序没来得及收尾就没了，最后一轮的内容不明 */
+    abnormalExit?: boolean
+    /** 从盘上叫醒：带着他以前的对话和卡片上的步骤 */
+    revive(): { handle: ChildAgentHandle; steps: SubAgentToolStep[] }
+  }
 
 export type TeamSayResult =
   | {
@@ -105,9 +122,14 @@ export interface RosterSpawnDeps {
   openingFor?: (child: ChildSnapshot, team?: ExpertTeam) => string
   /** 派专家团时必须给 */
   teamTexts?: TeamTexts
+  /** 这场会话以前派出的、已经停下的伙计；每份花名册只读一次 */
+  restoreDormant?: () => DormantChild[]
+  /** 叫醒休眠的伙计时，开口前先告诉他上次的情形；没什么要说的返回空 */
+  resumeNotice?: (child: DormantChild) => string
 }
 
-type RunDeps = Pick<RosterSpawnDeps, 'getParentContext' | 'onProgress' | 'knock' | 'formatKnock' | 'archiveResult' | 'isParentAborted' | 'teamTexts'>
+type RunDeps = Pick<RosterSpawnDeps,
+  'getParentContext' | 'onProgress' | 'knock' | 'formatKnock' | 'archiveResult' | 'isParentAborted' | 'teamTexts' | 'restoreDormant' | 'resumeNotice'>
 
 interface ChildSlot extends ChildSnapshot {
   handle?: ChildAgentHandle
@@ -178,6 +200,9 @@ export function childToSubAgentResult(child: ChildSnapshot): SubAgentResult {
 
 export class SubAgentRoster {
   private children = new Map<string, ChildSlot>()
+  /** 以前几轮派出的、已经停下的；叫醒后进 children */
+  private dormant = new Map<string, DormantChild>()
+  private dormantRestored = false
   private teams = new Map<string, TeamEntry>()
   private waiters: Array<() => void> = []
   /** 还没被 waitForNews 领走的敲门，按先后排队。 */
@@ -345,6 +370,15 @@ export class SubAgentRoster {
     return { arrived, targets: snapshots }
   }
 
+  /** 第一次要用到这场会话的老伙计时读一次盘。这一轮已经有的名字以内存里的为准 */
+  private ensureDormant(deps: Pick<RosterSpawnDeps, 'restoreDormant'>): void {
+    if (this.dormantRestored) return
+    this.dormantRestored = true
+    for (const child of deps.restoreDormant?.() ?? []) {
+      if (!this.children.has(child.name)) this.dormant.set(child.name, child)
+    }
+  }
+
   /**
    * 全部立刻开工。超过保险丝整批不收，调用方应先看 room()。
    * 给了 team 就让这一批组成专家团（每位都要带角色，人数在团的上下限之内）。
@@ -361,7 +395,9 @@ export class SubAgentRoster {
       if (!deps.teamTexts) throw new Error('派专家团缺少 teamTexts')
       if (tasks.some(t => !t.role)) throw new Error('专家团里每位都要有专家角色')
     }
-    const used = new Set(this.children.keys())
+    this.ensureDormant(deps)
+    // 老伙计的名字也占着：同名会把他盘上的对话盖掉
+    const used = new Set([...this.children.keys(), ...this.dormant.keys()])
     if (tasks.some(t => t.role)) used.add(TEAM_LEADER)
     const names: string[] = []
 
@@ -477,8 +513,12 @@ export class SubAgentRoster {
   }
 
   followup(name: string, message: string, deps: RunDeps): { ok: boolean; error?: string } {
+    this.ensureDormant(deps)
     const slot = this.children.get(name)
-    if (!slot) return { ok: false, error: `没有叫 ${name} 的伙计` }
+    if (!slot) {
+      const sleeper = this.dormant.get(name)
+      return sleeper ? this.wakeDormant(sleeper, message, deps) : { ok: false, error: `没有叫 ${name} 的伙计` }
+    }
     if (!slot.handle) return { ok: false, error: `${name} 还没开工` }
     if (deps.isParentAborted()) return { ok: false, error: '已中止' }
 
@@ -498,6 +538,45 @@ export class SubAgentRoster {
     this.beginSegment(slot)
     deps.onProgress()
     slot.runPromise = this.runExisting(slot, message, deps)
+    return { ok: true }
+  }
+
+  /**
+   * 叫醒以前几轮停下的伙计：从盘上接回他的对话，开口前先告诉他上次的情形，再交代这一句。
+   * 不带过去的团：他单独接着干。
+   */
+  private wakeDormant(sleeper: DormantChild, message: string, deps: RunDeps): { ok: boolean; error?: string } {
+    const { name } = sleeper
+    if (deps.isParentAborted()) return { ok: false, error: '已中止' }
+    if (this.room() <= 0) {
+      return { ok: false, error: `没做完的伙计已有 ${MAX_LIVE_CHILDREN} 个，等有人做完再追问 ${name}` }
+    }
+    let revived: ReturnType<DormantChild['revive']>
+    try {
+      revived = sleeper.revive()
+    } catch (err) {
+      return { ok: false, error: `${name} 以前的对话读不回来：${err instanceof Error ? err.message : String(err)}` }
+    }
+    this.dormant.delete(name)
+    const slot: ChildSlot = {
+      name,
+      askedName: sleeper.askedName,
+      description: sleeper.description,
+      prompt: sleeper.prompt,
+      shownPrompt: sleeper.shownPrompt,
+      role: sleeper.role,
+      status: 'running',
+      result: sleeper.result,
+      steps: revived.steps,
+      handle: revived.handle,
+      forkTurns: { kind: 'all' },
+      segment: 0,
+    }
+    this.children.set(name, slot)
+    persistSlot(slot)
+    deps.onProgress()
+    const notice = deps.resumeNotice?.(sleeper)
+    slot.runPromise = this.runExisting(slot, notice ? `${notice}\n\n${message}` : message, deps)
     return { ok: true }
   }
 
@@ -545,6 +624,7 @@ export class SubAgentRoster {
     slot.status = 'running'
     slot.error = undefined
     slot.blockedReason = undefined
+    persistSlot(slot)
   }
 
   private entryOf(name: string): TeamEntry | undefined {
@@ -552,13 +632,18 @@ export class SubAgentRoster {
     return teamName ? this.teams.get(teamName) : undefined
   }
 
-  interrupt(name: string): { ok: boolean; error?: string; finalized?: boolean } {
+  interrupt(name: string, deps?: Pick<RosterSpawnDeps, 'restoreDormant'>): { ok: boolean; error?: string; finalized?: boolean } {
     const slot = this.children.get(name)
-    if (!slot) return { ok: false, error: `没有叫 ${name} 的伙计` }
+    if (!slot) {
+      if (deps) this.ensureDormant(deps)
+      if (this.dormant.has(name)) return { ok: false, error: `${name} 已经不在跑了` }
+      return { ok: false, error: `没有叫 ${name} 的伙计` }
+    }
     if (!LIVE.has(slot.status)) return { ok: false, error: `${name} 已经不在跑了` }
     if (slot.status === 'pending' || !slot.handle) {
       slot.status = 'interrupted'
       slot.error = slot.error || '已打断'
+      persistSlot(slot)
       this.enqueueNews(slot.name)
       this.wake()
       return { ok: true, finalized: true }
@@ -573,37 +658,23 @@ export class SubAgentRoster {
       if (!LIVE.has(slot.status)) continue
       slot.handle?.abort()
       slot.status = 'interrupted'
+      persistSlot(slot)
     }
     this.wake()
+  }
+
+  /** 每位当前这一段都收尾（该写的盘都写完）之后兑现；不会拒绝。已经收尾的立刻兑现 */
+  settled(): Promise<void> {
+    const pending = [...this.children.values()]
+      .map(slot => slot.runPromise)
+      .filter((p): p is Promise<void> => !!p)
+    return Promise.allSettled(pending).then(() => undefined)
   }
 
   recordStep(name: string, step: AgentStep, onProgress: () => void): void {
     const slot = this.children.get(name)
     if (!slot) return
-    if (step.type !== 'tool_call' || !step.toolName) return
-    const args = summarizeArgs(step.toolArgs)
-    // 有 id 就认同一条，避免 skill 执行时改名成 load_skill 后又多出一行空的。
-    // 没有 id 的旧步骤仍按「同名且还在跑」并到一行。
-    const existing = step.id
-      ? slot.steps.find(s => s.id === step.id)
-      : slot.steps.find(s => s.tool === step.toolName && s.status === 'running')
-    if (existing) {
-      existing.tool = step.toolName
-      if (step.id) existing.id = step.id
-      if (args) existing.args = args
-      if (step.success !== undefined) {
-        existing.status = step.success === false ? 'failed' : 'completed'
-        existing.result = step.toolResult
-      }
-    } else {
-      slot.steps.push({
-        id: step.id,
-        tool: step.toolName,
-        args,
-        status: step.success === false ? 'failed' : step.success === true ? 'completed' : 'running',
-        result: step.toolResult,
-      })
-    }
+    if (!foldToolStep(slot.steps, step)) return
     if (step.success === false && step.toolResult) {
       slot.blockedReason = step.toolResult
     }
@@ -632,6 +703,8 @@ export class SubAgentRoster {
     }
     const seed = applyForkTurns(deps.sanitize(deps.getParentMessages()), slot.forkTurns)
     handle.seedOpeningMessages?.(seed)
+    handle.childRecorder?.noteOpening(seed)
+    persistSlot(slot)
     deps.onProgress()
     const opening = deps.openingFor ? deps.openingFor(snapshotOf(slot), team) : slot.prompt
     slot.runPromise = this.runExisting(slot, opening, deps)
@@ -674,6 +747,7 @@ export class SubAgentRoster {
       }
     }
     slot.waitingForModel = undefined
+    persistSlot(slot)
     deps.onProgress()
     this.reportFinished(slot, deps)
     this.wake()
@@ -698,6 +772,25 @@ export class SubAgentRoster {
   }
 }
 
+/** 这位的状态变了：交给他的存盘人记下来。没有存盘人（没有会话、或不存盘）就什么也不做 */
+function persistSlot(slot: ChildSlot): void {
+  const recorder = slot.handle?.childRecorder
+  if (!recorder) return
+  const input: ChildStateInput = {
+    name: slot.name,
+    askedName: slot.askedName,
+    description: slot.description,
+    prompt: slot.prompt,
+    shownPrompt: slot.shownPrompt,
+    role: slot.role,
+    status: slot.status,
+    result: slot.result,
+    error: slot.error,
+    blockedReason: slot.blockedReason,
+  }
+  recorder.saveState(input)
+}
+
 function snapshotOf(slot: ChildSlot): ChildSnapshot {
   return {
     name: slot.name,
@@ -715,6 +808,53 @@ function snapshotOf(slot: ChildSlot): ChildSnapshot {
     waitingForModel: slot.waitingForModel,
     shownPrompt: slot.shownPrompt,
   }
+}
+
+/** 一条步骤记录里和卡片有关的那几项（实时的步骤和盘上的步骤记录都合这个形状） */
+export interface ToolStepLike {
+  id?: string
+  type: string
+  toolName?: string
+  toolArgs?: Record<string, unknown>
+  success?: boolean
+  toolResult?: string
+}
+
+/**
+ * 把一条工具步骤并进这位的步骤行：有 id 就认同一条，避免 skill 执行时改名成 load_skill 后又多出一行空的；
+ * 没有 id 的旧步骤仍按「同名且还在跑」并到一行。不是工具调用返回 false。
+ */
+export function foldToolStep(steps: SubAgentToolStep[], step: ToolStepLike): boolean {
+  if (step.type !== 'tool_call' || !step.toolName) return false
+  const args = summarizeArgs(step.toolArgs)
+  const existing = step.id
+    ? steps.find(s => s.id === step.id)
+    : steps.find(s => s.tool === step.toolName && s.status === 'running')
+  if (existing) {
+    existing.tool = step.toolName
+    if (step.id) existing.id = step.id
+    if (args) existing.args = args
+    if (step.success !== undefined) {
+      existing.status = step.success === false ? 'failed' : 'completed'
+      existing.result = step.toolResult
+    }
+  } else {
+    steps.push({
+      id: step.id,
+      tool: step.toolName,
+      args,
+      status: step.success === false ? 'failed' : step.success === true ? 'completed' : 'running',
+      result: step.toolResult,
+    })
+  }
+  return true
+}
+
+/** 这位的卡片步骤，按盘上的步骤记录重建 */
+export function toolStepsFromRecords(records: readonly ToolStepLike[]): SubAgentToolStep[] {
+  const steps: SubAgentToolStep[] = []
+  for (const record of records) foldToolStep(steps, record)
+  return steps
 }
 
 /** 这一下动手的对象。先看路径、命令、搜索词这类主字段，再看技能、选择器。 */

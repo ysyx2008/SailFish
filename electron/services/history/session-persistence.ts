@@ -380,6 +380,11 @@ export function getSessionDirPath(agentDir: string, dateStr: string, recordId: s
 export interface SaveSessionOptions {
   /** 强制全量重写 jsonl（图片外化等原地改写步骤内容时使用） */
   forceRewrite?: boolean
+  /**
+   * 调用方确知上次写到这里已落盘的条数（同一进程里自己刚写的）。给了就不再把整个 jsonl 数一遍行数。
+   * 只该由同一个写入方在同一进程里传；重开进程后第一次存不要传，让它按磁盘实际行数对齐。
+   */
+  knownCounts?: { steps: number; messages: number }
 }
 
 /**
@@ -396,6 +401,27 @@ export function saveSessionRecord(
   const dir = sessionDir(agentDir, dateStr, record.id)
   const legacyPath = getAgentRecordPath(agentDir, dateStr, record.id)
 
+  saveSessionRecordToDir(dir, record, options)
+
+  // 清理旧单体文件
+  if (fs.existsSync(legacyPath) && fs.statSync(legacyPath).isFile()) {
+    try {
+      fs.unlinkSync(legacyPath)
+    } catch (e) {
+      log.warn(`Failed to remove legacy session file ${legacyPath}:`, e)
+    }
+  }
+}
+
+/**
+ * 同一套增量保存，写到调用方给定的目录（不按 `<日期>/<记录号>` 推目录）。
+ * 供目录布局不同于主历史树的存放处复用（伙计的对话记录放在各自主会话下面）。
+ */
+export function saveSessionRecordToDir(
+  dir: string,
+  record: AgentRecord,
+  options?: SaveSessionOptions
+): void {
   const steps = record.steps || []
   const messages = record.messages || []
 
@@ -405,8 +431,9 @@ export function saveSessionRecord(
   }
 
   // 磁盘实际行数可能 > meta（append 成功但 meta 未写完的 crash）；取 max 作 watermark 防重复
-  const diskStepLines = existingMeta ? countJsonlLines(stepsPath(dir)) : 0
-  const diskMessageLines = existingMeta ? countJsonlLines(messagesPath(dir)) : 0
+  const known = existingMeta ? options?.knownCounts : undefined
+  const diskStepLines = existingMeta ? (known ? known.steps : countJsonlLines(stepsPath(dir))) : 0
+  const diskMessageLines = existingMeta ? (known ? known.messages : countJsonlLines(messagesPath(dir))) : 0
   const baseSteps = existingMeta ? Math.max(existingMeta.stepCount, diskStepLines) : 0
   const baseMessages = existingMeta ? Math.max(existingMeta.messageCount, diskMessageLines) : 0
 
@@ -425,20 +452,11 @@ export function saveSessionRecord(
     appendJsonl(messagesPath(dir), newMessages)
     writeMeta(dir, mergeTitleLock(recordToMeta(record, steps.length, messages.length), existingMeta))
   } else {
-    // 全量重写目录（首次 / forceRewrite / 回退 / 从 legacy 迁入）
+    // 全量重写目录（首次 / forceRewrite / 回退）
     fs.mkdirSync(dir, { recursive: true })
     writeJsonl(stepsPath(dir), steps)
     writeJsonl(messagesPath(dir), messages)
     writeMeta(dir, mergeTitleLock(recordToMeta(record, steps.length, messages.length), existingMeta))
-  }
-
-  // 清理旧单体文件
-  if (fs.existsSync(legacyPath) && fs.statSync(legacyPath).isFile()) {
-    try {
-      fs.unlinkSync(legacyPath)
-    } catch (e) {
-      log.warn(`Failed to remove legacy session file ${legacyPath}:`, e)
-    }
   }
 }
 
