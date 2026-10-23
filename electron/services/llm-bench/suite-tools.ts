@@ -169,7 +169,7 @@ export const BENCH_TOOLS: ToolDefinition[] = [
   }, ['agent_ids']),
 
   tool('manage_pane', `管理终端窗格：list / open / split / close / focus。
-open：请真终端入座。可选 target：不传或 local 开本机，ssh:<sessionId> 连已有会话。`, {
+open：打开一扇真终端。可选 target：不传或 local 开本机，ssh:<sessionId> 连已有会话。`, {
     action: { type: 'string', enum: ['list', 'open', 'split', 'close', 'focus'], description: '操作' },
     pane_id: { type: 'string', description: 'close/focus 时必填' },
     target: { type: 'string', description: 'open/split：local 或 ssh:<sessionId>' },

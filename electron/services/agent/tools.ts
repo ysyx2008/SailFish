@@ -98,7 +98,7 @@ export interface ToolMeta {
   /** 支持的运行模式（不指定则支持所有模式） */
   supportedModes?: AgentMode[]
 
-  /** 用途是请终端入座、开关窗格：这场对话的界面上没有终端座位时，不给 */
+  /** 用途是打开、关闭终端窗格：这场对话的界面上没有终端位置时，不给 */
   needsTerminalSeat?: boolean
 
   /** 流式预卡片展示配置（不指定则用通用兜底「调用: {toolName}」） */
@@ -512,7 +512,7 @@ export interface GetAgentToolsOptions {
   hasArtifactPanel?: boolean
   /**
    * 这场对话的界面上有没有终端座位，缺省为有。
-   * 没有时不给管理终端窗格的工具：联络只有聊天区，请不动终端入座。
+   * 没有时不给管理终端窗格的工具：联络只有聊天区，打不开终端。
    */
   hasTerminalSeat?: boolean
 }
@@ -547,14 +547,14 @@ const PANE_TOOL_DESC: Record<AgentMode | 'unspecified', PaneToolDescriptions> = 
   local: TERMINAL_PANE_DESC,
   ssh: TERMINAL_PANE_DESC,
   assistant: {
-    open: '- open：不分屏、直接连一台真终端。可选 target：不传/local 开本机、ssh:<sessionId>（先 list_ssh_sessions）。没有终端时用这个请终端入座（左边终端、右边这场对话）；正在看文件时开终端，文件让开进清单。已有终端时再开一扇。',
-    close: '- close：关掉一扇（必填 pane_id=ptyId）。可以关掉最后一扇，终端离座、回到对话独占，不自动把文件请回来。',
-    sshUsage: '用途：当你想连接到某台已配置的服务器时，先调本工具拿 sessionId，再调 manage_pane(action="open", target="ssh:<sessionId>") 请真终端入座（没有终端时用 open；已有终端再开一扇可用 split）。无需用户手工切换或输入凭证。',
+    open: '- open：不分屏、直接连一台真终端。可选 target：不传/local 开本机、ssh:<sessionId>（先 list_ssh_sessions）。还没有终端时用它打开：终端显示在左边，这场对话在右边。用户正在看文件时打开终端，文件会收进产出物清单。已有终端时再开一扇。',
+    close: '- close：关掉一扇（必填 pane_id=ptyId）。可以关掉最后一扇：关掉后对话占满窗口，之前收进清单的文件不会自动回来。',
+    sshUsage: '用途：要连某台已配置的服务器时，先调本工具拿 sessionId，再用 manage_pane(action="open", target="ssh:<sessionId>") 打开真终端（还没有终端时用 open；已有终端想再开一扇用 split）。不需要用户手动切换或输入凭证。',
   },
   unspecified: {
-    open: '- open：不分屏、直接连一台真终端。可选 target：不传/local 开本机、ssh:<sessionId>（先 list_ssh_sessions）。助手没有终端时用这个请终端入座（左边终端、右边这场对话）；正在看文件时开终端，文件让开进清单。已有终端时再开一扇。',
-    close: '- close：关掉一扇（必填 pane_id=ptyId）。终端页不能关最后一扇；助手可以关最后一扇，终端离座、回到对话独占，不自动把文件请回来。',
-    sshUsage: '用途：当你想连接到某台已配置的服务器时，先调本工具拿 sessionId，再调 manage_pane(action="open", target="ssh:<sessionId>") 请真终端入座（助手没有终端时用 open；已有终端再开一扇可用 split）。无需用户手工切换或输入凭证。',
+    open: '- open：不分屏、直接连一台真终端。可选 target：不传/local 开本机、ssh:<sessionId>（先 list_ssh_sessions）。助手页还没有终端时用它打开：终端显示在左边，这场对话在右边。用户正在看文件时打开终端，文件会收进产出物清单。已有终端时再开一扇。',
+    close: '- close：关掉一扇（必填 pane_id=ptyId）。终端页不能关最后一扇；助手页可以关最后一扇：关掉后对话占满窗口，之前收进清单的文件不会自动回来。',
+    sshUsage: '用途：要连某台已配置的服务器时，先调本工具拿 sessionId，再用 manage_pane(action="open", target="ssh:<sessionId>") 打开真终端（助手页还没有终端时用 open；已有终端想再开一扇用 split）。不需要用户手动切换或输入凭证。',
   },
 }
 
@@ -626,6 +626,8 @@ export function getAgentTools(mcpService?: McpService, options?: GetAgentToolsOp
 - 看进度、等某句日志、停掉：用 await_exec
 - 启动服务示例：exec("npm run dev", wait_seconds: 5, service: true)，再 await_exec(task_id, pattern: "Listening on") 确认`
   const execDescriptionForParent = `${execIntro}
+
+**需要用户在场的操作**：exec 在幕后运行，接不住密码提示（sudo 等）和需要人确认的交互。这类操作先用 manage_pane(action=open) 打开真终端，让用户在窗里输入。
 
 **安全规则（宽松只问高风险；严格会问；自由模式不问）**：
 ${execDangerousExamples}

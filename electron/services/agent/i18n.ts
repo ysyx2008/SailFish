@@ -1095,8 +1095,8 @@ const translations = {
     'skill.unloaded': '已卸载技能: {id}',
     'skill.unload_failed': '卸载技能失败',
     'skill.dismissed_by_user': '用户已关掉技能 {id}，这场对话里不要自己再装回来',
-    'skill.system_managed_load': '技能 {id} 由系统管理：这场对话有终端时会自动装上，不能手动加载。要用终端，先 manage_pane(action=open) 请终端入座',
-    'skill.system_managed_unload_seated': '技能 {id} 由系统管理：终端还在座，不能卸载；关掉终端窗之后才能卸',
+    'skill.system_managed_load': '技能 {id} 由系统管理：这场对话开了终端会自动装上，不能手动加载。要用终端，先用 manage_pane(action=open) 打开终端',
+    'skill.system_managed_unload_seated': '技能 {id} 由系统管理：终端窗还开着，不能卸载；关掉终端窗之后才能卸',
     'skill.creating': '创建技能',
     'skill.updating': '更新技能',
 

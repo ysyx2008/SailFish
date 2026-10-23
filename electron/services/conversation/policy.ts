@@ -117,8 +117,8 @@ export interface ConversationPolicy {
   hasArtifactPanel: boolean
 
   /**
-   * 这类会话的界面上有没有终端座位（能请真终端入座、开关窗格）。没有就不给管理窗格的工具。
-   * - task=true：独立助手页能请终端入座，终端页本身就是终端。
+   * 这类会话的界面上有没有终端座位（能打开真终端、开关窗格）。没有就不给管理窗格的工具。
+   * - task=true：独立助手页能打开终端，终端页本身就是终端。
    * - companion=false：联络只有聊天区，不论从桌面、网页还是 IM 来。
    * - watch/wakeup=false：后台执行，没有界面，需要跑命令时直接用本机命令。
    */

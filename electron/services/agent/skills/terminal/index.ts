@@ -23,10 +23,10 @@ const terminalSkill: Skill = {
   systemManaged: true,
   content: [
     '**终端**：这场对话里已有看得见的终端窗。要让用户看见的命令，用 `execute_command` 打在窗里；分屏时用 `pane_id` 指定哪扇窗。',
-    '**禁止的命令**：vim/vi/nano/emacs（本机文件用 `write_text_file`）、tmux/screen、mc/ranger',
-    '**长内容**：超过 200 字符禁止用 echo/printf 往窗里打；长文本分析结果直接在对话中回复，不要发送到终端',
-    '**长耗时命令**：执行 → `wait` 等待 → `check_terminal_status` 确认，超时不代表失败',
-    '**远程窗**：看提示符判断状态——`$`/`#` 可执行新命令；`Password:` 停下让用户输入；`(y/n)` 按情况回复或问用户；`--More--`/`(END)` 发送 `q` 退出',
+    '**不能用的命令**：vim、vi、nano、emacs 这类编辑器（改本机文件用 `write_text_file`），tmux、screen，mc、ranger。',
+    '**长文本**：超过 200 字符的内容不要用 echo/printf 打进窗里。分析结果直接写在对话里，不要发到终端。',
+    '**耗时长的命令**：先 `execute_command`，再用 `wait` 等，最后用 `check_terminal_status` 确认是否跑完。等待超时不代表命令失败。',
+    '**远程窗**：看提示符判断状态。`$` 或 `#` 表示可以执行新命令；`Password:` 表示在等密码，先停下，让用户自己输入；`(y/n)` 按情况回答，或问用户；`--More--` 或 `(END)` 发送 `q` 退出。',
   ].join('\n'),
 }
 
