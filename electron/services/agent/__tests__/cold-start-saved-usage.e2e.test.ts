@@ -227,4 +227,83 @@ describe('端到端：重开旧会话，用记下的真实用量判断装不装�
     expect(adopt.mock.results.some(r => r.value === true)).toBe(true)
     expect(text).toContain('接着查')
   })
+
+  it('唤醒（只带一句话概要）：不采用记下的用量，照常跑完', async () => {
+    seedRecord(new HistoryService(), 2, { promptTokens: 26_000, messageCount: 8 })
+    const adopt = vi.spyOn(Conversation.prototype, 'adoptSavedPromptUsage')
+    const agent = new TestAgent(makeServices(new HistoryService()))
+    agent.setAgentId('tab-usage')
+    await agent.run('心跳', { ...ctx(), wakeup: true } as AgentContext)
+
+    expect(adopt.mock.results.some(r => r.value === true)).toBe(false)
+    expect(messagesByCall.length).toBeGreaterThan(0)
+  })
+
+  it('记录里有系统代发的消息（目标续跑、提醒）：不报错，请求完整，以这一句收尾', async () => {
+    const history = new HistoryService()
+    const messages = longTaskMessages(2)
+    messages.splice(4, 0, { role: 'user', content: '[系统·目标续跑] 继续', _systemInjected: true })
+    messages.splice(5, 0, { role: 'assistant', content: '继续做了' })
+    const timestamp = Date.now()
+    history.saveAgentRecord({
+      id: 'sess_saved_usage', timestamp, terminalId: 'pty-1', agentKey: 'tab-usage', kind: 'task',
+      terminalType: 'assistant', userTask: '第 0 件事：查一下日志',
+      steps: [
+        { id: 'ut', type: 'user_task', content: '第 0 件事：查一下日志', timestamp },
+        { id: 'fr', type: 'final_result', content: 'done', timestamp }
+      ],
+      duration: 1000, status: 'completed', messages,
+      lastPromptUsage: { promptTokens: 12_000, messageCount: 10 }
+    } as AgentRecord)
+    const text = await reopenAndRun('接着查')
+
+    expect(text).toContain('接着查')
+    expect(text).toContain('继续做了')
+    expect(messagesByCall[0][messagesByCall[0].length - 1].role).toBe('user')
+  })
+
+  it('联络（五档装配）：带着记下的用量重开也不报错，请求以这一句收尾', async () => {
+    const history = new HistoryService()
+    const timestamp = Date.now()
+    history.saveAgentRecord({
+      id: 'sess_saved_usage', timestamp, terminalId: 'pty-1', agentKey: '__companion__', kind: 'companion',
+      terminalType: 'assistant', userTask: '第 0 件事：查一下日志',
+      steps: [
+        { id: 'ut', type: 'user_task', content: '第 0 件事：查一下日志', timestamp },
+        { id: 'fr', type: 'final_result', content: 'done', timestamp }
+      ],
+      duration: 1000, status: 'completed', messages: longTaskMessages(2),
+      lastPromptUsage: { promptTokens: 26_000, messageCount: 8 }
+    } as AgentRecord)
+    const agent = new TestAgent(makeServices(new HistoryService()))
+    agent.setAgentId('__companion__')
+    await agent.run('接着聊', ctx())
+
+    const sent = messagesByCall[0]
+    expect(sent[sent.length - 1].role).toBe('user')
+    expect(flatten(sent)).toContain('接着聊')
+    expect(flatten(sent)).toContain('第 0 件事：查一下日志')
+  })
+
+  it('同一场连着重开多次：每次都按最新一次请求的用量', async () => {
+    const history1 = new HistoryService()
+    nextPromptTokens = 2_000
+    const first = new TestAgent(makeServices(history1))
+    first.setAgentId('tab-usage')
+    await first.run('第一件事', ctx())
+
+    const counts: number[] = []
+    for (const [i, tokens] of [3_000, 4_000, 5_000].entries()) {
+      nextPromptTokens = tokens
+      const agent = new TestAgent(makeServices(new HistoryService()))
+      agent.setAgentId('tab-usage')
+      await agent.run(`第${i + 2}件事`, ctx())
+      const saved = new HistoryService().getAgentRecordById('sess_saved_usage')!
+      expect(saved.lastPromptUsage?.promptTokens).toBe(tokens)
+      counts.push(saved.lastPromptUsage!.messageCount)
+    }
+    // 每多说一轮，记下的位置就往后挪
+    expect(counts[1]).toBeGreaterThan(counts[0])
+    expect(counts[2]).toBeGreaterThan(counts[1])
+  })
 })

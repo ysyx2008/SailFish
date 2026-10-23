@@ -832,6 +832,28 @@ describe('Conversation 聚合根（领域模型）', () => {
       expect(conv.toRecord()!.lastPromptUsage).toBeUndefined()
     })
 
+    it('分叉、抽取出的新任务不继承：历史已经不是上次发出去的那份', () => {
+      const source: AgentRecord = {
+        ...convWithTurn().toRecord()!,
+        kind: 'companion',
+        agentKey: '__companion__',
+        lastPromptUsage: { promptTokens: 9000, messageCount: 2 }
+      }
+      const forked = Conversation.forkFromRecord(source, 'sess_fork')!
+      expect(forked.record.lastPromptUsage).toBeUndefined()
+      expect(forked.conversation.toRecord()!.lastPromptUsage).toBeUndefined()
+      const extracted = Conversation.extractTaskFromRecords([source], 'sess_extract')!
+      expect(extracted.record.lastPromptUsage).toBeUndefined()
+      expect(extracted.conversation.toRecord()!.lastPromptUsage).toBeUndefined()
+    })
+
+    it('检查点记录也带上最近一次用量', () => {
+      const conv = convWithTurn()
+      conv.recordPromptUsage(4, 777)
+      const cp = conv.toCheckpointRecord({ steps: [], taskMessageLog: [] })!
+      expect(cp.lastPromptUsage).toEqual({ promptTokens: 777, messageCount: 4 })
+    })
+
     it('reset 清掉', () => {
       const conv = convWithTurn()
       conv.recordPromptUsage(2, 500)
