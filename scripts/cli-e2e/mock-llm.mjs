@@ -28,7 +28,7 @@ export const callTool = (name, args) => ({ kind: 'tool', name, args })
 export const hang = () => ({ kind: 'hang' })
 
 /**
- * @param script.onUser    用户（含命令行里敲的话）开头的一轮：(text, n) => 动作
+ * @param script.onUser    用户（含命令行里敲的话）开头的一轮：(text, n, entry) => 动作；entry 是这次请求的全部内容
  * @param script.onContinue 目标续跑的一轮：(n) => 动作
  * 工具返回后的那一次请求默认回一句话；要换脚本，给 afterTool。
  */
@@ -68,7 +68,7 @@ export function startMockLlm(script) {
         action = script.onContinue(++continuations)
         entry.phase = `continue-${continuations}`
       } else {
-        action = script.onUser(lastText, ++userTurns)
+        action = script.onUser(lastText, ++userTurns, entry)
         entry.phase = `user-${userTurns}`
       }
       entry.action = action.kind
