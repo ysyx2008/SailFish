@@ -88,7 +88,7 @@ const progressText = computed(() => {
           <button
             type="button"
             class="update-notify-close"
-            :aria-label="t('about.updateLater')"
+            :aria-label="t('common.close')"
             @click="runDismiss"
           >
             <X :size="14" />

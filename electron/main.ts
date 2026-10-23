@@ -3247,6 +3247,9 @@ autoUpdater.on('error', (error) => {
   log.error('AutoUpdater: 更新错误:', error)
   updateStatus = {
     status: 'error',
+    // 保留更新信息：首选源下载失败后会换源重试，随后的进度广播靠 info.version 认出是同一个更新
+    info: updateStatus.info,
+    sources: updateStatus.sources,
     error: error.message || t('error.unknown')
   }
   mainWindow?.webContents.send('updater:status-changed', updateStatus)

@@ -399,6 +399,7 @@ export default {
     updateLater: 'Remind me later',
     updateDeferredToast: 'Version {version} will install when you quit the app',
     updateSnoozedToast: 'Reminder skipped. Install from Settings → About when ready.',
+    updateRemindLaterToast: 'Not now. We’ll remind you after the next launch. You can also install any time from Settings → About.',
     goToDownload: 'Go to Download',
     viewChangelog: 'View Changelog',
     updateNotifyAvailableHint: 'Version {version} is available. Download when ready — this won’t interrupt your work.',
