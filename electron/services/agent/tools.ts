@@ -502,6 +502,11 @@ export interface GetAgentToolsOptions {
   mcpToolSession?: McpToolSession
   /** 当前会话是否允许挂目标（仅任务会话） */
   supportsGoal?: boolean
+  /**
+   * 这场对话的界面上有没有产出物面板，缺省为有。
+   * 没有时不给查看、维护面板的工具：联络只有聊天区，不该摸到一块不存在的面板。
+   */
+  hasArtifactPanel?: boolean
 }
 
 /**
@@ -1587,7 +1592,9 @@ ${sshUsageDesc}
   }
 
   if (options?.mode === 'assistant') {
-    filteredTools.push(...(ASSISTANT_WORKBENCH_AGENT_TOOLS as unknown as ToolDefinitionWithMeta[]))
+    if (options.hasArtifactPanel !== false) {
+      filteredTools.push(...(ASSISTANT_WORKBENCH_AGENT_TOOLS as unknown as ToolDefinitionWithMeta[]))
+    }
     // 终端工具组随「终端」技能装上：这场有了终端才有，开窗入口 manage_pane 一直在
   }
 

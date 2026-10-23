@@ -20,8 +20,16 @@ describe('CONVERSATION_POLICY 策略表', () => {
       restoreSkillsOnReopen: true,
       skillNotesOnUserMessage: true,
       supportsGoal: true,
+      hasArtifactPanel: true,
       modelRequestPriority: 'urgent',
     })
+  })
+
+  it('产出物面板只有任务的界面上有：联络只有聊天区，关切、唤醒没有界面', () => {
+    expect(conversationPolicy('task').hasArtifactPanel).toBe(true)
+    expect(conversationPolicy('companion').hasArtifactPanel).toBe(false)
+    expect(conversationPolicy('watch').hasArtifactPanel).toBe(false)
+    expect(conversationPolicy('wakeup').hasArtifactPanel).toBe(false)
   })
 
   it('模型请求：任务和联络有人当面等不排队，关切和唤醒在后台排队', () => {

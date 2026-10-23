@@ -2540,6 +2540,12 @@ export abstract class Agent {
     return agentSupportsGoal(this._agentId ?? '', this._conversation?.kind)
   }
 
+  /** 这场对话的界面上有没有产出物面板（按会话种类，一场对话里不变） */
+  hasArtifactPanel(): boolean {
+    const kind = this._conversation?.kind ?? inferConversationKind(this._agentId)
+    return conversationPolicy(kind).hasArtifactPanel
+  }
+
   getLastContext(): AgentContext | undefined {
     return this._lastContext
   }

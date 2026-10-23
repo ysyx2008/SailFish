@@ -273,6 +273,30 @@ describe('SailFish', () => {
       expect(toolNames(tools)).not.toContain('execute_command')
       expect(toolNames(tools)).toContain('manage_pane')
     })
+
+    it('独立助手页的任务有产出物面板工具，联络、关切、唤醒没有', () => {
+      const panelTools = ['list_workbench_artifacts', 'manage_workbench_artifacts']
+      const namesFor = (agentKey: string) => {
+        const a = new SailFish(createMockServices(), 'test-pty')
+        a.setAgentId(agentKey)
+        return toolNames(a.getAvailableTools())
+      }
+
+      for (const name of panelTools) expect(namesFor('assistant-tab-1')).toContain(name)
+      for (const key of ['__companion__', '__watch__:w1', '__wakeup__']) {
+        const names = namesFor(key)
+        for (const name of panelTools) expect(names).not.toContain(name)
+        // 其他助手能力照旧
+        expect(names).toContain('exec')
+        expect(names).toContain('manage_pane')
+      }
+    })
+
+    it('联络照旧带着自己的任务管理工具', () => {
+      const a = new SailFish(createMockServices(), 'test-pty')
+      a.setAgentId('__companion__')
+      expect(toolNames(a.getAvailableTools())).toContain('manage_tasks')
+    })
   })
 
   describe('agent methods', () => {
