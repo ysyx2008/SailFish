@@ -161,10 +161,15 @@ async function findCdAnchors(ast: ShellFile): Promise<Map<CallExprNode, string>>
 
   const { call: cdCall, words } = cdCalls[0]
   if (words.length !== 2 || words[0] !== 'cd' || words[1] === null) return anchors
-  const dir = unescapeShellWordLiteral(words[1])
-  if (UNSTABLE_DIR_CHARS.test(dir)) return anchors
+  // 单引号里的反斜杠在 shell 里是字面字符，不加引号的才是转义：从字面量分不清是哪种，
+  // 所以原文和去转义之后的两种读法都得过关。anchorCwd 存的是去转义之后的，解析时不再去一次。
+  const raw = words[1]
+  const dir = unescapeShellWordLiteral(raw)
+  for (const reading of [raw, dir]) {
+    if (UNSTABLE_DIR_CHARS.test(reading)) return anchors
+    if (reading.split(/[\\/]/).includes('..')) return anchors
+  }
   if (!isLexicallyAbsolutePath(dir)) return anchors
-  if (dir.split(/[\\/]/).includes('..')) return anchors
 
   for (const stmt of ast.stmts) {
     const links = flattenAndChain(stmt)

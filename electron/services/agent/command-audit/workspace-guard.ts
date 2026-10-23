@@ -103,13 +103,19 @@ function resolveRealPath(filePath: string): string {
   }
 }
 
+/** 路径字面量里有花括号：可能是要等 shell 展开的花括号展开（宁可多认，认错只是多问一次） */
+function hasBraceExpansion(p: string): boolean {
+  return /[{}]/.test(p)
+}
+
 /**
  * `cd 绝对路径 &&` 定下的当前目录 → 真实目录（展开 ~、跟随符号链接）。
  * 后面的相对路径按这个真实目录解析：内核解析相对路径用的是进程所在的真实目录，
  * 不是 shell 里记的逻辑目录，所以符号链接必须先跟随。
  */
-export function resolveAnchorDir(rawDir: string): string {
-  return resolveRealPath(resolveCommandPath(rawDir))
+export function resolveAnchorDir(dir: string): string {
+  // dir 已经由提取那一步去过转义，这里不能再去一次（目录名里的反斜杠会被吃掉，指到另一个目录）
+  return resolveRealPath(path.resolve(expandTilde(dir)))
 }
 
 function getRelativeWorkspacePath(filePath: string): string | null {
@@ -388,7 +394,10 @@ export function adjustRiskByPathZones(
   const effectiveZones = nonDevNullPaths.map(p => getWorkspaceZone(p, cwd, extraFreeDirs))
   // 相对路径无法静态证明执行时 cwd：即便按审计 cwd 落在 free，也不允许降级为 safe。
   // pathZones 返回 policyZones（与 level 决策一致），避免「显示 free、实际按 outside」误导调试。
-  const locationKnown = (p: string) => opts?.cwdAnchored === true || isLexicallyAbsolutePath(p)
+  // 花括号展开（`{a,b}`、`{x,../../y}`）要等 shell 展开才知道真正的目标，字面上的路径不可信：
+  // `rm -rf /tmp/{x,../../Users/me/Desktop/foo}` 按字面落在 /tmp，实际会删到桌面。
+  const locationKnown = (p: string) =>
+    !hasBraceExpansion(p) && (opts?.cwdAnchored === true || isLexicallyAbsolutePath(p))
   const relativeBlocksFree = nonDevNullPaths.some(
     (p, i) => effectiveZones[i] === 'free' && !locationKnown(p),
   )
@@ -405,7 +414,8 @@ export function adjustRiskByPathZones(
   // outside：默认不升级 safe 命令（如 cp）；开启 outsideWritesUpgrade 时升为 moderate
   if (policyZones.some(z => z === 'outside')) {
     if (relativeBlocksFree) {
-      reasons.push(t('risk.reason.relative_write_path'))
+      const braces = nonDevNullPaths.some((p, i) => effectiveZones[i] === 'free' && hasBraceExpansion(p))
+      reasons.push(t(braces ? 'risk.reason.brace_write_path' : 'risk.reason.relative_write_path'))
     }
     if (commandLevel === 'safe' && opts?.outsideWritesUpgrade) {
       reasons.push(t('risk.reason.workspace_outside_upgrade'))

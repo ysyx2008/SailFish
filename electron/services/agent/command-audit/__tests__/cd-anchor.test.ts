@@ -21,6 +21,7 @@ import { assessShellRisk, defaultAuditContext } from '../assess-shell'
 import { commandNeedsConfirm } from '../confirm-policy'
 import { extractAuditedCalls } from '../extract-calls'
 import { resetUserDataGuardForTest, setUserDataGuardForTest } from '../userdata-guard'
+import { resolveAnchorDir } from '../workspace-guard'
 
 const USER_DATA = '/Users/yushen/Library/Application Support/SailFish'
 const SCRATCH = path.join(USER_DATA, 'agent-workspace', 'scratch')
@@ -218,5 +219,40 @@ describe('对得上真实的 shell', () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('花括号展开：字面上落在自由区，展开后可能落在别处', () => {
+  const cases: Array<[string, string]> = [
+    ['绝对路径里的花括号展开', 'rm -rf /tmp/{x,../../Users/yushen/Desktop/foo}'],
+    ['cd 之后相对路径里的花括号展开', 'cd /tmp && rm -rf {x,../../Users/yushen/Desktop/foo}'],
+    ['草稿目录里的花括号展开', `rm -rf "${SCRATCH}"/{a,b}`],
+    ['cd 到草稿目录再用花括号展开', `cd "${SCRATCH}" && rm -rf {a,b}`],
+  ]
+  for (const [name, cmd] of cases) {
+    it(`${name}：不降级、要确认`, async () => {
+      const r = await level(cmd)
+      expect(r.level, cmd).not.toBe('safe')
+      expect(r.askRelaxed, cmd).toBe(true)
+      expect(r.assessment.calls.flatMap(c => c.reasons).join('；'), cmd).toMatch(/花括号|brace/i)
+    })
+  }
+
+  it('没有花括号的路径不受影响', async () => {
+    const r = await level(`cd "${SCRATCH}" && rm -rf a b`)
+    expect(r.level).toBe('safe')
+    expect(r.askRelaxed).toBe(false)
+  })
+})
+
+describe('锚点目录只去一次转义', () => {
+  it('目录名里本来就有反斜杠时，解析结果保留它', () => {
+    // 提取那一步已经去过转义，剩下的反斜杠是目录名的一部分
+    expect(path.basename(resolveAnchorDir('/tmp/cd-anchor-no-such/x\\y'))).toBe('x\\y')
+  })
+
+  it('单引号里带反斜杠的目录：不因两种读法对不上而误认', async () => {
+    const { calls } = await extractAuditedCalls("cd '/tmp/we\\..\\ird' && rm -rf x", defaultAuditContext())
+    expect(calls.filter(c => c.anchorCwd !== undefined)).toEqual([])
   })
 })
