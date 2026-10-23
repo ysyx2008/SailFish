@@ -28,11 +28,16 @@ export interface ToolOutputBudget {
   usagePercent: number
 }
 
+/**
+ * 单次读入的字符上限，与窗口大小无关。
+ * 按实测最密内容约 0.6 token/字符，16,000 字符最坏约 1 万 token；
+ * 窗口再大也不多给——本地估算对密集内容会估少，单次读得越多越容易一步越界。
+ */
+export const TOOL_OUTPUT_FLAT_CAP = 16_000
+
 export function getTierOutputCap(contextLength: number): number {
-  if (contextLength <= 32_000) return 8_192
-  if (contextLength <= 128_000) return 24_576
-  if (contextLength <= 512_000) return 49_152
-  return TOOL_OUTPUT_HARD_CAP
+  const windowCap = contextLength <= 32_000 ? 8_192 : TOOL_OUTPUT_FLAT_CAP
+  return Math.min(windowCap, TOOL_OUTPUT_FLAT_CAP)
 }
 
 export function getPressureMultiplier(usageRatio: number): number {

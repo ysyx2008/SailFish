@@ -982,7 +982,7 @@ Companion 语义是「一条跨重启、多渠道汇流的连续关系线」，�
 
 在工具结果**写入 `run.messages` 前**，按模型 `contextLength` 与当前已用量计算单次 output 字符/行上限，防止「最后一读把窗口撑爆」。旧 tool 结果不再做每步微压缩（曾用 `tool-result-budget`，会提前丢信息并破坏 prompt cache）；上下文紧张时统一走下方 compress 体系。
 
-- **计算**：`computeToolOutputBudget({ contextLength, currentTokens })` → `{ maxChars, maxLines, critical, usagePercent }`；档位上限 × 压力系数（70%/85%）与 `remaining − reserve` 取 min；reserve 为窗口 15%（最少 4K token）。
+- **计算**：`computeToolOutputBudget({ contextLength, currentTokens })` → `{ maxChars, maxLines, critical, usagePercent }`；档位上限（2026-10-23 起大窗口不再多给：所有窗口统一不超过 16,000 字符，≤32K 小窗口仍是 8192）× 压力系数（70%/85%）与 `remaining − reserve` 取 min；reserve 为窗口 15%（最少 4K token）。
 - **注入**：`ToolExecutorConfig.getToolOutputBudget` 由 `agent.ts` 在 `createToolExecutorConfig` 提供；子 Agent 继承父配置。
 - **并行 batch**：`executeToolBatchParallel` 与流式预执行 `StreamingToolExecutor` 均通过 `applyParallelShare(budget, N)` 分摊预算，避免 N 个只读工具各拿满额。
 - **消费方（v1）**：`tools/file.ts` 的 `read_file` / 文档解析结果在返回前按预算截断；`maxChars ≤ 0` 时仅返回摘要与压缩指引。

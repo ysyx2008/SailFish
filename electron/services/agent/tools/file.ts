@@ -16,7 +16,7 @@ import { createLogger } from '../../../utils/logger'
 import { categorizeError, getErrorRecoverySuggestion, truncateFromEnd, truncateSandwichWithNotice, formatFileSize } from './utils'
 import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
 import type { AgentContext } from '../types'
-import type { ToolOutputBudget } from '../tool-output-budget'
+import { TOOL_OUTPUT_FLAT_CAP, type ToolOutputBudget } from '../tool-output-budget'
 import type { CanvasData } from '@shared/types'
 import { VISION_IMAGE_EXTENSIONS, IMAGE_MIME_TYPES, CONVERTIBLE_IMAGE_EXTENSIONS } from './types'
 import { isUserDataForbidden, type UserDataAccess } from '../command-audit/userdata-guard'
@@ -31,7 +31,7 @@ import { externalizeToolOutput, externalizeFailedError } from '../tool-output-ex
 export { getWorkspacePath, getScratchPath }
 
 const DEFAULT_READ_OUTPUT_BUDGET: ToolOutputBudget = {
-  maxChars: 24_576,
+  maxChars: TOOL_OUTPUT_FLAT_CAP,
   maxLines: 500,
   critical: false,
   usagePercent: 0,
