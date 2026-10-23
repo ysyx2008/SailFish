@@ -342,10 +342,11 @@ function pick(action: 'open-todos' | 'open-contacts' | 'open-memory' | 'open-wat
   align-items: center;
   justify-content: center;
   border-radius: 9px;
-  background: var(--bg-tertiary, rgba(127, 127, 127, 0.22));
-  color: var(--text-primary);
+  /* 底色从文字色里取淡的一层：浅色、深色、各套配色下都能显出来，不依赖某个主题的底色变量 */
+  background: color-mix(in srgb, var(--text-secondary) 16%, transparent);
+  color: var(--text-secondary);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
