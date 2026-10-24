@@ -22,7 +22,8 @@ function sse(res, usage, delta, finish) {
 }
 
 /** 脚本里每一步的写法 */
-export const say = (content) => ({ kind: 'text', content })
+/** finish 默认 stop；传 'length' 模拟回答停在输出额度上 */
+export const say = (content, finish = 'stop') => ({ kind: 'text', content, finish })
 export const callTool = (name, args) => ({ kind: 'tool', name, args })
 /** 接上了但一直不回，直到对方断开（用来按 Ctrl+C） */
 export const hang = () => ({ kind: 'hang' })
@@ -77,6 +78,22 @@ export function startMockLlm(script) {
       const custom = script.usage?.(entry, action)
       const usageFor = (kind) => (custom === undefined ? USAGE[kind] : custom)
 
+      // 非流式调用（写交接小结之类）要的是一整份 JSON，不是事件流
+      if (body.stream !== true && (action.kind === 'tool' || action.kind === 'text')) {
+        const usage = usageFor(action.kind)
+        const message = action.kind === 'tool'
+          ? { role: 'assistant', content: null, tool_calls: [{ id: `call_${requests.length}`, type: 'function', function: { name: action.name, arguments: JSON.stringify(action.args) } }] }
+          : { role: 'assistant', content: action.content }
+        res.writeHead(200, { 'Content-Type': 'application/json', Connection: 'close' })
+        res.end(JSON.stringify({
+          id: 'x',
+          object: 'chat.completion',
+          choices: [{ index: 0, message, finish_reason: action.kind === 'tool' ? 'tool_calls' : (action.finish ?? 'stop') }],
+          ...(usage ? { usage: { ...usage, total_tokens: usage.prompt_tokens + usage.completion_tokens } } : {}),
+        }))
+        return
+      }
+
       if (action.kind === 'tool') {
         sse(res, usageFor('tool'), { role: 'assistant', tool_calls: [{ index: 0, id: `call_${requests.length}`, type: 'function', function: { name: action.name, arguments: JSON.stringify(action.args) } }] }, 'tool_calls')
       } else if (action.kind === 'hang') {
@@ -84,7 +101,7 @@ export function startMockLlm(script) {
         const timer = setTimeout(() => res.end(), 120_000)
         req.on('close', () => clearTimeout(timer))
       } else {
-        sse(res, usageFor('text'), { role: 'assistant', content: action.content }, 'stop')
+        sse(res, usageFor('text'), { role: 'assistant', content: action.content }, action.finish ?? 'stop')
       }
     })
   })

@@ -718,7 +718,7 @@ describe('ContextWindowManager.shouldProactiveCompress', () => {
   })
 
   it('剩余空间装不下小结 → true（触发）', () => {
-    // contextLength=128000，预留 4000；用了 125000 只剩 3000，写不完小结
+    // contextLength=128000，预留随小结额度走；用了 125000 已超出输入预算，写不完小结
     const m = new ContextWindowManager(makeDeps({ getLastPromptTokens: () => 125000 }))
     const run = makeRun([user('do'), asst('a1'), asst('a2'), asst('a3')])
     expect(m.shouldProactiveCompress(run)).toBe(true)
@@ -738,17 +738,33 @@ describe('ContextWindowManager.shouldProactiveCompress', () => {
     expect(m.shouldProactiveCompress(makeRun([user('do'), asst('a1')]))).toBe(false)
   })
 
-  it('大窗口：预留取绝对值，不随窗口按比例膨胀', () => {
+  it('大窗口：预留随小结额度走但有上界，不随窗口按比例膨胀', () => {
     // 旧的 95% 百分比逻辑在 1M 窗口下用到 950K 就压，可那时还剩 50K，完全够用
+    // 小结额度封顶 16384，加零头 2000
+
     const m = new ContextWindowManager(makeDeps({
       config: {
         getAiProfiles: () => [{ id: 'p1', contextLength: 1000000 } as AiProfile],
         getActiveAiProfile: () => 'p1'
       },
-      getLastPromptTokens: () => 960000
+      getLastPromptTokens: () => 940000
     }))
-    expect(m.getCompactionReserveTokens()).toBe(4000)
+    expect(m.getCompactionReserveTokens()).toBe(16384 + 2000)
     expect(m.shouldProactiveCompress(makeRun([user('do'), asst('a1')]))).toBe(false)
+  })
+
+  it('小结额度跟窗口走：窗口越大预留越多，但不低于以前的 4000', () => {
+    const reserveOf = (contextLength: number) =>
+      new ContextWindowManager(makeDeps({
+        config: {
+          getAiProfiles: () => [{ id: 'p1', contextLength } as AiProfile],
+          getActiveAiProfile: () => 'p1'
+        },
+        getLastPromptTokens: () => 1000
+      })).getCompactionReserveTokens()
+    expect(reserveOf(32000)).toBeGreaterThanOrEqual(4000)
+    expect(reserveOf(128000)).toBeGreaterThan(reserveOf(32000))
+    expect(reserveOf(1000000)).toBe(16384 + 2000)
   })
 
   it('lastPromptTokens 逼近 contextLength（如 DeepSeek 默默接受 62K 但 profile 是 64K）→ 触发', () => {

@@ -13,7 +13,7 @@ import type { AgentRun } from './types'
 import { estimateTextTokens } from './token-estimate'
 import { t } from './i18n'
 import { createLogger } from '../../utils/logger'
-import { resolveRequestBudget } from '../ai-request-budget'
+import { resolveRequestBudget, resolveSummaryBudget, type SummaryBudget } from '../ai-request-budget'
 
 const log = createLogger('ContextWindow')
 
@@ -149,14 +149,14 @@ export class ContextWindowManager {
    * 128K 窗口留 5% 还有 6.4K 够写小结,32K 窗口留 5% 只剩 1.6K,小结写不完就被截断,
    * 压缩本身反倒成了信息丢失的来源。
    *
-   * 构成：小结输出 SUMMARY_OUTPUT_BUDGET_CHARS(2000 字,按中文口径约 1.5K tokens)
-   * + 压缩指令 + 本轮可能新增的零头。
+   * 构成：小结输出额度（跟窗口走，见 getSummaryBudget）+ 压缩指令 + 本轮可能新增的零头
+   * （后两者合计 COMPACTION_OVERHEAD_TOKENS）。
    *
    * 注意固定前缀(system prompt + 工具 schema)不参与这个判断:剩余空间 =
    * 能发的输入 - 已用,前缀多大在两边同时出现、约掉了。压缩「压不压得动」是另一个问题,
    * 由 MIN_PROACTIVE_RANGE_TOKENS 与实效防抖负责。
    */
-  static readonly COMPACTION_RESERVE_TOKENS = 4000
+  static readonly COMPACTION_OVERHEAD_TOKENS = 2000
 
   /**
    * 预留空间占窗口的上限。极小窗口(如 8K)下 4000 会占掉一半,导致刚开场就判定该压缩;
@@ -282,6 +282,16 @@ export class ContextWindowManager {
    */
   getInputLimit(outputOverride?: number): number {
     return resolveRequestBudget(this.getBudgetProfile(), outputOverride).inputLimit
+  }
+
+  /**
+   * 这次交接小结最多能写多少：按「能发的输入 − 压不掉的固定部分」的比例算，
+   * 有下限和上界（见 resolveSummaryBudget）。
+   */
+  getSummaryBudget(): SummaryBudget {
+    const profile = this.getBudgetProfile()
+    const available = Math.max(0, this.getInputLimit() - this.getFixedPrefixTokens(this._lastSystemPromptScope))
+    return resolveSummaryBudget(available, this.getContextLength(), profile?.maxOutputTokens)
   }
 
   /**
@@ -723,7 +733,7 @@ export class ContextWindowManager {
    * 是否应该主动压缩（本地触发路径，不等 API 报错）。
    *
    * 触发条件：窗口剩余空间已经装不下「写一份交接小结」所需的量（见
-   * COMPACTION_RESERVE_TOKENS）。常态下不因为历史变长就主动动手——不动前缀才能
+   * getCompactionReserveTokens）。常态下不因为历史变长就主动动手——不动前缀才能
    * 把 provider 的前缀缓存吃满，压缩是接近装满时的一次性动作。
    *
    * 仍要求有真实用量锚点，无真实值（首次对话 / cold start）时不触发——避免估算误差导致误压缩。
@@ -763,13 +773,13 @@ export class ContextWindowManager {
   }
 
   /**
-   * 压缩自身需要预留的空间。取绝对值与「窗口 × 比例上限」的较小者：
-   * 绝对值保证大窗口下不会为了凑比例而过早压缩，比例上限保证小窗口下预留
+   * 压缩自身需要预留的空间 = 小结输出额度 + 指令与零头，取与「窗口 × 比例上限」的较小者：
+   * 绝对数保证大窗口下不会为了凑比例而过早压缩，比例上限保证小窗口下预留
    * 不会大到刚开场就判定该压。
    */
   getCompactionReserveTokens(): number {
     return Math.min(
-      ContextWindowManager.COMPACTION_RESERVE_TOKENS,
+      this.getSummaryBudget().outputTokens + ContextWindowManager.COMPACTION_OVERHEAD_TOKENS,
       Math.floor(this.getContextLength() * ContextWindowManager.MAX_RESERVE_RATIO)
     )
   }
@@ -875,7 +885,7 @@ export class ContextWindowManager {
     const projected =
       this.getFixedPrefixTokens(this._lastSystemPromptScope) +
       this.getPreservedPairsBudget() +
-      ContextWindowManager.COMPACTION_RESERVE_TOKENS +
+      this.getCompactionReserveTokens() +
       recentTokens
     return projected > inputLimit * 0.9 ? 1 : 2
   }
