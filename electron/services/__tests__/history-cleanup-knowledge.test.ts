@@ -48,9 +48,13 @@ vi.mock('../knowledge/storage', () => {
     async getAllDocIds() { return new Set(vectorRows.map(row => row.docId)) },
     async addRecords(incoming: VectorRow[]) { vectorRows.push(...incoming) },
     async removeDocumentChunks(docId: string) {
+      return vector.removeDocumentChunksMany([docId])
+    },
+    async removeDocumentChunksMany(docIds: string[]) {
+      const drop = new Set(docIds)
       const before = vectorRows.length
       for (let i = vectorRows.length - 1; i >= 0; i--) {
-        if (vectorRows[i].docId === docId) vectorRows.splice(i, 1)
+        if (drop.has(vectorRows[i].docId)) vectorRows.splice(i, 1)
       }
       return before - vectorRows.length
     },
