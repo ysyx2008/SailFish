@@ -96,3 +96,10 @@ export function shouldShowToolResultStep(
   // tool_call 默认展示（保留"知情权"——用户需要看到 Agent 准备做什么）
   return true
 }
+
+/** 工具名在界面上的叫法；没有翻译就原样显示 */
+export function toolDisplayName(t: (key: string) => string, toolName: string): string {
+  const key = `ai.toolNames.${toolName}`
+  const translated = t(key)
+  return translated !== key ? translated : toolName
+}

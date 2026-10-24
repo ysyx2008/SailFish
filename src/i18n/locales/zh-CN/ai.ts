@@ -872,6 +872,13 @@ export default {
       failed: '{count} 失败',
       interrupted: '{count} 已打断',
     },
+    subAgentDock: {
+      allDoneExperts: '{count} 位专家都干完了',
+      allDoneAgents: '{count} 个伙计都干完了',
+      teamChat: '群聊',
+      expand: '展开看每个人',
+      collapse: '收起',
+    },
     subAgentShowMore: '再显示 {count} 个（还有 {rest} 个）',
     subAgentShowResult: '查看结果',
     subAgentHideResult: '收起结果',

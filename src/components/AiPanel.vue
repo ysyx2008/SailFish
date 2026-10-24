@@ -29,11 +29,12 @@ import ProcessTurnFold from './ProcessTurnFold.vue'
 import { createReusableTemplate } from '../utils/reusable-template'
 import { buildPeekProcessView, countPeekNeedsYou, lastSpokenBody, resolveFocusPeek, resolvePeekOverlay } from '../utils/focus-peek'
 import { describeLiveProcess, type ProcessFoldView } from '../utils/process-fold'
-import { SUB_AGENT_FOLD_THRESHOLD, SUB_AGENT_PAGE_SIZE, SUB_AGENT_SUMMARY_ORDER, countSubAgents, sortSubAgentsByBucket } from '../utils/sub-agent-summary'
 import { chatTimeParts } from '../utils/chat-time-marker'
 import { formatProcessFoldCaption, type ProcessFoldSay } from '../utils/process-fold-label'
 import ToolCallContent from './ToolCallContent.vue'
-import ExpertTeamCard from './ExpertTeam/ExpertTeamCard.vue'
+import SubAgentGroup from './SubAgentGroup.vue'
+import SubAgentDock from './SubAgentDock.vue'
+import { toolDisplayName } from '../utils/tool-display'
 import ExpertTeamChat from './ExpertTeam/ExpertTeamChat.vue'
 import ImageContextMenu from './ImageContextMenu.vue'
 import AttachmentContextMenu from './AttachmentContextMenu.vue'
@@ -74,7 +75,7 @@ import { pickTaskCompleteLabel } from '../composables/useTaskCompleteLabel'
 import { loadBondTrustLevel } from '../composables/useRandomPlaceholder'
 import { isOemFeatureEnabled } from '@shared/oem-features'
 import type { BondTrustLevel } from '@shared/types/bond'
-import type { AgentRecord, AgentHistorySummary, AttachmentInfo, AskingStatus, SubAgentResult } from '@shared/types'
+import type { AgentRecord, AgentHistorySummary, AttachmentInfo, AskingStatus } from '@shared/types'
 import { resolveConversationDisplayTitle } from '../utils/conversation-title'
 import { COMPANION_AGENT_KEY, isAskingSettled, clampAskUserTimeout } from '@shared/types'
 
@@ -96,6 +97,9 @@ const props = withDefaults(defineProps<{
   peek?: boolean
   /** 外壳有地方放专家团群聊时由它打开；不给就盖在对话栏上 */
   openExpertTeam?: (stepId: string) => void
+  /** 外壳接手群聊时：此刻开着的是哪个专家团（没开就空），以及怎么关掉 */
+  openedExpertTeamStepId?: string | null
+  closeExpertTeam?: () => void
 }>(), {
   visible: true,
   tabActive: true,
@@ -545,47 +549,6 @@ const getHostname = (url: string): string => {
   }
 }
 
-// 子 Agent 展开状态（默认收起，用户点击切换）
-const subAgentExpandState = reactive(new Map<string, boolean>())
-const isSubAgentExpanded = (key: string): boolean => {
-  return subAgentExpandState.get(key) === true
-}
-const toggleSubAgentExpand = (key: string) => {
-  subAgentExpandState.set(key, !isSubAgentExpanded(key))
-}
-
-// 伙计多了折叠成一行计数；点开按状态分组，一次显示一页
-const subAgentListOpen = reactive(new Map<string, boolean>())
-const subAgentPages = reactive(new Map<string, number>())
-const isSubAgentListOpen = (stepId: string): boolean => subAgentListOpen.get(stepId) === true
-const toggleSubAgentList = (stepId: string) => {
-  subAgentListOpen.set(stepId, !isSubAgentListOpen(stepId))
-}
-const showMoreSubAgents = (stepId: string) => {
-  subAgentPages.set(stepId, (subAgentPages.get(stepId) ?? 1) + 1)
-}
-const subAgentShownLimit = (stepId: string, list: readonly SubAgentResult[]): number => {
-  if (list.length <= SUB_AGENT_FOLD_THRESHOLD) return list.length
-  if (!isSubAgentListOpen(stepId)) return 0
-  return (subAgentPages.get(stepId) ?? 1) * SUB_AGENT_PAGE_SIZE
-}
-const visibleSubAgents = (stepId: string, list: readonly SubAgentResult[]): SubAgentResult[] => {
-  if (list.length <= SUB_AGENT_FOLD_THRESHOLD) return [...list]
-  return sortSubAgentsByBucket(list).slice(0, subAgentShownLimit(stepId, list))
-}
-const hiddenSubAgentCount = (stepId: string, list: readonly SubAgentResult[]): number => {
-  if (list.length <= SUB_AGENT_FOLD_THRESHOLD || !isSubAgentListOpen(stepId)) return 0
-  return Math.max(0, list.length - subAgentShownLimit(stepId, list))
-}
-const formatSubAgentSummary = (list: readonly SubAgentResult[]): string => {
-  const counts = countSubAgents(list)
-  const parts = SUB_AGENT_SUMMARY_ORDER
-    .filter(bucket => counts[bucket] > 0)
-    .map(bucket => t(`ai.subAgentCount.${bucket}`, { count: counts[bucket] }))
-  const key = list.length > 0 && list.every(agent => !!agent.role) ? 'ai.expertSummary' : 'ai.subAgentSummary'
-  return t(key, { count: list.length, parts: parts.join(' / ') })
-}
-
 /** 盖在对话栏上的专家团群聊（外壳没接手时） */
 const overlayTeamStepId = ref<string | null>(null)
 const openExpertTeam = (stepId: string) => {
@@ -593,15 +556,13 @@ const openExpertTeam = (stepId: string) => {
   else overlayTeamStepId.value = stepId
 }
 watch(() => props.tabId, () => { overlayTeamStepId.value = null })
-
-/** 获取子 Agent 当前活动摘要（最新的 running 或最后一个已完成步骤的 tool+args） */
-const getSubAgentActivity = (sa: SubAgentResult): string | null => {
-  if (!sa.steps || sa.steps.length === 0) return null
-  const running = [...sa.steps].reverse().find(s => s.status === 'running')
-  const step = running || sa.steps[sa.steps.length - 1]
-  const parts = [getToolDisplayName(step.tool)]
-  if (step.args) parts.push(step.args)
-  return parts.join(' ')
+/** 此刻开着群聊的专家团 */
+const openedTeamStepId = computed(() => (props.openExpertTeam ? props.openedExpertTeamStepId : overlayTeamStepId.value) ?? null)
+/** 顶部群聊按钮：没开就打开，开着再点就收起 */
+const toggleExpertTeam = (stepId: string) => {
+  if (openedTeamStepId.value !== stepId) openExpertTeam(stepId)
+  else if (props.closeExpertTeam) props.closeExpertTeam()
+  else overlayTeamStepId.value = null
 }
 
 
@@ -759,6 +720,7 @@ const {
   pendingSecureInput,
   agentUserTask,
   currentPlan,
+  pinnedDispatches,
   agentTaskGroups,
   flattenedItems,
   toggleProcessFold,
@@ -1105,11 +1067,6 @@ async function exportHugeOutput(step: AgentStep) {
 // ==================== 确认框辅助函数 ====================
 
 // 工具名称映射
-const getToolDisplayName = (toolName: string) => {
-  const key = `ai.toolNames.${toolName}`
-  const translated = t(key)
-  return translated !== key ? translated : toolName
-}
 
 // 格式化确认参数显示（简化显示）
 const formatConfirmArgs = (confirm: typeof pendingConfirm.value) => {
@@ -2718,6 +2675,16 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         />
       </div>
 
+      <!-- 派出去的伙计 / 专家：挂在顶部，不随对话滚走 -->
+      <SubAgentDock
+        v-if="pinnedDispatches.length > 0 && !peek"
+        :steps="pinnedDispatches"
+        :attached="!!currentPlan"
+        :open-team-step-id="openedTeamStepId"
+        @open-team="openExpertTeam"
+        @toggle-team="toggleExpertTeam"
+      />
+
       <!-- 消息列表（虚拟滚动） -->
       <div v-show="!peek" class="ai-messages-wrapper">
         <div
@@ -2943,74 +2910,14 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                     </div>
                     <div v-else class="step-text markdown-content" v-html="renderMarkdown(item.step!.content)"></div>
                     <!-- 并行子 Agent 卡片组 -->
-                    <div v-if="item.step!.subAgents && item.step!.subAgents.length > 0" class="sub-agents-group">
-                      <div
-                        v-if="item.step!.subAgents.length > SUB_AGENT_FOLD_THRESHOLD"
-                        class="sub-agent-summary"
-                        @click="toggleSubAgentList(item.step!.id)"
-                      >
-                        <span class="sub-agent-expand-icon" :class="{ expanded: isSubAgentListOpen(item.step!.id) }">▶</span>
-                        <span>{{ formatSubAgentSummary(item.step!.subAgents) }}</span>
-                      </div>
-                      <div
-                        v-for="sa in visibleSubAgents(item.step!.id, item.step!.subAgents)"
-                        :key="sa.id"
-                        class="sub-agent-card"
-                        :class="[sa.status, { waiting: sa.status === 'running' && sa.waitingForModel }]"
-                      >
-                        <div class="sub-agent-header" @click="toggleSubAgentExpand(item.step!.id + ':' + sa.id)">
-                          <span class="sub-agent-status-icon">
-                            <span v-if="sa.status === 'pending' || (sa.status === 'running' && sa.waitingForModel)" class="sa-icon-pending">○</span>
-                            <span v-else-if="sa.status === 'running'" class="sa-icon-running">◌</span>
-                            <span v-else-if="sa.status === 'completed'" class="sa-icon-completed">✓</span>
-                            <span v-else-if="sa.status === 'interrupted'" class="sa-icon-failed">⏹</span>
-                            <span v-else class="sa-icon-failed">✗</span>
-                          </span>
-                          <span class="sub-agent-header-text">
-                            <span class="sub-agent-desc"><span v-if="sa.role" class="sub-agent-role">{{ sa.role }}</span>{{ sa.name ? `${sa.name} · ${sa.description}` : sa.description }}</span>
-                            <span v-if="sa.status === 'running' && getSubAgentActivity(sa)" class="sub-agent-activity">⟳ {{ getSubAgentActivity(sa) }}</span>
-                            <span v-if="sa.blockedReason" class="sub-agent-activity">{{ sa.blockedReason }}</span>
-                          </span>
-                          <span class="sub-agent-status-text">
-                            {{ sa.status === 'running' && sa.waitingForModel ? t('ai.subAgentWaitingModel') : t(`ai.subAgent${sa.status.charAt(0).toUpperCase() + sa.status.slice(1)}`) }}
-                          </span>
-                          <span v-if="sa.prompt || sa.result || sa.error || (sa.steps && sa.steps.length > 0)" class="sub-agent-expand-icon" :class="{ expanded: isSubAgentExpanded(item.step!.id + ':' + sa.id) }">▶</span>
-                        </div>
-                        <div v-if="isSubAgentExpanded(item.step!.id + ':' + sa.id)" class="sub-agent-detail">
-                          <div v-if="sa.prompt" class="sub-agent-prompt">{{ sa.prompt }}</div>
-                          <div v-if="sa.steps && sa.steps.length > 0" class="sub-agent-steps">
-                            <div v-for="(step, stepIdx) in sa.steps" :key="stepIdx" class="sa-step" :class="step.status">
-                              <span class="sa-step-icon">
-                                <span v-if="step.status === 'running'" class="sa-step-running">⟳</span>
-                                <span v-else-if="step.status === 'completed'" class="sa-step-done">✓</span>
-                                <span v-else class="sa-step-fail">✗</span>
-                              </span>
-                              <span class="sa-step-tool">{{ getToolDisplayName(step.tool) }}</span>
-                              <span v-if="step.args" class="sa-step-args" :title="step.args">{{ step.args }}</span>
-                            </div>
-                          </div>
-                          <div v-if="sa.result" class="sub-agent-result">
-                            <pre>{{ sa.result }}</pre>
-                          </div>
-                          <div v-if="sa.error" class="sub-agent-result">
-                            <pre class="sub-agent-error">{{ sa.error }}</pre>
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        v-if="hiddenSubAgentCount(item.step!.id, item.step!.subAgents) > 0"
-                        type="button"
-                        class="sub-agent-more"
-                        @click="showMoreSubAgents(item.step!.id)"
-                      >
-                        {{ t('ai.subAgentShowMore', { count: Math.min(SUB_AGENT_PAGE_SIZE, hiddenSubAgentCount(item.step!.id, item.step!.subAgents)), rest: hiddenSubAgentCount(item.step!.id, item.step!.subAgents) }) }}
-                      </button>
-                      <ExpertTeamCard
-                        v-if="item.step!.expertTeam"
-                        :team="item.step!.expertTeam"
-                        @open="openExpertTeam(item.step!.id)"
-                      />
-                    </div>
+                    <SubAgentGroup
+                      v-if="item.step!.subAgents && item.step!.subAgents.length > 0"
+                      class="sub-agent-group-in-chat"
+                      :step-id="item.step!.id"
+                      :sub-agents="item.step!.subAgents"
+                      :expert-team="item.step!.expertTeam"
+                      @open-team="openExpertTeam(item.step!.id)"
+                    />
                     <div v-if="item.step!.type === 'user_supplement' && splitSentMessage(item.step!.content, item.step!.attachments).rest.length > 0" class="message-attachments">
                       <span
                         v-for="(file, fileIdx) in splitSentMessage(item.step!.content, item.step!.attachments).rest"
@@ -3127,7 +3034,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                   </span>
                 </div>
                 <div class="confirm-detail">
-                  <div class="confirm-tool-name">{{ pendingConfirm.displayName || getToolDisplayName(pendingConfirm.toolName) }}</div>
+                  <div class="confirm-tool-name">{{ pendingConfirm.displayName || toolDisplayName(t, pendingConfirm.toolName) }}</div>
                   <pre class="confirm-args-inline">{{ formatConfirmArgs(pendingConfirm) }}</pre>
                   <div v-if="pendingConfirm.reasons && pendingConfirm.reasons.length > 0" class="confirm-reasons">
                     <div class="confirm-reasons-title">{{ t('ai.riskReasons') }}</div>
@@ -4209,6 +4116,15 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
 }
 
 /* Plan 固定顶部区域 */
+.plan-sticky-header:has(+ .sub-agent-dock) {
+  border-bottom: none;
+  box-shadow: none;
+}
+
+.sub-agent-group-in-chat {
+  margin-top: 8px;
+}
+
 .plan-sticky-header {
   flex-shrink: 0;
   padding: 8px 12px;
@@ -5736,272 +5652,6 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
   font-size: 11px;
   flex-shrink: 0;
   white-space: nowrap;
-}
-
-/* ==================== 并行子 Agent 卡片组 ==================== */
-
-.sub-agents-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 8px;
-  padding: 6px;
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.sub-agent-card {
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  overflow: hidden;
-  transition: border-color 0.2s ease;
-}
-
-.sub-agent-card.running {
-  border-color: rgba(var(--color-info-rgb), 0.4);
-}
-
-.sub-agent-card.completed {
-  border-color: rgba(var(--color-success-rgb), 0.3);
-}
-
-.sub-agent-card.failed {
-  border-color: rgba(var(--color-error-rgb), 0.3);
-}
-
-.sub-agent-card.running.waiting {
-  border-color: rgba(255, 255, 255, 0.08);
-}
-
-.sub-agent-summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  user-select: none;
-  border-radius: 6px;
-}
-
-.sub-agent-summary:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.sub-agent-more {
-  align-self: flex-start;
-  padding: 4px 10px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.sub-agent-more:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.sub-agent-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 10px;
-  cursor: pointer;
-  user-select: none;
-  font-size: 12px;
-}
-
-.sub-agent-header .sub-agent-status-icon,
-.sub-agent-header .sub-agent-status-text,
-.sub-agent-header .sub-agent-expand-icon {
-  margin-top: 1px;
-}
-
-.sub-agent-header:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.sub-agent-status-icon {
-  flex-shrink: 0;
-  width: 16px;
-  text-align: center;
-  font-size: 12px;
-}
-
-.sa-icon-pending {
-  color: var(--text-muted);
-}
-
-.sa-icon-running {
-  color: var(--color-info);
-  animation: sa-spin 1.2s linear infinite;
-}
-
-.sa-icon-completed {
-  color: var(--color-success);
-}
-
-.sa-icon-failed {
-  color: var(--color-error);
-}
-
-@keyframes sa-spin {
-  0% { opacity: 0.4; }
-  50% { opacity: 1; }
-  100% { opacity: 0.4; }
-}
-
-.sub-agent-header-text {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 2px;
-}
-
-.sub-agent-desc {
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.sub-agent-role {
-  display: inline-block;
-  margin-right: 6px;
-  padding: 0 6px;
-  border-radius: 8px;
-  font-size: 11px;
-  line-height: 16px;
-  vertical-align: 1px;
-  color: var(--accent-primary);
-  background: rgba(var(--accent-rgb, 137, 180, 250), 0.12);
-}
-
-.sub-agent-activity {
-  font-size: 11px;
-  color: var(--color-info);
-  opacity: 0.8;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  animation: sa-spin 1.5s ease-in-out infinite;
-}
-
-.sub-agent-status-text {
-  flex-shrink: 0;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.sub-agent-card.running .sub-agent-status-text {
-  color: var(--color-info);
-}
-
-.sub-agent-card.running.waiting .sub-agent-status-text {
-  color: var(--text-muted);
-}
-
-.sub-agent-card.completed .sub-agent-status-text {
-  color: var(--color-success);
-}
-
-.sub-agent-card.failed .sub-agent-status-text {
-  color: var(--color-error);
-}
-
-.sub-agent-expand-icon {
-  flex-shrink: 0;
-  font-size: 9px;
-  color: var(--text-muted);
-  transition: transform 0.2s ease;
-}
-
-.sub-agent-expand-icon.expanded {
-  transform: rotate(90deg);
-}
-
-.sub-agent-detail {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(0, 0, 0, 0.1);
-}
-
-.sub-agent-prompt {
-  padding: 6px 10px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.45);
-  white-space: pre-wrap;
-  word-break: break-word;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.sub-agent-steps {
-  padding: 6px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.sa-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--text-muted);
-}
-
-.sa-step-icon {
-  flex-shrink: 0;
-  width: 14px;
-  text-align: center;
-  font-size: 10px;
-}
-
-.sa-step-running { color: var(--color-info); }
-.sa-step-done { color: var(--color-success); }
-.sa-step-fail { color: var(--color-error); }
-
-.sa-step-tool {
-  flex-shrink: 0;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 11px;
-}
-
-.sa-step-args {
-  flex: 1;
-  min-width: 0;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.sub-agent-result {
-  padding: 6px 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.sub-agent-result pre {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.sub-agent-result pre.sub-agent-error {
-  color: var(--color-error);
 }
 
 

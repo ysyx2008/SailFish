@@ -871,6 +871,13 @@ export default {
       failed: '{count} failed',
       interrupted: '{count} interrupted',
     },
+    subAgentDock: {
+      allDoneExperts: 'All experts are done',
+      allDoneAgents: 'All colleagues are done',
+      teamChat: 'Team chat',
+      expand: 'Show everyone',
+      collapse: 'Collapse',
+    },
     subAgentShowMore: 'Show {count} more ({rest} left)',
     subAgentShowResult: 'Show result',
     subAgentHideResult: 'Hide result',

@@ -457,6 +457,8 @@ defineExpose({
                   :peek="focusActive"
                   :consume-workbench-context="consumeWorkbenchContext"
                   :open-expert-team="openExpertTeam"
+                  :opened-expert-team-step-id="teamSeated ? teamStepId : null"
+                  :close-expert-team="closeExpertTeam"
                 />
                 <div v-if="showDeskChrome && !focusActive" class="artifact-chrome artifact-chrome--cluster">
                   <div
