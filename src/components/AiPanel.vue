@@ -97,6 +97,9 @@ const props = withDefaults(defineProps<{
   peek?: boolean
   /** 外壳有地方放专家团群聊时由它打开；不给就盖在对话栏上 */
   openExpertTeam?: (stepId: string) => void
+  /** 外壳接手群聊时：此刻开着的是哪个专家团（没开就空），以及怎么关掉 */
+  openedExpertTeamStepId?: string | null
+  closeExpertTeam?: () => void
 }>(), {
   visible: true,
   tabActive: true,
@@ -553,6 +556,14 @@ const openExpertTeam = (stepId: string) => {
   else overlayTeamStepId.value = stepId
 }
 watch(() => props.tabId, () => { overlayTeamStepId.value = null })
+/** 此刻开着群聊的专家团 */
+const openedTeamStepId = computed(() => (props.openExpertTeam ? props.openedExpertTeamStepId : overlayTeamStepId.value) ?? null)
+/** 顶部群聊按钮：没开就打开，开着再点就收起 */
+const toggleExpertTeam = (stepId: string) => {
+  if (openedTeamStepId.value !== stepId) openExpertTeam(stepId)
+  else if (props.closeExpertTeam) props.closeExpertTeam()
+  else overlayTeamStepId.value = null
+}
 
 
 // ==================== 初始化 Composables ====================
@@ -2668,7 +2679,10 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
       <SubAgentDock
         v-if="pinnedDispatches.length > 0 && !peek"
         :steps="pinnedDispatches"
+        :attached="!!currentPlan"
+        :open-team-step-id="openedTeamStepId"
         @open-team="openExpertTeam"
+        @toggle-team="toggleExpertTeam"
       />
 
       <!-- 消息列表（虚拟滚动） -->
@@ -4102,6 +4116,11 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
 }
 
 /* Plan 固定顶部区域 */
+.plan-sticky-header:has(+ .sub-agent-dock) {
+  border-bottom: none;
+  box-shadow: none;
+}
+
 .sub-agent-group-in-chat {
   margin-top: 8px;
 }

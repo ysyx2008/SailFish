@@ -169,6 +169,40 @@ try {
   await sleep(200)
   check('点别处收起', await page.locator('.dock-panel').count() === 0)
 
+  console.log('\n[2b] 群聊按钮：点一下打开，再点一下收起')
+  const teamBtn = page.locator('.sub-agent-dock .dock-team')
+  await teamBtn.click()
+  await sleep(500)
+  check('点一下打开群聊', await page.locator('.expert-team-chat').count() === 1)
+  check('按钮亮着，表示群聊开着', /active/.test(await teamBtn.getAttribute('class') ?? ''))
+  await teamBtn.click()
+  await sleep(500)
+  check('再点一下收起群聊', await page.locator('.expert-team-chat').count() === 0)
+  check('按钮不再亮着', !/active/.test(await teamBtn.getAttribute('class') ?? ''))
+
+  console.log('\n[2c] 有计划卡时，两块合成一块')
+  const plan = (steps) => ({
+    id: 'plan-1', type: 'plan_created', content: '计划', timestamp: Date.now(),
+    plan: { id: 'p1', title: '六维专家团审阅文档', createdAt: 0, updatedAt: 0, steps },
+  })
+  await pushStep(plan([
+    { id: 's1', title: '选定主审文档与分工', status: 'completed' },
+    { id: 's2', title: '收齐六份审阅意见', status: 'in_progress' },
+    { id: 's3', title: '汇总成最终意见', status: 'pending' },
+  ]))
+  await sleep(500)
+  check('计划卡和顶部这一行都在', await page.locator('.plan-sticky-header').count() === 1 && await dock().count() === 1)
+  const cardBox = await page.locator('.plan-sticky-header .agent-plan').boundingBox()
+  const barBox = await page.locator('.sub-agent-dock .dock-bar').first().boundingBox()
+  const gap = barBox.y - (cardBox.y + cardBox.height)
+  check('计划卡和这一行之间留有空隙（6～12 像素），不顶在一起', gap >= 6 && gap <= 12, `空隙 ${gap}`)
+  await shot('2c-with-plan')
+  await page.locator('.dock-bar').first().click()
+  await sleep(300)
+  await shot('2d-open-with-plan')
+  await page.keyboard.press('Escape')
+  await sleep(200)
+
   console.log('\n[3] 干完：不立刻消失，你再说话后收起')
   await pushStep(dispatchStep(Array(8).fill('completed'), true))
   await sleep(500)

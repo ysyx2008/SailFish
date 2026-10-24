@@ -25,6 +25,10 @@ const props = defineProps<{
   expertTeam?: ExpertTeamView
   /** 人多时也直接列出来，不先收成一行计数（顶部挂着那一行展开时用） */
   alwaysOpen?: boolean
+  /** 不画外框和卡片框，一人一行、行间一条细线（放在已经有框的容器里时用） */
+  plain?: boolean
+  /** 不显示专家团那张小卡片（外面已经有群聊入口时） */
+  hideTeamCard?: boolean
 }>()
 const emit = defineEmits<{ openTeam: [] }>()
 const { t } = useI18n()
@@ -70,7 +74,7 @@ const getSubAgentActivity = (sa: SubAgentResult): string | null => {
 </script>
 
 <template>
-  <div v-if="subAgents.length > 0" class="sub-agents-group">
+  <div v-if="subAgents.length > 0" class="sub-agents-group" :class="{ plain }">
     <div v-if="isFolded() && !alwaysOpen" class="sub-agent-summary" @click="toggleList()">
       <span class="sub-agent-expand-icon" :class="{ expanded: isListOpen() }">▶</span>
       <span>{{ summaryText() }}</span>
@@ -123,7 +127,7 @@ const getSubAgentActivity = (sa: SubAgentResult): string | null => {
     <button v-if="hiddenCount() > 0" type="button" class="sub-agent-more" @click="showMore()">
       {{ t('ai.subAgentShowMore', { count: Math.min(SUB_AGENT_PAGE_SIZE, hiddenCount()), rest: hiddenCount() }) }}
     </button>
-    <ExpertTeamCard v-if="expertTeam" :team="expertTeam" @open="emit('openTeam')" />
+    <ExpertTeamCard v-if="expertTeam && !hideTeamCard" :team="expertTeam" @open="emit('openTeam')" />
   </div>
 </template>
 
@@ -389,5 +393,36 @@ const getSubAgentActivity = (sa: SubAgentResult): string | null => {
 
 .sub-agent-result pre.sub-agent-error {
   color: var(--color-error);
+}
+
+/* 平铺：放在已经有框的面板里，一人一行 */
+.sub-agents-group.plain {
+  gap: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+}
+
+.sub-agents-group.plain .sub-agent-card {
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+}
+
+.sub-agents-group.plain .sub-agent-card + .sub-agent-card {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 0;
+}
+
+.sub-agents-group.plain .sub-agent-header {
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.sub-agents-group.plain .sub-agent-detail {
+  margin: 0 6px 6px;
+  border-top: none;
+  border-radius: 6px;
 }
 </style>
