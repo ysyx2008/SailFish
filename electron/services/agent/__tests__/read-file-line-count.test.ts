@@ -7,6 +7,21 @@ import * as os from 'os'
 import * as path from 'path'
 
 const TEST_USERDATA = path.join(os.tmpdir(), 'sailfish-read-file-lines-ud')
+const rangedSize = vi.hoisted(() => ({ bytes: 0 }))
+
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs')
+  return {
+    ...actual,
+    statSync(filePath: fs.PathLike, options?: fs.StatSyncOptions) {
+      const stat = options === undefined ? actual.statSync(filePath) : actual.statSync(filePath, options)
+      if (rangedSize.bytes > 0 && String(filePath).endsWith('ranged-huge.txt')) {
+        Object.defineProperty(stat, 'size', { value: rangedSize.bytes })
+      }
+      return stat
+    },
+  }
+})
 
 vi.mock('electron', () => ({
   app: {
@@ -18,7 +33,7 @@ vi.mock('electron', () => ({
   ipcMain: { on: vi.fn(), handle: vi.fn() }
 }))
 
-import { readFile, splitTextLines } from '../tools/file'
+import { MAX_RANGED_READ_BYTES, readFile, splitTextLines } from '../tools/file'
 import type { ToolExecutorConfig } from '../tools/types'
 
 function makeExecutor(): ToolExecutorConfig & { lastResultStep: () => string } {
@@ -133,6 +148,18 @@ describe('read_file 行数', () => {
     expect(result.success).toBe(true)
     expect(result.output).toBe('（文件是空的，0 行）')
     expect(executor.lastResultStep()).toContain('实际读取: 0 行')
+  })
+
+  it('按行读超过上限时不把整份读进来', async () => {
+    const file = writeFile('ranged-huge.txt', '第一行\n第二行\n')
+    rangedSize.bytes = MAX_RANGED_READ_BYTES + 1
+    try {
+      const result = await readFile('pty1', { path: file, start_line: 1, end_line: 1 }, {} as never, makeExecutor())
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('这次没有读')
+    } finally {
+      rangedSize.bytes = 0
+    }
   })
 
   it('末尾没有换行的文件结果不变', async () => {

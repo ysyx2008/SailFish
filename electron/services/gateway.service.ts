@@ -34,6 +34,14 @@ import { PLUGIN_ROUTE_PREFIX, isCanonicalPluginRouteEntry } from './plugin/loade
 import { resolvePluginRouteConflicts } from './plugin/registry'
 import { oemConfig } from '@shared/oem-runtime'
 
+/** 钩子正文超过上限时抛出。调用方先回 413，再断开，避免整段堆进内存。 */
+class WebhookBodyTooLarge extends Error {
+  constructor() {
+    super('webhook body too large')
+    this.name = 'WebhookBodyTooLarge'
+  }
+}
+
 const log = createLogger('Gateway')
 
 // 类型定义 ---------------------------------------------------------------
@@ -165,7 +173,6 @@ export class GatewayService {
       this.server.listen(this.config.port, this.config.host, () => {
         log.info(`Server started on ${this.config.host}:${this.config.port}`)
         log.info(`Chat page: http://localhost:${this.config.port}/chat`)
-        log.info(`API Token: ${this.config.apiToken}`)
         resolve({ success: true })
       })
     })
@@ -317,6 +324,8 @@ export class GatewayService {
 
   private webhookRateLimit: Map<string, number[]> = new Map()
   private static readonly WEBHOOK_RATE_LIMIT = 30  // max requests per minute per token
+  /** 钩子正文上限。正常触发远小于此；再大就停，不把整段读进内存。 */
+  private static readonly MAX_WEBHOOK_BODY_BYTES = 1024 * 1024
 
   /**
    * POST /hooks/:token - Webhook 触发器
@@ -336,7 +345,20 @@ export class GatewayService {
     recent.push(now)
     this.webhookRateLimit.set(token, recent)
 
-    const body = await this.readBody(req)
+    let body: unknown
+    try {
+      body = await this.readBody(req, GatewayService.MAX_WEBHOOK_BODY_BYTES)
+    } catch (err) {
+      if (err instanceof WebhookBodyTooLarge) {
+        if (!res.headersSent) {
+          res.writeHead(413, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Payload too large' }))
+        }
+        req.destroy()
+        return
+      }
+      throw err
+    }
     const clientIp = (req.socket.remoteAddress || '').split(',')[0].trim()
 
     try {
@@ -366,7 +388,7 @@ export class GatewayService {
         type: 'task_start',
         clientIp,
         summary: `Webhook triggered: ${watch.name}`,
-        details: { watchId: watch.id, token }
+        details: { watchId: watch.id }
       })
 
       res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -715,20 +737,36 @@ export class GatewayService {
     res.end(JSON.stringify({ error: 'Method Not Allowed' }))
   }
 
-  private readBody(req: http.IncomingMessage): Promise<any | null> {
-    return new Promise((resolve) => {
+  private readBody(req: http.IncomingMessage, maxBytes?: number): Promise<any | null> {
+    return new Promise((resolve, reject) => {
+      let received = 0
       let body = ''
+      let settled = false
+      const finish = (fn: () => void) => {
+        if (settled) return
+        settled = true
+        fn()
+      }
       const text = new ChunkTextDecoder('utf-8')
-      req.on('data', (chunk: Buffer) => { body += text.push(chunk) })
+      req.on('data', (chunk: Buffer) => {
+        if (settled) return
+        received += chunk.length
+        if (maxBytes !== undefined && received > maxBytes) {
+          req.pause()
+          finish(() => reject(new WebhookBodyTooLarge()))
+          return
+        }
+        body += text.push(chunk)
+      })
       req.on('end', () => {
         body += text.end()
         try {
-          resolve(body ? JSON.parse(body) : null)
+          finish(() => resolve(body ? JSON.parse(body) : null))
         } catch {
-          resolve(null)
+          finish(() => resolve(null))
         }
       })
-      req.on('error', () => resolve(null))
+      req.on('error', () => finish(() => resolve(null)))
     })
   }
 
