@@ -1,6 +1,6 @@
 # 关键词索引并入 LanceDB 全文索引（方案）
 
-日期：2026-10-24 · 分支 `feat/lancedb-fts-keyword-index` · 设计目标见 `electron/services/knowledge/SPEC.md`「按字面找的词索引和向量放在一处」
+日期：2026-10-24 · **已完成（待用户验收后合入）** · 分支 `feat/lancedb-fts-keyword-index` · 设计目标见 `electron/services/knowledge/SPEC.md`「按字面找的词索引和向量放在一处」
 
 ## 做法
 
@@ -9,8 +9,8 @@
 - 共享引擎 `keyword-index.js`（CJS，纯 JS）：worker 与进程内模式（CLI）共用，免得两处各写一份。
 - 原表原地升级：`addColumns` 只改元数据（毫秒）；旧版往带 `tokens` 的表里 `add` 不带该列的行也能成功（试验确认），所以换回旧版不会坏。
 - 回填：`tokens IS NULL` 的行分批切词，用只带 `id`+`tokens` 的 `mergeInsert` 更新（同批 id 去重——真实库里有 1 个重复 id）。3.5 万行实测约 4 秒。可中断续传（下次仍按 `IS NULL` 找）；旧版在换回期间新写的行，下次启动同样补上。
-- 全文索引：回填后若没有就建（3.5 万行约 1.4 秒）；之后新增的行在索引未覆盖前由 LanceDB 扫描补上（试验确认能搜到）；未覆盖行超过 2000 时做一次 `optimize` 并入索引；`compact`（本来就调 `optimize`）顺带并入。
-- 过滤：`hostId`（`''`/NULL 或等于）、`tags`（任一命中，用逗号包夹后 `contains`）都在查询里做前置过滤，语义同旧实现。
+- 全文索引：回填后若没有就建（3.5 万行约 1.4 秒）；之后新增的行在索引未覆盖前由 LanceDB 扫描补上（试验确认能搜到）；未覆盖行超过 5000 时做一次 `optimize` 并入索引；`compact`（本来就调 `optimize`）顺带并入。
+- 过滤：LanceDB 0.22.3 的全文检索带 `where` 预过滤会返回空（试验确认的缺陷），所以 `hostId`（`''`/NULL 或等于）、`tags`（任一命中、逐个标签精确相等）在取回之后用 JS 筛，不够数就把取回量加倍重取（上限 10 万行），语义同旧实现。
 
 ## 主进程侧
 
@@ -33,3 +33,8 @@
 
 - 迁移会改用户真实 `knowledge_vectors` 表（加一列、改所有行的 `tokens`）。换回旧版不会读坏，但旧版词索引会因文件已被清掉而重建一次。合入前建议先备份知识库目录。
 - 打包版 worker 必须能解析 `jieba-wasm`（`asarUnpack`），否则知识库起不来——用 `check-asar-unpack-deps` 守住。
+
+## 实际验证（2026-10-24）
+
+- 真实知识库副本（3.5 万行）：命令行进程内路径与桌面应用 worker 路径各走一遍升级，首次启动多花约 6 秒，之后重启 1 秒内；每行都有词、全文索引覆盖全部行；放入、按字面找到、删除（约 0.1 秒）、重启无残留。脚本：`scripts/cli-e2e/knowledge-keyword.mjs --real`、`scripts/ui-e2e/knowledge-keyword-worker.mjs`。
+- 旧词索引与向量表早已对不上（旧版搜「jieba」找不到对话里明明有的内容）；并表后按字面找到的就是向量表里的全部内容。
