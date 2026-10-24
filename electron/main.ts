@@ -22,8 +22,18 @@ import { startCrashReporter, initCrashDiagnostics, recordMainProcessError, getCr
 import { getDiagnosticsService } from './services/diagnostics/diagnostics.service'
 import { CrashNotifier } from './services/diagnostics/notifier'
 import { trustSystemCertificates } from './utils/system-ca'
+import { shouldStayInApp } from './utils/in-app-navigation'
 
 const systemCaNote = trustSystemCertificates()
+
+/** 开发服务器和本地文件留在窗口里，其余地址改到系统浏览器，不在这个窗口里打开。 */
+function keepNavigationInApp(contents: BrowserWindow['webContents']): void {
+  contents.on('will-navigate', (event, url) => {
+    if (shouldStayInApp(url, process.env.VITE_DEV_SERVER_URL)) return
+    event.preventDefault()
+    shell.openExternal(url)
+  })
+}
 
 /**
  * 展开路径开头的 `~` 为用户 home 目录。支持 `~`、`~/...`、`~\...`（兼容 Windows）。
@@ -1539,20 +1549,7 @@ function createWindow() {
     return { action: 'deny' }
   })
 
-  // 拦截页面内链接点击，防止应用内导航到外部网页
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    // 允许开发环境的热更新导航
-    if (process.env.VITE_DEV_SERVER_URL && url.startsWith(process.env.VITE_DEV_SERVER_URL)) {
-      return
-    }
-    // 允许导航到本地文件（生产环境）
-    if (url.startsWith('file://')) {
-      return
-    }
-    // 阻止导航到外部 URL，改为在系统浏览器中打开
-    event.preventDefault()
-    shell.openExternal(url)
-  })
+  keepNavigationInApp(mainWindow.webContents)
 
   mainWindow.on('closed', () => {
     // macOS 上 window-all-closed 不会调用 app.quit()，需在确认退出并关闭主窗口后主动退出（先 quit 再置空，避免 quit 流程中读到窗口）
@@ -1645,6 +1642,7 @@ function createFileManagerWindow(params?: {
     shell.openExternal(url)
     return { action: 'deny' }
   })
+  keepNavigationInApp(fileManagerWindow.webContents)
 
   fileManagerWindow.on('closed', () => {
     fileManagerWindow = null
@@ -1709,6 +1707,7 @@ function createAiDebugWindow(): void {
     shell.openExternal(url)
     return { action: 'deny' }
   })
+  keepNavigationInApp(aiDebugWindow.webContents)
 
   aiDebugWindow.on('closed', () => {
     aiDebugWindow = null
@@ -1762,6 +1761,7 @@ function createLlmBenchWindow(): void {
     shell.openExternal(url)
     return { action: 'deny' }
   })
+  keepNavigationInApp(llmBenchWindow.webContents)
 
   llmBenchWindow.on('closed', () => {
     llmBenchWindow = null

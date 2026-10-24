@@ -1021,6 +1021,12 @@ function isVisionImageType(filePath: string): boolean {
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
 
 /**
+ * 按行读会先把整个文件读成字符串。超过这个大小就不读，避免主进程被冻住。
+ * 日常日志远小于此；只看信息的那条路本来就会抽样，不受这个上限约束。
+ */
+export const MAX_RANGED_READ_BYTES = 256 * 1024 * 1024
+
+/**
  * 读取图片文件为 base64 data URL，返回给 AI 进行视觉分析
  */
 function readImageFile(
@@ -1603,6 +1609,19 @@ ${sampleContent ? `### ${t('file.info_preview')}\n\`\`\`\n${sampleContent}\n\`\`
       if (bytes < 1024) return `${bytes} B`
       if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
       return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+    }
+
+    const wantsLineWindow = startLine !== undefined || endLine !== undefined
+      || maxLines !== undefined || tailLines !== undefined
+    if (wantsLineWindow && fileSize > MAX_RANGED_READ_BYTES) {
+      const errorMsg = t('file.ranged_read_too_large', { size: sizeMB })
+      executor.addStep({
+        type: 'tool_result',
+        content: `${t('file.read_failed')}: ${t('file.file_too_large')}`,
+        toolName: 'read_file',
+        toolResult: errorMsg
+      })
+      return { success: false, output: '', error: errorMsg }
     }
 
     if (startLine !== undefined || endLine !== undefined) {
