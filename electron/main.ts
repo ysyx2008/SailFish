@@ -14,7 +14,7 @@ import { isAbortError } from './utils/abort'
 import { createTerminalDataCoalescer } from './utils/terminal-data-coalescer'
 import type { AttachmentInfo, DocumentParseProgress, UiThemeMode, UiThemeName, WebSearchSettings, IMProcessMode, SayResult, TerminalType, QuitConfirmCounts } from '@shared/types'
 import { clampUiZoomFactor, isApprovalMode, stepUiZoomFactor, UI_ZOOM_DEFAULT } from '@shared/types'
-import { imChoiceAheadOfShared, persistSharedApproval, sharedApprovalFromConfig, storedFromImApproval } from './services/im/approval'
+import { imApprovalFromStored, persistSharedApproval, storedFromImApproval } from './services/im/approval'
 import { getAppTitle as buildAppTitle, getBrandName } from '@shared/brand'
 import { oemResolved } from '@shared/oem-resolve'
 import { isOemFeatureEnabled } from '@shared/oem-features'
@@ -871,21 +871,9 @@ async function ensureRemoteSessionStack(): Promise<{
       agentService,
       mainWindow: mainWindow && !mainWindow.isDestroyed() ? mainWindow : null,
     })
-    const ahead = imChoiceAheadOfShared(
+    const shared = imApprovalFromStored(
       configService.get('imExecutionMode'),
       configService.get('imAutoApprovalReview'),
-      configService.get('executionMode'),
-      configService.get('autoApprovalReview'),
-    )
-    if (ahead) {
-      persistSharedApproval((key, value) => configService.set(key as never, value as never), ahead)
-      for (const win of BrowserWindow.getAllWindows()) {
-        if (!win.isDestroyed()) win.webContents.send('config:changed')
-      }
-    }
-    const shared = sharedApprovalFromConfig(
-      configService.get('executionMode'),
-      configService.get('autoApprovalReview'),
     )
     const sharedStored = storedFromImApproval(shared)
     imService.setExecutionMode(sharedStored.executionMode)
@@ -5010,9 +4998,9 @@ ipcMain.handle('im:getConfig', async () => {
       // 默认 true：扫码渠道期望开机重连；用户显式关掉则为 false
       autoConnect: configService.get('imWeChatAutoConnect') !== false,
     },
-    executionMode: sharedApprovalFromConfig(
-      configService.get('executionMode'),
-      configService.get('autoApprovalReview'),
+    executionMode: imApprovalFromStored(
+      configService.get('imExecutionMode'),
+      configService.get('imAutoApprovalReview'),
     ),
     processMode: (() => {
       const saved = configService.get('imProcessMode') as string | undefined

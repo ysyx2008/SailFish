@@ -10,7 +10,7 @@ import { useConfigStore } from '../stores/config'
 import { resolveConversationDisplayTitle } from '../utils/conversation-title'
 import { applySearchMatch, isCurrentSearchRequest } from '../utils/history-search-stream'
 import type { ExecutionMode, AttachmentInfo, AgentRecord, AgentHistorySummary, WorkbenchContext, ApprovalMode } from '@shared/types'
-import { approvalFromSettings, executionModeOfApproval } from '@shared/types'
+import { executionModeOfApproval } from '@shared/types'
 import { useDefaultApproval, type ApprovalTarget } from './useApprovalUiState'
 import type { AgentStep, AgentState, ParsedDocument } from '../stores/terminal'
 import type { MessageScrollerHandle } from '../types/message-scroller'
@@ -271,6 +271,8 @@ export function useAgentMode(
       ? configStore.executionMode
       : 'relaxed'
   )
+  // 联络和即时通讯共用的那一档。新对话的起步档不在这里。
+  const channelApproval = ref<ApprovalMode>('relaxed')
   const commandTimeout = ref(10)     // 命令超时时间（秒），默认 10 秒
   const activeProfileId = ref<string>(configStore.activeAiProfileId || '')  // 当前终端选择的 AI 配置档案 ID（每个终端独立，初始值继承全局设置）
   const collapsedTaskIds = ref<Set<string>>(new Set())  // 已折叠的任务 ID
@@ -1045,7 +1047,9 @@ export function useAgentMode(
     const key = getAgentKey()
     if (key && isAgentRunning.value) {
       promises.push(
-        window.electronAPI.agent.updateConfig(key, { executionMode: newValue })
+        window.electronAPI.agent.updateConfig(key, currentTab.value?.isRemote
+          ? { executionMode: newValue, autoApprovalReview: channelApproval.value === 'autoReview' }
+          : { executionMode: newValue })
       )
     }
 
@@ -1056,15 +1060,16 @@ export function useAgentMode(
   const defaultApproval = useDefaultApproval()
   const approvalTarget: ApprovalTarget = {
     current: computed<ApprovalMode>(() => {
-      if (currentTab.value?.isRemote) return approvalFromSettings(executionMode.value, configStore.autoApprovalReview)
+      if (currentTab.value?.isRemote) return channelApproval.value
       return agentState.value?.approval ?? defaultApproval.current.value
     }),
     commit: (next) => {
       const tab = currentTab.value
       if (!tab) return
       if (tab.isRemote) {
+        channelApproval.value = next
         executionMode.value = executionModeOfApproval(next)
-        defaultApproval.commit(next)
+        void window.electronAPI.im.setExecutionMode(next)
         return
       }
       terminalStore.setAgentApproval(currentTabId.value, next)
@@ -1990,8 +1995,8 @@ export function useAgentMode(
       // 审批方式记在那场对话上。联络和 IM 用同一个档。
       config: {
         ...(tab?.isRemote ? {
-          executionMode: executionMode.value,
-          autoApprovalReview: configStore.autoApprovalReview === true,
+          executionMode: executionModeOfApproval(channelApproval.value),
+          autoApprovalReview: channelApproval.value === 'autoReview',
         } : {}),
         commandTimeout: commandTimeout.value * 1000,
       },
@@ -3008,23 +3013,13 @@ export function useAgentMode(
       const config = await window.electronAPI.im.getConfig()
       const mode = config.executionMode
       if (mode === 'strict' || mode === 'relaxed' || mode === 'free' || mode === 'autoReview') {
+        channelApproval.value = mode
         executionMode.value = executionModeOfApproval(mode)
       }
     } catch (err) {
       log.warn('Failed to load remote execution mode, using default:', err)
     }
   }
-
-  // 联络这一档跟设置里的是同一份。别处改了，这边的下拉框跟着换。
-  watch(
-    () => configStore.executionMode,
-    (mode) => {
-      if (!currentTab.value?.isRemote) return
-      if (mode === 'strict' || mode === 'relaxed' || mode === 'free') {
-        executionMode.value = mode
-      }
-    },
-  )
 
   // 联络常驻 tab：挂载时把合并视图上墙。已经恢复过、或正在跑任务则不动。
   // 现场已灌进的提醒/消息接到历史后面，按 id（及短时间窗内同文主动提醒）去重，
@@ -3092,10 +3087,14 @@ export function useAgentMode(
   }
 
   // 生命周期
+  let cleanupChannelApproval: (() => void) | null = null
   onMounted(() => {
     setupAgentListeners()
     loadRecentHistory()
     loadRemoteExecutionMode()
+    cleanupChannelApproval = window.electronAPI.config.onChanged(() => {
+      void loadRemoteExecutionMode()
+    })
     void restoreCompanionHistoryIfNeeded()
     void restoreBackgroundSessionIfNeeded()
     cleanupHistorySearchMatch = window.electronAPI.history.onSearchMatch((payload) => {
@@ -3105,6 +3104,7 @@ export function useAgentMode(
   })
 
   onUnmounted(() => {
+    cleanupChannelApproval?.()
     cleanupAgentListeners()
     uninstallFollowResizeObserver()
     uninstallContainerWidthObserver()

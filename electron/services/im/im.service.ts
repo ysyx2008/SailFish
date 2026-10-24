@@ -33,7 +33,7 @@ import type {
   IMProcessMode
 } from './types'
 import { CONFIRM_KEYWORDS, REJECT_KEYWORDS, IM_TEXT_MAX_LENGTH, isBuiltinImPlatform, type BuiltinImPlatform } from './types'
-import { sharedApprovalFromConfig, storedFromImApproval } from './approval'
+import { imApprovalFromStored, storedFromImApproval } from './approval'
 import { DingTalkAdapter } from './dingtalk-adapter'
 import { FeishuAdapter } from './feishu-adapter'
 import { SlackAdapter } from './slack-adapter'
@@ -689,10 +689,10 @@ export class IMService {
     this.config.autoApprovalReview = enabled
   }
 
-  /** 联络输入框那一档。IM 进来的一轮用它，不另记一份。 */
+  /** 联络和即时通讯共用的那一档。新对话的起步档不在这里。 */
   private sharedApproval() {
     const config = getConfigService()
-    return sharedApprovalFromConfig(config.get('executionMode'), config.get('autoApprovalReview'))
+    return imApprovalFromStored(config.get('imExecutionMode'), config.get('imAutoApprovalReview'))
   }
 
   /**

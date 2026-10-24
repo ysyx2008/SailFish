@@ -23,7 +23,6 @@ vi.mock('../../../../config.service', () => ({
   }),
 }))
 
-import { imChoiceAheadOfShared } from '../../../../im/approval'
 import { executeConfigTool } from '../executor'
 import type { AgentConfig, ToolExecutorConfig } from '../../../tools/types'
 
@@ -108,8 +107,8 @@ describe('config_set confirmation', () => {
     expect(set.output).toContain('autoReview')
     expect(store.get('imExecutionMode')).toBe('relaxed')
     expect(store.get('imAutoApprovalReview')).toBe(true)
-    expect(store.get('executionMode')).toBe('relaxed')
-    expect(store.get('autoApprovalReview')).toBe(true)
+    expect(store.has('executionMode')).toBe(false)
+    expect(store.has('autoApprovalReview')).toBe(false)
 
     const got = await executeConfigTool('config_get', '', { key: 'imExecutionMode' }, 'call-2', {} as AgentConfig, exec)
     expect(got.success).toBe(true)
@@ -119,30 +118,18 @@ describe('config_set confirmation', () => {
   it('clears the IM flag when switching to another mode', async () => {
     store.set('imExecutionMode', 'relaxed')
     store.set('imAutoApprovalReview', true)
+    store.set('executionMode', 'relaxed')
+    store.set('autoApprovalReview', true)
     const { executor: exec } = executor(true)
     const set = await setKey(exec, 'imExecutionMode', 'free')
     expect(set.success).toBe(true)
     expect(store.get('imExecutionMode')).toBe('free')
     expect(store.get('imAutoApprovalReview')).toBe(false)
-    expect(store.get('executionMode')).toBe('free')
-    expect(store.get('autoApprovalReview')).toBe(false)
+    expect(store.get('executionMode')).toBe('relaxed')
+    expect(store.get('autoApprovalReview')).toBe(true)
 
     const got = await executeConfigTool('config_get', '', { key: 'imExecutionMode' }, 'call-2', {} as AgentConfig, exec)
     expect(got.output).toContain('free')
     expect(got.output).not.toContain('autoReview')
-  })
-})
-
-describe('startup keeps one approval setting', () => {
-  it('keeps an explicit IM choice when it differs from the composer default', () => {
-    expect(imChoiceAheadOfShared('free', false, 'relaxed', true)).toBe('free')
-    expect(imChoiceAheadOfShared('strict', false, 'relaxed', true)).toBe('strict')
-    expect(imChoiceAheadOfShared('relaxed', true, 'free', false)).toBe('autoReview')
-  })
-
-  it('does not copy the untouched IM default over an existing 替我审批', () => {
-    expect(imChoiceAheadOfShared('relaxed', false, 'relaxed', true)).toBeUndefined()
-    expect(imChoiceAheadOfShared(undefined, undefined, 'relaxed', true)).toBeUndefined()
-    expect(imChoiceAheadOfShared('free', false, 'free', false)).toBeUndefined()
   })
 })

@@ -22,8 +22,6 @@ export function useDefaultApproval(): ApprovalTarget {
   const commit = (next: ApprovalMode) => {
     void configStore.setExecutionMode(executionModeOfApproval(next))
     void configStore.setAutoApprovalReview(next === 'autoReview')
-    // 联络这一档和 IM 运行模式是同一个
-    void window.electronAPI.im.setExecutionMode(next)
   }
   return { current, commit }
 }

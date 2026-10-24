@@ -30,7 +30,7 @@ import {
 } from './ssh-sessions'
 import type { AiProfile } from '@shared/types'
 import { isApprovalMode } from '@shared/types'
-import { persistSharedApproval, sharedApprovalFromConfig, storedFromImApproval } from '../../../im/approval'
+import { imApprovalFromStored, persistSharedApproval, storedFromImApproval } from '../../../im/approval'
 import { updateSettings as applyWebSearchSettings } from '../../../web-search/index'
 import {
   executeWebSearchSettingsAction,
@@ -263,7 +263,7 @@ function listConfig(args: Record<string, unknown>): ToolResult {
       const sensitive = isSensitiveKey(m.key)
       const raw = resolveConfigValue(config, m.key)
       const shown = m.key === 'imExecutionMode'
-        ? sharedApprovalFromConfig(config.get('executionMode'), config.get('autoApprovalReview'))
+        ? imApprovalFromStored(config.get('imExecutionMode'), config.get('imAutoApprovalReview'))
         : raw
       const display = sensitive
         ? (raw ? '_(已配置)_' : '_(未配置)_')
@@ -300,7 +300,7 @@ function getConfig(args: Record<string, unknown>): ToolResult {
 
   const config = getConfigService()
   const val = key === 'imExecutionMode'
-    ? sharedApprovalFromConfig(config.get('executionMode'), config.get('autoApprovalReview'))
+    ? imApprovalFromStored(config.get('imExecutionMode'), config.get('imAutoApprovalReview'))
     : resolveConfigValue(config, key)
   if (key === 'mcpServers') {
     return { success: true, output: `**${meta.label}** (\`${key}\`)\n${formatMcpServersDetail(config)}` }
@@ -318,7 +318,7 @@ function getConfig(args: Record<string, unknown>): ToolResult {
 }
 
 /**
- * 联络输入框那一档和 IM 运行模式是同一个。
+ * 联络输入框那一档和 IM 运行模式是同一个。不改新对话的起步档。
  * 替我审批记成宽松加开关，不能把 autoReview 写进只认三档的执行模式。
  */
 function applyImExecutionMode(
