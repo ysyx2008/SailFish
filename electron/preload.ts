@@ -260,7 +260,7 @@ export interface UserSkill {
 }
 
 // Agent 相关类型（从共享类型导入）
-import type { ExecutionMode, RemoteChannel, AgentStep, PendingConfirmation, IMProcessMode, AgentContext, AgentRunningEvent } from '@shared/types'
+import type { ApprovalMode, ExecutionMode, RemoteChannel, AgentStep, PendingConfirmation, IMProcessMode, AgentContext, AgentRunningEvent } from '@shared/types'
 export type { ExecutionMode, RemoteChannel, RiskLevel, AgentStep, PendingConfirmation, IMProcessMode, AgentContext } from '@shared/types'
 
 export interface AgentConfig {
@@ -3931,13 +3931,13 @@ const electronAPI = {
         telegram: { botToken: string; autoConnect: boolean }
         wecom: { botId: string; secret: string; autoConnect: boolean }
         wechat: { hasToken: boolean; autoConnect: boolean }
-        executionMode: ExecutionMode
+        executionMode: ApprovalMode
         processMode: IMProcessMode
         sendThinkingProcess: boolean
       }>,
     setAutoConnect: (platform: string, enabled: boolean) =>
       ipcRenderer.invoke('im:setAutoConnect', platform, enabled) as Promise<void>,
-    setExecutionMode: (mode: ExecutionMode) =>
+    setExecutionMode: (mode: ApprovalMode) =>
       ipcRenderer.invoke('im:setExecutionMode', mode) as Promise<void>,
     setProcessMode: (mode: IMProcessMode) =>
       ipcRenderer.invoke('im:setProcessMode', mode) as Promise<void>,

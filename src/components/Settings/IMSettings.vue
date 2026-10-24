@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { ExecutionMode, IMProcessMode } from '@shared/types'
+import type { ApprovalMode, IMProcessMode } from '@shared/types'
 import { useTerminalStore } from '../../stores/terminal'
 import WeChatQrConnect from '../WeChatQrConnect.vue'
 import { SettingsPage, SettingsGroup, SettingRow, SettingToggle, SettingSegmented, SettingHelp } from './kit'
@@ -98,7 +98,7 @@ const tgAutoConnect = ref(false)
 const wcAutoConnect = ref(false)
 const wxAutoConnect = ref(true)
 // 执行模式
-const executionMode = ref<ExecutionMode>('relaxed')
+const executionMode = ref<ApprovalMode>('relaxed')
 // 过程消息投递模式
 const processMode = ref<IMProcessMode>('messages')
 // 发送思考过程
@@ -109,6 +109,7 @@ const showFreeModeConfirm = ref(false)
 const executionModeOptions = computed(() => [
   { value: 'strict', label: t('settings.im.modeStrict'), title: t('settings.im.modeStrictDesc') },
   { value: 'relaxed', label: t('settings.im.modeRelaxed'), title: t('settings.im.modeRelaxedDesc') },
+  { value: 'autoReview', label: t('settings.im.modeAutoReview'), title: t('settings.im.modeAutoReviewDesc') },
   { value: 'free', label: t('settings.im.modeFree'), title: t('settings.im.modeFreeDesc'), tone: 'danger' as const },
 ])
 
@@ -191,7 +192,12 @@ async function loadIMSettings() {
     wcAutoConnect.value = config.wecom?.autoConnect || false
     wxHasToken.value = config.wechat?.hasToken || false
     wxAutoConnect.value = config.wechat?.autoConnect !== false
-    executionMode.value = config.executionMode || 'relaxed'
+    executionMode.value = config.executionMode === 'strict'
+      || config.executionMode === 'relaxed'
+      || config.executionMode === 'autoReview'
+      || config.executionMode === 'free'
+      ? config.executionMode
+      : 'relaxed'
     processMode.value = config.processMode || 'messages'
     sendThinkingProcess.value = config.sendThinkingProcess === true
 
@@ -497,7 +503,7 @@ async function toggleSendThinkingProcess() {
   }
 }
 
-async function changeExecutionMode(mode: ExecutionMode) {
+async function changeExecutionMode(mode: ApprovalMode) {
   const oldMode = executionMode.value
   executionMode.value = mode
   try {
@@ -518,7 +524,7 @@ function onExecutionModeSelect(mode: string) {
     if (executionMode.value !== 'free') requestFreeMode()
     return
   }
-  changeExecutionMode(mode as ExecutionMode)
+  changeExecutionMode(mode as ApprovalMode)
 }
 
 async function confirmEnableFreeMode() {

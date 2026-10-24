@@ -14,6 +14,7 @@ import { isAbortError } from './utils/abort'
 import { createTerminalDataCoalescer } from './utils/terminal-data-coalescer'
 import type { AttachmentInfo, DocumentParseProgress, UiThemeMode, UiThemeName, WebSearchSettings, IMProcessMode, SayResult, TerminalType, QuitConfirmCounts } from '@shared/types'
 import { clampUiZoomFactor, isApprovalMode, stepUiZoomFactor, UI_ZOOM_DEFAULT } from '@shared/types'
+import { imApprovalFromStored, storedFromImApproval } from './services/im/approval'
 import { getAppTitle as buildAppTitle, getBrandName } from '@shared/brand'
 import { oemResolved } from '@shared/oem-resolve'
 import { isOemFeatureEnabled } from '@shared/oem-features'
@@ -874,6 +875,7 @@ async function ensureRemoteSessionStack(): Promise<{
     if (savedImExecutionMode && ['strict', 'relaxed', 'free'].includes(savedImExecutionMode)) {
       imService.setExecutionMode(savedImExecutionMode as ExecutionMode)
     }
+    imService.setAutoApprovalReview(configService.get('imAutoApprovalReview') === true)
     const savedImProcessMode = configService.get('imProcessMode') as string | undefined
     if (savedImProcessMode && ['final', 'messages', 'all'].includes(savedImProcessMode)) {
       imService.setProcessMode(savedImProcessMode as IMProcessMode)
@@ -4994,7 +4996,10 @@ ipcMain.handle('im:getConfig', async () => {
       // 默认 true：扫码渠道期望开机重连；用户显式关掉则为 false
       autoConnect: configService.get('imWeChatAutoConnect') !== false,
     },
-    executionMode: (configService.get('imExecutionMode') as string) || 'relaxed',
+    executionMode: imApprovalFromStored(
+      configService.get('imExecutionMode'),
+      configService.get('imAutoApprovalReview'),
+    ),
     processMode: (() => {
       const saved = configService.get('imProcessMode') as string | undefined
       if (saved && ['final', 'messages', 'all'].includes(saved)) return saved
@@ -5025,9 +5030,14 @@ ipcMain.handle('im:setAutoConnect', async (_event, platform: string, enabled: bo
   }
 })
 
-ipcMain.handle('im:setExecutionMode', async (_event, mode: ExecutionMode) => {
-  configService.set('imExecutionMode', mode);
-  (await imSvc()).setExecutionMode(mode)
+ipcMain.handle('im:setExecutionMode', async (_event, mode: unknown) => {
+  if (!isApprovalMode(mode)) return
+  const stored = storedFromImApproval(mode)
+  configService.set('imExecutionMode', stored.executionMode)
+  configService.set('imAutoApprovalReview', stored.autoApprovalReview)
+  const im = await imSvc()
+  im.setExecutionMode(stored.executionMode)
+  im.setAutoApprovalReview(stored.autoApprovalReview)
 })
 
 ipcMain.handle('im:setProcessMode', async (_event, mode: IMProcessMode) => {

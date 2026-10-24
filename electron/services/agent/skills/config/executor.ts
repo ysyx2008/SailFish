@@ -29,6 +29,8 @@ import {
   formatSshSessionsSummary,
 } from './ssh-sessions'
 import type { AiProfile } from '@shared/types'
+import { isApprovalMode } from '@shared/types'
+import { imApprovalFromStored, storedFromImApproval } from '../../../im/approval'
 import { updateSettings as applyWebSearchSettings } from '../../../web-search/index'
 import {
   executeWebSearchSettingsAction,
@@ -94,7 +96,7 @@ const CONFIG_REGISTRY: ConfigMeta[] = [
   { key: 'imWeComBotId', label: '企业微信 Bot ID', category: 'im', type: 'string' },
   { key: 'imWeComSecret', label: '企业微信长连接密钥', category: 'im', type: 'string' },
   // IM - 通用
-  { key: 'imExecutionMode', label: 'IM Agent 执行模式', category: 'im', type: 'string', options: ['strict', 'relaxed', 'free'] },
+  { key: 'imExecutionMode', label: 'IM Agent 执行模式', category: 'im', type: 'string', options: ['strict', 'relaxed', 'autoReview', 'free'] },
 
   // Gateway
   { key: 'gatewayAutoStart', label: '网关自动启动', category: 'gateway', type: 'boolean' },
@@ -259,9 +261,13 @@ function listConfig(args: Record<string, unknown>): ToolResult {
         continue
       }
       const sensitive = isSensitiveKey(m.key)
+      const raw = resolveConfigValue(config, m.key)
+      const shown = m.key === 'imExecutionMode'
+        ? imApprovalFromStored(raw, config.get('imAutoApprovalReview'))
+        : raw
       const display = sensitive
-        ? (resolveConfigValue(config, m.key) ? '_(已配置)_' : '_(未配置)_')
-        : formatValue(resolveConfigValue(config, m.key), m)
+        ? (raw ? '_(已配置)_' : '_(未配置)_')
+        : formatValue(shown, m)
       const flags = []
       if (m.readonly) flags.push('只读')
       if (sensitive) flags.push('敏感，只写')
@@ -293,7 +299,9 @@ function getConfig(args: Record<string, unknown>): ToolResult {
   }
 
   const config = getConfigService()
-  const val = resolveConfigValue(config, key)
+  const val = key === 'imExecutionMode'
+    ? imApprovalFromStored(resolveConfigValue(config, key), config.get('imAutoApprovalReview'))
+    : resolveConfigValue(config, key)
   if (key === 'mcpServers') {
     return { success: true, output: `**${meta.label}** (\`${key}\`)\n${formatMcpServersDetail(config)}` }
   }
@@ -307,6 +315,37 @@ function getConfig(args: Record<string, unknown>): ToolResult {
     return { success: true, output: `**${meta.label}** (\`${key}\`)\n${formatWebSearchDetail(webSearchStore(config))}` }
   }
   return { success: true, output: `**${meta.label}** (\`${key}\`) = ${formatValue(val, meta)}` }
+}
+
+/**
+ * 替我审批不能写成执行档本身（盘上只认 strict / relaxed / free）。
+ * 选它时记下宽松，并打开 IM 自己的开关；选另外三档时把开关关掉。
+ */
+function applyImExecutionMode(
+  config: ReturnType<typeof getConfigService>,
+  value: unknown,
+  meta: ConfigMeta,
+): ToolResult {
+  if (!isApprovalMode(value)) {
+    return { success: false, output: '', error: `"${String(value)}" 不是 "imExecutionMode" 的有效值。可选: strict, relaxed, autoReview, free` }
+  }
+  const stored = storedFromImApproval(value)
+  try {
+    applyConfigValue(config, 'imExecutionMode', stored.executionMode, 'string')
+    applyConfigValue(config, 'imAutoApprovalReview', stored.autoApprovalReview, 'boolean')
+    try {
+      const im = getIMService()
+      im.setExecutionMode(stored.executionMode)
+      im.setAutoApprovalReview(stored.autoApprovalReview)
+    } catch (err) {
+      log.warn('IM 执行模式已写入，运行中的 IM 没跟上:', err)
+    }
+    notifyFrontendConfigChanged()
+    const shown = imApprovalFromStored(stored.executionMode, stored.autoApprovalReview)
+    return { success: true, output: `✅ 已设置 **${meta.label}** (\`${meta.key}\`) = ${formatValue(shown, meta)}` }
+  } catch (err) {
+    return { success: false, output: '', error: `设置失败: ${err instanceof Error ? err.message : String(err)}` }
+  }
 }
 
 // ==================== config_set ====================
@@ -360,6 +399,10 @@ async function setConfig(
   }
 
   const config = getConfigService()
+
+  if (key === 'imExecutionMode') {
+    return applyImExecutionMode(config, value, meta)
+  }
 
   try {
     applyConfigValue(config, key, value, meta.type)

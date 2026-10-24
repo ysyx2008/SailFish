@@ -2676,12 +2676,12 @@ interface Window {
         telegram: { botToken: string; autoConnect: boolean }
         wecom: { botId: string; secret: string; autoConnect: boolean }
         wechat: { hasToken: boolean; autoConnect: boolean }
-        executionMode: ExecutionMode
+        executionMode: import('@shared/types').ApprovalMode
         processMode: IMProcessMode
         sendThinkingProcess: boolean
       }>
       setAutoConnect: (platform: string, enabled: boolean) => Promise<void>
-      setExecutionMode: (mode: ExecutionMode) => Promise<void>
+      setExecutionMode: (mode: import('@shared/types').ApprovalMode) => Promise<void>
       setProcessMode: (mode: IMProcessMode) => Promise<void>
       setSendThinkingProcess: (enabled: boolean) => Promise<void>
       sendNotification: (text: string, options?: { markdown?: boolean; title?: string }) => Promise<{ success: boolean; platform?: string; error?: string }>

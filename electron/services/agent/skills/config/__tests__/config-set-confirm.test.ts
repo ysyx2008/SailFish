@@ -99,4 +99,31 @@ describe('config_set confirmation', () => {
     expect(store.has('imExecutionMode')).toBe(false)
     expect(waitForConfirmation).not.toHaveBeenCalled()
   })
+
+  it('stores 替我审批 as relaxed plus the IM flag, and reads it back as autoReview', async () => {
+    const { executor: exec } = executor(true)
+    const set = await setKey(exec, 'imExecutionMode', 'autoReview')
+    expect(set.success).toBe(true)
+    expect(set.output).toContain('autoReview')
+    expect(store.get('imExecutionMode')).toBe('relaxed')
+    expect(store.get('imAutoApprovalReview')).toBe(true)
+
+    const got = await executeConfigTool('config_get', '', { key: 'imExecutionMode' }, 'call-2', {} as AgentConfig, exec)
+    expect(got.success).toBe(true)
+    expect(got.output).toContain('autoReview')
+  })
+
+  it('clears the IM flag when switching to another mode', async () => {
+    store.set('imExecutionMode', 'relaxed')
+    store.set('imAutoApprovalReview', true)
+    const { executor: exec } = executor(true)
+    const set = await setKey(exec, 'imExecutionMode', 'free')
+    expect(set.success).toBe(true)
+    expect(store.get('imExecutionMode')).toBe('free')
+    expect(store.get('imAutoApprovalReview')).toBe(false)
+
+    const got = await executeConfigTool('config_get', '', { key: 'imExecutionMode' }, 'call-2', {} as AgentConfig, exec)
+    expect(got.output).toContain('free')
+    expect(got.output).not.toContain('autoReview')
+  })
 })

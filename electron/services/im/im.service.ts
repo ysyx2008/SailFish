@@ -33,6 +33,7 @@ import type {
   IMProcessMode
 } from './types'
 import { CONFIRM_KEYWORDS, REJECT_KEYWORDS, IM_TEXT_MAX_LENGTH, isBuiltinImPlatform, type BuiltinImPlatform } from './types'
+import { imApprovalFromStored } from './approval'
 import { DingTalkAdapter } from './dingtalk-adapter'
 import { FeishuAdapter } from './feishu-adapter'
 import { SlackAdapter } from './slack-adapter'
@@ -622,6 +623,7 @@ export class IMService {
     wecom: { enabled: false, botId: '', secret: '' },
     wechat: { enabled: false, token: '', baseUrl: '' },
     executionMode: 'relaxed',
+    autoApprovalReview: false,
     sessionTimeoutMinutes: 60,
     processMode: 'messages',
     sendThinkingProcess: false,
@@ -680,6 +682,11 @@ export class IMService {
    */
   setExecutionMode(mode: ExecutionMode) {
     this.config.executionMode = mode
+  }
+
+  /** IM 运行模式里的「替我审批」。只影响之后从 IM 进来的那一轮。 */
+  setAutoApprovalReview(enabled: boolean) {
+    this.config.autoApprovalReview = enabled
   }
 
   /**
@@ -1672,6 +1679,7 @@ export class IMService {
         enabled: true, commandTimeout: 30000,
         autoExecuteSafe: true, autoExecuteModerate: true,
         executionMode: this.config.executionMode,
+        autoApprovalReview: this.config.autoApprovalReview === true,
         debugMode: false
       }, undefined, {
         onStart: (_runId: string, userTask: string) => {
@@ -2524,7 +2532,7 @@ export class IMService {
     return [
       t('im.status_title'),
       `${t('im.status_state')}: ${runStatus?.isRunning ? t('im.status_running') : t('im.status_idle')}`,
-      `${t('im.status_exec_mode')}: ${this.config.executionMode}`,
+      `${t('im.status_exec_mode')}: ${imApprovalFromStored(this.config.executionMode, this.config.autoApprovalReview)}`,
       connected('DingTalk', this.isDingTalkConnected()),
       connected('Feishu', this.isFeishuConnected()),
       connected('Slack', this.isSlackConnected()),
