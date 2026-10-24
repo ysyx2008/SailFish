@@ -36,16 +36,40 @@ function getPluginsDir(userDataPath: string): string {
 }
 
 /**
+ * 拼 npm 参数。包名放在 -- 之后，避免被当成选项；一律不跑生命周期脚本。
+ * 以 - 开头的 spec 直接拒绝。本地路径和 tarball 仍允许。
+ */
+export function npmCliArgs(command: 'install' | 'update' | 'uninstall', spec: string): string[] {
+  const name = spec.trim()
+  if (!name) throw new Error('缺少包名')
+  if (name.startsWith('-')) throw new Error('包名不能以 - 开头')
+  if (command === 'install') return ['install', '--ignore-scripts', '--save', '--', name]
+  return [command, '--ignore-scripts', '--', name]
+}
+
+function rejectBadSpec(spec: string, command: 'install' | 'update' | 'uninstall'): InstallResult | null {
+  try {
+    npmCliArgs(command, spec)
+    return null
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/**
  * 安装插件
  * @param spec npm 包名/路径/tarball（如 "@openclaw/voice-call", "./my-plugin", "./my-plugin.tgz"）
  */
 export async function installPlugin(spec: string, userDataPath: string): Promise<InstallResult> {
+  const rejected = rejectBadSpec(spec, 'install')
+  if (rejected) return rejected
+
   const pluginsDir = getPluginsDir(userDataPath)
 
   log.info(`Installing plugin: ${spec}`)
 
   try {
-    await npmExec(['install', '--save', spec], pluginsDir)
+    await npmExec(npmCliArgs('install', spec), pluginsDir)
 
     // 查找新安装的插件 manifest
     const nodeModules = path.join(pluginsDir, 'node_modules')
@@ -126,12 +150,15 @@ export function packageNameMatchesDir(packageName: string, pluginDir: string, us
  * 卸载插件
  */
 export async function uninstallPlugin(packageName: string, userDataPath: string): Promise<InstallResult> {
+  const rejected = rejectBadSpec(packageName, 'uninstall')
+  if (rejected) return rejected
+
   const pluginsDir = getPluginsDir(userDataPath)
 
   log.info(`Uninstalling plugin: ${packageName}`)
 
   try {
-    await npmExec(['uninstall', packageName], pluginsDir)
+    await npmExec(npmCliArgs('uninstall', packageName), pluginsDir)
     log.info(`Plugin uninstalled: ${packageName}`)
     return { success: true }
   } catch (err) {
@@ -145,12 +172,15 @@ export async function uninstallPlugin(packageName: string, userDataPath: string)
  * 更新插件
  */
 export async function updatePlugin(packageName: string, userDataPath: string): Promise<InstallResult> {
+  const rejected = rejectBadSpec(packageName, 'update')
+  if (rejected) return rejected
+
   const pluginsDir = getPluginsDir(userDataPath)
 
   log.info(`Updating plugin: ${packageName}`)
 
   try {
-    await npmExec(['update', packageName], pluginsDir)
+    await npmExec(npmCliArgs('update', packageName), pluginsDir)
     log.info(`Plugin updated: ${packageName}`)
     return { success: true }
   } catch (err) {
