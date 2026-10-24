@@ -1799,6 +1799,7 @@ const translations = {
     'exec.stop_pending_short': '已强制结束，进程还没退干净',
     'exec.stop_not_owner': '{taskId} 不是这场对话起的命令，不能叫停',
     'exec.stopped_note': '上一轮用户按了停止，这条命令被中途停掉了 [task_id={taskId}]。它可能停在半截，用户问起或接着做相关的事时，先判断要不要收拾。\n命令：{command}\n停之前最后的输出：\n{output}',
+    'exec.skill_not_loaded': '这场对话没有装上技能 {skillId}，这条命令没有执行，该技能的密钥也没有交出去。',
     // 替我审批
     'autoReview.reviewing': '正在替你看：{action}',
     'autoReview.cancelled': '任务已停，没评完：{action}',
@@ -3804,6 +3805,7 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'exec.stop_pending_short': 'Force-killed; the process has not exited yet',
     'exec.stop_not_owner': '{taskId} was not started by this conversation and cannot be stopped from here',
     'exec.stopped_note': 'In the previous turn the user pressed Stop and this command was stopped midway [task_id={taskId}]. It may have been left half-done; when the user asks about it or related work continues, first judge whether cleanup is needed.\nCommand: {command}\nLast output before stopping:\n{output}',
+    'exec.skill_not_loaded': 'Skill {skillId} is not loaded in this conversation. The command did not run, and that skill\'s keys were not passed to it.',
     // Auto-approval review
     'autoReview.reviewing': 'Reviewing for you: {action}',
     'autoReview.cancelled': 'Task stopped before the review finished: {action}',
