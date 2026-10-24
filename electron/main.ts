@@ -14,7 +14,7 @@ import { isAbortError } from './utils/abort'
 import { createTerminalDataCoalescer } from './utils/terminal-data-coalescer'
 import type { AttachmentInfo, DocumentParseProgress, UiThemeMode, UiThemeName, WebSearchSettings, IMProcessMode, SayResult, TerminalType, QuitConfirmCounts } from '@shared/types'
 import { clampUiZoomFactor, isApprovalMode, stepUiZoomFactor, UI_ZOOM_DEFAULT } from '@shared/types'
-import { imApprovalFromStored, storedFromImApproval } from './services/im/approval'
+import { imChoiceAheadOfShared, persistSharedApproval, sharedApprovalFromConfig, storedFromImApproval } from './services/im/approval'
 import { getAppTitle as buildAppTitle, getBrandName } from '@shared/brand'
 import { oemResolved } from '@shared/oem-resolve'
 import { isOemFeatureEnabled } from '@shared/oem-features'
@@ -871,11 +871,25 @@ async function ensureRemoteSessionStack(): Promise<{
       agentService,
       mainWindow: mainWindow && !mainWindow.isDestroyed() ? mainWindow : null,
     })
-    const savedImExecutionMode = configService.get('imExecutionMode') as string | undefined
-    if (savedImExecutionMode && ['strict', 'relaxed', 'free'].includes(savedImExecutionMode)) {
-      imService.setExecutionMode(savedImExecutionMode as ExecutionMode)
+    const ahead = imChoiceAheadOfShared(
+      configService.get('imExecutionMode'),
+      configService.get('imAutoApprovalReview'),
+      configService.get('executionMode'),
+      configService.get('autoApprovalReview'),
+    )
+    if (ahead) {
+      persistSharedApproval((key, value) => configService.set(key as never, value as never), ahead)
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send('config:changed')
+      }
     }
-    imService.setAutoApprovalReview(configService.get('imAutoApprovalReview') === true)
+    const shared = sharedApprovalFromConfig(
+      configService.get('executionMode'),
+      configService.get('autoApprovalReview'),
+    )
+    const sharedStored = storedFromImApproval(shared)
+    imService.setExecutionMode(sharedStored.executionMode)
+    imService.setAutoApprovalReview(sharedStored.autoApprovalReview)
     const savedImProcessMode = configService.get('imProcessMode') as string | undefined
     if (savedImProcessMode && ['final', 'messages', 'all'].includes(savedImProcessMode)) {
       imService.setProcessMode(savedImProcessMode as IMProcessMode)
@@ -4996,9 +5010,9 @@ ipcMain.handle('im:getConfig', async () => {
       // 默认 true：扫码渠道期望开机重连；用户显式关掉则为 false
       autoConnect: configService.get('imWeChatAutoConnect') !== false,
     },
-    executionMode: imApprovalFromStored(
-      configService.get('imExecutionMode'),
-      configService.get('imAutoApprovalReview'),
+    executionMode: sharedApprovalFromConfig(
+      configService.get('executionMode'),
+      configService.get('autoApprovalReview'),
     ),
     processMode: (() => {
       const saved = configService.get('imProcessMode') as string | undefined
@@ -5032,12 +5046,14 @@ ipcMain.handle('im:setAutoConnect', async (_event, platform: string, enabled: bo
 
 ipcMain.handle('im:setExecutionMode', async (_event, mode: unknown) => {
   if (!isApprovalMode(mode)) return
+  persistSharedApproval((key, value) => configService.set(key as never, value as never), mode)
   const stored = storedFromImApproval(mode)
-  configService.set('imExecutionMode', stored.executionMode)
-  configService.set('imAutoApprovalReview', stored.autoApprovalReview)
   const im = await imSvc()
   im.setExecutionMode(stored.executionMode)
   im.setAutoApprovalReview(stored.autoApprovalReview)
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('config:changed')
+  }
 })
 
 ipcMain.handle('im:setProcessMode', async (_event, mode: IMProcessMode) => {

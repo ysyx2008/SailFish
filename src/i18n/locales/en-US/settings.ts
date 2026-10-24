@@ -371,7 +371,7 @@ export default {
       betaTooltip: 'This platform integration has not been fully tested and may have compatibility issues',
       autoConnect: 'Auto-connect on startup',
       executionMode: 'Execution Mode',
-      executionModeDesc: 'Controls when the IM Agent asks for confirmation before executing commands',
+      executionModeDesc: 'Same choice as the menu at the bottom of Reach',
       processMode: 'Process Messages',
       processModeDesc: 'Controls which intermediate info is delivered to IM',
       processModeFinal: 'Final only',

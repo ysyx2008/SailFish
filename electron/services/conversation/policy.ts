@@ -72,7 +72,7 @@ export interface ConversationPolicy {
   /**
    * 用户打开「替我审批」后，本来要问用户的那一下能否先交给独立评审员。
    * - task=true：用户坐在桌面前支使 AI 做事，没放行还能当场交回给他。
-   * - companion=true：不论桌面、网页还是 IM 发来，都是用户本人在场，交回时在他发消息的地方问。从 IM 进来的那一轮用不用评审，看 IM 自己的运行模式，不看桌面这场开没开。
+   * - companion=true：不论桌面、网页还是 IM 发来，都是用户本人在场，交回时在他发消息的地方问。联络输入框那一档和 IM 运行模式是同一个，从 IM 进来的那一轮也用这一档。
    * - watch/wakeup=false：后台执行，没有人当场兜底。
    */
   autoApprovalReview: boolean

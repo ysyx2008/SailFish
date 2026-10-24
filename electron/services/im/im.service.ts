@@ -33,7 +33,7 @@ import type {
   IMProcessMode
 } from './types'
 import { CONFIRM_KEYWORDS, REJECT_KEYWORDS, IM_TEXT_MAX_LENGTH, isBuiltinImPlatform, type BuiltinImPlatform } from './types'
-import { imApprovalFromStored } from './approval'
+import { sharedApprovalFromConfig, storedFromImApproval } from './approval'
 import { DingTalkAdapter } from './dingtalk-adapter'
 import { FeishuAdapter } from './feishu-adapter'
 import { SlackAdapter } from './slack-adapter'
@@ -684,9 +684,15 @@ export class IMService {
     this.config.executionMode = mode
   }
 
-  /** IM 运行模式里的「替我审批」。只影响之后从 IM 进来的那一轮。 */
+  /** IM 运行模式里的「替我审批」。和联络输入框那一档是同一个。 */
   setAutoApprovalReview(enabled: boolean) {
     this.config.autoApprovalReview = enabled
+  }
+
+  /** 联络输入框那一档。IM 进来的一轮用它，不另记一份。 */
+  private sharedApproval() {
+    const config = getConfigService()
+    return sharedApprovalFromConfig(config.get('executionMode'), config.get('autoApprovalReview'))
   }
 
   /**
@@ -1675,11 +1681,13 @@ export class IMService {
         } : {})
       }
 
+      const approval = this.sharedApproval()
+      const stored = storedFromImApproval(approval)
       await this.deps.agentService.runAssistant(agentId, fullMessage, context, {
         enabled: true, commandTimeout: 30000,
         autoExecuteSafe: true, autoExecuteModerate: true,
-        executionMode: this.config.executionMode,
-        autoApprovalReview: this.config.autoApprovalReview === true,
+        executionMode: stored.executionMode,
+        autoApprovalReview: approval === 'autoReview',
         debugMode: false
       }, undefined, {
         onStart: (_runId: string, userTask: string) => {
@@ -2532,7 +2540,7 @@ export class IMService {
     return [
       t('im.status_title'),
       `${t('im.status_state')}: ${runStatus?.isRunning ? t('im.status_running') : t('im.status_idle')}`,
-      `${t('im.status_exec_mode')}: ${imApprovalFromStored(this.config.executionMode, this.config.autoApprovalReview)}`,
+      `${t('im.status_exec_mode')}: ${this.sharedApproval()}`,
       connected('DingTalk', this.isDingTalkConnected()),
       connected('Feishu', this.isFeishuConnected()),
       connected('Slack', this.isSlackConnected()),

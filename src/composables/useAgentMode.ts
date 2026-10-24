@@ -1052,8 +1052,7 @@ export function useAgentMode(
     await Promise.all(promises)
   })
 
-  // 下拉框显示和修改的是眼前这场的审批方式；远程会话（网页 / IM 接入）与联络页（同样标了 isRemote，
-  // 多渠道汇成一条线）仍按渠道自己的执行档
+  // 下拉框：普通对话改眼前这场。联络页（标了 isRemote）改的是和 IM 运行模式同一个档。
   const defaultApproval = useDefaultApproval()
   const approvalTarget: ApprovalTarget = {
     current: computed<ApprovalMode>(() => {
@@ -1988,9 +1987,12 @@ export function useAgentMode(
         ...(workbenchPrompt ? { workbenchPrompt } : {}),
         ...(workbenchContext ? { workbenchContext } : {}),
       },
-      // 审批方式记在那场对话上；远程会话按渠道自己的执行档
+      // 审批方式记在那场对话上。联络和 IM 用同一个档。
       config: {
-        ...(tab?.isRemote ? { executionMode: executionMode.value } : {}),
+        ...(tab?.isRemote ? {
+          executionMode: executionMode.value,
+          autoApprovalReview: configStore.autoApprovalReview === true,
+        } : {}),
         commandTimeout: commandTimeout.value * 1000,
       },
       profileId: activeProfileId.value || undefined,
@@ -3004,13 +3006,25 @@ export function useAgentMode(
     if (!currentTab.value?.isRemote) return
     try {
       const config = await window.electronAPI.im.getConfig()
-      if (config.executionMode && ['strict', 'relaxed', 'free'].includes(config.executionMode)) {
-        executionMode.value = config.executionMode
+      const mode = config.executionMode
+      if (mode === 'strict' || mode === 'relaxed' || mode === 'free' || mode === 'autoReview') {
+        executionMode.value = executionModeOfApproval(mode)
       }
     } catch (err) {
       log.warn('Failed to load remote execution mode, using default:', err)
     }
   }
+
+  // 联络这一档跟设置里的是同一份。别处改了，这边的下拉框跟着换。
+  watch(
+    () => configStore.executionMode,
+    (mode) => {
+      if (!currentTab.value?.isRemote) return
+      if (mode === 'strict' || mode === 'relaxed' || mode === 'free') {
+        executionMode.value = mode
+      }
+    },
+  )
 
   // 联络常驻 tab：挂载时把合并视图上墙。已经恢复过、或正在跑任务则不动。
   // 现场已灌进的提醒/消息接到历史后面，按 id（及短时间窗内同文主动提醒）去重，

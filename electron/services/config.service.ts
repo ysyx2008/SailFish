@@ -224,7 +224,7 @@ interface StoreSchema {
   imWeChatToken: string           // 微信 bot token（扫码登录获得）
   imWeChatBaseUrl: string         // 微信 API base URL
   imExecutionMode: ExecutionMode  // IM Agent 执行模式，默认 relaxed
-  /** IM 运行模式里的「替我审批」。只作用于从 IM 进来的那一轮；全自动档下不起作用 */
+  /** 和联络那一档是同一个「替我审批」。全自动档下不起作用 */
   imAutoApprovalReview: boolean
   imProcessMode: IMProcessMode   // IM 过程消息投递模式，默认 'messages'
   /** @deprecated 已迁移至 imProcessMode，仅用于读取旧配置做隐式迁移 */

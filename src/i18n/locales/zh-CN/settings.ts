@@ -371,7 +371,7 @@ export default {
       betaTooltip: '此平台集成尚未经过充分测试，可能存在兼容性问题',
       autoConnect: '启动时自动连接',
       executionMode: '运行模式',
-      executionModeDesc: '控制 IM Agent 执行命令时的确认策略',
+      executionModeDesc: '和联络输入框右下角是同一档',
       processMode: '过程消息',
       processModeDesc: '控制 IM 投递哪些过程信息',
       processModeFinal: '仅结果',

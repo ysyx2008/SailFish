@@ -30,7 +30,7 @@ import {
 } from './ssh-sessions'
 import type { AiProfile } from '@shared/types'
 import { isApprovalMode } from '@shared/types'
-import { imApprovalFromStored, storedFromImApproval } from '../../../im/approval'
+import { persistSharedApproval, sharedApprovalFromConfig, storedFromImApproval } from '../../../im/approval'
 import { updateSettings as applyWebSearchSettings } from '../../../web-search/index'
 import {
   executeWebSearchSettingsAction,
@@ -263,7 +263,7 @@ function listConfig(args: Record<string, unknown>): ToolResult {
       const sensitive = isSensitiveKey(m.key)
       const raw = resolveConfigValue(config, m.key)
       const shown = m.key === 'imExecutionMode'
-        ? imApprovalFromStored(raw, config.get('imAutoApprovalReview'))
+        ? sharedApprovalFromConfig(config.get('executionMode'), config.get('autoApprovalReview'))
         : raw
       const display = sensitive
         ? (raw ? '_(已配置)_' : '_(未配置)_')
@@ -300,7 +300,7 @@ function getConfig(args: Record<string, unknown>): ToolResult {
 
   const config = getConfigService()
   const val = key === 'imExecutionMode'
-    ? imApprovalFromStored(resolveConfigValue(config, key), config.get('imAutoApprovalReview'))
+    ? sharedApprovalFromConfig(config.get('executionMode'), config.get('autoApprovalReview'))
     : resolveConfigValue(config, key)
   if (key === 'mcpServers') {
     return { success: true, output: `**${meta.label}** (\`${key}\`)\n${formatMcpServersDetail(config)}` }
@@ -318,8 +318,8 @@ function getConfig(args: Record<string, unknown>): ToolResult {
 }
 
 /**
- * 替我审批不能写成执行档本身（盘上只认 strict / relaxed / free）。
- * 选它时记下宽松，并打开 IM 自己的开关；选另外三档时把开关关掉。
+ * 联络输入框那一档和 IM 运行模式是同一个。
+ * 替我审批记成宽松加开关，不能把 autoReview 写进只认三档的执行模式。
  */
 function applyImExecutionMode(
   config: ReturnType<typeof getConfigService>,
@@ -329,11 +329,12 @@ function applyImExecutionMode(
   if (!isApprovalMode(value)) {
     return { success: false, output: '', error: `"${String(value)}" 不是 "imExecutionMode" 的有效值。可选: strict, relaxed, autoReview, free` }
   }
-  const stored = storedFromImApproval(value)
   try {
-    applyConfigValue(config, 'imExecutionMode', stored.executionMode, 'string')
-    applyConfigValue(config, 'imAutoApprovalReview', stored.autoApprovalReview, 'boolean')
+    persistSharedApproval((key, storedValue) => {
+      applyConfigValue(config, key, storedValue, typeof storedValue === 'boolean' ? 'boolean' : 'string')
+    }, value)
     try {
+      const stored = storedFromImApproval(value)
       const im = getIMService()
       im.setExecutionMode(stored.executionMode)
       im.setAutoApprovalReview(stored.autoApprovalReview)
@@ -341,7 +342,7 @@ function applyImExecutionMode(
       log.warn('IM 执行模式已写入，运行中的 IM 没跟上:', err)
     }
     notifyFrontendConfigChanged()
-    const shown = imApprovalFromStored(stored.executionMode, stored.autoApprovalReview)
+    const shown = value
     return { success: true, output: `✅ 已设置 **${meta.label}** (\`${meta.key}\`) = ${formatValue(shown, meta)}` }
   } catch (err) {
     return { success: false, output: '', error: `设置失败: ${err instanceof Error ? err.message : String(err)}` }
