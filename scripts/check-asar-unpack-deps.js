@@ -28,6 +28,7 @@ const WORKER_ENTRY_PACKAGES = [
   '@huggingface/transformers',
   '@lancedb/lancedb',
   'apache-arrow', // @lancedb/lancedb 的 peerDependency，lancedb-worker 热路径必载
+  'jieba-wasm', // lancedb-worker 里给关键词索引切词（keyword-index.js）
   'onnxruntime-node',
   'onnxruntime-web',
   'sherpa-onnx-node',

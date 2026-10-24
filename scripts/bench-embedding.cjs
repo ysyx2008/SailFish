@@ -150,56 +150,6 @@ async function timeit(label, fn) {
   const n2 = Math.sqrt(batched[0].reduce((s, v) => s + v * v, 0))
   console.log(`  cosine = ${(dot / (n1 * n2)).toFixed(6)} (应非常接近 1)`)
 
-  // ==================== BM25 写入瓶颈测试 ====================
-  console.log(`\n=== BM25 写入瓶颈测试 (${N} 文档，模拟重建场景) ===\n`)
-
-  const { getBM25Index } = require('../electron/services/knowledge/bm25')
-
-  // 清掉每次测试的状态：直接 new 一个 BM25Index 实例
-  // 但 bm25.ts 是单例 + 持久化文件，每次 init 会读盘，需要换 indexPath
-  // 简化做法：跑 2 次完整 add，对比"每批 saveIndex" vs "末尾一次 saveIndex"
-
-  // 准备 docs
-  const bm25Docs = texts.map((t, i) => ({
-    id: `id_${i}`,
-    docId: `doc_${i}`,
-    content: t,
-    filename: `f_${i}`,
-    hostId: '',
-    tags: ''
-  }))
-
-  // 测 1：每批都 saveIndex（旧逻辑，N/64 批）
-  // 因为单例不好重置，用一个干净的 BM25Index：clone 类后 new
-  const { BM25Index } = require('../electron/services/knowledge/bm25')
-
-  async function runBm25Bench(label, perBatchSave) {
-    // 用临时索引文件
-    const customPath = path.join(tmpUserData, 'knowledge', `bm25-bench-${perBatchSave ? 'old' : 'new'}.json`)
-    fs.mkdirSync(path.dirname(customPath), { recursive: true })
-    const idx = new BM25Index()
-    idx.indexPath = customPath
-    await idx.initialize()
-
-    const t0 = Date.now()
-    for (let i = 0; i < bm25Docs.length; i += BATCH) {
-      const slice = bm25Docs.slice(i, i + BATCH)
-      // 直接调 addDocuments，options.skipSave=!perBatchSave
-      await idx.addDocuments(slice, { skipSave: !perBatchSave })
-    }
-    if (!perBatchSave) {
-      // 新逻辑：循环结束统一保存一次
-      await idx.saveIndex()
-    }
-    const dt = Date.now() - t0
-    console.log(`  ${label.padEnd(36)} ${dt}ms`)
-    return dt
-  }
-
-  const bmOld = await runBm25Bench(`旧 (每批 saveIndex × ${Math.ceil(N / BATCH)} 次)`, true)
-  const bmNew = await runBm25Bench(`新 (循环末尾 saveIndex × 1 次)   `, false)
-  console.log(`\n  BM25 加速比: ${(bmOld / bmNew).toFixed(2)}x`)
-
   process.exit(0)
 })().catch((err) => {
   console.error('Bench failed:', err)
