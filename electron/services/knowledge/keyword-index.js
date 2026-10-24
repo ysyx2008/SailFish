@@ -212,7 +212,7 @@ class KeywordIndex {
     for (;;) {
       const rows = await table
         .search(queryText, 'fts', TOKEN_COLUMN)
-        .select(['id', 'docId', 'content', 'filename', 'hostId', 'tags'])
+        .select(['id', 'docId', 'content', 'filename', 'hostId', 'tags', '_score'])
         .limit(fetch)
         .toArray()
       const kept = filtered ? rows.filter(passes) : rows

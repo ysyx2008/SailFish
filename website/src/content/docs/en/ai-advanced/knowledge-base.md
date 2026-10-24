@@ -29,7 +29,7 @@ The processing pipeline includes:
 
 - **Chunking**: Splits long documents into semantically coherent segments
 - **Vector embedding**: Generates vector representations for each chunk (using a local embedding model)
-- **Indexing**: Builds a vector index plus a BM25 keyword index, enabling both semantic and keyword search
+- **Indexing**: Builds a vector index plus a keyword index (stored alongside the vectors), enabling both semantic and keyword search
 
 ### Fully Local Processing
 

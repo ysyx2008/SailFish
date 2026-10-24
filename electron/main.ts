@@ -1029,9 +1029,9 @@ async function initKnowledgeService(): Promise<void> {
         log.info(`知识库模型升级: ${reason} (${oldDimensions} -> ${newDimensions})`)
       })
 
-      // 监听重建开始事件（任何原因：模型升级/数据损坏/BM25 缺失等）
+      // 监听重建开始事件（任何原因：模型升级/数据损坏/索引缺失等）
       // 这是前端进度条出现的统一入口——indexCleared 只覆盖维度变化一种情况，
-      // 数据损坏/BM25 缺失场景此前没有触发 upgrading 导致用户感觉 UI 纯卡住。
+      // 数据损坏/索引缺失场景此前没有触发 upgrading 导致用户感觉 UI 纯卡住。
       knowledgeService.on('rebuildStarted', (
         { total, libraryTotal, reason, cause }:
         { total: number; libraryTotal?: number; reason: string; cause?: 'dimension_mismatch' | 'data_corrupted' | 'missing' }

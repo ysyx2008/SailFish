@@ -6,9 +6,8 @@
  * 把"几十分钟全量重 embed"压成"几秒拷贝 + 几分钟补缺失文档"。
  *
  * 备份范围：整个 `{userData}/knowledge/` 目录
- *   - lancedb/             向量数据（最大头）
- *   - bm25-index.json      BM25 索引
- *   - bm25-index.json.tmp  原子写临时文件（恢复时优先尝试）
+ *   - lancedb/             向量与切词数据（最大头）
+ *   - bm25-index.json(.tmp) 旧版整本词索引（升级后不再更新，闲置 7 天后清理）
  *   - documents.json       文档元数据（真相源）
  *   - .password            加密口令（如有）
  *
