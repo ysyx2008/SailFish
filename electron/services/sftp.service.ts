@@ -6,6 +6,8 @@ import type { SftpConfig } from '@shared/types'
 import { getSshErrorMessage } from './ssh-error'
 import { requestLocalNetworkAccessIfDenied } from '../utils/local-network-permission'
 import { createLogger } from '../utils/logger'
+import { t } from '../i18n/main-i18n'
+import { downloadDirTree } from './sftp-download-tree'
 
 const log = createLogger('SFTP')
 
@@ -480,7 +482,14 @@ export class SftpService extends EventEmitter {
   ): Promise<void> {
     const sftp = this.sessions.get(sessionId)
     if (!sftp) throw new Error('SFTP 会话不存在')
-    await sftp.downloadDir(remoteDir, localDir)
+    const skipped = await downloadDirTree({
+      list: (remotePath) => sftp.list(remotePath),
+      get: (remotePath, localPath) => sftp.get(remotePath, localPath),
+    }, remoteDir, localDir)
+    if (skipped.length === 0) return
+    const names = skipped.slice(0, 5).join('、')
+    log.warn(`下载目录时跳过了会写到目录外的名字: ${skipped.join(', ')}`)
+    throw new Error(t('error.downloadOutsideSkipped', { count: skipped.length, names }))
   }
 
   /**

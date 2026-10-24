@@ -10,6 +10,7 @@ import type { LocalFileInfo } from '../composables/useLocalFs'
 import type { SftpFileInfo } from '../composables/useSftp'
 import { toast } from '../composables/useToast'
 import { useConfirm } from '../composables/useConfirm'
+import { localDestinationInside } from '@shared/utils/local-destination'
 
 // 确认对话框
 const { show: showConfirmDialog, options: confirmOptions, handleConfirm, handleCancel } = useConfirm()
@@ -243,15 +244,22 @@ const handleDownload = async (files: SftpFileInfo[]) => {
   if (!localPath) return
 
   for (const file of files) {
+    if (!localDestinationInside(localPath, file.name)) {
+      toast.error(t('fileManager.downloadOutsideName', { name: file.name }))
+      continue
+    }
     const targetPath = await window.electronAPI.localFs.joinPath(localPath, file.name)
     const transferId = `download-${Date.now()}-${Math.random().toString(36).slice(2)}`
     
     if (file.isDirectory) {
-      await window.electronAPI.sftp.downloadDir(
+      const result = await window.electronAPI.sftp.downloadDir(
         remotePaneRef.value!.getSessionId(),
         file.path,
         targetPath
       )
+      if (!result.success) {
+        toast.error(result.error || t('fileManager.downloadFailed'))
+      }
     } else {
       await window.electronAPI.sftp.download(
         remotePaneRef.value!.getSessionId(),
