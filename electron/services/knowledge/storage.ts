@@ -29,7 +29,7 @@ import {
 } from './backup'
 import { createLogger } from '../../utils/logger'
 import { UtilityWorkerSession, type WorkerSessionOptions } from './worker-session'
-import { lanceEquals } from './lance-filter'
+import { lanceEquals, lanceInBatches } from './lance-filter'
 import type { NameVectorRecord, NameVectorUpdate } from './name-vectors'
 
 const log = createLogger('KnowledgeStorage')
@@ -662,6 +662,39 @@ export class VectorStorage extends EventEmitter {
       await this.compactInProc()
       this.deleteCount = 0
       this.lastCompactTime = now
+    }
+  }
+
+  /**
+   * 一次删掉多份文档的向量。
+   * compact 为真时删完只整理一次；对话更新替换旧条目时不整理，避免每说一轮都整库压缩。
+   */
+  async removeDocumentChunksMany(docIds: readonly string[], options?: { compact?: boolean }): Promise<number> {
+    const ids = [...new Set(docIds.filter(id => typeof id === 'string' && id.length > 0))]
+    if (ids.length === 0) return 0
+    const compact = options?.compact === true
+    if (await this.useWorkerPath()) {
+      const { count } = await this.callWorker<{ count: number }>(
+        'removeDocumentChunksMany',
+        { docIds: ids, compact },
+        compact ? WORKER_HEAVY_TIMEOUT_MS : WORKER_TIMEOUT_MS,
+      )
+      return count
+    }
+    if (!this.table) return 0
+    try {
+      for (const predicate of lanceInBatches('docId', ids)) {
+        await this.table.delete(predicate)
+      }
+      if (compact) {
+        await this.compactInProc()
+        this.deleteCount = 0
+        this.lastCompactTime = Date.now()
+      }
+      return ids.length
+    } catch (error) {
+      log.error('Failed to remove chunks:', error)
+      throw error
     }
   }
 

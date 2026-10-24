@@ -12,6 +12,7 @@
  *   ⇢ { id, type: 'addRecords',           data: { records } }
  *   ⇢ { id, type: 'removeRecord',         data: { id: string } }
  *   ⇢ { id, type: 'removeDocumentChunks', data: { docId, forceCompact? } }
+ *   ⇢ { id, type: 'removeDocumentChunksMany', data: { docIds: string[], compact? } }
  *   ⇢ { id, type: 'vectorSearch',         data: { embedding, limit } }
  *   ⇢ { id, type: 'getRecordsByDocId',    data: { docId } }
  *   ⇢ { id, type: 'getRecordsByDocIds',   data: { docIds: string[] } }
@@ -95,12 +96,25 @@ function consumeCorruptionMarker() {
   return { corrupted: true, reason }
 }
 
-/** 与 lance-filter.ts 的 lanceEquals 同文，改那边要一起改。 */
+/** 与 lance-filter.ts 的 lanceEquals / lanceIn 同文，改那边要一起改。 */
 function lanceEquals(column, value) {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(column)) {
     throw new Error('invalid LanceDB column: ' + column)
   }
   return '`' + column + "` = '" + String(value).replace(/'/g, "''") + "'"
+}
+
+const LANCE_IN_BATCH = 200
+
+function lanceIn(column, values) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(column)) {
+    throw new Error('invalid LanceDB column: ' + column)
+  }
+  if (!values || values.length === 0) {
+    throw new Error('lanceIn requires at least one value')
+  }
+  const list = values.map(value => "'" + String(value).replace(/'/g, "''") + "'").join(', ')
+  return '`' + column + '` IN (' + list + ')'
 }
 
 function isLanceCorruptionError(error) {
@@ -310,6 +324,34 @@ async function handleRemoveDocumentChunks(data) {
   } catch (error) {
     console.error('[LanceDBWorker] Failed to remove chunks:', error)
     return { count: 0 }
+  }
+}
+
+async function handleRemoveDocumentChunksMany(data) {
+  if (!table) return { count: 0 }
+  const docIds = (data && data.docIds) || []
+  if (!Array.isArray(docIds) || docIds.length === 0) return { count: 0 }
+  const unique = []
+  const seen = new Set()
+  for (const id of docIds) {
+    if (typeof id !== 'string' || !id || seen.has(id)) continue
+    seen.add(id)
+    unique.push(id)
+  }
+  if (unique.length === 0) return { count: 0 }
+  try {
+    for (let i = 0; i < unique.length; i += LANCE_IN_BATCH) {
+      await table.delete(lanceIn('docId', unique.slice(i, i + LANCE_IN_BATCH)))
+    }
+    if (data && data.compact) {
+      await compact(false)
+      deleteCount = 0
+      lastCompactTime = Date.now()
+    }
+    return { count: unique.length }
+  } catch (error) {
+    console.error('[LanceDBWorker] Failed to remove chunks:', error)
+    throw error
   }
 }
 
@@ -664,6 +706,7 @@ async function dispatch(message) {
       case 'addRecords':           result = await handleAddRecords(data);           break
       case 'removeRecord':         result = await handleRemoveRecord(data);         break
       case 'removeDocumentChunks': result = await handleRemoveDocumentChunks(data); break
+      case 'removeDocumentChunksMany': result = await handleRemoveDocumentChunksMany(data); break
       case 'vectorSearch':         result = await handleVectorSearch(data);         break
       case 'getRecordsByDocId':    result = await handleGetRecordsByDocId(data);    break
       case 'getRecordsByDocIds':   result = await handleGetRecordsByDocIds(data);   break
