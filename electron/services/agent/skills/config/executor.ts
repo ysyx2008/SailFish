@@ -127,6 +127,23 @@ const CONFIG_REGISTRY: ConfigMeta[] = [
 
 const CONFIG_MAP = new Map(CONFIG_REGISTRY.map(m => [m.key, m]))
 
+/**
+ * 改这些会改规则、执行方式、网关或渠道密钥。写入前走现有的用户确认。
+ * 名单是配置键本身，不按名字里的词来猜。
+ */
+const CONFIRM_BEFORE_SET = new Set([
+  'aiRules',
+  'imExecutionMode',
+  'gatewayHost',
+  'gatewayAutoStart',
+  'imDingTalkClientSecret',
+  'imFeishuAppSecret',
+  'imSlackBotToken',
+  'imSlackAppToken',
+  'imTelegramBotToken',
+  'imWeComSecret',
+])
+
 // ==================== 入口 ====================
 
 export async function executeConfigTool(
@@ -143,7 +160,7 @@ export async function executeConfigTool(
     case 'config_get':
       return getConfig(args)
     case 'config_set':
-      return setConfig(args)
+      return setConfig(args, _toolCallId, executor)
     case 'config_mcp_server_add':
       return addMcpServerConfig(args, executor)
     case 'config_mcp_server_update':
@@ -294,7 +311,11 @@ function getConfig(args: Record<string, unknown>): ToolResult {
 
 // ==================== config_set ====================
 
-function setConfig(args: Record<string, unknown>): ToolResult {
+async function setConfig(
+  args: Record<string, unknown>,
+  toolCallId: string,
+  executor: ToolExecutorConfig,
+): Promise<ToolResult> {
   const key = args.key as string
   const value = args.value
   if (!key) return { success: false, output: '', error: '缺少 key 参数' }
@@ -323,6 +344,19 @@ function setConfig(args: Record<string, unknown>): ToolResult {
 
   if (meta.options && !meta.options.includes(String(value))) {
     return { success: false, output: '', error: `"${value}" 不是 "${key}" 的有效值。可选: ${meta.options.join(', ')}` }
+  }
+
+  if (CONFIRM_BEFORE_SET.has(key)) {
+    const approved = await executor.waitForConfirmation(
+      toolCallId,
+      'config_set',
+      { key, value },
+      'dangerous',
+      meta.label,
+    )
+    if (!approved) {
+      return { success: false, output: '', error: '未确认，这项配置没有改' }
+    }
   }
 
   const config = getConfigService()

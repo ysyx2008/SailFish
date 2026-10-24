@@ -116,8 +116,9 @@ MCP 连接器列表可通过 config_mcp_server_add/update/delete 管理（不可
       name: 'config_set',
       description: `修改旗鱼配置项。
 
-**安全类配置**（界面语言、主题、终端字号等）直接生效。
-**敏感类配置**（IM 凭证、网关、代理）也可设置，写入后建议用 im_connect 测试连接。
+字号、主题、语言直接写入。
+aiRules、imExecutionMode、gatewayHost、gatewayAutoStart，以及各渠道的 ClientSecret、AppSecret、BotToken、AppToken、Secret，写入前会先问用户；用户不确认则这一项不会改。
+代理地址直接写入。渠道密钥写入后可以用 im_connect 试连接。
 
 **AI 模型列表（aiProfiles）、SSH 主机（sshSessions）、MCP 连接器列表（mcpServers）和联网搜索（webSearchSettings）不可通过本工具整表写入**，否则会覆盖已有项。模型请用 \`config_ai_profile\`；主机请用 \`config_ssh_session\`；MCP 请用 \`config_mcp_server_add\` / \`config_mcp_server_update\` / \`config_mcp_server_delete\`；搜索请用 \`config_web_search\`。
 
