@@ -17,7 +17,6 @@ import type {
   SearchResult,
   KnowledgeStats
 } from './types'
-import { getBM25Index, type BM25SearchResult } from './bm25'
 import {
   restoreBackup as doRestoreBackup,
   listBackups,
@@ -31,6 +30,9 @@ import { createLogger } from '../../utils/logger'
 import { UtilityWorkerSession, type WorkerSessionOptions } from './worker-session'
 import { lanceEquals, lanceInBatches } from './lance-filter'
 import type { NameVectorRecord, NameVectorUpdate } from './name-vectors'
+import type { KeywordHit, KeywordIndex as KeywordEngine } from './keyword-index'
+
+export type { KeywordHit }
 
 const log = createLogger('KnowledgeStorage')
 
@@ -49,6 +51,9 @@ export interface VectorRecord {
 
 // 兼容旧接口
 export type OramaRecord = VectorRecord
+
+/** 整表扫描时读的列：不含切好的词（tokens），它只给关键词检索用 */
+const RECORD_COLUMNS = ['id', 'docId', 'content', 'vector', 'filename', 'hostId', 'tags', 'chunkIndex', 'createdAt']
 
 // ────────────────────────── Worker 辅助函数 ──────────────────────────
 
@@ -79,6 +84,22 @@ function getUnpackedNodeModules(): string {
     }
   } catch { /* 非 Electron 环境 */ }
   return path.join(process.cwd(), 'node_modules')
+}
+
+/**
+ * 进程内模式（CLI）要用的关键词索引模块。与 worker 同目录同一份文件，
+ * 按路径在运行时加载：它是给 worker 用的原样 JS，不能被打进主进程的包里。
+ */
+function loadKeywordIndexModule(): { KeywordIndex: typeof KeywordEngine } {
+  const candidates = [
+    path.join(path.dirname(getWorkerScriptPath()), 'keyword-index.js'),
+    path.join(__dirname, 'keyword-index.js'),
+    path.join(__dirname, 'services', 'knowledge', 'keyword-index.js'),
+  ]
+  const found = candidates.find(candidate => fs.existsSync(candidate))
+  if (!found) throw new Error(`找不到关键词索引模块 keyword-index.js，找过：${candidates.join('、')}`)
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  return require(found)
 }
 
 function detectUtilityProcessAvailable(): boolean {
@@ -131,6 +152,9 @@ export class VectorStorage extends EventEmitter {
   // ── In-process 模式（CLI / worker 启动失败） ────────────────────
   private db: any = null
   private table: any = null
+  /** 进程内的关键词索引；升级没做成（或表还没建）时 keywordReady 为 false */
+  private keyword: KeywordEngine | null = null
+  private keywordReady = false
   private nameTable: any = null
   private nameIndexBroken = false
   private corruptionMarkerPath: string
@@ -465,6 +489,8 @@ export class VectorStorage extends EventEmitter {
       log.warn('检查表是否存在失败，继续尝试创建:', e)
     }
 
+    // 新建的表从一开始就带 tokens 列
+    this.keywordReady = true
     const isPlaceholder = !sampleRecord
     const recordToInsert: VectorRecord = sampleRecord ?? {
       id: '__init__',
@@ -479,7 +505,7 @@ export class VectorStorage extends EventEmitter {
     }
 
     try {
-      this.table = await this.db.createTable('knowledge_vectors', [recordToInsert])
+      this.table = await this.db.createTable('knowledge_vectors', this.keyword!.withTokens([recordToInsert]))
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       if (msg.includes('already exists')) {
@@ -514,10 +540,30 @@ export class VectorStorage extends EventEmitter {
     }
   }
 
+  /** 待写入的行：关键词检索可用时补上 tokens，否则原样（旧表没有这一列，带上会写不进去） */
+  private rowsForWriteInProc<T extends { content: string }>(records: T[]): T[] {
+    return this.keywordReady && this.keyword ? this.keyword.withTokens(records) : records
+  }
+
+  /** 写入之后补建全文索引、并入没覆盖到的行。出错只记日志，写入已经完成 */
+  private async afterWriteInProc(): Promise<void> {
+    if (!this.keywordReady || !this.keyword || !this.table) return
+    try {
+      await this.keyword.ensureIndex(this.table)
+      if (await this.keyword.needsOptimize(this.table)) await this.compactInProc()
+    } catch (error) {
+      log.warn('全文索引维护失败（写入已完成）:', error)
+    }
+  }
+
   private async initializeInProcess(dimensions: number): Promise<void> {
     try {
-      const { connect } = await loadLanceDBInProc()
+      const lancedb = await loadLanceDBInProc()
+      const { connect } = lancedb
       this.db = await connect(this.storagePath)
+      const { KeywordIndex } = loadKeywordIndexModule()
+      this.keyword = new KeywordIndex({ lancedb, log })
+      this.keywordReady = false
 
       const events: Array<{ name: string; args: any[] }> = []
 
@@ -540,9 +586,20 @@ export class VectorStorage extends EventEmitter {
           await this.db.dropTable('knowledge_vectors')
           this.table = null
           events.push({ name: 'dimensionMismatch', args: [{ old: mismatch, new: dimensions }] })
+        } else {
+          // 表读得开：补列、给还没切词的行切词、建全文索引。没做成不挡向量这一半，下次启动再试
+          try {
+            const result = await this.keyword.prepare(this.table)
+            this.keywordReady = true
+            events.push({ name: 'keywordIndexReady', args: [result] })
+          } catch (error) {
+            log.error('关键词索引升级失败，本次启动关键词检索不可用:', error)
+          }
         }
       } else {
         this.table = null
+        // 还没有表：第一次写入时带 tokens 列新建
+        this.keywordReady = true
       }
 
       for (const evt of events) {
@@ -587,7 +644,8 @@ export class VectorStorage extends EventEmitter {
     }
     if (!this.db) throw new Error('数据库未初始化')
     await this.ensureTableInProc(record)
-    await this.table.add([record])
+    await this.table.add(this.rowsForWriteInProc([record]))
+    await this.afterWriteInProc()
     this.emit('recordAdded', record.id)
     return record.id
   }
@@ -601,7 +659,8 @@ export class VectorStorage extends EventEmitter {
     }
     if (!this.db) throw new Error('数据库未初始化')
     await this.ensureTableInProc(records[0])
-    await this.table!.add(records)
+    await this.table!.add(this.rowsForWriteInProc(records))
+    await this.afterWriteInProc()
     const ids = records.map(r => r.id)
     this.emit('recordsAdded', ids)
     return ids
@@ -790,6 +849,8 @@ export class VectorStorage extends EventEmitter {
       this.table = null
       this.nameTable = null
       this.nameIndexBroken = false
+      this.keyword?.reset()
+      this.keywordReady = true
     }
 
     // fs.rmSync 在主进程执行（worker 进程的文件句柄在 dropTable 后已释放）
@@ -990,18 +1051,14 @@ export class VectorStorage extends EventEmitter {
         vectorResults = this.formatResults(vectorHits, options)
       }
 
-      // 2. BM25 搜索（始终在主进程执行，与 LanceDB 无关）
-      const bm25Index = getBM25Index()
-      let bm25Results: BM25SearchResult[] = []
-      if (bm25Index.isReady()) {
-        bm25Results = await bm25Index.search(query, limit * 2, {
-          hostId: options.hostId,
-          tags: options.tags
-        })
-      }
+      // 2. 关键词搜索（同一张表里的全文索引）
+      const keywordResults = await this.keywordSearch(query, limit * 2, {
+        hostId: options.hostId,
+        tags: options.tags
+      })
 
       // 3. RRF 融合
-      return this.rrfFusion(vectorResults, bm25Results, k).slice(0, limit)
+      return this.rrfFusion(vectorResults, keywordResults, k).slice(0, limit)
     } catch (error) {
       log.error('Hybrid search failed:', error)
       if (!this.workerMode && this.isLanceCorruptionError(error)) {
@@ -1009,6 +1066,43 @@ export class VectorStorage extends EventEmitter {
       }
       return []
     }
+  }
+
+  /**
+   * 按字面（关键词）检索，按相关度从高到低。用的是向量表里切好词的那一列和它的全文索引，
+   * 和向量检索是同一份数据。关键词索引没就绪时返回空并记日志，不影响向量检索。
+   */
+  async keywordSearch(
+    query: string,
+    limit: number,
+    options: { hostId?: string; tags?: string[] } = {}
+  ): Promise<KeywordHit[]> {
+    const request = { query, limit, hostId: options.hostId, tags: options.tags }
+    if (await this.useWorkerPath()) {
+      const result = await this.callWorker<{ hits: KeywordHit[]; error?: string }>('keywordSearch', request)
+      if (result.error) log.warn('关键词检索没有结果:', result.error)
+      return result.hits || []
+    }
+    if (!this.table || !this.keyword || !this.keywordReady) return []
+    try {
+      return await this.keyword.search(this.table, request)
+    } catch (error) {
+      log.error('Keyword search failed:', error)
+      if (this.isLanceCorruptionError(error)) {
+        this.markCorrupted(`keywordSearch: ${(error as Error).message}`)
+      }
+      return []
+    }
+  }
+
+  /** 把一句话切成关键词检索用的词（与写入时同一个切词函数） */
+  async tokenize(text: string): Promise<string[]> {
+    if (await this.useWorkerPath()) {
+      const { tokens } = await this.callWorker<{ tokens: string[] }>('tokenize', { text })
+      return tokens
+    }
+    if (!this.keyword) throw new Error('数据库未初始化')
+    return this.keyword.tokenize(text)
   }
 
   async getRecordsByDocId(docId: string): Promise<VectorRecord[]> {
@@ -1020,7 +1114,7 @@ export class VectorStorage extends EventEmitter {
     }
     if (!this.table) return []
     try {
-      const allRows = await this.table.query().toArray()
+      const allRows = await this.table.query().select(RECORD_COLUMNS).toArray()
       return (allRows as VectorRecord[]).filter(r => r.docId === docId)
     } catch (error) {
       log.error('Failed to get records by docId:', error)
@@ -1037,7 +1131,7 @@ export class VectorStorage extends EventEmitter {
     }
     if (!this.table || docIds.size === 0) return new Map()
     try {
-      const allRows = await this.table.query().toArray()
+      const allRows = await this.table.query().select(RECORD_COLUMNS).toArray()
       const result = new Map<string, VectorRecord>()
       for (const row of allRows as VectorRecord[]) {
         if (docIds.has(row.docId) && !result.has(row.docId)) {
@@ -1081,7 +1175,7 @@ export class VectorStorage extends EventEmitter {
     }
     if (!this.table || validDocIds.size === 0) return []
     try {
-      const allRows = await this.table.query().toArray()
+      const allRows = await this.table.query().select(RECORD_COLUMNS).toArray()
       return (allRows as any[])
         .filter(r => validDocIds.has(r.docId))
         .map(r => ({
@@ -1170,6 +1264,8 @@ export class VectorStorage extends EventEmitter {
     this.workerMode = false
     this.db = null
     this.table = null
+    this.keyword = null
+    this.keywordReady = false
     this.nameTable = null
     this.nameIndexBroken = false
   }
@@ -1237,7 +1333,7 @@ export class VectorStorage extends EventEmitter {
 
   private rrfFusion(
     vectorResults: SearchResult[],
-    bm25Results: BM25SearchResult[],
+    keywordResults: KeywordHit[],
     k: number = 60
   ): SearchResult[] {
     const scoreMap = new Map<string, { score: number; result: SearchResult }>()
@@ -1246,24 +1342,24 @@ export class VectorStorage extends EventEmitter {
       scoreMap.set(result.id, { score: 1 / (k + rank + 1), result })
     })
 
-    bm25Results.forEach((bm25Result, rank) => {
+    keywordResults.forEach((hit, rank) => {
       const rrfScore = 1 / (k + rank + 1)
-      if (scoreMap.has(bm25Result.id)) {
-        scoreMap.get(bm25Result.id)!.score += rrfScore
+      if (scoreMap.has(hit.id)) {
+        scoreMap.get(hit.id)!.score += rrfScore
       } else {
-        scoreMap.set(bm25Result.id, {
+        scoreMap.set(hit.id, {
           score: rrfScore,
           result: {
-            id: bm25Result.id,
-            docId: bm25Result.docId,
-            content: bm25Result.content,
-            score: bm25Result.score,
+            id: hit.id,
+            docId: hit.docId,
+            content: hit.content,
+            score: hit.score,
             metadata: {
-              filename: bm25Result.filename,
-              hostId: bm25Result.hostId || '',
-              tags: bm25Result.tags ? bm25Result.tags.split(',').filter(t => t) : [],
+              filename: hit.filename,
+              hostId: hit.hostId || '',
+              tags: hit.tags ? hit.tags.split(',').filter(t => t) : [],
               startOffset: 0,
-              endOffset: bm25Result.content?.length || 0
+              endOffset: hit.content?.length || 0
             },
             source: 'local' as const
           }

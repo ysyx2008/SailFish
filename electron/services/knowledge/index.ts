@@ -25,12 +25,12 @@ import { DEFAULT_KNOWLEDGE_SETTINGS } from './types'
 
 import { getModelManager, ModelManager } from './model-manager'
 import { getEmbeddingService, EmbeddingService } from './embedding'
+import { retireLegacyKeywordFile } from './legacy-keyword-file'
 import { getVectorStorage, VectorStorage, VectorRecord } from './storage'
 import { getChunker, Chunker } from './chunker'
 import { McpKnowledgeAdapter } from './mcp-adapter'
 import { deduplicateByEmbeddingCluster as deduplicateMemories } from './memory-utils'
 import { createReranker, Reranker } from './reranker'
-import { getBM25Index, BM25Index } from './bm25'
 import { encrypt, decrypt, isEncrypted } from './crypto'
 import { IngestGate } from './ingest-gate'
 import {
@@ -176,7 +176,6 @@ export class KnowledgeService extends EventEmitter {
   private chunker: Chunker
   private reranker: Reranker | null = null
   private mcpAdapter: McpKnowledgeAdapter | null = null
-  private bm25Index: BM25Index
   
   private configService: ConfigService
   private aiService: AiService
@@ -227,7 +226,6 @@ export class KnowledgeService extends EventEmitter {
     this.embeddingService.setDevice(this.settings.embeddingDevice)
     this.vectorStorage = getVectorStorage()
     this.chunker = getChunker()
-    this.bm25Index = getBM25Index()
     
     // 设置分块选项（maxChunkSize 在初始化后根据模型自动设置）
     this.chunker.setOptions({
@@ -298,10 +296,18 @@ export class KnowledgeService extends EventEmitter {
       
       // 监听维度变化事件（模型升级时自动清空旧索引）
       this.vectorStorage.once('dimensionMismatch', async ({ old: oldDim, new: newDim }) => {
-        log.info(`模型维度变化 ${oldDim} -> ${newDim}，同步清空 BM25 索引...`)
-        await this.bm25Index.clear()
+        log.info(`模型维度变化 ${oldDim} -> ${newDim}，旧向量已清空，将按源文档补建`)
         this.lastClearReason = 'dimension_mismatch'
         this.emit('indexCleared', { reason: 'dimension_mismatch', oldDimensions: oldDim, newDimensions: newDim })
+      })
+
+      // 关键词索引已并入向量表。旧的整本文件不再有人写，闲置够久就清掉
+      this.vectorStorage.once('keywordIndexReady', () => {
+        retireLegacyKeywordFile(path.dirname(this.documentsMetaPath))
+          .then(outcome => {
+            if (outcome === 'removed') log.info('旧的关键词索引文件已闲置超过 7 天，已清理')
+          })
+          .catch(error => log.warn('清理旧的关键词索引文件失败:', error))
       })
 
       this.vectorStorage.once('indexUnreadable', () => {
@@ -313,7 +319,7 @@ export class KnowledgeService extends EventEmitter {
 
       // 向量表读不开，且手上这批备份已经整个试过一遍都救不回来——恢复手段到此用尽。
       // 再抱着这张表不放，只是让检索一直坏着等人去翻日志：数据确实没丢，功能一直是废的。
-      // 只丢向量这一半，BM25 与源文档是另一套数据，随后按差集把向量补回来。
+      // 丢的是整张向量表（关键词索引同在这张表里），随后按源文档差集补回来。
       //
       // 必须以「备份全试过且都失败」为前提，不能只凭「读不开」。读不开不等于坏了：
       // 另一个实例正握着这张表时它也读不开，而那张表是完好的。挨个试过备份才是能
@@ -321,9 +327,6 @@ export class KnowledgeService extends EventEmitter {
       if (this.skipStartupVectorRebuild && isRestoreExhausted()) {
         await this.discardUnrecoverableVectorTable()
       }
-
-      // 初始化 BM25 索引
-      await this.bm25Index.initialize()
 
       // 初始化重排序服务
       if (this.settings.enableRerank) {
@@ -387,8 +390,8 @@ export class KnowledgeService extends EventEmitter {
   /**
    * 强制重建所有索引（CLI / 用户手动触发用）。
    *
-   * @param force 为 true 时先清空向量库 + BM25，再走完整重建路径；
-   *   为 false 时仅在二者缺失时重建（等价于 initialize 路径里的 checkAndRebuildIndex）。
+   * @param force 为 true 时先清空向量库（关键词索引同在其中），再走完整重建路径；
+   *   为 false 时仅在缺失时重建（等价于 initialize 路径里的 checkAndRebuildIndex）。
    * @returns 总耗时（ms）和处理的文档数
    */
   async rebuildAllIndices(force: boolean = false): Promise<{
@@ -401,10 +404,9 @@ export class KnowledgeService extends EventEmitter {
     }
 
     if (force) {
-      log.info('强制重建：清空向量库和 BM25 索引')
+      log.info('强制重建：清空向量库（含关键词索引）')
       this.skipStartupVectorRebuild = false
       await this.vectorStorage.clear()
-      await this.bm25Index.clear()
     }
 
     const documentCount = this.documentsIndex.size
@@ -416,7 +418,7 @@ export class KnowledgeService extends EventEmitter {
   }
 
   /**
-   * 增量修复索引：只对向量库或 BM25 中缺失的文档重新 embed + 写入，
+   * 增量修复索引：只对向量库中缺失的文档重新 embed + 写入，
    * 不清空任何已有数据。适合处理部分损坏而非全量重建的场景。
    *
    * @returns checked 总文档数、added 补充入库的文档数、durationMs 耗时
@@ -437,11 +439,8 @@ export class KnowledgeService extends EventEmitter {
       return { checked: 0, added: 0, durationMs: Date.now() - t0 }
     }
 
-    // 获取两个索引中已有的 docId 集合
-    const [vectorDocIds, bm25DocIds] = await Promise.all([
-      this.vectorStorage.getAllDocIds(),
-      Promise.resolve(this.bm25Index.getIndexedDocIds()),
-    ])
+    // 向量库（关键词索引同在这张表里）中已有的 docId 集合
+    const vectorDocIds = await this.vectorStorage.getAllDocIds()
 
     // 「读不出来」不等于「里面是空的」：枚举失败同样返回空集，照着开工会把整库
     // 判成缺失，然后往一张已经坏掉的表里重新 embed 几个小时——修不好，纯白烧。
@@ -458,14 +457,11 @@ export class KnowledgeService extends EventEmitter {
     }
 
     // 找出缺失的文档（在 documentsIndex 里有但索引里没有）
-    const missingDocs = allDocs.filter(
-      doc => !vectorDocIds.has(doc.id) || !bm25DocIds.has(doc.id)
-    )
+    const missingDocs = allDocs.filter(doc => !vectorDocIds.has(doc.id))
 
     log.info(
       `repairIndex: 共 ${allDocs.length} 个文档，` +
-      `向量库已索引 ${vectorDocIds.size} 个，BM25 已索引 ${bm25DocIds.size} 个，` +
-      `需补充 ${missingDocs.length} 个`
+      `已索引 ${vectorDocIds.size} 个，需补充 ${missingDocs.length} 个`
     )
 
     if (missingDocs.length === 0) {
@@ -484,8 +480,6 @@ export class KnowledgeService extends EventEmitter {
       chunkIndex: number
       text: string
       isHostMemory: boolean
-      needVector: boolean
-      needBm25: boolean
     }
     let pendingChunks: PendingChunk[] = []
 
@@ -503,71 +497,34 @@ export class KnowledgeService extends EventEmitter {
         return
       }
 
-      const vectorRecords: VectorRecord[] = []
-      const bm25Docs: Array<{
-        id: string; docId: string; content: string
-        filename: string; hostId: string; tags: string
-      }> = []
+      const vectorRecords: VectorRecord[] = batch.map((p, i) => ({
+        id: p.chunkId,
+        docId: p.doc.id,
+        content: p.isHostMemory ? encrypt(p.text) : p.text,
+        vector: embeddings[i],
+        filename: p.doc.filename,
+        hostId: p.doc.hostId || '',
+        tags: (p.doc.tags || []).join(','),
+        chunkIndex: p.chunkIndex,
+        createdAt: p.doc.createdAt,
+      }))
 
-      for (let i = 0; i < batch.length; i++) {
-        const p = batch[i]
-        const tagsStr = (p.doc.tags || []).join(',')
-
-        if (p.needVector) {
-          vectorRecords.push({
-            id: p.chunkId,
-            docId: p.doc.id,
-            content: p.isHostMemory ? encrypt(p.text) : p.text,
-            vector: embeddings[i],
-            filename: p.doc.filename,
-            hostId: p.doc.hostId || '',
-            tags: tagsStr,
-            chunkIndex: p.chunkIndex,
-            createdAt: p.doc.createdAt,
-          })
-        }
-
-        if (p.needBm25) {
-          bm25Docs.push({
-            id: p.chunkId,
-            docId: p.doc.id,
-            content: p.text,
-            filename: p.doc.filename,
-            hostId: p.doc.hostId || '',
-            tags: tagsStr,
-          })
-        }
-      }
-
-      if (vectorRecords.length > 0) {
-        try {
-          await this.vectorStorage.addRecords(vectorRecords)
-        } catch (e) {
-          log.error('repairIndex: 向量写入失败，跳过此批:', e)
-        }
-      }
-
-      if (bm25Docs.length > 0) {
-        try {
-          await this.bm25Index.addDocuments(bm25Docs, { skipSave: true })
-        } catch (e) {
-          log.error('repairIndex: BM25 写入失败，跳过此批:', e)
-        }
+      try {
+        await this.vectorStorage.addRecords(vectorRecords)
+      } catch (e) {
+        log.error('repairIndex: 写入失败，跳过此批:', e)
       }
 
       await new Promise<void>(resolve => setImmediate(resolve))
     }
 
-    // 每处理这么多文档就落盘一次 BM25，实现可中断续传
+    // 每处理这么多文档就刷出一次攒着的批，中途退出时已处理的不丢
     const REPAIR_CHECKPOINT_DOCS = 200
     let added = 0
 
     for (let i = 0; i < missingDocs.length; i++) {
       const doc = missingDocs[i]
       if (!doc.content) continue
-
-      const needVector = !vectorDocIds.has(doc.id)
-      const needBm25 = !bm25DocIds.has(doc.id)
 
       this.emit('repairProgress', {
         current: i + 1,
@@ -599,8 +556,6 @@ export class KnowledgeService extends EventEmitter {
             chunkIndex: chunk.chunkIndex,
             text: chunk.content,
             isHostMemory,
-            needVector,
-            needBm25,
           })
           if (pendingChunks.length >= EMBED_BATCH_SIZE) {
             await flushRepairBatch()
@@ -608,15 +563,9 @@ export class KnowledgeService extends EventEmitter {
         }
         added++
 
-        // 每 REPAIR_CHECKPOINT_DOCS 个文档落盘 BM25 一次（向量已每批落盘），
-        // 保证中途退出可续传，不会丢失已处理进度
+        // 每 REPAIR_CHECKPOINT_DOCS 个文档刷出一次，保证中途退出可续传
         if ((i + 1) % REPAIR_CHECKPOINT_DOCS === 0) {
           await flushRepairBatch()
-          try {
-            await this.bm25Index.saveIndex()
-          } catch (e) {
-            log.warn('repairIndex: BM25 saveIndex (checkpoint) 失败:', e)
-          }
         }
       } catch (error) {
         log.error(`repairIndex: 处理 ${doc.filename} 失败:`, error)
@@ -624,12 +573,6 @@ export class KnowledgeService extends EventEmitter {
     }
 
     await flushRepairBatch()
-
-    try {
-      await this.bm25Index.saveIndex()
-    } catch (e) {
-      log.warn('repairIndex: BM25 saveIndex 失败:', e)
-    }
 
     // 清理孤儿数据（documentsIndex 里没有、但索引里多余的）
     await this.cleanupOrphanData()
@@ -645,16 +588,16 @@ export class KnowledgeService extends EventEmitter {
    * 检查并（增量）重建索引。
    *
    * 原实现：只要任一索引完全为空，就对全部文档重新 embed + 写入。
-   * 新实现：先做差集比对，只处理在向量库或 BM25 中缺失的文档。
-   *   - 正常启动（索引完整）：仅做两次 O(N) 集合查询，毫秒级返回，不再触发进度条。
+   * 新实现：先做差集比对，只处理在向量库中缺失的文档（关键词索引与向量同在一张表里，
+   *   不会出现一边有一边没有）。
+   *   - 正常启动（索引完整）：仅做一次 O(N) 集合查询，毫秒级返回，不再触发进度条。
    *   - 首次启用 / 模型升级 / 数据损坏（大量文档缺失）：只补缺失的文档，
    *     进度条只反映真正需要处理的文档数，不含已有索引的文档。
    *
-   * 可中断续传：向量库每批落盘、BM25 每 CHECKPOINT_DOCS 个文档落盘一次，
-   *   进程中途退出时已处理的文档不会丢失，下次启动只补剩余差集；补全后
-   *   差集归零，后续启动不再重建。这一点对 conversation（L3 对话记录，
-   *   数量可能上千）尤其关键——否则中途退出会让 BM25 进度全丢，导致每次
-   *   启动都重复重建。
+   * 可中断续传：向量库每批落盘，进程中途退出时已处理的文档不会丢失，
+   *   下次启动只补剩余差集；补全后差集归零，后续启动不再重建。这一点对
+   *   conversation（L3 对话记录，数量可能上千）尤其关键——否则中途退出
+   *   会让进度全丢，导致每次启动都重复重建。
    */
   private async checkAndRebuildIndex(): Promise<void> {
     if (this.skipStartupVectorRebuild) {
@@ -665,12 +608,7 @@ export class KnowledgeService extends EventEmitter {
     const docs = this.getDocuments()
     if (docs.length === 0) return
 
-    // 并行获取两个索引的当前 docId 集合
-    const [vectorDocIdsInitial, bm25DocIds] = await Promise.all([
-      this.vectorStorage.getAllDocIds(),
-      Promise.resolve(this.bm25Index.getIndexedDocIds()),
-    ])
-    let vectorDocIds = vectorDocIdsInitial
+    let vectorDocIds = await this.vectorStorage.getAllDocIds()
 
     // 防护：getAllDocIds 查询失败会返回空集，勿把「全库 5606 篇都缺失」误判为需全量补建
     if (vectorDocIds.size === 0 && docs.length >= 50) {
@@ -691,8 +629,8 @@ export class KnowledgeService extends EventEmitter {
       }
     }
 
-    // 找出各自缺失的文档（per-doc 粒度，而非整库空/非空判断）
-    const missingDocs = docs.filter(doc => !vectorDocIds.has(doc.id) || !bm25DocIds.has(doc.id))
+    // 找出缺失的文档（per-doc 粒度，而非整库空/非空判断）
+    const missingDocs = docs.filter(doc => !vectorDocIds.has(doc.id))
 
     if (missingDocs.length === 0) {
       // 索引完整，清掉上次遗留的 cause 标记，跳过重建
@@ -700,33 +638,24 @@ export class KnowledgeService extends EventEmitter {
       return
     }
 
-    // 统计各自需要补充的数量（用于日志和事件 reason）
-    const missingVector = missingDocs.filter(d => !vectorDocIds.has(d.id))
-    const missingBm25  = missingDocs.filter(d => !bm25DocIds.has(d.id))
-
-    let needRebuildVector = missingVector.length > 0
-    const needRebuildBM25  = missingBm25.length > 0
+    let needRebuildVector = true
 
     log.info(
       `开始增量重建索引：文库共 ${docs.length} 篇，` +
-      `本次需补充 ${missingDocs.length} 篇（vector=${missingVector.length} bm25=${missingBm25.length}）` +
+      `本次需补充 ${missingDocs.length} 篇` +
       ` (cause=${this.lastClearReason || 'missing'})`
     )
 
-    // 通知前端显示进度条，语义与原来一致
-    const rebuildReason: 'vector' | 'bm25' | 'both' =
-      needRebuildVector && needRebuildBM25 ? 'both'
-      : needRebuildVector ? 'vector'
-      : 'bm25'
     // cause 区分了"为什么会触发重建"：
     //   - 'dimension_mismatch': 真正的模型升级
     //   - 'data_corrupted'    : LanceDB 表损坏 / 物理 .lance 文件丢失
-    //   - 'missing'           : 索引文件缺失（首次启用 / 用户删过 lancedb 目录 / BM25 .json 丢失）
+    //   - 'missing'           : 索引缺失（首次启用 / 用户删过 lancedb 目录）
     const cause = this.lastClearReason || 'missing'
+    // 通知前端显示进度条。reason 字段留着兼容界面，现在只有 'vector' 一种
     this.emit('rebuildStarted', {
       total: missingDocs.length,
       libraryTotal: docs.length,
-      reason: rebuildReason,
+      reason: 'vector' as const,
       cause,
     })
     this.lastClearReason = undefined
@@ -742,8 +671,6 @@ export class KnowledgeService extends EventEmitter {
       chunkIndex: number
       text: string
       isHostMemory: boolean
-      needVector: boolean
-      needBm25: boolean
     }
     let pendingChunks: PendingChunk[] = []
 
@@ -761,39 +688,17 @@ export class KnowledgeService extends EventEmitter {
         return
       }
 
-      const batchRecords: VectorRecord[] = []
-      const batchBm25Docs: Array<{
-        id: string; docId: string; content: string
-        filename: string; hostId: string; tags: string
-      }> = []
-
-      for (let i = 0; i < batch.length; i++) {
-        const p = batch[i]
-        const tagsStr = (p.doc.tags || []).join(',')
-        if (p.needVector) {
-          batchRecords.push({
-            id: p.chunkId,
-            docId: p.doc.id,
-            content: p.isHostMemory ? encrypt(p.text) : p.text,
-            vector: embeddings[i],
-            filename: p.doc.filename,
-            hostId: p.doc.hostId || '',
-            tags: tagsStr,
-            chunkIndex: p.chunkIndex,
-            createdAt: p.doc.createdAt
-          })
-        }
-        if (p.needBm25) {
-          batchBm25Docs.push({
-            id: p.chunkId,
-            docId: p.doc.id,
-            content: p.text,
-            filename: p.doc.filename,
-            hostId: p.doc.hostId || '',
-            tags: tagsStr
-          })
-        }
-      }
+      const batchRecords: VectorRecord[] = batch.map((p, i) => ({
+        id: p.chunkId,
+        docId: p.doc.id,
+        content: p.isHostMemory ? encrypt(p.text) : p.text,
+        vector: embeddings[i],
+        filename: p.doc.filename,
+        hostId: p.doc.hostId || '',
+        tags: (p.doc.tags || []).join(','),
+        chunkIndex: p.chunkIndex,
+        createdAt: p.doc.createdAt
+      }))
 
       if (needRebuildVector && batchRecords.length > 0) {
         pendingVectorRecords.push(...batchRecords)
@@ -801,7 +706,7 @@ export class KnowledgeService extends EventEmitter {
           try {
             await this.vectorStorage.addRecords(pendingVectorRecords)
           } catch (batchError) {
-            log.error('向量批量写入失败，停止向量重建（BM25 继续）:', batchError)
+            log.error('向量批量写入失败，停止重建:', batchError)
             needRebuildVector = false
           } finally {
             pendingVectorRecords = []
@@ -809,20 +714,10 @@ export class KnowledgeService extends EventEmitter {
         }
       }
 
-      if (needRebuildBM25 && batchBm25Docs.length > 0) {
-        try {
-          await this.bm25Index.addDocuments(batchBm25Docs, { skipSave: true })
-        } catch (e) {
-          log.error('BM25 批量写入失败，跳过此批:', e)
-        }
-      }
-
       await new Promise<void>(resolve => setImmediate(resolve))
     }
 
-    // 检查点：把内存中已处理但未持久化的数据落盘，实现可中断续传。
-    // 向量库 addRecords 本就每批落盘，这里负责强制刷出攒批的剩余向量
-    // 并触发 BM25 saveIndex（BM25 平时用 skipSave 只进内存，不落盘）。
+    // 检查点：把攒着还没写的向量刷出去，实现可中断续传
     const CHECKPOINT_DOCS = 200
     const persistCheckpoint = async (): Promise<void> => {
       await flushEmbedBatch()
@@ -836,21 +731,11 @@ export class KnowledgeService extends EventEmitter {
           pendingVectorRecords = []
         }
       }
-      if (needRebuildBM25) {
-        try {
-          await this.bm25Index.saveIndex()
-        } catch (e) {
-          log.warn('BM25 saveIndex (checkpoint) 失败:', e)
-        }
-      }
     }
 
     for (let i = 0; i < missingDocs.length; i++) {
       const doc = missingDocs[i]
       if (!doc.content) continue
-
-      const needVector = !vectorDocIds.has(doc.id)
-      const needBm25   = !bm25DocIds.has(doc.id)
 
       this.emit('rebuildProgress', {
         current: i + 1,
@@ -883,8 +768,6 @@ export class KnowledgeService extends EventEmitter {
             chunkIndex: chunk.chunkIndex,
             text: chunk.content,
             isHostMemory,
-            needVector,
-            needBm25,
           })
           if (pendingChunks.length >= EMBED_BATCH_SIZE) {
             await flushEmbedBatch()
@@ -904,7 +787,7 @@ export class KnowledgeService extends EventEmitter {
       }
     }
 
-    // 最后一次 checkpoint：刷出剩余 chunks/向量 + 保存 BM25
+    // 最后一次 checkpoint：刷出剩余 chunks/向量
     await persistCheckpoint()
 
     if (needRebuildVector) {
@@ -947,7 +830,7 @@ export class KnowledgeService extends EventEmitter {
   private static readonly ORPHAN_DELETE_MAX_RETRIES = 3
 
   /**
-   * 清理孤儿数据（向量库和 BM25 中存在但 documentsIndex 中不存在的数据）
+   * 清理孤儿数据（向量库中存在但 documentsIndex 中不存在的数据）
    *
    * LanceDB 的 delete() 仅创建 deletion vector（软删除标记），数据文件并未立即清除。
    * 优先对每个孤儿 docId 定向 removeDocumentChunks；仅当残留很多且多轮删除无效时
@@ -991,7 +874,6 @@ export class KnowledgeService extends EventEmitter {
         }
         for (const docId of docIds) {
           await this.vectorStorage.removeDocumentChunks(docId, false)
-          await this.bm25Index.removeDocumentChunks(docId)
         }
         await this.vectorStorage.compact(aggressiveCompact)
         return true
@@ -1264,19 +1146,8 @@ export class KnowledgeService extends EventEmitter {
       createdAt: now
     }))
 
-    // 添加到向量存储
+    // 添加到向量存储（关键词索引在同一行里，写入时一并切词）
     await this.vectorStorage.addRecords(records)
-
-    // 添加到 BM25 索引
-    const bm25Docs = records.map(record => ({
-      id: record.id,
-      docId: record.docId,
-      content: record.content,
-      filename: record.filename,
-      hostId: record.hostId,
-      tags: record.tags
-    }))
-    await this.bm25Index.addDocuments(bm25Docs)
 
     // 保存文档索引
     this.documentsIndex.set(docId, document)
@@ -1307,8 +1178,6 @@ export class KnowledgeService extends EventEmitter {
     // 删除向量记录（传递 forceCompact 参数）
     await this.vectorStorage.removeDocumentChunks(docId, forceCompact)
 
-    // 删除 BM25 索引记录
-    await this.bm25Index.removeDocumentChunks(docId)
     this.cardVectors.remove(docId)
     await this.vectorStorage.removeNames([fileNameKey(docId)]).catch(error => {
       log.warn('删档案时没能清掉文件名向量:', error)
@@ -1465,16 +1334,14 @@ export class KnowledgeService extends EventEmitter {
    */
   async searchLiteral(query: string, limit = 5): Promise<LiteralRow[]> {
     if (!this.isInitialized) await this.initialize()
-    const tokens = await this.bm25Index.tokenize(query)
+    const tokens = await this.vectorStorage.tokenize(query)
     const docs = this.listLibraryDocuments().map(doc => ({
       id: doc.id,
       filename: doc.filename,
       folder: doc.folder || '',
       summary: doc.cardSummary,
     }))
-    const raw = this.bm25Index.isReady()
-      ? await this.bm25Index.search(query, Math.max(limit * 4, 20))
-      : []
+    const raw = await this.vectorStorage.keywordSearch(query, Math.max(limit * 4, 20))
     const body = raw.flatMap(hit => {
       const doc = this.documentsIndex.get(hit.docId)
       if (!doc || !isLibraryFileType(doc.fileType)) return []
@@ -1711,17 +1578,14 @@ export class KnowledgeService extends EventEmitter {
     const pickedNames = pickCatalogNameHits(nameHits, folder)
     const cardIds = cardHits.map(hit => hit.docId).filter(id => !pickedNames.fileIds.includes(id))
 
-    let keyword: { docId: string; score: number; excerpt: string }[] = []
-    if (this.bm25Index.isReady()) {
-      const raw = await this.bm25Index.search(query, 30, { hostId: options?.hostId })
-      keyword = bestKeywordPerDoc(
-        raw
-          .filter(hit => scoped.has(hit.docId))
-          .map(hit => ({ docId: hit.docId, score: hit.score, excerpt: hit.content })),
-        MIN_KEYWORD_SCORE,
-        MAX_KEYWORD_DOCS
-      )
-    }
+    const rawKeyword = await this.vectorStorage.keywordSearch(query, 30, { hostId: options?.hostId })
+    const keyword: { docId: string; score: number; excerpt: string }[] = bestKeywordPerDoc(
+      rawKeyword
+        .filter(hit => scoped.has(hit.docId))
+        .map(hit => ({ docId: hit.docId, score: hit.score, excerpt: hit.content })),
+      MIN_KEYWORD_SCORE,
+      MAX_KEYWORD_DOCS
+    )
 
     const fused = fuseByDocument([...pickedNames.fileIds, ...cardIds], keyword)
     const docs = new Map([...scoped.values()].map(doc => [doc.id, this.impressionDoc(doc)]))
@@ -1934,9 +1798,7 @@ export class KnowledgeService extends EventEmitter {
     try {
       for (const id of oldIds) {
         await this.vectorStorage.removeRecord(id)
-        await this.bm25Index.removeDocument(id)
       }
-      if (oldIds.length > 0) await this.bm25Index.saveIndex()
     } catch (error) {
       log.warn(`换版后上一版片段没清干净: ${existing.filename}`, error)
     }
@@ -1969,14 +1831,6 @@ export class KnowledgeService extends EventEmitter {
       createdAt: now,
     }))
     await this.vectorStorage.addRecords(records)
-    await this.bm25Index.addDocuments(records.map(record => ({
-      id: record.id,
-      docId: record.docId,
-      content: record.content,
-      filename: record.filename,
-      hostId: record.hostId,
-      tags: record.tags,
-    })))
     return chunks.length
   }
 
@@ -2403,7 +2257,6 @@ export class KnowledgeService extends EventEmitter {
    */
   async clear(): Promise<void> {
     await this.vectorStorage.clear()
-    await this.bm25Index.clear()
     this.cardVectors.clear()
     this.documentsIndex.clear()
     this.explicitFolders = []
@@ -2840,18 +2693,9 @@ export class KnowledgeService extends EventEmitter {
         createdAt: now
       }
 
-      // 添加到向量存储
+      // 添加到向量存储（关键词索引在同一行里，写入时一并切词；
+      // 加密已停用，存的内容就是原文，关键词搜索照常）
       await this.vectorStorage.addRecords([record])
-
-      // 添加到 BM25 索引（使用原文，而非加密内容，确保关键词搜索正常工作）
-      await this.bm25Index.addDocuments([{
-        id: record.id,
-        docId: record.docId,
-        content: memory,
-        filename: record.filename,
-        hostId: record.hostId,
-        tags: record.tags
-      }])
 
       // 保存文档索引
       this.documentsIndex.set(docId, document)
@@ -3233,7 +3077,6 @@ export class KnowledgeService extends EventEmitter {
       const record = this.conversationVectorRecord(document, embedding, now)
 
       await this.vectorStorage.addRecords([record])
-      await this.bm25Index.addDocuments([this.conversationBm25Doc(record)])
 
       this.documentsIndex.set(docId, document)
       this.saveDocumentsIndex()
@@ -3268,15 +3111,11 @@ export class KnowledgeService extends EventEmitter {
         embedding,
         next.now,
       )
-      await this.bm25Index.removeManyDocumentChunks(vectorDropIds, { skipSave: true })
-      await this.bm25Index.addDocuments([this.conversationBm25Doc(record)], { skipSave: true })
-      await this.bm25Index.saveIndex()
       if (vectorDropIds.length > 0) {
         await this.vectorStorage.removeDocumentChunksMany(vectorDropIds, { compact: false })
       }
       await this.vectorStorage.addRecords([record])
     } else if (dropIds.length > 0) {
-      await this.bm25Index.removeManyDocumentChunks(dropIds)
       await this.vectorStorage.removeDocumentChunksMany(dropIds, { compact: false })
     }
 
@@ -3341,19 +3180,8 @@ export class KnowledgeService extends EventEmitter {
     }
   }
 
-  private conversationBm25Doc(record: VectorRecord): { id: string; docId: string; content: string; filename: string; hostId: string; tags: string } {
-    return {
-      id: record.id,
-      docId: record.docId,
-      content: record.content,
-      filename: record.filename,
-      hostId: record.hostId,
-      tags: record.tags,
-    }
-  }
-
   /**
-   * 删除指定会话对应的对话检索条目（向量 + 关键词索引 + 文档清单）。
+   * 删除指定会话对应的对话检索条目（向量与关键词索引同在一行 + 文档清单）。
    * 只删对得上号的；对不上的旧条目不动。多条一次收完，只整理一次向量库。
    */
   async removeConversation(sessionId: string): Promise<number> {
@@ -3393,7 +3221,6 @@ export class KnowledgeService extends EventEmitter {
     this.saveDocumentsIndex()
 
     const docIds = docs.map(doc => doc.id)
-    await this.bm25Index.removeManyDocumentChunks(docIds)
     // 只标删掉，不立刻整库整理：整理要好几秒，还会和正在入库的内容撞在一起
     await this.vectorStorage.removeDocumentChunksMany(docIds, { compact: false })
     await this.vectorStorage.removeNames(docIds.map(fileNameKey)).catch(error => {
@@ -3534,5 +3361,4 @@ export { getVectorStorage } from './storage'
 export { getChunker, createChunker } from './chunker'
 export { McpKnowledgeAdapter } from './mcp-adapter'
 export { createReranker } from './reranker'
-export { getBM25Index } from './bm25'
 
