@@ -301,8 +301,101 @@ export async function compressContext(
   return { success: true, output }
 }
 
+/** 整份归档一览时每条内容、每个工具入参露出的开头字数；要全文用 message_index 单取 */
+const ARCHIVE_PREVIEW_CONTENT_CHARS = 500
+const ARCHIVE_PREVIEW_ARGS_CHARS = 200
+/** 单取一条时每次给出的字数；更长的用 offset 接着读 */
+const ARCHIVE_MESSAGE_PAGE_CHARS = 20_000
+
+type ArchivedMessage = import('../../ai.service').AiMessage
+
+/** 没给 → undefined；给了但不是非负整数 → null（调用方报错，不悄悄当成 0） */
+function parseIndexArg(value: unknown): number | undefined | null {
+  if (value === undefined || value === null || value === '') return undefined
+  const n = typeof value === 'string' ? Number(value.trim()) : value
+  if (typeof n !== 'number' || !Number.isInteger(n) || n < 0) return null
+  return n
+}
+
+function roleLabelOf(msg: ArchivedMessage): string {
+  return msg.role === 'assistant' ? '🤖 Assistant' : msg.role === 'tool' ? '🔧 Tool' : `📝 ${msg.role}`
+}
+
+function renderMessagePreview(
+  msg: ArchivedMessage,
+  index: number,
+  archiveId: string,
+  pushBoth: (line: string) => void,
+  pushModelOnly: (line: string) => void
+): void {
+  pushBoth(`### ${index}. ${roleLabelOf(msg)}`)
+  let cut = false
+
+  for (const tc of msg.tool_calls ?? []) {
+    pushBoth(`**Tool Call**: ${tc.function.name}`)
+    const argsStr = tc.function.arguments
+    if (!argsStr) continue
+    if (argsStr.length <= ARCHIVE_PREVIEW_ARGS_CHARS) {
+      pushBoth(`**Args**: ${argsStr}`)
+    } else {
+      cut = true
+      pushBoth(`**Args**: ${argsStr.substring(0, ARCHIVE_PREVIEW_ARGS_CHARS)}... [Args total ${argsStr.length} chars]`)
+    }
+  }
+
+  if (msg.content) {
+    if (msg.content.length > ARCHIVE_PREVIEW_CONTENT_CHARS) {
+      cut = true
+      pushBoth(msg.content.substring(0, ARCHIVE_PREVIEW_CONTENT_CHARS))
+      pushBoth(`... [content total ${msg.content.length} chars]`)
+    } else {
+      pushBoth(msg.content)
+    }
+  }
+
+  if (cut) pushBoth(`(only the beginning is shown; full text: recall(archive_id: "${archiveId}", message_index: ${index}))`)
+  if (msg.tool_call_id) pushModelOnly(`*(tool_call_id: ${msg.tool_call_id})*`)
+  pushBoth('')
+}
+
+/** 单取一条时的全文：工具调用（含完整入参）在前，正文在后 */
+function archivedMessageBody(msg: ArchivedMessage): string {
+  const parts: string[] = []
+  for (const tc of msg.tool_calls ?? []) {
+    parts.push(`**Tool Call**: ${tc.function.name}`)
+    if (tc.function.arguments) parts.push(`**Args**: ${tc.function.arguments}`)
+  }
+  if (msg.content) parts.push(msg.content)
+  return parts.join('\n')
+}
+
+function renderMessageFull(
+  msg: ArchivedMessage,
+  index: number,
+  archiveId: string,
+  offset: number,
+  pushBoth: (line: string) => void,
+  pushModelOnly: (line: string) => void
+): void {
+  pushBoth(`### ${index}. ${roleLabelOf(msg)}`)
+  const body = archivedMessageBody(msg)
+
+  const page = body.slice(offset, offset + ARCHIVE_MESSAGE_PAGE_CHARS)
+  pushBoth(page)
+  const end = offset + page.length
+  if (offset > 0 || end < body.length) {
+    pushBoth(`... [chars ${offset}–${end} of ${body.length}]`)
+  }
+  if (end < body.length) {
+    pushBoth(`(continue: recall(archive_id: "${archiveId}", message_index: ${index}, offset: ${end}))`)
+  }
+  if (msg.tool_call_id) pushModelOnly(`*(tool_call_id: ${msg.tool_call_id})*`)
+  pushBoth('')
+}
+
 /**
- * 取回压缩归档的原始消息（经 recall(archive_id) 或旧名 recall_compressed）
+ * 取回压缩归档的原始消息（经 recall(archive_id) 或旧名 recall_compressed）。
+ * 归档里存的是完整原文；整份一览只露每条的开头，message_index 单取一条给全文。
  */
 export function recallCompressed(
   args: Record<string, unknown>,
@@ -395,38 +488,34 @@ export function recallCompressed(
     modelLines.push(line)
     userLines.push(line)
   }
-  pushBoth(`**Messages**: ${messages.length}`)
-  pushBoth('')
 
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i]
-    const roleLabel = msg.role === 'assistant' ? '🤖 Assistant' : msg.role === 'tool' ? '🔧 Tool' : `📝 ${msg.role}`
-    pushBoth(`### ${i}. ${roleLabel}`)
-
-    if (msg.tool_calls && msg.tool_calls.length > 0) {
-      for (const tc of msg.tool_calls) {
-        pushBoth(`**Tool Call**: ${tc.function.name}`)
-        const argsStr = tc.function.arguments
-        if (argsStr && argsStr.length <= 200) {
-          pushBoth(`**Args**: ${argsStr}`)
-        } else if (argsStr) {
-          pushBoth(`**Args**: ${argsStr.substring(0, 200)}...`)
-        }
-      }
+  const refuse = (error: string): ToolResult => {
+    executor.addStep({ type: 'tool_result', content: error, toolName: 'recall', toolResult: error })
+    return { success: false, output: '', error }
+  }
+  const messageIndex = parseIndexArg(args.message_index)
+  const offsetArg = parseIndexArg(args.offset)
+  if (messageIndex === null) return refuse(t('context_tool.recall_arg_invalid', { name: 'message_index', value: String(args.message_index) }))
+  if (offsetArg === null) return refuse(t('context_tool.recall_arg_invalid', { name: 'offset', value: String(args.offset) }))
+  if (messageIndex !== undefined) {
+    const msg = messages[messageIndex]
+    if (!msg) {
+      return refuse(t('context_tool.recall_index_out_of_range', { archiveId, count: messages.length, index: messageIndex }))
     }
-
-    if (msg.content) {
-      const content = msg.content.length > 500
-        ? msg.content.substring(0, 500) + `\n... [truncated, total ${msg.content.length} chars]`
-        : msg.content
-      pushBoth(content)
+    const offset = offsetArg ?? 0
+    const length = archivedMessageBody(msg).length
+    if (offset > 0 && offset >= length) {
+      return refuse(t('context_tool.recall_offset_out_of_range', { index: messageIndex, length, offset }))
     }
-
-    if (msg.tool_call_id) {
-      modelLines.push(`*(tool_call_id: ${msg.tool_call_id})*`)
-    }
-
+    pushBoth(`**Message ${messageIndex} / ${messages.length}**`)
     pushBoth('')
+    renderMessageFull(msg, messageIndex, archiveId, offset, pushBoth, line => modelLines.push(line))
+  } else {
+    pushBoth(`**Messages**: ${messages.length}`)
+    pushBoth('')
+    for (let i = 0; i < messages.length; i++) {
+      renderMessagePreview(messages[i], i, archiveId, pushBoth, line => modelLines.push(line))
+    }
   }
 
   const output = modelLines.join('\n')

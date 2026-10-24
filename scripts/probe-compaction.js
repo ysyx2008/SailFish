@@ -37,7 +37,9 @@ const { PromptBuilder } = require(path.join(svcDir, 'agent', 'prompt-builder.ts'
 const { getAgentTools } = require(path.join(svcDir, 'agent', 'tools.ts'))
 const { stripCompositionMarkers } = require(path.join(svcDir, 'agent', 'context-composition.ts'))
 const { t } = require(path.join(svcDir, 'agent', 'i18n.ts'))
-const { SUMMARY_OUTPUT_BUDGET_CHARS } = require(path.join(svcDir, 'agent', 'compression-summary.ts'))
+const { resolveSummaryBudget } = require(path.join(svcDir, 'ai-request-budget.ts'))
+// 探针不跑真实窗口，按下限那一档写小结
+const SUMMARY_BUDGET = resolveSummaryBudget(0, 128000)
 
 function parseArgs() {
   const argv = process.argv.slice(2)
@@ -127,7 +129,7 @@ async function main() {
 
   // 第 2 次：同一段对话末尾追加压缩指令
   const instruction = t('agent.compress_summary_prompt', {
-    budget: SUMMARY_OUTPUT_BUDGET_CHARS,
+    budget: SUMMARY_BUDGET.chars,
     keepRecent: 2,
   })
   // 带上与平时同样的 tools：缓存按前缀逐字匹配，平时每轮都带 tools schema，
@@ -200,7 +202,7 @@ async function probeHandoff({ ai, profile, tools, conversation, warmUsage }) {
         [...opts.conversation, {
           role: 'user',
           content: t('agent.compress_summary_prompt', {
-            budget: SUMMARY_OUTPUT_BUDGET_CHARS,
+            budget: SUMMARY_BUDGET.chars,
             keepRecent: opts.keepRecent,
           }),
         }],

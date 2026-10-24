@@ -44,7 +44,6 @@ import { Conversation, conversationPolicy } from '../conversation'
 import { broadcastConversationTitle, generateConversationTitle, shouldRefreshConversationTitle } from '../conversation/title-generator'
 import { ContextWindowManager, peelOpenToolTurn } from './context-window'
 import { beginUserCompactTurn, cancelUserCompactTurn, failUserCompactTurn, finishUserCompactTurn } from './tools/context'
-import { SUMMARY_OUTPUT_BUDGET_CHARS } from './compression-summary'
 import { resolveBudgetProfileId, shouldSkipCachePathForVision } from './vision-routing'
 import {
   splitMessagesIntoTasks as splitMessagesIntoTasksShared,
@@ -106,7 +105,6 @@ import { BackgroundWatchList, HOLD_CHECKPOINT_MS, type HoldWake } from './backgr
 import { applyParallelShare, computeToolOutputBudget } from './tool-output-budget'
 import { collapseRepeatedToolOutputs, reduceRepeatedToolOutput } from './repeated-tool-output'
 import { emptyFailureRepeatState, noteFailureRepeat } from './failure-repeat'
-import { SUMMARY_MAX_OUTPUT_TOKENS } from '../ai-request-budget'
 import { t, getLocale, type TranslationKey } from './i18n'
 import { AutoApprovalReviewer, buildInspectorDeps, resolveInspectPtyId, type AutoReviewResult } from './auto-review'
 import { resolveSubAgentBlockDangerous } from './command-audit/fail-closed-policy'
@@ -4265,16 +4263,22 @@ export abstract class Agent {
     opts: { conversation: AiMessage[]; keepRecent: number; userHint?: string }
   ): Promise<string | null> {
     if (opts.conversation.length === 0) return null
+    // 小结最多写多少跟窗口走；提示词里的字数与发给接口的额度同出一处
+    const budget = this._contextWindow.getSummaryBudget()
     return this.askAppendedInstruction(
       opts.conversation,
       [
         t('agent.compress_summary_prompt', {
-          budget: SUMMARY_OUTPUT_BUDGET_CHARS,
+          budget: budget.chars,
           keepRecent: opts.keepRecent
         }),
         opts.userHint?.trim() ? t('agent.compress_summary_user_hint', { hint: opts.userHint.trim() }) : ''
       ].filter(Boolean).join('\n\n'),
-      { maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS, purpose: 'Compaction summary' }
+      {
+        maxOutputTokens: budget.outputTokens,
+        purpose: 'Compaction summary',
+        continueInstruction: t('agent.compress_summary_continue')
+      }
     )
   }
 
@@ -4294,7 +4298,13 @@ export abstract class Agent {
   private async askAppendedInstruction(
     conversation: AiMessage[],
     instruction: string,
-    opts: { maxOutputTokens?: number; purpose: string; onThinking?: (delta: string) => void }
+    opts: {
+      maxOutputTokens?: number
+      purpose: string
+      onThinking?: (delta: string) => void
+      /** 回答在输出额度处被截断时，接着写用的指令；不给就按截断的原样返回 */
+      continueInstruction?: string
+    }
   ): Promise<string | null> {
     const aiService = this.services.aiService
     const stream = !!(opts.onThinking && aiService?.chatWithToolsCollecting)
@@ -4309,27 +4319,59 @@ export abstract class Agent {
       return null
     }
 
-    const ask = (toolChoice?: 'none') => {
+    type AskResult = { content?: string; thinkingOnly?: boolean; finish_reason?: string } | null | undefined
+    const ask = (toolChoice?: 'none', sent: AiMessage[] = messages) => {
       if (opts.onThinking && aiService.chatWithToolsCollecting) {
-        return aiService.chatWithToolsCollecting(messages, tools, profileId, {
+        return aiService.chatWithToolsCollecting(sent, tools, profileId, {
           maxOutputTokens: opts.maxOutputTokens,
           toolChoice,
           onReasoning: opts.onThinking,
         })
       }
-      return aiService.chatWithTools(messages, tools, profileId, undefined, {
+      return aiService.chatWithTools(sent, tools, profileId, undefined, {
         ...(toolChoice ? { toolChoice } : {}),
         ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {}),
       })
     }
-    const textOf = (result: { content?: string; thinkingOnly?: boolean } | null | undefined): string | null => {
+    const textOf = (result: AskResult): string | null => {
       if (!result || result.thinkingOnly) return null
       return result.content?.trim() || null
     }
 
+    /**
+     * 回答停在输出额度上时接着写一次，把两段拼起来；
+     * 补写之后仍没写完，就用已写出的部分并记一条警告。
+     */
+    const completeIfCut = async (text: string, result: AskResult, toolChoice?: 'none'): Promise<string> => {
+      if (result?.finish_reason !== 'length' || !opts.continueInstruction) return text
+      // 两段按原样拼接（不先去首尾空白），免得英文在接缝处黏成一个词；
+      // 发给接口的那一份去掉结尾空白（有的接口不收以空白结尾的预填内容）
+      const written = result.content ?? text
+      const continued: AiMessage[] = [
+        ...messages,
+        { role: 'assistant', content: written.trimEnd() },
+        { role: 'user', content: opts.continueInstruction },
+      ]
+      if (this._contextWindow.estimateTotalTokens(continued) > inputLimit) {
+        log.warn(`${opts.purpose} was cut at the output limit; no room to continue, using the partial text`)
+        return text
+      }
+      log.warn(`${opts.purpose} was cut at the output limit; asking the model to continue`)
+      // 首次请求禁用了工具调用的，补写沿用，免得模型又转头去调工具
+      const more = await ask(toolChoice, continued)
+      if (!textOf(more)) {
+        log.warn(`${opts.purpose} continuation returned no text; using the partial text`)
+        return text
+      }
+      if (more?.finish_reason === 'length') {
+        log.warn(`${opts.purpose} was still cut after continuing; using what was written`)
+      }
+      return (written + (more?.content ?? '')).trim()
+    }
+
     const first = await ask()
     const firstText = textOf(first)
-    if (firstText) return firstText
+    if (firstText) return completeIfCut(firstText, first)
     // 只有思考、没有正文：再问一次也多半还是在想，不为此多等一轮
     if (first?.thinkingOnly) return null
 
@@ -4337,7 +4379,9 @@ export abstract class Agent {
     // tool_choice='none' 下不再把 tools 计入 prompt，这一次拿不到缓存，
     // 但比落空强。仍不给正文就交给调用方兜底。
     log.warn(`${opts.purpose} returned no text (model chose tools); retrying with tool calls disabled`)
-    return textOf(await ask('none'))
+    const retried = await ask('none')
+    const retriedText = textOf(retried)
+    return retriedText ? completeIfCut(retriedText, retried, 'none') : null
   }
 
   /** 眼前这场对话有没有可接的 cache 前缀（下一轮会沿用的那份） */

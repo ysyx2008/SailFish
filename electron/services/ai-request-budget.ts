@@ -10,8 +10,14 @@ import type { AiProfile } from '@shared/types'
 export const DEFAULT_MAX_OUTPUT_TOKENS = 32_768
 export const DEFAULT_CONTEXT_LENGTH = 128_000
 export const REQUEST_SAFETY_MARGIN_TOKENS = 1024
-/** 写交接小结时单独收紧输出，避免小结自己把窗口吃满 */
-export const SUMMARY_MAX_OUTPUT_TOKENS = 2048
+/** 交接小结输出额度占「可用输入空间」的比例。 */
+export const SUMMARY_WINDOW_RATIO = 0.08
+/** 小结输出额度下限：窗口再小也不低于此数。 */
+export const SUMMARY_MIN_OUTPUT_TOKENS = 2048
+/** 小结输出额度上界：窗口再大也不无限放。 */
+export const SUMMARY_CEILING_OUTPUT_TOKENS = 16_384
+/** 小结输出额度占整窗的比例上限，极小窗口下兜底。 */
+export const SUMMARY_MAX_WINDOW_RATIO = 0.125
 
 export interface RequestBudget {
   contextLength: number
@@ -47,4 +53,41 @@ export function resolveRequestBudget(
   const outputTokens = Math.min(uncappedOutput, maxOutputToLeaveInput)
   const inputLimit = Math.max(1, contextLength - outputTokens - REQUEST_SAFETY_MARGIN_TOKENS)
   return { contextLength, outputTokens, inputLimit }
+}
+
+export interface SummaryBudget {
+  /** 发给接口的输出额度（硬上限，到了会被截断） */
+  outputTokens: number
+  /** 写进提示词、告诉模型这次最多能写多少字（略低于额度，留出余量） */
+  chars: number
+}
+
+/**
+ * 交接小结这次最多能写多少。
+ *
+ * 取「可用输入空间」的一个比例；窗口小时不低于下限，窗口大时不超过上界，
+ * 极小窗口再按整窗比例收住，模型自己配置了更小的单次输出时听模型的。
+ *
+ * @param availableTokens 能发的输入减去压不掉的固定部分
+ * @param contextLength 整窗
+ * @param modelMaxOutputTokens 该配置声明的单次输出上限（可选）
+ */
+export function resolveSummaryBudget(
+  availableTokens: number,
+  contextLength: number,
+  modelMaxOutputTokens?: number
+): SummaryBudget {
+  const byAvailable = Math.floor(Math.max(0, availableTokens) * SUMMARY_WINDOW_RATIO)
+  let outputTokens = Math.min(
+    Math.max(byAvailable, SUMMARY_MIN_OUTPUT_TOKENS),
+    SUMMARY_CEILING_OUTPUT_TOKENS
+  )
+  const tinyWindowCap = Math.max(1, Math.floor(contextLength * SUMMARY_MAX_WINDOW_RATIO))
+  outputTokens = Math.min(outputTokens, tinyWindowCap)
+  const modelCap = asPositiveInt(modelMaxOutputTokens)
+  if (modelCap) outputTokens = Math.min(outputTokens, modelCap)
+  // 字数取额度的 98% 并按百取整：额度 2048 对应 2000 字，与此前同一比例
+  // 额度很小时字数不超过额度本身
+  const chars = Math.min(outputTokens, Math.max(100, Math.floor((outputTokens * 0.98) / 100) * 100))
+  return { outputTokens, chars }
 }

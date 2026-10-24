@@ -29,7 +29,9 @@ require('tsx/cjs')
 const svcDir = path.join(__dirname, '..', 'electron', 'services')
 const { ConfigService } = require(path.join(svcDir, 'config.service.ts'))
 const { AiService } = require(path.join(svcDir, 'ai.service.ts'))
-const { resolveRequestBudget, SUMMARY_MAX_OUTPUT_TOKENS } = require(path.join(svcDir, 'ai-request-budget.ts'))
+const { resolveRequestBudget, resolveSummaryBudget } = require(path.join(svcDir, 'ai-request-budget.ts'))
+// 探针不跑真实窗口，按下限那一档写小结
+const SUMMARY_BUDGET = resolveSummaryBudget(0, 128000)
 const { ContextWindowManager } = require(path.join(svcDir, 'agent', 'context-window.ts'))
 const { computeToolOutputBudget } = require(path.join(svcDir, 'agent', 'tool-output-budget.ts'))
 const { buildTaskHistoryContext } = require(path.join(svcDir, 'agent', 'context-builder.ts'))
@@ -38,7 +40,6 @@ const { getAgentTools, stripToolMeta } = require(path.join(svcDir, 'agent', 'too
 const { buildContextEconomyRuleText } = require(path.join(svcDir, 'agent', 'prompt-builder.ts'))
 const { readFile } = require(path.join(svcDir, 'agent', 'tools', 'file.ts'))
 const { t } = require(path.join(svcDir, 'agent', 'i18n.ts'))
-const { SUMMARY_OUTPUT_BUDGET_CHARS } = require(path.join(svcDir, 'agent', 'compression-summary.ts'))
 const { normalizeProactiveCompact } = require(path.join(__dirname, '..', 'packages', 'shared-types', 'src', 'agent.ts'))
 
 const PROFILE_ID = 'ee386991-760b-499c-9d6b-573d3c7a39fc'
@@ -674,16 +675,16 @@ async function writeHandoff(ai, profile, tools, opts) {
   if (!ai || !profile) return null
   const instruction = [
     t('agent.compress_summary_prompt', {
-      budget: SUMMARY_OUTPUT_BUDGET_CHARS,
+      budget: SUMMARY_BUDGET.chars,
       keepRecent: opts.keepRecent,
     }),
     opts.userHint ? t('agent.compress_summary_user_hint', { hint: opts.userHint }) : '',
   ].filter(Boolean).join('\n\n')
   const messages = [...opts.conversation, { role: 'user', content: instruction }]
-  const first = await ai.chatWithTools(messages, tools, profile.id, undefined, { maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS })
+  const first = await ai.chatWithTools(messages, tools, profile.id, undefined, { maxOutputTokens: SUMMARY_BUDGET.outputTokens })
   if (first && first.content && first.content.trim() && !first.thinkingOnly) return first.content.trim()
   const second = await ai.chatWithTools(messages, tools, profile.id, undefined, {
-    maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS,
+    maxOutputTokens: SUMMARY_BUDGET.outputTokens,
     toolChoice: 'none',
   })
   return (second && second.content && second.content.trim()) || null

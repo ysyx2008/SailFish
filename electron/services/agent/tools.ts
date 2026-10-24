@@ -1202,7 +1202,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
         description: `回忆这场对话里不在眼前的内容。上一件已做完的事、刚被压缩收起来的原文，都从这里取。翻别的对话请用 search_history。
 
 - 任务号（task_id）：取该任务。默认摘要（命令、路径、错误、关键发现），detail="full" 给完整执行步骤。
-- 归档号（archive_id）：取压缩时收走的原文。
+- 归档号（archive_id）：取压缩时收走的原文。归档里存的是完整原文；只带 archive_id 时是一览，每条只露开头（内容约 500 字符、工具入参约 200 字符），再加 message_index 取那一条的全文，超过 20000 字符的用 offset 接着读。
 - 两个都不带（只带 detail 也算）：列出这场里还能取什么。
 - 两个都给：请只给一个。
 - 取任务必须带 task_id；取归档必须带 archive_id。
@@ -1218,6 +1218,14 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
             archive_id: {
               type: 'string',
               description: '压缩归档 ID（如 "ca-1"）。与 task_id 二选一'
+            },
+            message_index: {
+              type: 'number',
+              description: '取归档时指定其中第几条（一览里 ### 后的序号，从 0 起），返回那一条的全文。留空等于不给'
+            },
+            offset: {
+              type: 'number',
+              description: '取归档单条时从第几个字符读起（按字符，不按字节），默认 0，留空等于不给'
             },
             detail: {
               type: 'string',

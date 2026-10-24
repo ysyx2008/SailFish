@@ -46,7 +46,7 @@ import type {
 } from '../types'
 import { TaskMemoryStore } from '../task-memory'
 import { Conversation, ConversationManager, ConversationStore } from '../../conversation'
-import { SUMMARY_MAX_OUTPUT_TOKENS } from '../../ai-request-budget'
+import { SUMMARY_CEILING_OUTPUT_TOKENS, SUMMARY_MIN_OUTPUT_TOKENS } from '../../ai-request-budget'
 import { GoalContract } from '../goal/goal-contract'
 
 // ==================== Mock 实现 ====================
@@ -249,7 +249,39 @@ describe('Agent', () => {
       // 走的是带 tools 的接口（tools schema 属于前缀，另起一次无 tools 的调用等于换前缀）
       expect(Array.isArray(tools)).toBe(true)
       // 首次不禁用工具调用：禁用会让部分 provider 不再把 tools 计入 prompt，白丢缓存
-      expect(chatWithTools.mock.calls[0][4]).toEqual({ maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS })
+      const sent = chatWithTools.mock.calls[0][4] as { maxOutputTokens: number }
+      expect(Object.keys(sent)).toEqual(['maxOutputTokens'])
+      // 输出额度跟窗口走，落在下限与上界之间
+      expect(sent.maxOutputTokens).toBeGreaterThanOrEqual(SUMMARY_MIN_OUTPUT_TOKENS)
+      expect(sent.maxOutputTokens).toBeLessThanOrEqual(SUMMARY_CEILING_OUTPUT_TOKENS)
+    })
+
+    it('小结在输出额度处被截断 → 接着写一次并拼起来', async () => {
+      const chatWithTools = vi
+        .fn()
+        .mockResolvedValueOnce({ content: '前半段，', finish_reason: 'length' })
+        .mockResolvedValueOnce({ content: '后半段。', finish_reason: 'stop' })
+      const services = createMockServices({ aiService: { chatWithTools } as never })
+      const a = new TestAgent(services)
+
+      expect(await summarize(a)).toBe('前半段，后半段。')
+      expect(chatWithTools).toHaveBeenCalledTimes(2)
+      const continued = chatWithTools.mock.calls[1][0] as AiMessage[]
+      // 前缀不变：补写请求 = 原请求 + 已写出的半截 + 接着写的指令
+      expect(continued[continued.length - 2]).toEqual({ role: 'assistant', content: '前半段，' })
+      expect(continued[continued.length - 1].role).toBe('user')
+    })
+
+    it('补写后仍被截断 → 不再追问，用已写出的部分', async () => {
+      const chatWithTools = vi
+        .fn()
+        .mockResolvedValueOnce({ content: '甲', finish_reason: 'length' })
+        .mockResolvedValueOnce({ content: '乙', finish_reason: 'length' })
+      const services = createMockServices({ aiService: { chatWithTools } as never })
+      const a = new TestAgent(services)
+
+      expect(await summarize(a)).toBe('甲乙')
+      expect(chatWithTools).toHaveBeenCalledTimes(2)
     })
 
     it('模型转头去调工具没写正文 → 禁用工具调用重试一次', async () => {
@@ -264,7 +296,7 @@ describe('Agent', () => {
       expect(chatWithTools).toHaveBeenCalledTimes(2)
       expect(chatWithTools.mock.calls[1][4]).toEqual({
         toolChoice: 'none',
-        maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS,
+        maxOutputTokens: expect.any(Number),
       })
     })
 

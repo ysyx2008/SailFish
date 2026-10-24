@@ -171,9 +171,10 @@ const translations = {
 
 除此之外的内容归档后都不在你眼前了——中间过程的工具输出、探测到的环境信息、失败的尝试、尚未反映在最终答复里的进展（例如已处理 30/57 这样的计数）。
 
-请写下你判断之后会用到、且无法从上面保留的内容里推知的信息。指向文件或资源的路径必须原样保留，不得改写或简化。全文控制在 {budget} 字以内。
+请写下你判断之后会用到、且无法从上面保留的内容里推知的信息。指向文件或资源的路径必须原样保留，不得改写或简化。这份小结一次最多输出 {budget} 字，到上限处输出会停下。
 
 这一步只写小结，不执行任何操作，因此直接输出正文即可。`,
+    'agent.compress_summary_continue': '上面的小结写到输出上限处被截断了。从断开的地方接着写完，不重复已经写过的部分，也不执行任何操作。',
     'agent.compress_summary_user_hint': '写小结时请看见：{hint}',
     'agent.companion_pick_prompt': `用户在联络对话里点了某一段的「从这里创建任务」，要把它开成一个新任务。
 新任务是一场全新的对话：它只知道被选中带进去的各段（每段含完整过程），其余聊过的事它都不知道。漏选相关的段，它就缺少做这件事需要的前文；多选无关的段，它就背着用不上的内容。第 {anchor} 段一定会带上，它之后的对话不会带进去。
@@ -209,6 +210,9 @@ const translations = {
     'context_tool.check_result': '已用约 {used} / {total} tokens（{percent}%），剩余约 {remaining}。',
     'context_tool.recall_list': '可用的压缩归档：',
     'context_tool.recall_not_found': '未找到归档 {archiveId}',
+    'context_tool.recall_arg_invalid': '{name} 须为不小于 0 的整数，收到 {value}',
+    'context_tool.recall_offset_out_of_range': '归档第 {index} 条全文共 {length} 字符，offset {offset} 已超出末尾',
+    'context_tool.recall_index_out_of_range': '归档 {archiveId} 共 {count} 条，没有第 {index} 条（序号从 0 起）',
     'context_tool.recall_missing': '未找到这段收起来的对话',
     'context_tool.recall_empty': '当前没有压缩归档',
     'context_tool.recall_step': '查看压缩归档',
@@ -2171,9 +2175,10 @@ The originals are not lost: they can be retrieved with recall(archive_id), thoug
 
 Everything else will be out of your sight after archiving — intermediate tool output, environment details you probed, attempts that failed, and progress not yet reflected in any final reply (such as a count like 30/57 done).
 
-Write down what you judge you will need later and cannot infer from what is preserved above. Paths to files or resources must be preserved verbatim, never rewritten or shortened. Keep the whole summary within {budget} characters.
+Write down what you judge you will need later and cannot infer from what is preserved above. Paths to files or resources must be preserved verbatim, never rewritten or shortened. This summary can be at most {budget} characters in one output; the output stops at that limit.
 
 This step only writes the summary and performs no action, so just output the text.`,
+    'agent.compress_summary_continue': 'The summary above was cut off at the output limit. Continue from where it stopped without repeating what is already written, and do not perform any action.',
     'agent.compress_summary_user_hint': 'Take this into account when writing the summary: {hint}',
     'agent.companion_pick_prompt': `The user clicked "Create task from here" on one segment of the companion conversation and wants to turn it into a new task.
 The new task is a brand-new conversation: it only knows the selected segments carried into it (each with its full process) and nothing else that was discussed. Leaving out a relevant segment means it lacks background it needs for this job; carrying an unrelated segment means it lugs around content it has no use for. Segment {anchor} is always carried, and nothing after it is.
@@ -2209,6 +2214,9 @@ Line 2: only the title itself`,
     'context_tool.check_result': 'About {used} / {total} tokens used ({percent}%), roughly {remaining} left.',
     'context_tool.recall_list': 'Available compressed archives:',
     'context_tool.recall_not_found': 'Archive {archiveId} not found',
+    'context_tool.recall_arg_invalid': '{name} must be an integer >= 0, got {value}',
+    'context_tool.recall_offset_out_of_range': 'Archived message {index} has {length} chars in total; offset {offset} is past the end',
+    'context_tool.recall_index_out_of_range': 'Archive {archiveId} has {count} messages; there is no message {index} (indices start at 0)',
     'context_tool.recall_missing': 'That compressed stretch was not found',
     'context_tool.recall_empty': 'No compressed archives available',
     'context_tool.recall_step': 'View compressed archive',

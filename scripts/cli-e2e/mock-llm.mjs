@@ -22,8 +22,12 @@ function sse(res, usage, delta, finish) {
 }
 
 /** 脚本里每一步的写法 */
-export const say = (content) => ({ kind: 'text', content })
-export const callTool = (name, args) => ({ kind: 'tool', name, args })
+/** finish 默认 stop；传 'length' 模拟回答停在输出额度上 */
+export const say = (content, finish = 'stop') => ({ kind: 'text', content, finish })
+/** content：同一条消息里调工具之前先说的话（可不给） */
+export const callTool = (name, args, content) => ({ kind: 'tool', name, args, content })
+/** 接口直接报错（400，不会被自动重试） */
+export const fail = (message = 'mock failure') => ({ kind: 'fail', message })
 /** 接上了但一直不回，直到对方断开（用来按 Ctrl+C） */
 export const hang = () => ({ kind: 'hang' })
 
@@ -31,6 +35,7 @@ export const hang = () => ({ kind: 'hang' })
  * @param script.onUser    用户（含命令行里敲的话）开头的一轮：(text, n, entry) => 动作；entry 是这次请求的全部内容
  * @param script.onContinue 目标续跑的一轮：(n) => 动作
  * 工具返回后的那一次请求默认回一句话；要换脚本，给 afterTool。
+ * script.jsonForNonStream：非流式调用（写交接小结之类）回一整份 JSON；不开就和以前一样一律回事件流。
  * script.usage：(entry, action) => { prompt_tokens, completion_tokens }，要模拟「接口报多少真实用量」时给；
  *   返回 null = 这次不报用量（有的服务商就是不报），返回 undefined = 用默认值。
  */
@@ -39,9 +44,11 @@ export function startMockLlm(script) {
   let userTurns = 0
   let continuations = 0
   const server = http.createServer((req, res) => {
-    let raw = ''
-    req.on('data', (chunk) => { raw += chunk })
+    // 按字节收齐再解码：汉字落在两段数据的交界上时，逐段转字符串会把它拆坏
+    const chunks = []
+    req.on('data', (chunk) => { chunks.push(chunk) })
     req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8')
       let body = {}
       try { body = JSON.parse(raw) } catch { /* 不是 JSON 的请求按没有处理 */ }
       const messages = body.messages ?? []
@@ -77,14 +84,36 @@ export function startMockLlm(script) {
       const custom = script.usage?.(entry, action)
       const usageFor = (kind) => (custom === undefined ? USAGE[kind] : custom)
 
+      if (action.kind === 'fail') {
+        res.writeHead(400, { 'Content-Type': 'application/json', Connection: 'close' })
+        res.end(JSON.stringify({ error: { message: action.message, type: 'invalid_request_error' } }))
+        return
+      }
+
+      // 非流式调用（写交接小结之类）要的是一整份 JSON，不是事件流
+      if (script.jsonForNonStream && body.stream !== true && (action.kind === 'tool' || action.kind === 'text')) {
+        const usage = usageFor(action.kind)
+        const message = action.kind === 'tool'
+          ? { role: 'assistant', content: action.content ?? null, tool_calls: [{ id: `call_${requests.length}`, type: 'function', function: { name: action.name, arguments: JSON.stringify(action.args) } }] }
+          : { role: 'assistant', content: action.content }
+        res.writeHead(200, { 'Content-Type': 'application/json', Connection: 'close' })
+        res.end(JSON.stringify({
+          id: 'x',
+          object: 'chat.completion',
+          choices: [{ index: 0, message, finish_reason: action.kind === 'tool' ? 'tool_calls' : (action.finish ?? 'stop') }],
+          ...(usage ? { usage: { ...usage, total_tokens: usage.prompt_tokens + usage.completion_tokens } } : {}),
+        }))
+        return
+      }
+
       if (action.kind === 'tool') {
-        sse(res, usageFor('tool'), { role: 'assistant', tool_calls: [{ index: 0, id: `call_${requests.length}`, type: 'function', function: { name: action.name, arguments: JSON.stringify(action.args) } }] }, 'tool_calls')
+        sse(res, usageFor('tool'), { role: 'assistant', ...(action.content ? { content: action.content } : {}), tool_calls: [{ index: 0, id: `call_${requests.length}`, type: 'function', function: { name: action.name, arguments: JSON.stringify(action.args) } }] }, 'tool_calls')
       } else if (action.kind === 'hang') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', Connection: 'close' })
         const timer = setTimeout(() => res.end(), 120_000)
         req.on('close', () => clearTimeout(timer))
       } else {
-        sse(res, usageFor('text'), { role: 'assistant', content: action.content }, 'stop')
+        sse(res, usageFor('text'), { role: 'assistant', content: action.content }, action.finish ?? 'stop')
       }
     })
   })
