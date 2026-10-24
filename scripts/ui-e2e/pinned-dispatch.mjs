@@ -177,6 +177,16 @@ try {
   const region = (sel) => page.locator(sel).first().evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))
   check('群聊标题栏能拖动窗口', await region('.expert-team-chat .etc-header') === 'drag', await region('.expert-team-chat .etc-header'))
   check('标题栏上的关闭按钮不被当成拖动区', await region('.expert-team-chat .etc-icon-btn') === 'no-drag', await region('.expert-team-chat .etc-icon-btn'))
+  const sameColor = await page.evaluate(() => {
+    const probe = document.createElement('div')
+    probe.style.background = 'var(--bg-tertiary)'
+    document.body.appendChild(probe)
+    const expected = getComputedStyle(probe).backgroundColor
+    probe.remove()
+    return [getComputedStyle(document.querySelector('.expert-team-chat .etc-header')).backgroundColor, expected]
+  })
+  check('群聊标题栏底色和其他面板顶栏一致', sameColor[0] === sameColor[1], sameColor.join(' vs '))
+  await shot('2b-team-chat')
   check('按钮亮着，表示群聊开着', /active/.test(await teamBtn.getAttribute('class') ?? ''))
   await teamBtn.click()
   await sleep(500)

@@ -322,8 +322,11 @@ onMounted(() => { void openChat(true) })
   display: flex;
   align-items: center;
   gap: 8px;
+  box-sizing: border-box;
   height: var(--workbench-panel-header-height, 38px);
   padding: 0 10px;
+  /* 和产出物面板、对话顶栏同一个底色 */
+  background: var(--bg-tertiary, var(--bg-secondary, #252525));
   border-bottom: 1px solid var(--border-color);
   /* 群聊在窗口最上面时，标题栏同样能拖动窗口；按钮仍可点 */
   -webkit-app-region: drag;
