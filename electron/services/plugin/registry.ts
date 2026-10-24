@@ -11,6 +11,7 @@ import type { ToolDefinition } from '../ai.service'
 import type {
   LoadedPlugin,
   PluginEntryConfig,
+  PluginManifest,
   PluginUnloadResult,
   ProviderRegistration,
   ChannelRegistration,
@@ -39,6 +40,21 @@ export interface PluginRegistryConfig {
   userDataPath: string
 }
 
+/** 只登记清单、尚未执行入口的插件。打开时才加载。 */
+function manifestOnlyPlugin(dir: string, manifest: PluginManifest): LoadedPlugin {
+  return {
+    manifest,
+    rootDir: dir,
+    tools: [],
+    providers: [],
+    channels: [],
+    ttsProviders: [],
+    hooks: new Map(),
+    httpRoutes: [],
+    enabled: false,
+  }
+}
+
 export class PluginRegistry {
   private plugins = new Map<string, LoadedPlugin>()
   /** 插件工具名 -> (pluginId, 原始 toolName) 的映射 */
@@ -46,6 +62,10 @@ export class PluginRegistry {
   /** 已调用过 onUnload 的加载实例：同一生命周期最多一次。按 LoadedPlugin（而非 entry 对象）
    *  标记——entry 来自模块导出，require/import 缓存会让重装后的新生命周期拿到同一 entry 对象 */
   private unloadedPlugins = new WeakSet<LoadedPlugin>()
+  /** 清单已登记、入口还没执行 */
+  private deferred = new Set<string>()
+  /** 正在补加载入口，避免同一次打开加载两遍 */
+  private loading = new Set<string>()
   readonly hookBus = new HookBus()
   private config: PluginRegistryConfig
 
@@ -54,7 +74,7 @@ export class PluginRegistry {
   }
 
   /**
-   * 扫描所有插件目录、加载 manifest、import 入口、调用 register(api)
+   * 扫描所有插件目录并登记清单。启用的才加载入口并调用 register(api)。
    */
   async loadAll(): Promise<void> {
     if (!this.config.enabled) {
@@ -84,14 +104,18 @@ export class PluginRegistry {
         continue
       }
 
+      if (!this.isEnabled(manifest.id, manifest.enabledByDefault)) {
+        this.plugins.set(manifest.id, manifestOnlyPlugin(dir, manifest))
+        this.deferred.add(manifest.id)
+        log.info(`Plugin "${manifest.id}" is not enabled, manifest recorded without loading`)
+        continue
+      }
+
       try {
         const plugin = await loadPlugin(dir, manifest)
-        plugin.enabled = this.isEnabled(manifest.id, manifest.enabledByDefault)
+        plugin.enabled = true
         this.plugins.set(manifest.id, plugin)
-
-        if (plugin.enabled) {
-          this.activatePlugin(plugin)
-        }
+        this.activatePlugin(plugin)
       } catch (err) {
         log.error(`Failed to load plugin from ${dir}:`, err)
       }
@@ -278,9 +302,27 @@ export class PluginRegistry {
     }))
   }
 
-  enablePlugin(id: string): boolean {
+  async enablePlugin(id: string): Promise<boolean> {
     const plugin = this.plugins.get(id)
     if (!plugin || plugin.enabled) return false
+    if (this.deferred.has(id)) {
+      if (this.loading.has(id)) return false
+      this.loading.add(id)
+      try {
+        const loaded = await loadPlugin(plugin.rootDir, plugin.manifest)
+        loaded.enabled = true
+        this.plugins.set(id, loaded)
+        this.deferred.delete(id)
+        this.activatePlugin(loaded)
+        log.info(`Plugin "${id}" enabled`)
+        return true
+      } catch (err) {
+        log.error(`Failed to load plugin "${id}" on enable:`, err)
+        return false
+      } finally {
+        this.loading.delete(id)
+      }
+    }
     plugin.enabled = true
     this.activatePlugin(plugin)
     log.info(`Plugin "${id}" enabled`)
@@ -315,6 +357,7 @@ export class PluginRegistry {
       this.deactivatePlugin(plugin)
     }
     this.plugins.delete(id)
+    this.deferred.delete(id)
 
     const entry = plugin.entry
     if (entry?.onUnload && !this.unloadedPlugins.has(plugin)) {

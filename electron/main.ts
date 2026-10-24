@@ -6638,7 +6638,7 @@ ipcMain.handle('plugin:list', async () => {
 })
 
 ipcMain.handle('plugin:enable', async (_event, id: string) => {
-  const success = pluginRegistry.enablePlugin(id)
+  const success = await pluginRegistry.enablePlugin(id)
   if (success) {
     // 装配此前未注入外部服务的注册物（provider/TTS/route/IM channel）
     await syncPluginRuntimeServices(`plugin:enable ${id}`)
