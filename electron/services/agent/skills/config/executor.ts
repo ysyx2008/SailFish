@@ -354,24 +354,34 @@ function formatMcpServersSummary(config: ReturnType<typeof getConfigService>): s
   return `  - **MCP 连接器** — ${servers.length} 个（勿用 config_set 整表覆盖；用 config_mcp_server_add 追加）\n${lines.join('\n')}`
 }
 
+/** 给模型看的一条连接器。env 与 headers 只报项数，不把密钥写进对话。 */
+export function formatMcpServerDetail(server: McpServerConfig, index: number): string {
+  const parts = [
+    `${index + 1}. **${server.name}**`,
+    `- id: \`${server.id}\``,
+    `- transport: \`${server.transport}\``,
+    `- enabled: \`${server.enabled}\``,
+  ]
+  if (server.transport === 'stdio') {
+    if (server.command) parts.push(`- command: \`${server.command}\``)
+    if (server.args?.length) parts.push(`- args: \`${JSON.stringify(server.args)}\``)
+    if (server.cwd) parts.push(`- cwd: \`${server.cwd}\``)
+    const envCount = server.env ? Object.keys(server.env).length : 0
+    if (envCount > 0) parts.push(`- env: _(已配置 ${envCount} 项)_`)
+  } else {
+    if (server.url) parts.push(`- url: \`${server.url}\``)
+    const headerCount = server.headers ? Object.keys(server.headers).length : 0
+    if (headerCount > 0) parts.push(`- headers: _(已配置 ${headerCount} 项)_`)
+  }
+  return parts.join('\n')
+}
+
 function formatMcpServersDetail(config: ReturnType<typeof getConfigService>): string {
   const servers = config.getMcpServers()
   if (servers.length === 0) {
     return '_(未配置)_\n\n使用 `config_mcp_server_add` 添加连接器。'
   }
-  const lines = servers.map((s, i) => {
-    const parts = [`${i + 1}. **${s.name}**`, `- id: \`${s.id}\``, `- transport: \`${s.transport}\``, `- enabled: \`${s.enabled}\``]
-    if (s.transport === 'stdio') {
-      if (s.command) parts.push(`- command: \`${s.command}\``)
-      if (s.args?.length) parts.push(`- args: \`${JSON.stringify(s.args)}\``)
-      if (s.cwd) parts.push(`- cwd: \`${s.cwd}\``)
-      if (s.env && Object.keys(s.env).length) parts.push(`- env: \`${JSON.stringify(s.env)}\``)
-    } else {
-      if (s.url) parts.push(`- url: \`${s.url}\``)
-      if (s.headers && Object.keys(s.headers).length) parts.push(`- headers: _(已配置 ${Object.keys(s.headers).length} 项)_`)
-    }
-    return parts.join('\n')
-  })
+  const lines = servers.map((server, index) => formatMcpServerDetail(server, index))
   return `共 ${servers.length} 个：\n\n${lines.join('\n\n')}\n\n增删改请用 \`config_mcp_server_add\` / \`config_mcp_server_update\` / \`config_mcp_server_delete\`，勿用 \`config_set\` 写入整表。`
 }
 
