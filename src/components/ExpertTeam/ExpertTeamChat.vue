@@ -325,6 +325,12 @@ onMounted(() => { void openChat(true) })
   height: var(--workbench-panel-header-height, 38px);
   padding: 0 10px;
   border-bottom: 1px solid var(--border-color);
+  /* 群聊在窗口最上面时，标题栏同样能拖动窗口；按钮仍可点 */
+  -webkit-app-region: drag;
+}
+
+.etc-header .etc-icon-btn {
+  -webkit-app-region: no-drag;
 }
 
 .etc-title-icon {
