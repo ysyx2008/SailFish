@@ -379,6 +379,12 @@ function isTrue(raw: unknown): boolean {
   return raw === true || raw === 'true'
 }
 
+/** 这场对话已经装上的技能（系统技能在技能会话里，用户技能在这场的装载记录里）才允许带上它自己的密钥 */
+export function skillLoadedForExec(executor: ToolExecutorConfig, skillId: string): boolean {
+  if (executor.skillSession?.getLoadedSkills().includes(skillId)) return true
+  return executor.isUserSkillLoaded?.(skillId) === true
+}
+
 /**
  * 主入口：执行命令，超过 wait_seconds 转后台
  */
@@ -391,6 +397,18 @@ export async function executeCommandDirect(
   const command = args.command as string
   if (!command) {
     return { success: false, output: '', error: t('hint.command_empty') }
+  }
+
+  const skillId = typeof args.skill_id === 'string' ? args.skill_id.trim() : ''
+  if (skillId && !skillLoadedForExec(executor, skillId)) {
+    const errorMsg = t('exec.skill_not_loaded', { skillId })
+    executor.addStep({
+      type: 'tool_result',
+      content: errorMsg,
+      toolName: 'exec',
+      toolResult: errorMsg,
+    })
+    return { success: false, output: '', error: errorMsg }
   }
 
   // 命令长度防误用（实际限制是 ARG_MAX，给 100KB 足够日常 oneliner）
@@ -470,7 +488,6 @@ export async function executeCommandDirect(
   const cwd = workingDirectory
     ? resolveLocalFilePath(rawCwd || '.', null, undefined, workingDirectory)
     : rawCwd ? expandTilde(rawCwd) : (announcedLocalCwd(executor.getAgentContext?.()) ?? os.homedir())
-  const skillId = (args.skill_id as string) || undefined
   const waitSeconds = resolveWaitSeconds(args.wait_seconds, DEFAULT_WAIT_SECONDS)
   const maxSeconds = resolveRunCapSeconds(args.max_seconds)
 
