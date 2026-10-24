@@ -4,6 +4,7 @@ import * as path from 'path'
 import { EventEmitter } from 'events'
 import type { SftpConfig } from '@shared/types'
 import { getSshErrorMessage } from './ssh-error'
+import { hostKeyFailureError, makeHostVerifier } from './ssh-host-key'
 import { requestLocalNetworkAccessIfDenied } from '../utils/local-network-permission'
 import { createLogger } from '../utils/logger'
 import { t } from '../i18n/main-i18n'
@@ -80,15 +81,16 @@ export class SftpService extends EventEmitter {
       }
     }
 
-    const connectConfig: SftpClient.ConnectOptions = {
+    const connectConfig = {
       host: config.host,
       port: config.port,
       username: config.username,
       readyTimeout: 30000,
       retries: 2,
       retry_factor: 2,
-      retry_minTimeout: 2000
-    }
+      retry_minTimeout: 2000,
+      hostVerifier: makeHostVerifier(config.host, config.port),
+    } as SftpClient.ConnectOptions
 
     if (privateKey) {
       connectConfig.privateKey = privateKey
@@ -106,9 +108,9 @@ export class SftpService extends EventEmitter {
       const raw = err instanceof Error ? err : new Error(String(err))
       // ⚠️ 勿删：EHOSTUNREACH 时再触发本地网络授权探测（见 local-network-permission.ts）
       requestLocalNetworkAccessIfDenied(raw, 'sftp-connect')
-      // 使用错误解析工具提供更友好的错误信息
-      const friendlyMessage = getSshErrorMessage(raw)
-      throw new Error(friendlyMessage)
+      const hostKeyError = hostKeyFailureError(raw, config.host, config.port)
+      if (hostKeyError) throw hostKeyError
+      throw new Error(getSshErrorMessage(raw))
     }
   }
 

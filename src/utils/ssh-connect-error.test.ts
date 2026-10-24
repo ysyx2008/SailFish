@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SSH_CONNECT_CANCELLED } from '@shared/types'
+import { encodeHostKeyChanged } from '@shared/utils/ssh-host-key-message'
 import {
   formatSshConnectFailure,
   isSshConnectCancelledMessage,
@@ -70,6 +71,20 @@ describe('formatSshConnectFailure', () => {
     ).toEqual({
       cancelled: false,
       message: '认证失败：用户名或密码错误，请检查登录凭据'
+    })
+  })
+
+  it('主机身份变了时留下说明，并带上可以记住的那台机器', () => {
+    const encoded = encodeHostKeyChanged('Example.COM', 22, '身份变了')
+    expect(
+      formatSshConnectFailure(
+        new Error(`Error invoking remote method 'ssh:connect': Error: ${encoded}`),
+        '连接失败'
+      )
+    ).toEqual({
+      cancelled: false,
+      message: '身份变了',
+      hostKeyChanged: { host: 'Example.COM', port: 22 },
     })
   })
 

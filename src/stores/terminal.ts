@@ -174,6 +174,8 @@ export interface TerminalTab {
   connectAttemptId?: string
   // 连接错误信息（用于显示连接失败的具体原因）
   connectionError?: string
+  /** 这次没连上是因为主机身份变了，用户可以记住新的再连 */
+  hostKeyChanged?: { host: string; port: number }
   // 终端输出缓冲（最近的输出）
   outputBuffer?: string[]
   // 最近检测到的错误
@@ -275,6 +277,8 @@ export interface SplitPane {
   isConnecting?: boolean
   /** 这一扇自己的连接失败原因（不要拿整页 loading 盖住旁边已连上的窗格） */
   connectionError?: string
+  /** 这一扇没连上是因为主机身份变了 */
+  hostKeyChanged?: { host: string; port: number }
   /** 正在进行的 SSH 握手，关这一扇时用来当场掐断 */
   connectAttemptId?: string
 }
@@ -800,6 +804,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       // 用户取消不是连接失败，不要把 IPC 原文写到这一页上
       if (!parsed.cancelled) {
         reactiveTab.connectionError = parsed.message
+        reactiveTab.hostKeyChanged = parsed.hostKeyChanged
       }
     } finally {
       reactiveTab.connectAttemptId = undefined
@@ -1289,6 +1294,104 @@ export const useTerminalStore = defineStore('terminal', () => {
     }
   }
 
+  async function rememberChangedHostKey(tabId: string, ptyId?: string): Promise<void> {
+    const tab = tabs.value.find(t => t.id === tabId)
+    if (!tab || tab.isLoading) return
+    const pane = ptyId && tab.splitLayout
+      ? getAllTerminalPanes(tab.splitLayout).find(p => p.ptyId === ptyId)
+      : undefined
+    if (pane?.isConnecting) return
+    const changed = pane?.hostKeyChanged ?? tab.hostKeyChanged
+    if (!changed) return
+
+    let accepted = false
+    try {
+      accepted = await window.electronAPI.ssh.acceptChangedHostKey(changed.host, changed.port)
+    } catch {
+      accepted = false
+    }
+    if (!tabs.value.some(t => t.id === tabId)) return
+    if (!accepted) {
+      const hint = i18n.global.t('terminal.hostKeyRememberFailed')
+      if (pane) {
+        pane.connectionError = hint
+        pane.hostKeyChanged = undefined
+      } else {
+        tab.connectionError = hint
+        tab.hostKeyChanged = undefined
+      }
+      return
+    }
+    if (pane) pane.hostKeyChanged = undefined
+    if (tab.hostKeyChanged?.host === changed.host && tab.hostKeyChanged.port === changed.port) {
+      tab.hostKeyChanged = undefined
+    }
+    if (ptyId) {
+      await reconnectSsh(tabId, ptyId)
+      return
+    }
+    await retryUnconnectedSshTab(tab)
+  }
+
+  async function retryUnconnectedSshTab(tab: TerminalTab): Promise<void> {
+    if (!tab.sshSessionId) {
+      tab.connectionError = i18n.global.t('terminal.cannotReconnectHint')
+      return
+    }
+    const configStore = useConfigStore()
+    const session = configStore.sshSessions.find(s => s.id === tab.sshSessionId)
+    if (!session) {
+      tab.connectionError = i18n.global.t('terminal.cannotReconnectHint')
+      return
+    }
+    tab.isLoading = true
+    tab.connectionError = undefined
+    tab.hostKeyChanged = undefined
+    const attemptId = uuidv4()
+    tab.connectAttemptId = attemptId
+    try {
+      const jumpHost = configStore.getEffectiveJumpHost(session)
+      const sshId = await window.electronAPI.ssh.connect({
+        host: session.host,
+        port: session.port,
+        username: session.username,
+        password: session.password,
+        privateKeyPath: session.privateKeyPath,
+        passphrase: session.passphrase,
+        jumpHost: jumpHost ? toRaw(jumpHost) : undefined,
+        encoding: session.encoding || 'utf-8',
+        cols: 80,
+        rows: 24,
+      }, { attemptId })
+      if (!tabs.value.some(t => t.id === tab.id)) {
+        window.electronAPI.ssh.disconnect(sshId).catch(() => {})
+        return
+      }
+      tab.ptyId = sshId
+      tab.isConnected = true
+      tab.connectionError = undefined
+      tab.hostKeyChanged = undefined
+      const jumpInfo = jumpHost ? ` (via ${jumpHost.host})` : ''
+      tab.systemInfo = {
+        os: 'linux',
+        shell: 'bash',
+        description: `SSH 连接: ${session.username}@${session.host}${jumpInfo}`,
+      }
+      ensureRootSplitLayoutForTab(tab)
+    } catch (error) {
+      if (!tabs.value.some(t => t.id === tab.id)) return
+      tab.isConnected = false
+      const parsed = formatSshConnectFailure(error, i18n.global.t('terminal.connectionFailed'))
+      if (!parsed.cancelled) {
+        tab.connectionError = parsed.message
+        tab.hostKeyChanged = parsed.hostKeyChanged
+      }
+    } finally {
+      tab.connectAttemptId = undefined
+      tab.isLoading = false
+    }
+  }
+
   async function reconnectSsh(
     tabId: string,
     targetPtyId?: string
@@ -1462,6 +1565,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       if (paneNode) {
         paneNode.isConnecting = false
         paneNode.connectionError = undefined
+        paneNode.hostKeyChanged = undefined
       }
       bumpPtyId = sshId
       return { success: true }
@@ -1484,6 +1588,10 @@ export const useTerminalStore = defineStore('terminal', () => {
       if (paneNode) {
         paneNode.isConnecting = false
         paneNode.connectionError = parsed.message
+        paneNode.hostKeyChanged = parsed.hostKeyChanged
+      } else if (wholeTabReconnect && !parsed.cancelled) {
+        tab.connectionError = parsed.message
+        tab.hostKeyChanged = parsed.hostKeyChanged
       }
       return { success: false, error: parsed.message }
     } finally {
@@ -1838,12 +1946,14 @@ export const useTerminalStore = defineStore('terminal', () => {
    */
   /** 最近一次分屏失败的具体原因——给 Agent / UI 调用方读取（非 reactive，仅模块内单值缓存） */
   let lastSplitError: string | null = null
+  let lastSplitHostKeyChanged: { host: string; port: number } | null = null
   let lastSplitCancelled = false
   function getLastSplitError(): string | null { return lastSplitError }
   function wasLastSplitCancelled(): boolean { return lastSplitCancelled }
 
   function resetLastSplitOutcome(): void {
     lastSplitError = null
+    lastSplitHostKeyChanged = null
     lastSplitCancelled = false
   }
 
@@ -1852,9 +1962,11 @@ export const useTerminalStore = defineStore('terminal', () => {
     if (parsed.cancelled) {
       lastSplitCancelled = true
       lastSplitError = null
+      lastSplitHostKeyChanged = null
     } else {
       lastSplitCancelled = false
       lastSplitError = parsed.message
+      lastSplitHostKeyChanged = parsed.hostKeyChanged ?? null
     }
     return parsed
   }
@@ -2063,6 +2175,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     tab.ptyId = created.id
     tab.isConnected = true
     tab.connectionError = undefined
+    tab.hostKeyChanged = undefined
     if (resolved.terminalType === 'ssh') {
       tab.sshConfig = resolved.sshConfig
       tab.sshSessionId = resolved.sshSessionId
@@ -2220,10 +2333,12 @@ export const useTerminalStore = defineStore('terminal', () => {
           return { success: false }
         }
         live.connectionError = lastSplitError || i18n.global.t('terminal.connectionFailed')
+        live.hostKeyChanged = lastSplitHostKeyChanged ?? undefined
         return { success: false, error: live.connectionError }
       }
       if (live.ptyId !== connectedId) live.ptyId = connectedId
       live.connectionError = undefined
+      live.hostKeyChanged = undefined
       if (live.isActive) {
         tab.ptyId = live.ptyId
         tab.isConnected = true
@@ -4132,6 +4247,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     clearWelcomeComposerDraft,
     closeTab,
     reconnectSsh,
+    rememberChangedHostKey,
     isPtyReconnecting,
     reconnectEpochByPtyId,
     setActiveTab,

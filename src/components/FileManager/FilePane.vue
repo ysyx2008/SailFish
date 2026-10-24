@@ -64,6 +64,12 @@ const error = computed(() => {
   if (props.type === 'local') return localFs?.error.value
   return sftp?.error.value
 })
+const hostKeyChanged = computed(() => sftp?.hostKeyChanged.value ?? null)
+
+async function rememberRemoteHostKey() {
+  if (!props.sftpConfig || !sftp) return
+  await sftp.rememberChangedHostKey(props.sftpConfig)
+}
 
 const canGoBack = computed(() => {
   if (props.type === 'local') return localFs?.canGoBack.value ?? false
@@ -664,6 +670,11 @@ defineExpose({
       <Server :size="48" :stroke-width="1.5" />
       <p>{{ t('fileManager.notConnected') }}</p>
       <p class="error-message" v-if="error">{{ error }}</p>
+      <button
+        v-if="hostKeyChanged && sftpConfig"
+        class="btn btn-sm"
+        @click.stop="rememberRemoteHostKey"
+      >{{ t('terminal.rememberNewHostKey') }}</button>
     </div>
 
     <!-- 已连接/本地 -->

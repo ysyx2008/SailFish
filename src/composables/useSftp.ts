@@ -61,6 +61,7 @@ export function useSftp() {
   const files = ref<SftpFileInfo[]>([])
   const transfers = ref<TransferProgress[]>([])
   const error = ref<string | null>(null)
+  const hostKeyChanged = ref<{ host: string; port: number } | null>(null)
   const connectionInfo = ref<{ host: string; username: string } | null>(null)
 
   // 导航历史
@@ -145,6 +146,7 @@ export function useSftp() {
 
     isConnecting.value = true
     error.value = null
+    hostKeyChanged.value = null
 
     try {
       const id = `sftp-${Date.now()}`
@@ -175,18 +177,39 @@ export function useSftp() {
 
         return true
       } else {
-        error.value = formatSshConnectFailure(
+        const parsed = formatSshConnectFailure(
           result.error || '',
           i18n.global.t('terminal.connectionFailed')
-        ).message
+        )
+        error.value = parsed.message
+        hostKeyChanged.value = parsed.hostKeyChanged ?? null
         return false
       }
     } catch (e) {
-      error.value = formatSshConnectFailure(e, i18n.global.t('terminal.connectionFailed')).message
+      const parsed = formatSshConnectFailure(e, i18n.global.t('terminal.connectionFailed'))
+      error.value = parsed.message
+      hostKeyChanged.value = parsed.hostKeyChanged ?? null
       return false
     } finally {
       isConnecting.value = false
     }
+  }
+
+  const rememberChangedHostKey = async (config: SftpConnectionConfig): Promise<boolean> => {
+    const changed = hostKeyChanged.value
+    if (!changed) return false
+    let accepted = false
+    try {
+      accepted = await window.electronAPI.ssh.acceptChangedHostKey(changed.host, changed.port)
+    } catch {
+      accepted = false
+    }
+    if (!accepted) {
+      error.value = i18n.global.t('terminal.hostKeyRememberFailed')
+      hostKeyChanged.value = null
+      return false
+    }
+    return connect(config)
   }
 
   // 断开连接
@@ -442,12 +465,14 @@ export function useSftp() {
     files,
     transfers,
     error,
+    hostKeyChanged,
     connectionInfo,
     canGoBack,
     canGoForward,
 
     // 方法
     connect,
+    rememberChangedHostKey,
     disconnect,
     navigateTo,
     refresh,

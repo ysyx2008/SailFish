@@ -78,6 +78,10 @@ async function retryPaneConnect() {
   await terminalStore.reconnectSsh(props.tabId, props.layout.ptyId)
 }
 
+async function rememberHostKey() {
+  await terminalStore.rememberChangedHostKey(props.tabId, props.layout.ptyId)
+}
+
 // ==================== 容器引用（用于拖拽时计算容器尺寸）====================
 
 const containerRef = ref<HTMLElement | null>(null)
@@ -363,7 +367,12 @@ function handlePaneDragEnd() {
         <span class="error-title">{{ t('terminal.connectionFailed') }}</span>
         <span class="error-detail">{{ layout.connectionError }}</span>
         <button
-          v-if="layout.terminalType === 'ssh' && layout.ptyId"
+          v-if="layout.hostKeyChanged"
+          class="btn btn-sm"
+          @click.stop="rememberHostKey"
+        >{{ t('terminal.rememberNewHostKey') }}</button>
+        <button
+          v-else-if="layout.terminalType === 'ssh' && layout.ptyId"
           class="btn btn-sm"
           @click.stop="retryPaneConnect"
         >{{ t('terminal.reconnect') }}</button>

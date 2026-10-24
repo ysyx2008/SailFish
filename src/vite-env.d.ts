@@ -228,6 +228,8 @@ interface Window {
       }, options?: { reuseId?: string; attemptId?: string }) => Promise<string>
       /** 中止仍在握手中的连接尝试，返回是否命中 */
       cancelConnect: (attemptId: string) => Promise<boolean>
+      /** 用户确认这台机器换过钥匙之后，记住刚才对不上的那一次身份 */
+      acceptChangedHostKey: (host: string, port: number) => Promise<boolean>
       write: (id: string, data: string) => Promise<void>
       resize: (id: string, cols: number, rows: number) => Promise<void>
       disconnect: (id: string) => Promise<void>

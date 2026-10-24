@@ -1,4 +1,5 @@
 import { SSH_CONNECT_CANCELLED } from '@shared/types'
+import { parseHostKeyChanged, type SshHostKeyChanged } from '@shared/utils/ssh-host-key-message'
 
 /** 旧版取消文案：已发出的进程仍可能抛出，按整句识别，不当连接失败 */
 const LEGACY_SSH_CONNECT_CANCELLED = 'SSH connect cancelled by user'
@@ -23,7 +24,7 @@ export function isSshConnectCancelledMessage(msg: string): boolean {
 export function formatSshConnectFailure(
   error: unknown,
   fallback: string
-): { cancelled: boolean; message: string } {
+): { cancelled: boolean; message: string; hostKeyChanged?: { host: string; port: number } } {
   const raw = error instanceof Error ? error.message : String(error || '')
   if (!raw.trim()) {
     return { cancelled: false, message: fallback }
@@ -35,5 +36,15 @@ export function formatSshConnectFailure(
   if (!inner || inner.startsWith('Error invoking remote method')) {
     return { cancelled: false, message: fallback }
   }
+  const changed = parseHostKeyChanged(inner)
+  if (changed) {
+    return {
+      cancelled: false,
+      message: changed.detail,
+      hostKeyChanged: { host: changed.host, port: changed.port },
+    }
+  }
   return { cancelled: false, message: inner }
 }
+
+export type { SshHostKeyChanged }

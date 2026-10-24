@@ -154,6 +154,7 @@ export function cloneTerminalLeaf(pane: SplitPane): SplitPane {
     size: pane.size,
     isConnecting: pane.isConnecting,
     connectionError: pane.connectionError,
+    hostKeyChanged: pane.hostKeyChanged ? { ...pane.hostKeyChanged } : undefined,
     connectAttemptId: pane.connectAttemptId
   }
 }
@@ -167,6 +168,7 @@ function clearTerminalFields(node: SplitPane): void {
   delete node.isActive
   delete node.isConnecting
   delete node.connectionError
+  delete node.hostKeyChanged
   delete node.connectAttemptId
 }
 

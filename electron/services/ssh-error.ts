@@ -3,6 +3,7 @@
  * 用于将底层 ssh2 库的错误信息转换为用户友好的错误提示
  */
 
+import { SSH_HOST_KEY_CHANGED } from '@shared/utils/ssh-host-key-message'
 import { isLikelyMacLocalNetworkDenied } from '../utils/local-network-permission'
 
 // SSH 连接错误类型
@@ -154,12 +155,13 @@ export function parseSshError(error: Error | string): SshErrorType {
  * @returns 用户友好的错误信息
  */
 export function getSshErrorMessage(error: Error | string, locale: 'zh' | 'en' = 'zh'): string {
+  const originalMessage = typeof error === 'string' ? error : error.message
+  if (originalMessage.startsWith(`${SSH_HOST_KEY_CHANGED}\n`)) return originalMessage
   const errorType = parseSshError(error)
   const messages = locale === 'zh' ? SSH_ERROR_MESSAGES_ZH : SSH_ERROR_MESSAGES_EN
   
   // 如果是未知错误，附上原始错误信息便于调试
   if (errorType === 'unknown') {
-    const originalMessage = typeof error === 'string' ? error : error.message
     return `${messages.unknown}: ${originalMessage}`
   }
 

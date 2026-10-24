@@ -2501,6 +2501,12 @@ ipcMain.handle('ssh:connect', async (_event, config, options?: { reuseId?: strin
   }
 })
 
+ipcMain.handle('ssh:acceptChangedHostKey', async (_event, host: string, port: number) => {
+  const { getSshHostKeyStore } = await import('./services/ssh-host-key')
+  if (typeof host !== 'string' || typeof port !== 'number') return false
+  return getSshHostKeyStore().acceptChanged(host, port)
+})
+
 // 用户放弃连接：掐断仍在握手中的尝试（会话 id 此时还不存在，按 attemptId 定位）
 ipcMain.handle('ssh:cancelConnect', async (_event, attemptId: string) => {
   const { sshService } = await rt()

@@ -124,6 +124,11 @@ watch(terminalPanes, (panes) => {
       <span class="error-title">{{ t('terminal.connectionFailed') }}</span>
       <span v-if="liveTab.connectionError" class="error-detail">{{ liveTab.connectionError }}</span>
       <button
+        v-if="liveTab.hostKeyChanged"
+        class="btn btn-sm"
+        @click="terminalStore.rememberChangedHostKey(liveTab.id)"
+      >{{ t('terminal.rememberNewHostKey') }}</button>
+      <button
         v-if="showCloseOnError"
         class="btn btn-sm"
         @click="terminalStore.closeTab(liveTab.id)"

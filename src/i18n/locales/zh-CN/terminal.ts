@@ -176,6 +176,8 @@ export default {
     connectionFailed: '连接失败',
     connectionClosed: '连接已关闭',
     reconnect: '重新连接',
+    rememberNewHostKey: '这是我换过的，记住新的',
+    hostKeyRememberFailed: '这次对不上的身份已经不在了，请再连一次',
     reconnecting: '正在重新连接...',
     dropFiles: '拖放文件到终端',
     cannotReconnect: '无法重连',

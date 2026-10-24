@@ -31,10 +31,12 @@ const {
   files,
   transfers,
   error,
+  hostKeyChanged,
   connectionInfo,
   canGoBack,
   canGoForward,
   connect,
+  rememberChangedHostKey,
   disconnect,
   navigateTo,
   refresh,
@@ -361,7 +363,12 @@ const handleClearAllTransfers = () => {
         <XCircle :size="48" :stroke-width="1.5" />
         <p>{{ t('fileExplorer.connectionFailed') }}</p>
         <p class="error-message">{{ error }}</p>
-        <button class="btn btn-primary" @click="connect(props.config)">{{ t('fileExplorer.retry') }}</button>
+        <button
+          v-if="hostKeyChanged"
+          class="btn btn-primary"
+          @click="rememberChangedHostKey(props.config)"
+        >{{ t('terminal.rememberNewHostKey') }}</button>
+        <button v-else class="btn btn-primary" @click="connect(props.config)">{{ t('fileExplorer.retry') }}</button>
       </div>
 
       <!-- 已连接 -->
