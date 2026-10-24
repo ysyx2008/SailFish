@@ -1221,11 +1221,11 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
             },
             message_index: {
               type: 'number',
-              description: '取归档时指定其中第几条（一览里 ### 后的序号，从 0 起），返回那一条的全文'
+              description: '取归档时指定其中第几条（一览里 ### 后的序号，从 0 起），返回那一条的全文。留空等于不给'
             },
             offset: {
               type: 'number',
-              description: '取归档单条时从第几个字符读起，默认 0'
+              description: '取归档单条时从第几个字符读起（按字符，不按字节），默认 0，留空等于不给'
             },
             detail: {
               type: 'string',
