@@ -357,13 +357,22 @@ if [[ "$MODE" != "quick" ]]; then
     doc.addedBy = "agent"
     fs.writeFileSync(file, JSON.stringify(raw, null, 2))
   ' "$SFT_DATA_DIR/knowledge/documents.json"
+  run_test "删之前词索引和向量在同一行里、全文索引已建" node --input-type=module -e '
+    import * as lancedb from "@lancedb/lancedb"
+    const q = String.fromCharCode(39)
+    const db = await lancedb.connect(process.argv[1])
+    const table = await db.openTable("knowledge_vectors")
+    const where = "`docId` = " + q + process.argv[2] + q
+    const rows = await table.query().where(where).limit(5).toArray()
+    if (rows.length === 0 || !rows.every(r => typeof r.tokens === "string" && r.tokens.length > 0)) process.exit(1)
+    const names = (await table.listIndices()).map(i => i.name)
+    if (!names.includes("tokens_idx")) process.exit(1)
+  ' "$SFT_DATA_DIR/knowledge/lancedb" "$LEAVE_ID"
   assert_contains "自己放入的可以直接删" "已删除" \
     $CLI knowledge:remove "$LEAVE_ID"
-  run_test "删掉之后检索条目也没了" node -e '
-    const fs = require("fs")
-    const raw = fs.readFileSync(process.argv[1], "utf8")
-    if (raw.includes(process.argv[2])) process.exit(1)
-  ' "$SFT_DATA_DIR/knowledge/bm25-index.json" "$LEAVE_ID"
+  run_test "删掉之后不再有整本词索引文件" node -e '
+    if (require("fs").existsSync(process.argv[1])) process.exit(1)
+  ' "$SFT_DATA_DIR/knowledge/bm25-index.json"
   run_test "删掉之后向量也没了" node --input-type=module -e '
     import * as lancedb from "@lancedb/lancedb"
     const q = String.fromCharCode(39)

@@ -86,7 +86,7 @@ async function restartElectronDev(
   await startup()
 }
 
-// 复制 shell-ast WASM 到 dist-electron（与 jieba 同理；否则打包后找不到 .wasm → 审计 Fail-Closed）
+// 复制 shell-ast WASM 到 dist-electron（否则打包后找不到 .wasm → 审计 Fail-Closed）
 function copyShellAstWasm() {
   return {
     name: 'copy-shell-ast-wasm',
@@ -140,26 +140,6 @@ function copyPwshExtractScript() {
         console.log('[copy-pwsh-extract-ps1] Copied pwsh-extract.ps1 to dist-electron')
       }
     },
-  }
-}
-
-function copyJiebaWasm() {
-  return {
-    name: 'copy-jieba-wasm',
-    closeBundle() {
-      const srcPath = resolve(__dirname, 'node_modules/jieba-wasm/pkg/nodejs/jieba_rs_wasm_bg.wasm')
-      const destDir = resolve(__dirname, 'dist-electron')
-      const destPath = resolve(destDir, 'jieba_rs_wasm_bg.wasm')
-      
-      if (existsSync(srcPath)) {
-        if (!existsSync(destDir)) {
-          mkdirSync(destDir, { recursive: true })
-        }
-        copyFileSync(srcPath, destPath)
-        console.log('[copy-jieba-wasm] Copied jieba_rs_wasm_bg.wasm to dist-electron')
-      }
-
-    }
   }
 }
 
@@ -266,20 +246,20 @@ function copyChartMaps() {
 }
 
 // 复制 lancedb-worker.js 到 dist-electron/services/knowledge
+// 它 require 的同目录 keyword-index.js（关键词索引引擎，进程内模式也按路径加载同一份）必须一起带上
 function copyLanceDBWorker() {
   return {
     name: 'copy-lancedb-worker',
     closeBundle() {
-      const srcPath = resolve(__dirname, 'electron/services/knowledge/lancedb-worker.js')
       const destDir = resolve(__dirname, 'dist-electron/services/knowledge')
-      const destPath = resolve(destDir, 'lancedb-worker.js')
-
-      if (existsSync(srcPath)) {
+      for (const file of ['lancedb-worker.js', 'keyword-index.js']) {
+        const srcPath = resolve(__dirname, 'electron/services/knowledge', file)
+        if (!existsSync(srcPath)) continue
         if (!existsSync(destDir)) {
           mkdirSync(destDir, { recursive: true })
         }
-        copyFileSync(srcPath, destPath)
-        console.log('[copy-lancedb-worker] Copied lancedb-worker.js to dist-electron')
+        copyFileSync(srcPath, resolve(destDir, file))
+        console.log(`[copy-lancedb-worker] Copied ${file} to dist-electron`)
       }
     }
   }
@@ -385,7 +365,7 @@ export default defineConfig({
           esbuild: {
             charset: 'utf8'
           },
-          plugins: [optionalOemConfig(), copyJiebaWasm(), copyShellAstWasm(), copyTreeSitterWasm(), copyPwshExtractScript(), copySpeechWorker(), copyPdfWorker(), copyEmbeddingWorker(), copyLanceDBWorker()]
+          plugins: [optionalOemConfig(), copyShellAstWasm(), copyTreeSitterWasm(), copyPwshExtractScript(), copySpeechWorker(), copyPdfWorker(), copyEmbeddingWorker(), copyLanceDBWorker()]
         }
       },
       {

@@ -14,6 +14,8 @@
  *   ⇢ { id, type: 'removeDocumentChunks', data: { docId, forceCompact? } }
  *   ⇢ { id, type: 'removeDocumentChunksMany', data: { docIds: string[], compact? } }
  *   ⇢ { id, type: 'vectorSearch',         data: { embedding, limit } }
+ *   ⇢ { id, type: 'keywordSearch',        data: { query, limit, hostId?, tags? } }
+ *   ⇢ { id, type: 'tokenize',             data: { text } }
  *   ⇢ { id, type: 'getRecordsByDocId',    data: { docId } }
  *   ⇢ { id, type: 'getRecordsByDocIds',   data: { docIds: string[] } }
  *   ⇢ { id, type: 'getStats' }
@@ -31,7 +33,10 @@
  *   ⇠ { id, success: false, error: string, stack?: string }
  *
  *   initialize 的 result 包含额外事件字段：
- *     result.events = [{ name: 'dimensionMismatch'|'indexUnreadable', args: any[] }]
+ *     result.events = [{ name: 'dimensionMismatch'|'indexUnreadable'|'keywordIndexReady', args: any[] }]
+ *
+ *   向量表的每一行带一列 tokens（结巴切好的词），关键词检索用它的全文索引，见 keyword-index.js。
+ *   写入时由 worker 对 content 切词填 tokens，调用方不用管。
  *
  *   vectorSearch 的 result.hits 不含 vector 字段，节省 IPC 带宽。
  *   getValidRecords / getRecordsByDocIds 包含 vector 字段（调用方需要）。
@@ -42,6 +47,7 @@
 
 const path = require('path')
 const fs = require('fs')
+const { KeywordIndex } = require('./keyword-index.js')
 
 // LanceDB 实例（延迟加载）
 let lancedb = null
@@ -61,13 +67,40 @@ let dimensions = 384
 let deleteCount = 0
 let lastCompactTime = 0
 
+// 关键词检索（tokens 列 + 全文索引）。升级没做成时 keywordReady 为 false：
+// 向量照常用，写入不带 tokens，关键词检索报错而不是返回空
+let keyword = null
+let keywordReady = false
+
+/** 向量表里「一条记录」的列，不含 tokens：整表扫描时不必把切好的词也读上来 */
+const RECORD_COLUMNS = ['id', 'docId', 'content', 'vector', 'filename', 'hostId', 'tags', 'chunkIndex', 'createdAt']
+
 // ────────────────────────── LanceDB 加载 ──────────────────────────
 
 async function loadLanceDB() {
   if (!lancedb) {
     lancedb = await import('@lancedb/lancedb')
+    keyword = new KeywordIndex({ lancedb, log: console })
   }
   return lancedb
+}
+
+/** 待写入的行：关键词检索可用时补上 tokens，否则原样（旧表没有这一列，带上会写不进去） */
+function forWrite(records) {
+  return keywordReady ? keyword.withTokens(records) : records
+}
+
+/** 写入之后：补建全文索引；没覆盖到的行多了就并入一次。出错只记日志，不影响写入 */
+async function afterWrite() {
+  if (!keywordReady || !table) return
+  try {
+    await keyword.ensureIndex(table)
+    if (await keyword.needsOptimize(table)) {
+      await compact(false)
+    }
+  } catch (error) {
+    console.warn('[LanceDBWorker] 全文索引维护失败（写入已完成）:', error)
+  }
 }
 
 // ────────────────────────── 损坏标记 helpers ──────────────────────────
@@ -125,18 +158,46 @@ function isLanceCorruptionError(error) {
 
 // ────────────────────────── 表管理 helpers ──────────────────────────
 
+/**
+ * 让当前表具备关键词检索：补列、给还没切词的行切词、建全文索引。
+ * 没做成不挡向量这一半：关键词检索暂不可用，下次启动或下一次检索时再试。
+ */
+async function prepareKeyword() {
+  keywordReady = false
+  const t0 = Date.now()
+  const result = await keyword.prepare(table)
+  keywordReady = true
+  if (result.addedColumn || result.backfilled > 0) {
+    console.log('[LanceDBWorker] 关键词索引已就绪：补列=%s 补切词=%d 行，耗时 %dms',
+      result.addedColumn, result.backfilled, Date.now() - t0)
+  }
+  return result
+}
+
+/** 打开一张已经存在的表（另一个进程或旧版建的也可能缺 tokens 列，所以同样过一遍 prepare） */
+async function openExistingTable() {
+  table = await db.openTable(tableName)
+  try {
+    await prepareKeyword()
+  } catch (error) {
+    console.error('[LanceDBWorker] 关键词索引准备失败，关键词检索暂不可用:', error)
+  }
+}
+
 async function ensureTable(sampleRecord) {
   if (table) return
 
   try {
     const names = await db.tableNames()
     if (names.includes(tableName)) {
-      table = await db.openTable(tableName)
+      await openExistingTable()
       return
     }
   } catch (e) {
     console.warn('[LanceDBWorker] 检查表是否存在失败，继续尝试创建:', e)
   }
+  // 新建的表从一开始就带 tokens 列
+  keywordReady = true
 
   const isPlaceholder = !sampleRecord
   const recordToInsert = sampleRecord ?? {
@@ -152,12 +213,12 @@ async function ensureTable(sampleRecord) {
   }
 
   try {
-    table = await db.createTable(tableName, [recordToInsert])
+    table = await db.createTable(tableName, keyword.withTokens([recordToInsert]))
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     if (msg.includes('already exists')) {
       console.warn('[LanceDBWorker] createTable 冲突（磁盘残留表），fallback 到 openTable')
-      table = await db.openTable(tableName)
+      await openExistingTable()
       return
     }
     throw error
@@ -246,6 +307,7 @@ async function handleInitialize(data) {
 
   const { connect } = await loadLanceDB()
   db = await connect(storagePath)
+  keyword.reset()
 
   // 损坏标记只表示「上次检索发现缺文件」。主进程应已先尝试从备份恢复；
   // 这里若标记还在，说明恢复没做成——保留现有表，绝不因标记清表。
@@ -266,9 +328,19 @@ async function handleInitialize(data) {
       await db.dropTable(tableName)
       table = null
       events.push({ name: 'dimensionMismatch', args: [{ old: mismatchResult, new: dim }] })
+    } else {
+      // 表读得开：让它具备关键词检索（补列、给还没切词的行切词、建全文索引）。
+      // 没做成不挡向量这一半，下次启动再试
+      try {
+        events.push({ name: 'keywordIndexReady', args: [await prepareKeyword()] })
+      } catch (error) {
+        console.error('[LanceDBWorker] 关键词索引升级失败，本次启动关键词检索不可用:', error)
+      }
     }
   } else {
     table = null
+    // 还没有表：第一次写入时带 tokens 列新建
+    keywordReady = true
   }
 
   return { ok: true, events }
@@ -277,7 +349,8 @@ async function handleInitialize(data) {
 async function handleAddRecord(data) {
   if (!db) throw new Error('数据库未初始化')
   await ensureTable(data.record)
-  await table.add([data.record])
+  await table.add(forWrite([data.record]))
+  await afterWrite()
   return { id: data.record.id }
 }
 
@@ -286,7 +359,8 @@ async function handleAddRecords(data) {
   const { records } = data || {}
   if (!records || records.length === 0) return { ids: [] }
   await ensureTable(records[0])
-  await table.add(records)
+  await table.add(forWrite(records))
+  await afterWrite()
   return { ids: records.map(r => r.id) }
 }
 
@@ -398,7 +472,7 @@ async function handleVectorSearch(data) {
 async function handleGetRecordsByDocId(data) {
   if (!table) return { records: [] }
   try {
-    const allRows = await table.query().toArray()
+    const allRows = await table.query().select(RECORD_COLUMNS).toArray()
     const records = allRows
       .filter(r => r.docId === data.docId)
       .map(r => ({
@@ -425,7 +499,7 @@ async function handleGetRecordsByDocIds(data) {
   if (!docIds || docIds.length === 0) return { records: [] }
   const docIdSet = new Set(docIds)
   try {
-    const allRows = await table.query().toArray()
+    const allRows = await table.query().select(RECORD_COLUMNS).toArray()
     const seen = new Set()
     const records = []
     for (const r of allRows) {
@@ -487,6 +561,8 @@ async function handleDropTable() {
       await db.dropTable(tableName)
       table = null
     }
+    keyword.reset()
+    keywordReady = true
     deleteCount = 0
     return { ok: true }
   } catch (error) {
@@ -630,13 +706,48 @@ async function handleNameApply(data) {
   }
 }
 
+async function handleKeywordSearch(data) {
+  if (!table) return { hits: [] }
+  if (!keywordReady) {
+    // 启动时没准备成：这一次再试，不必等下次重启
+    try {
+      await prepareKeyword()
+    } catch (error) {
+      console.error('[LanceDBWorker] 关键词索引准备失败:', error)
+      return { hits: [], error: '关键词索引尚未就绪' }
+    }
+  }
+  const { query, limit, hostId, tags } = data || {}
+  const run = () => keyword.search(table, { query, limit, hostId, tags })
+  try {
+    return { hits: await run() }
+  } catch (error) {
+    if (isLanceCorruptionError(error)) {
+      console.warn('[LanceDBWorker] keywordSearch IO 错误，aggressive compact 后重试一次:', error.message)
+      try {
+        await compact(true)
+        return { hits: await run() }
+      } catch (retryErr) {
+        markCorrupted(`keywordSearch: ${retryErr.message}`)
+      }
+    }
+    console.error('[LanceDBWorker] keywordSearch failed:', error)
+    return { hits: [], error: error.message }
+  }
+}
+
+async function handleTokenize(data) {
+  await loadLanceDB()
+  return { tokens: keyword.tokenize((data && data.text) || '') }
+}
+
 async function handleGetValidRecords(data) {
   if (!table) return { records: [] }
   const { docIds } = data || {}
   const validDocIds = new Set(docIds || [])
   if (validDocIds.size === 0) return { records: [] }
   try {
-    const allRows = await table.query().toArray()
+    const allRows = await table.query().select(RECORD_COLUMNS).toArray()
     const records = allRows
       .filter(r => validDocIds.has(r.docId))
       .map(r => ({
@@ -708,6 +819,8 @@ async function dispatch(message) {
       case 'removeDocumentChunks': result = await handleRemoveDocumentChunks(data); break
       case 'removeDocumentChunksMany': result = await handleRemoveDocumentChunksMany(data); break
       case 'vectorSearch':         result = await handleVectorSearch(data);         break
+      case 'keywordSearch':        result = await handleKeywordSearch(data);        break
+      case 'tokenize':             result = await handleTokenize(data);             break
       case 'getRecordsByDocId':    result = await handleGetRecordsByDocId(data);    break
       case 'getRecordsByDocIds':   result = await handleGetRecordsByDocIds(data);   break
       case 'getStats':             result = await handleGetStats();                 break

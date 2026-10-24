@@ -16,15 +16,6 @@ vi.mock('electron', () => ({
   utilityProcess: { fork: () => null }
 }))
 
-vi.mock('../bm25', () => ({
-  getBM25Index: () => ({
-    isReady: () => false,
-    search: async () => [],
-    addDocuments: async () => {},
-    removeDocument: async () => {}
-  })
-}))
-
 const { VectorStorage } = await import('../storage')
 
 class FakeWorker implements WorkerProcessLike {

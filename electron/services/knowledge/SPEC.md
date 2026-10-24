@@ -4,6 +4,19 @@
 
 ## 设计目标
 
+### 按字面找的词索引和向量放在一处，不再另存一整本（2026-10-24）
+
+- **问题**：按字面找（关键词）靠一个整本的文件，实测 205MB，启动后整本常驻主进程，约占 290MB 内存。每入库一批、删一条对话，都要把整本重写一遍，界面跟着卡（删一条对话曾要等十几秒）。向量和词索引各记一份、各自增删，已经对不上：实测有 1.38 万个向量片段在词索引里找不到对应。
+- **成功标准**：
+  1. 按字面找和按意思找用同一份数据。一份文档的片段增、删只改一处，不会出现一边有、一边没有。
+  2. 同样的问题，按字面找得到的结果、先后和分数与升级前一致，自动翻阅的门槛和按字面找的筛法不用重调。
+  3. 主进程不再常驻整本词索引，入库、删除不再整本重写，也不因它卡顿。
+  4. 老用户升级后第一次启动自动把已有内容接上：不重新向量化、不丢内容，几秒内做完；中途退出，下次接着做。
+  5. 升级后再换回旧版，知识库仍能用（旧版会自己把词索引补回来，需要等一阵）。
+  6. 旧的整本词索引文件，在旧版最后一次写它的 7 天后自动清掉，释放磁盘。
+- **关键取舍**：自己用结巴切词，把切好的词和向量放在同一行，打分和索引交给数据库自带的全文索引；不用数据库自带的中文分词。后者要把数据库升到只发新平台安装包的版本，英特尔 Mac 就装不上了（我们的 macOS 版含 Intel），结果也与现在不完全一致（前 5 条平均重合 4.1 条）。哪天不再支持 Intel Mac，可以换原生分词，只需在原文列上重建一次索引。
+- **明确不做**：不升级数据库版本；不改自动翻阅的门槛和按意思、按字面的融合方式；不动目录名和文件名那张表；不把目录名和文件名写进正文的词索引。
+
 ### 对用户和 AI 只有一个名字：知识库（2026-10-18）
 
 - **问题**：同一个东西，界面多处叫「知识库」，秘书的工具说明和整理分组叫「档案室」，用户和 AI 看到的是两个名字。
@@ -294,7 +307,7 @@
 
 ## 职责
 
-本地知识库引擎。提供文档向量化、混合检索（向量+BM25）、文档分块、嵌入模型管理、主机记忆、对话索引、加密导入导出。Agent 通过它实现"跨会话事实记忆"（L2）和"对话经验召回"（L3）。
+本地知识库引擎。提供文档向量化、混合检索（向量+按字面找）、文档分块、嵌入模型管理、主机记忆、对话索引、加密导入导出。Agent 通过它实现"跨会话事实记忆"（L2）和"对话经验召回"（L3）。
 
 ## 文件 / 规模
 
@@ -307,7 +320,8 @@
 | `backup.ts` | 230 | 备份/恢复/列表/轮转纯函数（含 .corrupted 标记联动） |
 | `embedding.ts` | 564 | 嵌入计算（本地 Transformers.js / 远程 API） |
 | `chunker.ts` | 441 | 文档分块（固定/语义/段落） |
-| `bm25.ts` | 334 | BM25 关键词检索 |
+| `keyword-index.js` | — | 按字面找：切词、旧表升级、全文检索（工作进程与进程内模式共用同一份） |
+| `legacy-keyword-file.ts` | — | 旧版整本词索引文件的退役 |
 | `model-manager.ts` | 325 | 嵌入模型下载/切换 |
 | `context-knowledge.ts` | 244 | 上下文知识管理 |
 | `mcp-adapter.ts` | 148 | MCP 知识源适配 |
@@ -328,7 +342,7 @@
 | `isEnabled(): boolean` | 配置中是否启用 |
 | `dispose(): void` / `async disposeAsync(timeoutMs?): Promise<void>` | 销毁服务 |
 | `async rebuildAllIndices(force?): Promise<{durationMs, documentCount, ...}>` | 重建所有索引 |
-| `async repairIndex(): Promise<{checked, added, durationMs}>` | 增量修复：只对向量库或 BM25 中缺失的文档重新 embed + 写入，不清空已有数据 |
+| `async repairIndex(): Promise<{checked, added, durationMs}>` | 增量修复：只对向量库中缺失的文档重新 embed + 写入，不清空已有数据 |
 
 ### 备份 / 恢复
 
@@ -356,7 +370,7 @@
 
 | 方法签名 | 用途 |
 |---------|------|
-| `async search(query, options?: Partial<SearchOptions>): Promise<SearchResult[]>` | 主搜索入口（混合：向量+BM25+rerank） |
+| `async search(query, options?: Partial<SearchOptions>): Promise<SearchResult[]>` | 主搜索入口（混合：向量+按字面找+rerank） |
 | `async getHostKnowledge(hostId): Promise<SearchResult[]>` | 按主机获取相关知识 |
 | `async buildContext(query, options?): Promise<string>` | 构建可注入 prompt 的上下文文本 |
 
@@ -453,11 +467,11 @@ type MemoryVolatility = "stable" | "moderate" | "volatile"
 **文档添加 → 可搜索**：
 1. `addDocument(doc)` → `Chunker.chunk(content, strategy)` → `DocumentChunk[]`
 2. → `EmbeddingService.embedChunks(chunks)` → 向量数组
-3. → `Storage.addVectors(docId, chunks, vectors)` + `BM25.addDocument`
+3. → `Storage.addVectors(docId, chunks, vectors)`（词随行一起写入，不另写一份）
 4. 文档元数据写入 `documents.json` 索引
 
 **搜索（混合检索）**：
-1. `search(query)` → 向量搜索 top-K + BM25 搜索 top-K 并行
+1. `search(query)` → 向量搜索 top-K + 按字面找 top-K 并行
 2. → `Reranker.fusion()` 合并 → 去重 → 返回 SearchResult[]
 
 **主机记忆（智能合并）**：
@@ -470,6 +484,7 @@ type MemoryVolatility = "stable" | "moderate" | "volatile"
 
 ## 关键约束
 
+- **旧的整本词索引文件**（`bm25-index.json`）不再有人写，闲置超过 7 天自动清理；换回旧版时若它还在就接着用，已清掉则旧版自行补建词索引
 - **必须 `initialize()` 后才能搜索**——未就绪时 `search` 直接返回空数组
 - **大文档必须分块**——`Chunker.chunk` 按 `chunkStrategy` 分段
 - **嵌入模型下载不阻塞启动**——后台下载，`ModelManager` 通过 EventEmitter 报告进度
@@ -477,7 +492,7 @@ type MemoryVolatility = "stable" | "moderate" | "volatile"
 - **导入导出方法叫 `importData` / `exportData`**——不是 `importKnowledge` / `exportKnowledge`
 - **MCP 通过 `setMcpService` 延迟注入**——不能放进构造参数（循环依赖）
 - **主机记忆相关方法名都带 `HostMemory`**（如 `searchHostMemories`、`getHostMemoriesForPrompt`），不是 `getHostMemory` / `deleteHostMemory`
-- **`data_corrupted` 仅重建向量侧**——BM25 为独立 JSON，损坏时保留 BM25，启动增量补向量即可
+- **词和向量同表**——损坏重建只有一处；旧表启动时就地补词，不重新嵌入；旧版往表里写了没有词的行，下次启动补上
 - **已标损坏时禁止自动备份**——避免把坏库存成最新备份、把好的轮替掉。自动备份仍在启动开头、向量库尚未打开时做（磁盘是上次退出状态，复制安全），受 30 分钟间隔限制，保留最近 3 份
 - **打开失败不得清表**——缺文件、读不开时保留现有向量表，不得整表丢掉；只有换了嵌入模型、维度对不上才清旧向量
 - **恢复从新到旧试备份**——启动发现损坏标记时先恢复；读得开才算成功。最新这份读不开就试更早的；都读不开则跳过启动补建，不要把「枚举失败」当成「库是空的」去全量重建

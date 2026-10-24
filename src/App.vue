@@ -70,7 +70,7 @@ const canShowWatch = !isSteamBuild && isOemFeatureEnabled('watch')
 // cause 区分了为什么会重建，决定显示哪种文案：
 //   - dimension_mismatch: 真正的模型升级（首次见的概率最低，但确实存在）
 //   - data_corrupted    : 向量库损坏（manifest 指向不存在的 .lance 数据文件等）
-//   - missing           : 索引缺失（首次启用 / 用户删过 lancedb 目录 / BM25 .json 丢失）
+//   - missing           : 索引缺失（首次启用 / 用户删过 lancedb 目录）
 // ── 后端启动进度条（fixed overlay，不占 flex 空间）────────────────────────────
 const startupLoading = ref(false)
 const startupStage = ref('')

@@ -58,6 +58,8 @@ asarUnpack:
   - node_modules/semver/**/*
   # lancedb-worker → @lancedb/lancedb 唯一 JS 依赖
   - node_modules/reflect-metadata/**/*
+  # lancedb-worker 里给关键词索引切词（keyword-index.js require('jieba-wasm')），没有别的依赖
+  - node_modules/jieba-wasm/**/*
   # apache-arrow 运行时（lancedb → arrow；26 日日志已确认缺 tslib）
   - node_modules/tslib/**/*
   - node_modules/flatbuffers/**/*

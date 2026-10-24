@@ -92,7 +92,7 @@ SailFish/
 │       │   ├── http-probe-sensor.ts / command-probe-sensor.ts
 │       │   └── app-lifecycle-sensor.ts
 │       ├── terminal-awareness/  # 终端感知（进程监控）
-│       ├── knowledge/           # 知识库（L2 知识文档，向量存储 + 嵌入 + BM25）
+│       ├── knowledge/           # 知识库（L2 知识文档，向量存储 + 嵌入；按字面找的词和向量同表同行，LanceDB 原生全文索引，jieba 自切词，见 knowledge/SPEC.md）
 │       ├── im/                  # IM 集成（钉钉/飞书/企业微信/微信/Slack/Telegram）
 │       ├── tts/                 # TTS 语音合成（可插拔 provider）
 │       ├── speech/              # 语音识别（模型包按需安装，见 speech/SPEC.md）
