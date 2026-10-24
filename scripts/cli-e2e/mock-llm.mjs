@@ -25,6 +25,8 @@ function sse(res, usage, delta, finish) {
 /** finish 默认 stop；传 'length' 模拟回答停在输出额度上 */
 export const say = (content, finish = 'stop') => ({ kind: 'text', content, finish })
 export const callTool = (name, args) => ({ kind: 'tool', name, args })
+/** 接口直接报错（400，不会被自动重试） */
+export const fail = (message = 'mock failure') => ({ kind: 'fail', message })
 /** 接上了但一直不回，直到对方断开（用来按 Ctrl+C） */
 export const hang = () => ({ kind: 'hang' })
 
@@ -32,6 +34,7 @@ export const hang = () => ({ kind: 'hang' })
  * @param script.onUser    用户（含命令行里敲的话）开头的一轮：(text, n, entry) => 动作；entry 是这次请求的全部内容
  * @param script.onContinue 目标续跑的一轮：(n) => 动作
  * 工具返回后的那一次请求默认回一句话；要换脚本，给 afterTool。
+ * script.jsonForNonStream：非流式调用（写交接小结之类）回一整份 JSON；不开就和以前一样一律回事件流。
  * script.usage：(entry, action) => { prompt_tokens, completion_tokens }，要模拟「接口报多少真实用量」时给；
  *   返回 null = 这次不报用量（有的服务商就是不报），返回 undefined = 用默认值。
  */
@@ -78,8 +81,14 @@ export function startMockLlm(script) {
       const custom = script.usage?.(entry, action)
       const usageFor = (kind) => (custom === undefined ? USAGE[kind] : custom)
 
+      if (action.kind === 'fail') {
+        res.writeHead(400, { 'Content-Type': 'application/json', Connection: 'close' })
+        res.end(JSON.stringify({ error: { message: action.message, type: 'invalid_request_error' } }))
+        return
+      }
+
       // 非流式调用（写交接小结之类）要的是一整份 JSON，不是事件流
-      if (body.stream !== true && (action.kind === 'tool' || action.kind === 'text')) {
+      if (script.jsonForNonStream && body.stream !== true && (action.kind === 'tool' || action.kind === 'text')) {
         const usage = usageFor(action.kind)
         const message = action.kind === 'tool'
           ? { role: 'assistant', content: null, tool_calls: [{ id: `call_${requests.length}`, type: 'function', function: { name: action.name, arguments: JSON.stringify(action.args) } }] }
