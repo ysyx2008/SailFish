@@ -40,3 +40,30 @@ export function sortSubAgentsByBucket(list: readonly SubAgentResult[]): SubAgent
     .sort((a, b) => rank(a.sa) - rank(b.sa) || a.index - b.index)
     .map(({ sa }) => sa)
 }
+
+export type Translate = (key: string, named?: Record<string, unknown>) => string
+
+const isExpertBatch = (list: readonly SubAgentResult[]): boolean => list.length > 0 && list.every(agent => !!agent.role)
+
+/** 「8 个伙计：3 做完 / 5 在干」 */
+export function formatSubAgentSummary(t: Translate, list: readonly SubAgentResult[]): string {
+  const counts = countSubAgents(list)
+  const parts = SUB_AGENT_SUMMARY_ORDER
+    .filter(bucket => counts[bucket] > 0)
+    .map(bucket => t(`ai.subAgentCount.${bucket}`, { count: counts[bucket] }))
+  return t(isExpertBatch(list) ? 'ai.expertSummary' : 'ai.subAgentSummary', { count: list.length, parts: parts.join(' / ') })
+}
+
+export type DockKind = 'working' | 'done' | 'problem'
+
+/**
+ * 顶部挂着那一行：还有人在干就是计数行；全做完写「都干完了」；
+ * 干完但有人失败或被打断，如实用计数行，不写都干完了。
+ */
+export function describeDock(t: Translate, list: readonly SubAgentResult[]): { kind: DockKind; headline: string } {
+  const counts = countSubAgents(list)
+  if (counts.running + counts.waiting > 0) return { kind: 'working', headline: formatSubAgentSummary(t, list) }
+  if (counts.completed < list.length) return { kind: 'problem', headline: formatSubAgentSummary(t, list) }
+  const key = isExpertBatch(list) ? 'ai.subAgentDock.allDoneExperts' : 'ai.subAgentDock.allDoneAgents'
+  return { kind: 'done', headline: t(key, { count: list.length }) }
+}

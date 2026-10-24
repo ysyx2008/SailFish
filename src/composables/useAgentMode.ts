@@ -18,6 +18,7 @@ import { createLogger } from '../utils/logger'
 import { isAssistantConversationSurfaceVisible } from '../utils/agent-tab-ui-meta'
 import { useTts } from './useTts'
 import { shouldShowToolResultStep } from '../utils/tool-display'
+import { PinnedDispatchTracker } from '../utils/pinned-dispatch'
 import { foldProcessSteps, type ProcessFoldView, type ProcessStepRef, type StepPart } from '../utils/process-fold'
 import { findTaskCompleteFooterIndex, groupAgentSteps, groupNeedsProcessCompleteFooter } from '../utils/agent-task-groups'
 import { withChatTimeMarkers } from '../utils/chat-time-marker'
@@ -994,6 +995,10 @@ export function useAgentMode(
     }
     return undefined
   })
+
+  // 该挂在对话顶部的几批派出去的人：还没干完的一直挂着，干完的挂到你下次说话
+  const pinnedDispatchTracker = new PinnedDispatchTracker()
+  const pinnedDispatches = computed((): AgentStep[] => pinnedDispatchTracker.update(agentState.value?.steps ?? []))
 
   // 切换任务步骤折叠状态
   const toggleStepsCollapse = (taskId: string) => {
@@ -3149,6 +3154,7 @@ export function useAgentMode(
     pendingSecureInput,
     agentUserTask,
     currentPlan,
+    pinnedDispatches,
     agentTaskGroups,
     flattenedItems,
     isStreamingOutput,
