@@ -124,6 +124,13 @@ describe('recall 取归档：一览只露开头，单条能取全文', () => {
     expect(last).not.toContain('continue:')
   })
 
+  it('offset 超过全文长度时报错并说明总长，不返回空页', () => {
+    const r = recallCompressed({ archive_id: 'ca-1', message_index: 3, offset: 99999 }, exec())
+    expect(r.success).toBe(false)
+    expect(r.error).toContain('99999')
+    expect(r.error).toContain(String('短内容原样在'.length))
+  })
+
   it('序号超出时报错并说明条数', () => {
     const r = recallCompressed({ archive_id: 'ca-1', message_index: 9 }, exec())
     expect(r.success).toBe(false)

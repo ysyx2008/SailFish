@@ -356,6 +356,17 @@ function renderMessagePreview(
   pushBoth('')
 }
 
+/** 单取一条时的全文：工具调用（含完整入参）在前，正文在后 */
+function archivedMessageBody(msg: ArchivedMessage): string {
+  const parts: string[] = []
+  for (const tc of msg.tool_calls ?? []) {
+    parts.push(`**Tool Call**: ${tc.function.name}`)
+    if (tc.function.arguments) parts.push(`**Args**: ${tc.function.arguments}`)
+  }
+  if (msg.content) parts.push(msg.content)
+  return parts.join('\n')
+}
+
 function renderMessageFull(
   msg: ArchivedMessage,
   index: number,
@@ -365,13 +376,7 @@ function renderMessageFull(
   pushModelOnly: (line: string) => void
 ): void {
   pushBoth(`### ${index}. ${roleLabelOf(msg)}`)
-  const parts: string[] = []
-  for (const tc of msg.tool_calls ?? []) {
-    parts.push(`**Tool Call**: ${tc.function.name}`)
-    if (tc.function.arguments) parts.push(`**Args**: ${tc.function.arguments}`)
-  }
-  if (msg.content) parts.push(msg.content)
-  const body = parts.join('\n')
+  const body = archivedMessageBody(msg)
 
   const page = body.slice(offset, offset + ARCHIVE_MESSAGE_PAGE_CHARS)
   pushBoth(page)
@@ -491,6 +496,12 @@ export function recallCompressed(
       return { success: false, output: '', error }
     }
     const offset = asIndex(args.offset) ?? 0
+    const length = archivedMessageBody(msg).length
+    if (offset > 0 && offset >= length) {
+      const error = t('context_tool.recall_offset_out_of_range', { index: messageIndex, length, offset })
+      executor.addStep({ type: 'tool_result', content: error, toolName: 'recall', toolResult: error })
+      return { success: false, output: '', error }
+    }
     pushBoth(`**Message ${messageIndex} / ${messages.length}**`)
     pushBoth('')
     renderMessageFull(msg, messageIndex, archiveId, offset, pushBoth, line => modelLines.push(line))
