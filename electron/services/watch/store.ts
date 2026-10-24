@@ -27,6 +27,8 @@ interface WatchStoreSchema {
    * 迁移后恒为数组（可为空）。
    */
   wakeupHistory?: WatchHistoryRecord[]
+  /** 被睡眠打断、等电脑真正恢复后再做的关切 id */
+  continueWhenAwake?: string[]
 }
 
 const MAX_HISTORY_RECORDS = 500
@@ -142,6 +144,24 @@ export class WatchStore {
 
   updateState(id: string, state: Record<string, unknown>): void {
     this.update(id, { state })
+  }
+
+  listContinueWhenAwake(): string[] {
+    const ids = this.store.get('continueWhenAwake')
+    if (!Array.isArray(ids)) return []
+    return ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
+  }
+
+  markContinueWhenAwake(id: string): void {
+    const ids = new Set(this.listContinueWhenAwake())
+    ids.add(id)
+    this.store.set('continueWhenAwake', [...ids])
+  }
+
+  clearContinueWhenAwake(id: string): void {
+    const ids = this.listContinueWhenAwake()
+    if (!ids.includes(id)) return
+    this.store.set('continueWhenAwake', ids.filter(existing => existing !== id))
   }
 
   // ==================== 按触发类型查询 ====================
@@ -282,13 +302,17 @@ export class WatchStore {
     return {
       watches: this.getAll(),
       history: this.store.get('history') || [],
-      wakeupHistory: this.store.get('wakeupHistory') || []
+      wakeupHistory: this.store.get('wakeupHistory') || [],
+      continueWhenAwake: this.listContinueWhenAwake(),
     }
   }
 
   importData(data: Partial<WatchStoreSchema>): void {
     if (data.watches) this.store.set('watches', data.watches)
     if (data.history) this.store.set('history', data.history)
+    if (Array.isArray(data.continueWhenAwake)) {
+      this.store.set('continueWhenAwake', data.continueWhenAwake.filter(id => typeof id === 'string'))
+    }
     if (data.wakeupHistory) {
       this.store.set('wakeupHistory', data.wakeupHistory)
       this.historyBucketsReady = true

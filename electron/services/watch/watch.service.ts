@@ -11,7 +11,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import type { BrowserWindow } from 'electron'
-import { Notification } from 'electron'
+import { Notification, powerMonitor } from 'electron'
 import { createLogger } from '../../utils/logger'
 import { Companion } from '../conversation/companion'
 import { getDefaultShell, getLocalOS } from '../../utils/platform'
@@ -29,7 +29,15 @@ import type {
 
 const log = createLogger('WatchService')
 import { WatchStore, getWatchStore } from './store'
-import { DEFAULT_WATCH_TIMEOUT_SECONDS, raceWithTimeout, watchExecutionTimeoutMs } from './execution-timeout'
+import {
+  DEFAULT_WATCH_TIMEOUT_SECONDS,
+  WatchWallClockTimeout,
+  createAwakeTrack,
+  noteAwakeGap,
+  raceWithTimeout,
+  timeoutWasSleep,
+  watchExecutionTimeoutMs,
+} from './execution-timeout'
 import type { SensorEvent, EventHandler } from '../sensor/types'
 import { getEventBus } from '../sensor/event-bus'
 import { EventPool } from './event-pool'
@@ -92,6 +100,8 @@ export interface WatchExecutionResult {
   steps?: AgentStep[]
   /** Agent 通过 talk_to_user 产生的用户可见消息（与内部 output 分离） */
   userMessage?: string
+  /** 墙钟到了是因为电脑睡了，不是醒着干满了上限。恢复后会再跑一次。 */
+  interruptedBySleep?: boolean
 }
 
 // ==================== Watch Service ====================
@@ -112,6 +122,10 @@ export class WatchService {
   private checkInterval: NodeJS.Timeout | null = null
   /** 按 watchId 的失败熔断（内存态；进程重启后清零） */
   private circuits = new Map<string, WatchCircuitState>()
+  /** 电脑真正恢复（开盖）时，把被睡眠打断的关切再做一遍 */
+  private readonly onSystemResume = (): void => {
+    this.continueAfterWake()
+  }
 
   constructor() {
     this.store = getWatchStore()
@@ -169,6 +183,9 @@ export class WatchService {
     // 每分钟检查遗漏的调度
     this.checkInterval = setInterval(() => this.checkMissedSchedules(), 60 * 1000)
 
+    powerMonitor.on('resume', this.onSystemResume)
+    this.continueAfterWake()
+
     log.info(`Started with ${watches.filter(w => w.enabled).length} active watches`)
   }
 
@@ -193,6 +210,7 @@ export class WatchService {
       clearInterval(this.checkInterval)
       this.checkInterval = null
     }
+    powerMonitor.removeListener('resume', this.onSystemResume)
 
     // 清理所有传感器 target
     const allWatches = this.store.getAll()
@@ -408,6 +426,40 @@ export class WatchService {
 
   private isWatchBusy(id: string): boolean {
     return this.runningWatches.has(id) || this.scheduledWatches.has(id)
+  }
+
+  /**
+   * 被睡眠打断的关切，在电脑真正恢复后再做一遍。
+   * 黑屏醒来不会发出 resume，所以不会在几十秒的窗口里反复开工。
+   */
+  private continueAfterWake(): void {
+    if (!this.isRunning) return
+    for (const id of this.store.listContinueWhenAwake()) {
+      if (id === WatchService.WAKEUP_ID) {
+        this.store.clearContinueWhenAwake(id)
+        continue
+      }
+      const watch = this.store.get(id)
+      if (!watch?.enabled) {
+        this.store.clearContinueWhenAwake(id)
+        continue
+      }
+      if (this.isWatchBusy(id)) continue
+      const timed = watch.triggers.find(trigger => trigger.type === 'cron' || trigger.type === 'interval')
+      const event: SensorEvent = {
+        id: `resume-${Date.now().toString(36)}-${id}`,
+        type: timed?.type === 'interval' ? 'interval' : 'cron',
+        source: 'resume',
+        timestamp: Date.now(),
+        watchId: id,
+        payload: { resumeAfterSleep: true },
+        priority: watch.priority,
+      }
+      log.info(`Continuing watch after wake: ${watch.name} (${id})`)
+      void this.dispatchWatch(watch, event).catch(err => {
+        log.error(`Failed to continue watch ${id} after wake:`, err)
+      })
+    }
   }
 
   /** 进程重启后，磁盘上残留的 running 不得再当成正在执行 */
@@ -634,6 +686,9 @@ export class WatchService {
     }
 
     let result: WatchExecutionResult
+    const timeoutMs = watchExecutionTimeoutMs(watch.execution.timeout)
+    const awake = createAwakeTrack()
+    let awakeTick = Date.now()
 
     try {
       // 手动 desktop：确保联络 tab 存在（talk_to_user / 兜底通知可落点）
@@ -659,23 +714,49 @@ export class WatchService {
         triggerType: event.type,
         agentSessionId
       })
-      const timeoutMs = watchExecutionTimeoutMs(watch.execution.timeout)
       const timeoutSec = watch.execution.timeout ?? DEFAULT_WATCH_TIMEOUT_SECONDS
-      result = await raceWithTimeout(
-        this.executeWithAssistantAgent(
-          watch, enhancedPrompt, isSilent, isWakeup, agentSessionId
-        ),
-        timeoutMs,
-        t('error.watch_timeout', { seconds: timeoutSec }),
-      )
+      const awakeTimer = setInterval(() => {
+        const now = Date.now()
+        noteAwakeGap(awake, now - awakeTick)
+        awakeTick = now
+      }, 1000)
+      awakeTimer.unref?.()
+      try {
+        result = await raceWithTimeout(
+          this.executeWithAssistantAgent(
+            watch, enhancedPrompt, isSilent, isWakeup, agentSessionId
+          ),
+          timeoutMs,
+          t('error.watch_timeout', { seconds: timeoutSec }),
+        )
+      } finally {
+        noteAwakeGap(awake, Date.now() - awakeTick)
+        clearInterval(awakeTimer)
+      }
     } catch (error) {
       try { this.config.agentService.abort(agentId) } catch { /* ignore */ }
-      const errObj = error instanceof Error ? error : null
-      result = {
-        success: false, output: '',
-        error: errObj ? errObj.message : String(error),
-        errorCode: errObj && 'code' in errObj ? String((errObj as NodeJS.ErrnoException).code) : undefined,
-        duration: Date.now() - startTime
+      const slept = error instanceof WatchWallClockTimeout
+        && !isWakeup
+        && timeoutWasSleep(awake, timeoutMs)
+      if (slept) {
+        this.store.markContinueWhenAwake(watch.id)
+        log.info(`Watch '${watch.name}' (${watch.id}) interrupted by sleep; will continue when the computer wakes`)
+        result = {
+          success: false,
+          output: '',
+          error: t('error.watch_slept'),
+          errorCode: 'INTERRUPTED_BY_SLEEP',
+          duration: Date.now() - startTime,
+          interruptedBySleep: true,
+        }
+      } else {
+        const errObj = error instanceof Error ? error : null
+        result = {
+          success: false, output: '',
+          error: errObj ? errObj.message : String(error),
+          errorCode: errObj && 'code' in errObj ? String((errObj as NodeJS.ErrnoException).code) : undefined,
+          duration: Date.now() - startTime
+        }
       }
     } finally {
       const cur = this.runningWatches.get(watch.id)
@@ -683,12 +764,16 @@ export class WatchService {
     }
 
     this.recordExecution(watch, event, result, agentSessionId)
+    // 只有「睡了、等醒来再做」留着这笔账。做成了、或是别的失败，都不再自动重跑。
+    if (!result.interruptedBySleep) {
+      this.store.clearContinueWhenAwake(watch.id)
+    }
 
     if (result.success) {
       this.clearCircuit(watch.id)
       await this.deliverOutput(watch, result, isSilent)
-    } else if (result.skipped) {
-      // skip 已在入口处理；此处兜底
+    } else if (result.skipped || result.interruptedBySleep) {
+      // 睡眠打断只记账，不熔断、不发失败事件。真正恢复时再跑。
     } else {
       const failureClass = this.classifyExecutionFailure(result)
       this.recordCircuitFailure(watch.id, failureClass)
