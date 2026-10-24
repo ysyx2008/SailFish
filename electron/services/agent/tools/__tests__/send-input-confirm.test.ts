@@ -60,6 +60,10 @@ describe('send_input confirmation', () => {
 
   it('blocks a hard-blocked command with enter the same way execute would, and does not write', async () => {
     const { writes, waitForConfirmation, executor, config } = harness('relaxed')
+    // 这里没有终端。一旦真去写，测试会直接失败，命令没有地方可跑。
+    executor.terminalService.write = () => {
+      throw new Error('blocked input must not be written')
+    }
     const text = 'rm -rf /'
     const assessment = await assessCommandRiskDetailed(text, auditContextFromConfig(config))
     expect(assessment.level).toBe('blocked')
@@ -67,12 +71,16 @@ describe('send_input confirmation', () => {
     const result = await sendInput('pty-1', { text, press_enter: true }, 'call-1', config, executor)
 
     expect(result.success).toBe(false)
+    expect(result.error).toContain(text)
     expect(writes).toEqual([])
     expect(waitForConfirmation).not.toHaveBeenCalled()
   })
 
   it('asks before a dangerous command with enter, and does not write when declined', async () => {
     const { writes, waitForConfirmation, executor, config } = harness('relaxed', false)
+    executor.terminalService.write = () => {
+      throw new Error('declined input must not be written')
+    }
     const text = 'rm -rf /etc'
     const assessment = await assessCommandRiskDetailed(text, auditContextFromConfig(config))
     expect(assessment.level).toBe('dangerous')
