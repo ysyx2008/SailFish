@@ -124,12 +124,26 @@ export type WatchTriggerType = WatchTrigger['type']
 
 import type { TerminalType } from './agent'
 
+/** 没单独设置时，一次最多跑这么多秒（15 分钟） */
+export const WATCH_RUN_LIMIT_DEFAULT_SEC = 15 * 60
+/** 界面上能设的最短（1 分钟） */
+export const WATCH_RUN_LIMIT_MIN_SEC = 60
+/** 界面上能设的最长（24 小时），避免手误跑个没完 */
+export const WATCH_RUN_LIMIT_MAX_SEC = 24 * 60 * 60
+
+export function clampWatchRunLimitSec(seconds: number): number {
+  if (!Number.isFinite(seconds) || seconds <= 0) return WATCH_RUN_LIMIT_DEFAULT_SEC
+  const minutes = Math.round(seconds / 60)
+  const clamped = Math.min(WATCH_RUN_LIMIT_MAX_SEC / 60, Math.max(WATCH_RUN_LIMIT_MIN_SEC / 60, minutes))
+  return clamped * 60
+}
+
 export interface WatchExecution {
   type: TerminalType
   sshSessionId?: string
   sshSessionName?: string
   workingDirectory?: string
-  /** 墙钟超时（秒）；未设置时默认 900 */
+  /** 一次最长跑多少秒；没填就用 15 分钟 */
   timeout?: number
 }
 
