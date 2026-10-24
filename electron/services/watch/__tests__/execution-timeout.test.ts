@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { clampWatchRunLimitSec } from '@shared/types'
 import {
   WatchWallClockTimeout,
   createAwakeTrack,
@@ -8,13 +9,38 @@ import {
   watchExecutionTimeoutMs,
 } from '../execution-timeout'
 
+describe('clampWatchRunLimitSec', () => {
+  it('keeps 15 minutes', () => {
+    expect(clampWatchRunLimitSec(900)).toBe(900)
+  })
+
+  it('rounds to a whole minute and raises anything under a minute', () => {
+    expect(clampWatchRunLimitSec(30)).toBe(60)
+    expect(clampWatchRunLimitSec(90)).toBe(120)
+  })
+
+  it('treats zero and unusable numbers as the 15 minute default', () => {
+    expect(clampWatchRunLimitSec(0)).toBe(900)
+    expect(clampWatchRunLimitSec(Number.NaN)).toBe(900)
+  })
+
+  it('caps a day', () => {
+    expect(clampWatchRunLimitSec(10 * 24 * 60 * 60)).toBe(24 * 60 * 60)
+  })
+})
+
 describe('watchExecutionTimeoutMs', () => {
   it('defaults to 900s', () => {
     expect(watchExecutionTimeoutMs()).toBe(900_000)
+    expect(watchExecutionTimeoutMs(0)).toBe(900_000)
   })
 
-  it('uses explicit seconds', () => {
-    expect(watchExecutionTimeoutMs(30)).toBe(30_000)
+  it('uses an explicit whole number of minutes', () => {
+    expect(watchExecutionTimeoutMs(1800)).toBe(1_800_000)
+  })
+
+  it('rounds a short explicit value up to one minute', () => {
+    expect(watchExecutionTimeoutMs(30)).toBe(60_000)
   })
 })
 

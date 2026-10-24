@@ -14,6 +14,7 @@ import type { HostProfile } from '@shared/types'
 import type { AgentRecord } from '@shared/types'
 import { inferConversationKind } from '@shared/types'
 import type { WatchDefinition } from '../services/watch/types'
+import { WATCH_RUN_LIMIT_DEFAULT_SEC } from '@shared/types'
 import type {
   TerminalSettings,
   KeyboardShortcuts,
@@ -80,7 +81,7 @@ export function normalizeWatchDefinition(raw: WatchDefinition): WatchDefinition 
     triggers: Array.isArray(raw.triggers) ? raw.triggers : [],
     prompt: raw.prompt || '',
     skills: Array.isArray(raw.skills) ? raw.skills : undefined,
-    execution: raw.execution || { type: 'local' as const, timeout: 900 },
+    execution: raw.execution || { type: 'local' as const, timeout: WATCH_RUN_LIMIT_DEFAULT_SEC },
     output: raw.output || { type: 'log' as const },
     priority: raw.priority || 'normal',
     createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : 0,

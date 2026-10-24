@@ -36,7 +36,22 @@ import type {
   WatchTriggerType, WatchRunStatus, WatchTrigger,
   WatchDefinition, WatchHistoryRecord, WatchPriority
 } from '@shared/types'
-import { isWatchAgentKey, watchIdFromAgentKey } from '@shared/types'
+import {
+  WATCH_RUN_LIMIT_DEFAULT_SEC,
+  WATCH_RUN_LIMIT_MAX_SEC,
+  WATCH_RUN_LIMIT_MIN_SEC,
+  clampWatchRunLimitSec,
+  isWatchAgentKey,
+  watchIdFromAgentKey,
+} from '@shared/types'
+
+const RUN_LIMIT_MIN_MINUTES = WATCH_RUN_LIMIT_MIN_SEC / 60
+const RUN_LIMIT_MAX_MINUTES = WATCH_RUN_LIMIT_MAX_SEC / 60
+
+function runLimitMinutes(timeoutSec?: number): number {
+  if (timeoutSec == null) return WATCH_RUN_LIMIT_DEFAULT_SEC / 60
+  return clampWatchRunLimitSec(timeoutSec) / 60
+}
 
 type WatchOutputType = 'desktop' | 'im' | 'notification' | 'log' | 'silent'
 
@@ -506,6 +521,7 @@ const editForm = ref<{
   outputType: WatchOutputType
   skills: string
   triggers: WatchTrigger[]
+  timeoutMinutes: number
 }>({
   name: '',
   description: '',
@@ -514,6 +530,7 @@ const editForm = ref<{
   outputType: 'desktop',
   skills: '',
   triggers: [],
+  timeoutMinutes: WATCH_RUN_LIMIT_DEFAULT_SEC / 60,
 })
 
 function startEditing() {
@@ -527,6 +544,7 @@ function startEditing() {
     outputType: w.output.type,
     skills: w.skills?.join(', ') || '',
     triggers: JSON.parse(JSON.stringify(toRaw(w.triggers))),
+    timeoutMinutes: runLimitMinutes(w.execution?.timeout),
   }
   editing.value = true
 }
@@ -547,6 +565,14 @@ async function saveEditing() {
     await showAlert(t('common.warning'), t('watch.validation.promptRequired'))
     return
   }
+  const timeoutMinutes = form.timeoutMinutes
+  if (!Number.isInteger(timeoutMinutes) || timeoutMinutes < RUN_LIMIT_MIN_MINUTES || timeoutMinutes > RUN_LIMIT_MAX_MINUTES) {
+    await showAlert(t('common.warning'), t('watch.validation.runLimitRange', {
+      min: RUN_LIMIT_MIN_MINUTES,
+      max: RUN_LIMIT_MAX_MINUTES,
+    }))
+    return
+  }
 
   editSaving.value = true
   try {
@@ -558,6 +584,10 @@ async function saveEditing() {
       output: { type: form.outputType },
       skills: form.skills.trim() ? form.skills.split(',').map(s => s.trim()).filter(Boolean) : undefined,
       triggers: form.triggers,
+      execution: {
+        ...selectedWatch.value.execution,
+        timeout: timeoutMinutes * 60,
+      },
     }
     const updated = await window.electronAPI.watch.update(selectedWatch.value.id, updates)
     if (updated) {
@@ -1093,6 +1123,21 @@ onUnmounted(() => {
                       </div>
                     </div>
                     <div class="edit-section">
+                      <label class="edit-label">{{ t('watch.runLimit') }}</label>
+                      <div class="edit-limit-row">
+                        <input
+                          v-model.number="editForm.timeoutMinutes"
+                          type="number"
+                          class="edit-input edit-input-short"
+                          :min="RUN_LIMIT_MIN_MINUTES"
+                          :max="RUN_LIMIT_MAX_MINUTES"
+                          step="1"
+                        />
+                        <span class="edit-hint">{{ t('watch.runLimitUnit') }}</span>
+                      </div>
+                      <p class="edit-hint-block">{{ t('watch.runLimitHint') }}</p>
+                    </div>
+                    <div class="edit-section">
                       <label class="edit-label">{{ t('watch.skills') }}</label>
                       <input v-model="editForm.skills" class="edit-input" :placeholder="t('watch.skillsPlaceholder')" spellcheck="false" />
                     </div>
@@ -1190,6 +1235,10 @@ onUnmounted(() => {
                     <div class="detail-section">
                       <h4>{{ t('watch.outputType') }}</h4>
                       <p>{{ getOutputLabel(selectedWatch.output.type) }}</p>
+                    </div>
+                    <div class="detail-section">
+                      <h4>{{ t('watch.runLimit') }}</h4>
+                      <p>{{ runLimitMinutes(selectedWatch.execution?.timeout) }} {{ t('watch.runLimitUnit') }}</p>
                     </div>
                     <div class="detail-section" v-if="selectedWatch.triggers.some(t => t.type === 'webhook')">
                       <h4>Webhook URL</h4>
@@ -2564,6 +2613,19 @@ onUnmounted(() => {
   font-size: 11px;
   color: var(--text-muted);
   white-space: nowrap;
+}
+
+.edit-limit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit-hint-block {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
 }
 
 .edit-select {

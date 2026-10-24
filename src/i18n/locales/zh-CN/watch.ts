@@ -232,6 +232,9 @@ export default {
     outputNotification: '系统通知',
     outputLog: '仅记录',
     outputSilent: '静默',
+    runLimit: '最长运行',
+    runLimitUnit: '分钟',
+    runLimitHint: '到点还没做完就停。',
 
     assistantTabTitle: '远程对话',
 
@@ -337,6 +340,7 @@ export default {
       promptRequired: '请输入任务指令',
       triggerRequired: '至少选择一种触发方式',
       filePathRequired: '文件变化触发器需要至少一个监控路径',
+      runLimitRange: '请填 {min} 到 {max} 之间的整数分钟',
     },
 
     // Webhook

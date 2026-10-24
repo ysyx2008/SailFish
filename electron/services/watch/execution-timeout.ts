@@ -1,5 +1,7 @@
-/** 未显式配置时的墙钟超时（秒） */
-export const DEFAULT_WATCH_TIMEOUT_SECONDS = 900
+import { clampWatchRunLimitSec, WATCH_RUN_LIMIT_DEFAULT_SEC } from '@shared/types'
+
+/** 没单独设置时的墙钟上限（秒），与界面上的 15 分钟是同一个数 */
+export const DEFAULT_WATCH_TIMEOUT_SECONDS = WATCH_RUN_LIMIT_DEFAULT_SEC
 
 /**
  * 事件循环停了这么久，当成电脑睡了。
@@ -44,9 +46,10 @@ export function timeoutWasSleep(track: AwakeTrack, timeoutMs: number): boolean {
   return track.maxGapMs >= SLEEP_GAP_MS && track.awakeMs < timeoutMs
 }
 
-/** 墙钟超时（毫秒） */
+/** 墙钟超时（毫秒）。没填、填 0、超出范围，都收成界面上那一档分钟数。 */
 export function watchExecutionTimeoutMs(timeoutSec?: number): number {
-  return (timeoutSec ?? DEFAULT_WATCH_TIMEOUT_SECONDS) * 1000
+  if (timeoutSec == null) return DEFAULT_WATCH_TIMEOUT_SECONDS * 1000
+  return clampWatchRunLimitSec(timeoutSec) * 1000
 }
 
 /** 整段执行的墙钟上限；超时后调用方须 abort 并释放锁 */

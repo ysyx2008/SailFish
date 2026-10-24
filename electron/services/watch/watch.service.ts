@@ -49,7 +49,7 @@ import { resolveAiProfile, validateProfileForRequest } from '../ai.service'
 import { t } from '../agent/i18n'
 import type { SensorService } from '../sensor'
 import type { HistoryService } from '../history.service'
-import { isWatchAgentKey, watchAgentKeyFor, WAKEUP_AGENT_KEY } from '@shared/types'
+import { clampWatchRunLimitSec, isWatchAgentKey, watchAgentKeyFor, WAKEUP_AGENT_KEY } from '@shared/types'
 import { watchTemplates, getTemplateById, getAllTemplateCategories, type WatchTemplate } from './templates'
 
 // cron-parser 动态导入
@@ -67,6 +67,18 @@ const DEFAULT_MAX_CONCURRENT_WATCHES = 5
 const CIRCUIT_CONFIG_BACKOFF_SEC = [5 * 60, 15 * 60, 30 * 60, 60 * 60] as const
 /** circuit breaker：transient 类退避（秒） */
 const CIRCUIT_TRANSIENT_BACKOFF_SEC = [60, 2 * 60, 4 * 60, 8 * 60] as const
+
+function clampRunLimit<T extends { execution?: { timeout?: number } }>(params: T): T {
+  const execution = params.execution
+  if (!execution || execution.timeout == null) return params
+  return {
+    ...params,
+    execution: {
+      ...execution,
+      timeout: clampWatchRunLimitSec(Number(execution.timeout)),
+    },
+  }
+}
 
 type CircuitFailureClass = 'config' | 'transient'
 
@@ -259,7 +271,7 @@ export class WatchService {
       return t
     })
 
-    const watch = this.store.create({ ...params, triggers })
+    const watch = this.store.create(clampRunLimit({ ...params, triggers }))
 
     if (watch.enabled && this.isRunning) {
       this.scheduleTimeTriggers(watch)
@@ -274,7 +286,11 @@ export class WatchService {
     if (updates.triggers) {
       this.validateTriggers(updates.triggers)
     }
-    const watch = this.store.update(id, updates)
+    const current = updates.execution ? this.store.get(id) : undefined
+    const merged = current?.execution && updates.execution
+      ? { ...updates, execution: { ...current.execution, ...updates.execution } }
+      : updates
+    const watch = this.store.update(id, clampRunLimit(merged))
     if (watch) {
       this.cancelTimers(id)
       this.unregisterSensorTargets(id)
@@ -714,7 +730,7 @@ export class WatchService {
         triggerType: event.type,
         agentSessionId
       })
-      const timeoutSec = watch.execution.timeout ?? DEFAULT_WATCH_TIMEOUT_SECONDS
+      const timeoutSec = Math.round(timeoutMs / 1000)
       const awakeTimer = setInterval(() => {
         const now = Date.now()
         noteAwakeGap(awake, now - awakeTick)
@@ -727,7 +743,7 @@ export class WatchService {
             watch, enhancedPrompt, isSilent, isWakeup, agentSessionId
           ),
           timeoutMs,
-          t('error.watch_timeout', { seconds: timeoutSec }),
+          t('error.watch_timeout', { minutes: timeoutSec / 60 }),
         )
       } finally {
         noteAwakeGap(awake, Date.now() - awakeTick)

@@ -229,6 +229,9 @@ export default {
     outputNotification: 'System Notification',
     outputLog: 'Log Only',
     outputSilent: 'Silent',
+    runLimit: 'Time limit',
+    runLimitUnit: 'minutes',
+    runLimitHint: 'It stops if it is still going when the time is up.',
 
     assistantTabTitle: 'Remote Chat',
 
@@ -323,6 +326,7 @@ export default {
       promptRequired: 'Task prompt is required',
       triggerRequired: 'At least one trigger is required',
       filePathRequired: 'File change trigger requires at least one path',
+      runLimitRange: 'Enter a whole number of minutes from {min} to {max}',
     },
 
     webhookUrl: 'Webhook URL',
