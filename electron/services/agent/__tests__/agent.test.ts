@@ -3059,6 +3059,42 @@ describe('每场对话自己的审批方式', () => {
     expect(agent.getApproval()).toBe('autoReview')
   })
 
+  it('IM 明确开了替我审批：这一轮走评审，不改这场记下的', async () => {
+    const { agent } = setup({ executionMode: 'relaxed', review: false })
+    await agent.run('桌面上一句', createMockContext())
+    expect(agent.getApproval()).toBe('relaxed')
+    expect(reviewApplies(agent)).toBe(false)
+
+    agent.updateConfig({ executionMode: 'relaxed', autoApprovalReview: true })
+    await agent.run('IM 来的一句', createMockContext())
+    expect(reviewApplies(agent)).toBe(true)
+    expect(agent.executionMode).toBe('relaxed')
+    expect(agent.getApproval()).toBe('relaxed')
+
+    await agent.run('回到桌面', createMockContext())
+    expect(reviewApplies(agent)).toBe(false)
+    expect(agent.executionMode).toBe('relaxed')
+  })
+
+  it('IM 明确没开替我审批：不跟着桌面这场，也不跟着全局开关', async () => {
+    const { agent } = setup({ review: true })
+    await agent.run('桌面上一句', createMockContext())
+    expect(reviewApplies(agent)).toBe(true)
+
+    agent.updateConfig({ executionMode: 'relaxed', autoApprovalReview: false })
+    await agent.run('IM 来的一句', createMockContext())
+    expect(reviewApplies(agent)).toBe(false)
+    expect(agent.getApproval()).toBe('autoReview')
+  })
+
+  it('自由档即使带了替我审批也不评', async () => {
+    const { agent } = setup({ review: false })
+    agent.updateConfig({ executionMode: 'free', autoApprovalReview: true })
+    await agent.run('IM 来的一句', createMockContext())
+    expect(agent.executionMode).toBe('free')
+    expect(reviewApplies(agent)).toBe(false)
+  })
+
   it('换成全新一场时，之前先记下的不带过去', () => {
     const { agent } = setup()
     agent.setApproval('free')

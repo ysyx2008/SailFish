@@ -33,6 +33,7 @@ import type {
   IMProcessMode
 } from './types'
 import { CONFIRM_KEYWORDS, REJECT_KEYWORDS, IM_TEXT_MAX_LENGTH, isBuiltinImPlatform, type BuiltinImPlatform } from './types'
+import { imApprovalFromStored, storedFromImApproval } from './approval'
 import { DingTalkAdapter } from './dingtalk-adapter'
 import { FeishuAdapter } from './feishu-adapter'
 import { SlackAdapter } from './slack-adapter'
@@ -622,6 +623,7 @@ export class IMService {
     wecom: { enabled: false, botId: '', secret: '' },
     wechat: { enabled: false, token: '', baseUrl: '' },
     executionMode: 'relaxed',
+    autoApprovalReview: false,
     sessionTimeoutMinutes: 60,
     processMode: 'messages',
     sendThinkingProcess: false,
@@ -680,6 +682,17 @@ export class IMService {
    */
   setExecutionMode(mode: ExecutionMode) {
     this.config.executionMode = mode
+  }
+
+  /** IM 运行模式里的「替我审批」。和联络输入框那一档是同一个。 */
+  setAutoApprovalReview(enabled: boolean) {
+    this.config.autoApprovalReview = enabled
+  }
+
+  /** 联络和即时通讯共用的那一档。新对话的起步档不在这里。 */
+  private sharedApproval() {
+    const config = getConfigService()
+    return imApprovalFromStored(config.get('imExecutionMode'), config.get('imAutoApprovalReview'))
   }
 
   /**
@@ -1668,10 +1681,13 @@ export class IMService {
         } : {})
       }
 
+      const approval = this.sharedApproval()
+      const stored = storedFromImApproval(approval)
       await this.deps.agentService.runAssistant(agentId, fullMessage, context, {
         enabled: true, commandTimeout: 30000,
         autoExecuteSafe: true, autoExecuteModerate: true,
-        executionMode: this.config.executionMode,
+        executionMode: stored.executionMode,
+        autoApprovalReview: approval === 'autoReview',
         debugMode: false
       }, undefined, {
         onStart: (_runId: string, userTask: string) => {
@@ -2524,7 +2540,7 @@ export class IMService {
     return [
       t('im.status_title'),
       `${t('im.status_state')}: ${runStatus?.isRunning ? t('im.status_running') : t('im.status_idle')}`,
-      `${t('im.status_exec_mode')}: ${this.config.executionMode}`,
+      `${t('im.status_exec_mode')}: ${this.sharedApproval()}`,
       connected('DingTalk', this.isDingTalkConnected()),
       connected('Feishu', this.isFeishuConnected()),
       connected('Slack', this.isSlackConnected()),

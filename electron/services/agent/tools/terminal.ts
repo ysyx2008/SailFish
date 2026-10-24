@@ -4,11 +4,15 @@
  */
 import stripAnsi from 'strip-ansi'
 import { t } from '../i18n'
+import { assessCommandRiskDetailed } from '../risk-assessor'
+import { auditContextFromConfig } from '../audit-context-from-config'
+import { commandNeedsConfirm, formatHardBlockedMessage, isSubAgentBlocked } from '../command-audit/confirm-policy'
+import { resolveCommandToolConfirmation } from '../allowlist/resolve-command-confirm'
 import { getTerminalAwarenessService } from '../../terminal-awareness'
 import { getLastNLinesFromBuffer, getScreenAnalysisFromFrontend } from '../../screen-content.service'
 import { truncateFromEnd } from './utils'
 import { lazyReconnectAfterDisconnect } from './pane-reconnect'
-import type { ToolExecutorConfig, AgentConfig, ToolResult } from './types'
+import type { ToolExecutorConfig, AgentConfig, ToolResult, RiskLevel } from './types'
 
 /**
  * 获取终端上下文（从末尾读取 N 行）
@@ -409,33 +413,14 @@ export async function sendControlKey(
 }
 
 /**
- * 发送文本输入到终端
+ * 把已经过门的文本写进终端。pressEnter 为假时不补回车。
  */
-export async function sendInput(
+async function deliverTerminalInput(
   ptyId: string,
-  args: Record<string, unknown>,
-  config: AgentConfig,
-  executor: ToolExecutorConfig
+  text: string,
+  pressEnter: boolean,
+  executor: ToolExecutorConfig,
 ): Promise<ToolResult> {
-  const text = args.text as string
-  const pressEnter = args.press_enter !== false
-
-  if (text === undefined || text === null) {
-    return { success: false, output: '', error: t('error.input_text_required') }
-  }
-
-  if (text.length > 1000) {
-    return { success: false, output: '', error: t('error.input_text_too_long') }
-  }
-
-  executor.addStep({
-    type: 'tool_call',
-    content: `${t('input.send')}: "${text}"${pressEnter ? ' + Enter' : ''}`,
-    toolName: 'send_input',
-    toolArgs: { text, press_enter: pressEnter },
-    riskLevel: 'safe'
-  })
-
   try {
     // write 返回 false = 目标窗格已不存在；第二条 \r 也不必尝试了
     if (!executor.terminalService.write(ptyId, text)) {
@@ -464,9 +449,9 @@ export async function sendInput(
       toolResult: terminalOutput ? truncateFromEnd(terminalOutput, 300) : t('input.sent')
     })
 
-    return { 
-      success: true, 
-      output: terminalOutput 
+    return {
+      success: true,
+      output: terminalOutput
         ? t('input.sent_with_output', { input: inputDesc, output: terminalOutput })
         : t('input.sent_output', { input: inputDesc })
     }
@@ -474,4 +459,78 @@ export async function sendInput(
     const errorMsg = error instanceof Error ? error.message : t('input.send_failed')
     return { success: false, output: '', error: errorMsg }
   }
+}
+
+/**
+ * 发送文本输入到终端。
+ * 不按回车：直接写入。
+ * 按回车：这段文字走和 execute_command 同一套风险评估与确认。
+ */
+export async function sendInput(
+  ptyId: string,
+  args: Record<string, unknown>,
+  toolCallId: string,
+  config: AgentConfig,
+  executor: ToolExecutorConfig
+): Promise<ToolResult> {
+  const text = args.text as string
+  const pressEnter = args.press_enter !== false
+
+  if (text === undefined || text === null) {
+    return { success: false, output: '', error: t('error.input_text_required') }
+  }
+
+  if (text.length > 1000) {
+    return { success: false, output: '', error: t('error.input_text_too_long') }
+  }
+
+  let riskLevel: RiskLevel = 'safe'
+  if (pressEnter) {
+    const assessment = await assessCommandRiskDetailed(text, auditContextFromConfig(config))
+    if (assessment.level === 'blocked') {
+      return { success: false, output: '', error: formatHardBlockedMessage(assessment, text) }
+    }
+    if (isSubAgentBlocked(assessment, config.commandRiskPolicy) && executor.isSubAgent) {
+      return { success: false, output: '', error: t('dispatch.command_blocked', { command: text }) }
+    }
+    riskLevel = assessment.level
+    executor.addStep({
+      type: 'tool_call',
+      content: `${t('input.send')}: "${text}" + Enter`,
+      toolName: 'send_input',
+      toolArgs: { text, press_enter: true },
+      riskLevel,
+    })
+    if (commandNeedsConfirm(assessment, config.executionMode, config.commandRiskPolicy)) {
+      const confirm = await resolveCommandToolConfirmation(
+        'send_input',
+        { text, press_enter: true },
+        assessment,
+        config,
+        toolCallId,
+        riskLevel,
+        executor,
+      )
+      if (!confirm.proceed) {
+        executor.addStep({
+          type: 'tool_result',
+          content: `⛔ ${t('status.user_rejected')}`,
+          toolName: 'send_input',
+          toolResult: t('status.user_rejected'),
+          rejected: true,
+        })
+        return confirm.result
+      }
+    }
+  } else {
+    executor.addStep({
+      type: 'tool_call',
+      content: `${t('input.send')}: "${text}"`,
+      toolName: 'send_input',
+      toolArgs: { text, press_enter: false },
+      riskLevel: 'safe',
+    })
+  }
+
+  return deliverTerminalInput(ptyId, text, pressEnter, executor)
 }

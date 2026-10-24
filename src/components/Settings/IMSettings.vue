@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { ExecutionMode, IMProcessMode } from '@shared/types'
+import type { ApprovalMode, IMProcessMode } from '@shared/types'
 import { useTerminalStore } from '../../stores/terminal'
 import WeChatQrConnect from '../WeChatQrConnect.vue'
 import { SettingsPage, SettingsGroup, SettingRow, SettingToggle, SettingSegmented, SettingHelp } from './kit'
@@ -98,7 +98,7 @@ const tgAutoConnect = ref(false)
 const wcAutoConnect = ref(false)
 const wxAutoConnect = ref(true)
 // 执行模式
-const executionMode = ref<ExecutionMode>('relaxed')
+const executionMode = ref<ApprovalMode>('relaxed')
 // 过程消息投递模式
 const processMode = ref<IMProcessMode>('messages')
 // 发送思考过程
@@ -109,6 +109,7 @@ const showFreeModeConfirm = ref(false)
 const executionModeOptions = computed(() => [
   { value: 'strict', label: t('settings.im.modeStrict'), title: t('settings.im.modeStrictDesc') },
   { value: 'relaxed', label: t('settings.im.modeRelaxed'), title: t('settings.im.modeRelaxedDesc') },
+  { value: 'autoReview', label: t('settings.im.modeAutoReview'), title: t('settings.im.modeAutoReviewDesc') },
   { value: 'free', label: t('settings.im.modeFree'), title: t('settings.im.modeFreeDesc'), tone: 'danger' as const },
 ])
 
@@ -119,9 +120,27 @@ const processModeOptions = computed(() => [
 ])
 
 let cleanupImListener: (() => void) | null = null
+let cleanupConfigChanged: (() => void) | null = null
+
+function shownApproval(mode: string | undefined): ApprovalMode {
+  return mode === 'strict' || mode === 'relaxed' || mode === 'autoReview' || mode === 'free'
+    ? mode
+    : 'relaxed'
+}
+
+/** 这一页开着时，对话里改了运行模式也要立刻换档，不要停在打开时读到的那一档。 */
+async function refreshExecutionMode() {
+  try {
+    const config = await window.electronAPI.im.getConfig()
+    executionMode.value = shownApproval(config.executionMode)
+  } catch { /* 读不到就保持眼前这一档 */ }
+}
 
 onMounted(async () => {
   await loadIMSettings()
+  cleanupConfigChanged = window.electronAPI.config.onChanged(() => {
+    void refreshExecutionMode()
+  })
 
   cleanupImListener = window.electronAPI.im.onConnectionChange((data) => {
     if (data.platform === 'dingtalk') {
@@ -162,6 +181,7 @@ function onWxQrConnected() {
 
 onUnmounted(() => {
   cleanupImListener?.()
+  cleanupConfigChanged?.()
 })
 
 async function loadIMSettings() {
@@ -191,7 +211,7 @@ async function loadIMSettings() {
     wcAutoConnect.value = config.wecom?.autoConnect || false
     wxHasToken.value = config.wechat?.hasToken || false
     wxAutoConnect.value = config.wechat?.autoConnect !== false
-    executionMode.value = config.executionMode || 'relaxed'
+    executionMode.value = shownApproval(config.executionMode)
     processMode.value = config.processMode || 'messages'
     sendThinkingProcess.value = config.sendThinkingProcess === true
 
@@ -497,7 +517,7 @@ async function toggleSendThinkingProcess() {
   }
 }
 
-async function changeExecutionMode(mode: ExecutionMode) {
+async function changeExecutionMode(mode: ApprovalMode) {
   const oldMode = executionMode.value
   executionMode.value = mode
   try {
@@ -518,7 +538,7 @@ function onExecutionModeSelect(mode: string) {
     if (executionMode.value !== 'free') requestFreeMode()
     return
   }
-  changeExecutionMode(mode as ExecutionMode)
+  changeExecutionMode(mode as ApprovalMode)
 }
 
 async function confirmEnableFreeMode() {

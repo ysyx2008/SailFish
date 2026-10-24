@@ -29,6 +29,8 @@ import {
   formatSshSessionsSummary,
 } from './ssh-sessions'
 import type { AiProfile } from '@shared/types'
+import { isApprovalMode } from '@shared/types'
+import { imApprovalFromStored, persistSharedApproval, storedFromImApproval } from '../../../im/approval'
 import { updateSettings as applyWebSearchSettings } from '../../../web-search/index'
 import {
   executeWebSearchSettingsAction,
@@ -94,7 +96,7 @@ const CONFIG_REGISTRY: ConfigMeta[] = [
   { key: 'imWeComBotId', label: '企业微信 Bot ID', category: 'im', type: 'string' },
   { key: 'imWeComSecret', label: '企业微信长连接密钥', category: 'im', type: 'string' },
   // IM - 通用
-  { key: 'imExecutionMode', label: 'IM Agent 执行模式', category: 'im', type: 'string', options: ['strict', 'relaxed', 'free'] },
+  { key: 'imExecutionMode', label: 'IM Agent 执行模式', category: 'im', type: 'string', options: ['strict', 'relaxed', 'autoReview', 'free'] },
 
   // Gateway
   { key: 'gatewayAutoStart', label: '网关自动启动', category: 'gateway', type: 'boolean' },
@@ -127,6 +129,23 @@ const CONFIG_REGISTRY: ConfigMeta[] = [
 
 const CONFIG_MAP = new Map(CONFIG_REGISTRY.map(m => [m.key, m]))
 
+/**
+ * 改这些会改规则、执行方式、网关或渠道密钥。写入前走现有的用户确认。
+ * 名单是配置键本身，不按名字里的词来猜。
+ */
+const CONFIRM_BEFORE_SET = new Set([
+  'aiRules',
+  'imExecutionMode',
+  'gatewayHost',
+  'gatewayAutoStart',
+  'imDingTalkClientSecret',
+  'imFeishuAppSecret',
+  'imSlackBotToken',
+  'imSlackAppToken',
+  'imTelegramBotToken',
+  'imWeComSecret',
+])
+
 // ==================== 入口 ====================
 
 export async function executeConfigTool(
@@ -143,7 +162,7 @@ export async function executeConfigTool(
     case 'config_get':
       return getConfig(args)
     case 'config_set':
-      return setConfig(args)
+      return setConfig(args, _toolCallId, executor)
     case 'config_mcp_server_add':
       return addMcpServerConfig(args, executor)
     case 'config_mcp_server_update':
@@ -242,9 +261,13 @@ function listConfig(args: Record<string, unknown>): ToolResult {
         continue
       }
       const sensitive = isSensitiveKey(m.key)
+      const raw = resolveConfigValue(config, m.key)
+      const shown = m.key === 'imExecutionMode'
+        ? imApprovalFromStored(config.get('imExecutionMode'), config.get('imAutoApprovalReview'))
+        : raw
       const display = sensitive
-        ? (resolveConfigValue(config, m.key) ? '_(已配置)_' : '_(未配置)_')
-        : formatValue(resolveConfigValue(config, m.key), m)
+        ? (raw ? '_(已配置)_' : '_(未配置)_')
+        : formatValue(shown, m)
       const flags = []
       if (m.readonly) flags.push('只读')
       if (sensitive) flags.push('敏感，只写')
@@ -276,7 +299,9 @@ function getConfig(args: Record<string, unknown>): ToolResult {
   }
 
   const config = getConfigService()
-  const val = resolveConfigValue(config, key)
+  const val = key === 'imExecutionMode'
+    ? imApprovalFromStored(config.get('imExecutionMode'), config.get('imAutoApprovalReview'))
+    : resolveConfigValue(config, key)
   if (key === 'mcpServers') {
     return { success: true, output: `**${meta.label}** (\`${key}\`)\n${formatMcpServersDetail(config)}` }
   }
@@ -292,9 +317,45 @@ function getConfig(args: Record<string, unknown>): ToolResult {
   return { success: true, output: `**${meta.label}** (\`${key}\`) = ${formatValue(val, meta)}` }
 }
 
+/**
+ * 联络输入框那一档和 IM 运行模式是同一个。不改新对话的起步档。
+ * 替我审批记成宽松加开关，不能把 autoReview 写进只认三档的执行模式。
+ */
+function applyImExecutionMode(
+  config: ReturnType<typeof getConfigService>,
+  value: unknown,
+  meta: ConfigMeta,
+): ToolResult {
+  if (!isApprovalMode(value)) {
+    return { success: false, output: '', error: `"${String(value)}" 不是 "imExecutionMode" 的有效值。可选: strict, relaxed, autoReview, free` }
+  }
+  try {
+    persistSharedApproval((key, storedValue) => {
+      applyConfigValue(config, key, storedValue, typeof storedValue === 'boolean' ? 'boolean' : 'string')
+    }, value)
+    try {
+      const stored = storedFromImApproval(value)
+      const im = getIMService()
+      im.setExecutionMode(stored.executionMode)
+      im.setAutoApprovalReview(stored.autoApprovalReview)
+    } catch (err) {
+      log.warn('IM 执行模式已写入，运行中的 IM 没跟上:', err)
+    }
+    notifyFrontendConfigChanged()
+    const shown = value
+    return { success: true, output: `✅ 已设置 **${meta.label}** (\`${meta.key}\`) = ${formatValue(shown, meta)}` }
+  } catch (err) {
+    return { success: false, output: '', error: `设置失败: ${err instanceof Error ? err.message : String(err)}` }
+  }
+}
+
 // ==================== config_set ====================
 
-function setConfig(args: Record<string, unknown>): ToolResult {
+async function setConfig(
+  args: Record<string, unknown>,
+  toolCallId: string,
+  executor: ToolExecutorConfig,
+): Promise<ToolResult> {
   const key = args.key as string
   const value = args.value
   if (!key) return { success: false, output: '', error: '缺少 key 参数' }
@@ -325,7 +386,24 @@ function setConfig(args: Record<string, unknown>): ToolResult {
     return { success: false, output: '', error: `"${value}" 不是 "${key}" 的有效值。可选: ${meta.options.join(', ')}` }
   }
 
+  if (CONFIRM_BEFORE_SET.has(key)) {
+    const approved = await executor.waitForConfirmation(
+      toolCallId,
+      'config_set',
+      { key, value },
+      'dangerous',
+      meta.label,
+    )
+    if (!approved) {
+      return { success: false, output: '', error: '未确认，这项配置没有改' }
+    }
+  }
+
   const config = getConfigService()
+
+  if (key === 'imExecutionMode') {
+    return applyImExecutionMode(config, value, meta)
+  }
 
   try {
     applyConfigValue(config, key, value, meta.type)

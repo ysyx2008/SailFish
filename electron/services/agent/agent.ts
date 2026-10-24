@@ -232,9 +232,16 @@ export abstract class Agent {
 
   /** 调用方给下一轮指定的执行档（IM / 网页 / 关切 / 命令行等渠道自己的设定），开跑时用掉 */
   private _runModeOverride?: ExecutionMode
+  /**
+   * 和执行档一起传来的「替我审批」。
+   * undefined = 这一轮没带，仍看桌面那个开关（网页等）；true/false = 渠道自己定了（IM）。
+   */
+  private _runAutoReviewOverride?: boolean
 
-  /** 这一轮按渠道自己的设定问（替我审批也跟全局开关），不看会话记下的 */
+  /** 这一轮按渠道自己的设定问，不看会话记下的 */
   private _runFollowsChannel = false
+  /** 渠道明确带了替我审批时用它；没带则这一轮仍看桌面那个开关 */
+  private _channelAutoReview?: boolean
 
   /** 伙计：不进侧栏 / L2 / L3 / 诞生引导；对话记录单独存（见 `_childRecorder`） */
   private _isSubAgent = false
@@ -1391,7 +1398,11 @@ export abstract class Agent {
   updateConfig(config: Partial<AgentConfig> & { profileId?: string }): void {
     if (config.executionMode !== undefined) {
       this.executionMode = config.executionMode
-      if (!this.currentRun?.isRunning) this._runModeOverride = config.executionMode
+      if (!this.currentRun?.isRunning) {
+        this._runModeOverride = config.executionMode
+        // 没带这个字段就是「渠道没表态」，下一轮回退到桌面开关，不沿用上一次 IM 的选择
+        this._runAutoReviewOverride = config.autoApprovalReview
+      }
     }
     if (config.commandTimeout !== undefined) {
       this.commandTimeout = config.commandTimeout
@@ -1723,13 +1734,17 @@ export abstract class Agent {
 
   /**
    * 开跑时定下这一轮怎么问：会话没有审批方式就补上（先记下的 → 起步值）；
-   * 调用方这一轮指定了执行档（各渠道自己的设定）就整轮按渠道的来（含替我审批开关），
-   * 不改会话记下的；否则按会话的。
+   * 调用方这一轮指定了执行档（各渠道自己的设定）就整轮按渠道的来，
+   * 不改会话记下的；渠道若明确带了替我审批，也只用这一轮的，不看桌面那场。
+   * 否则按会话的。
    */
   private applyApprovalForRun(run: AgentRun): void {
     const override = this._runModeOverride
+    const channelAutoReview = this._runAutoReviewOverride
     this._runModeOverride = undefined
+    this._runAutoReviewOverride = undefined
     this._runFollowsChannel = override !== undefined
+    this._channelAutoReview = this._runFollowsChannel ? channelAutoReview : undefined
     const conv = this._conversation
     if (conv && !this._isSubAgent) {
       const armed = this._armedApproval
@@ -6686,6 +6701,10 @@ export abstract class Agent {
     // 写系统提示词时也会问到这里，配置服务只是部分实现（测试替身、CLI 精简环境）时按"没开"处理
     if (unattended) return false
     if (!conversationPolicy(inferConversationKind(this._agentId)).autoApprovalReview) return false
+    // IM 明确带了开或关：只用它，不跟着桌面这场对话的下拉框走。没带的渠道（网页）仍看桌面那个开关。
+    if (this._runFollowsChannel && this._channelAutoReview !== undefined) {
+      return this._channelAutoReview === true && this.executionMode !== 'free'
+    }
     const approval = this._runFollowsChannel ? undefined : this.getApproval()
     if (approval) return approval === 'autoReview'
     return this.services.configService?.isAutoApprovalReviewEnabled?.() === true

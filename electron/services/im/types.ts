@@ -53,6 +53,11 @@ export interface IMServiceConfig {
   wechat: WeChatConfig
   /** Agent 执行模式，默认 relaxed */
   executionMode: ExecutionMode
+  /**
+   * 这一轮从 IM 进来时，本来要问的是否先交给评审员。
+   * 等于运行模式里的「替我审批」；自由档下不起作用。默认关。
+   */
+  autoApprovalReview: boolean
   /** 空闲会话超时（分钟），默认 60 */
   sessionTimeoutMinutes: number
   /**

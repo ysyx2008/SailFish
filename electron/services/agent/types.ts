@@ -40,6 +40,12 @@ export interface AgentConfig {
   autoExecuteSafe: boolean      // safe 命令自动执行
   autoExecuteModerate: boolean  // moderate 命令是否自动执行
   executionMode: ExecutionMode  // 执行模式：strict=所有命令需确认，relaxed=仅危险命令需确认，free=全自动（危险！）
+  /**
+   * 渠道这一轮是否先走替我审批。
+   * 和 executionMode 一起传来才算数：IM 会明确传 true 或 false；
+   * 没传的渠道（网页等）这一轮仍看桌面那个开关。
+   */
+  autoApprovalReview?: boolean
   debugMode: boolean            // 调试模式：显示详细的工具调用步骤
   /** 解析失败 / 未知命令 的风险策略（按 executionMode 分档），默认走 DEFAULT_COMMAND_RISK_POLICY */
   commandRiskPolicy?: CommandRiskPolicy

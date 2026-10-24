@@ -1,5 +1,5 @@
 import { computed, ref, type ComputedRef } from 'vue'
-import { approvalFromSettings, type ApprovalMode, type ExecutionMode } from '@shared/types'
+import { approvalFromSettings, executionModeOfApproval, type ApprovalMode, type ExecutionMode } from '@shared/types'
 import { useConfigStore } from '../stores/config'
 
 /** 下拉框显示和修改的是谁的审批方式 */
@@ -20,7 +20,7 @@ export function useDefaultApproval(): ApprovalTarget {
     configStore.autoApprovalReview
   ))
   const commit = (next: ApprovalMode) => {
-    void configStore.setExecutionMode(next === 'autoReview' ? 'relaxed' : next)
+    void configStore.setExecutionMode(executionModeOfApproval(next))
     void configStore.setAutoApprovalReview(next === 'autoReview')
   }
   return { current, commit }

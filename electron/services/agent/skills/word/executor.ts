@@ -81,6 +81,11 @@ import { app } from 'electron'
 import { getKnowledgeService } from '../../../knowledge'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import {
+  exportPdfWithLibreOffice,
+  exportPdfWithMsWordMac,
+  exportPdfWithMsWordWindows,
+} from './pdf-export-launch'
 
 const execAsync = promisify(exec)
 
@@ -683,54 +688,6 @@ function getOfficeInstallHint(): string {
   } else {
     return t('word.install_hint_linux')
   }
-}
-
-/**
- * 使用 MS Word 导出 PDF (Windows)
- */
-async function exportPdfWithMsWordWindows(docxPath: string, pdfPath: string): Promise<void> {
-  // PowerShell 脚本使用 Word COM 对象导出 PDF
-  const script = `
-$word = New-Object -ComObject Word.Application
-$word.Visible = $false
-try {
-  $doc = $word.Documents.Open("${docxPath.replace(/\\/g, '\\\\')}")
-  $doc.SaveAs("${pdfPath.replace(/\\/g, '\\\\')}", 17)
-  $doc.Close()
-} finally {
-  $word.Quit()
-}
-`
-  await execAsync(`powershell -Command "${script.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { timeout: 60000 })
-}
-
-/**
- * 使用 MS Word 导出 PDF (macOS)
- */
-async function exportPdfWithMsWordMac(docxPath: string, pdfPath: string): Promise<void> {
-  // AppleScript 调用 Word for Mac
-  const script = `
-tell application "Microsoft Word"
-  activate
-  open POSIX file "${docxPath}"
-  set theDoc to active document
-  save as theDoc file name POSIX file "${pdfPath}" file format format PDF
-  close theDoc saving no
-end tell
-`
-  await execAsync(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { timeout: 60000 })
-}
-
-/**
- * 使用 LibreOffice 导出 PDF
- */
-async function exportPdfWithLibreOffice(docxPath: string, outDir: string): Promise<void> {
-  const platform = process.platform
-  const cmd = platform === 'darwin'
-    ? `/Applications/LibreOffice.app/Contents/MacOS/soffice`
-    : 'libreoffice'
-  
-  await execAsync(`"${cmd}" --headless --convert-to pdf --outdir "${outDir}" "${docxPath}"`, { timeout: 60000 })
 }
 
 /**
