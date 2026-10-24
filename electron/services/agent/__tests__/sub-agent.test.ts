@@ -45,7 +45,7 @@ vi.mock('../../web-search/index', () => ({
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, parseDispatchTasks, SubAgentWorkspace } from '../tools/sub-agent'
+import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, parseDispatchTasks, SubAgentWorkspace, viewStepsPerAgent } from '../tools/sub-agent'
 import { getAgentTools } from '../tools'
 import { MAX_LIVE_CHILDREN, SubAgentRoster, type ChildAgentHandle } from '../sub-agent-roster'
 import type { ToolExecutorConfig, AgentConfig } from '../tools/types'
@@ -587,7 +587,8 @@ describe('进度推给界面', () => {
     const step = (executor as any)._steps.find((s: AgentStep) => s.toolName === 'dispatch_agents') as AgentStep
     expect(step.subAgents).toHaveLength(30)
     expect(step.subAgents!.every(sa => sa.status === 'completed')).toBe(true)
-    expect(step.subAgents![0].steps).toHaveLength(20)
+    // 每人实际 20 步；派发那一步的视图按人数收紧，30 人时每人只留 viewStepsPerAgent(30) 步
+    expect(step.subAgents![0].steps).toHaveLength(Math.min(20, viewStepsPerAgent(30)))
     expect(step.subAgents![0].steps!.every(st => st.result === undefined)).toBe(true)
     expect(step.subAgents![3].prompt).toBe('条目 3')
     expect((step.toolArgs as { batch?: { instruction: string } }).batch?.instruction).toBe('很长的共同指令'.repeat(50))
