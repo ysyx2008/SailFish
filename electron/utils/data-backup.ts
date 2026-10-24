@@ -564,7 +564,36 @@ export async function extractBackupToStaging(opts: ExtractBackupOptions): Promis
 
   if (shouldCancel?.()) throw new CopyCanceledError()
   await emit('', extracted, true)
+  restoreOwnerOnlyModes(staging)
   return { files: fileCount, totalBytes }
+}
+
+/** 解压用的是普通写文件，权限会变成别人也能读。主密钥和登录信息仍只留给本人。 */
+const OWNER_ONLY_BASENAMES = new Set(['master.key', 'credentials.json'])
+
+function restoreOwnerOnlyModes(root: string): void {
+  if (process.platform === 'win32') return
+  const stack = [root]
+  while (stack.length > 0) {
+    const dir = stack.pop()!
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(full)
+        continue
+      }
+      if (entry.isFile() && OWNER_ONLY_BASENAMES.has(entry.name)) {
+        fs.chmodSync(full, 0o600)
+      }
+    }
+  }
 }
 
 /**
