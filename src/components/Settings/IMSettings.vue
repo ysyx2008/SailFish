@@ -120,9 +120,27 @@ const processModeOptions = computed(() => [
 ])
 
 let cleanupImListener: (() => void) | null = null
+let cleanupConfigChanged: (() => void) | null = null
+
+function shownApproval(mode: string | undefined): ApprovalMode {
+  return mode === 'strict' || mode === 'relaxed' || mode === 'autoReview' || mode === 'free'
+    ? mode
+    : 'relaxed'
+}
+
+/** 这一页开着时，对话里改了运行模式也要立刻换档，不要停在打开时读到的那一档。 */
+async function refreshExecutionMode() {
+  try {
+    const config = await window.electronAPI.im.getConfig()
+    executionMode.value = shownApproval(config.executionMode)
+  } catch { /* 读不到就保持眼前这一档 */ }
+}
 
 onMounted(async () => {
   await loadIMSettings()
+  cleanupConfigChanged = window.electronAPI.config.onChanged(() => {
+    void refreshExecutionMode()
+  })
 
   cleanupImListener = window.electronAPI.im.onConnectionChange((data) => {
     if (data.platform === 'dingtalk') {
@@ -163,6 +181,7 @@ function onWxQrConnected() {
 
 onUnmounted(() => {
   cleanupImListener?.()
+  cleanupConfigChanged?.()
 })
 
 async function loadIMSettings() {
@@ -192,12 +211,7 @@ async function loadIMSettings() {
     wcAutoConnect.value = config.wecom?.autoConnect || false
     wxHasToken.value = config.wechat?.hasToken || false
     wxAutoConnect.value = config.wechat?.autoConnect !== false
-    executionMode.value = config.executionMode === 'strict'
-      || config.executionMode === 'relaxed'
-      || config.executionMode === 'autoReview'
-      || config.executionMode === 'free'
-      ? config.executionMode
-      : 'relaxed'
+    executionMode.value = shownApproval(config.executionMode)
     processMode.value = config.processMode || 'messages'
     sendThinkingProcess.value = config.sendThinkingProcess === true
 
