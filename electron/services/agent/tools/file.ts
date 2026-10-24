@@ -356,31 +356,23 @@ export function ensureAgentWorkspaceDirs(): void {
   fs.mkdirSync(path.join(getWorkspacePath(), 'migrations'), { recursive: true })
 }
 
-/**
- * 清理 scratch/ 临时区：删除 mtime 超过 maxAgeDays 天的文件和空目录。
- *
- * - maxAgeDays <= 0 时跳过（用户可在设置里关闭自动清理）
- * - 只清 scratch/，不动 charts/、templates/ 等其他 workspace 子目录
- * - 保留 .gitkeep 等占位文件
- * - 启动时调用，确保没有 Agent 正在使用 scratch
- *
- * @returns 清理统计 { deletedFiles, deletedDirs, bytesFreed }
- */
-export function cleanupScratch(maxAgeDays: number): {
+export interface ScratchCleanupStats {
   deletedFiles: number
   deletedDirs: number
   bytesFreed: number
-} {
+}
+
+/**
+ * 删除目录里 mtime 超过 maxAgeDays 天的文件和空目录。
+ * 符号链接只看链接自身：过期就删链接，不进入它指向的位置。
+ */
+export function cleanupExpiredTree(root: string, maxAgeDays: number): ScratchCleanupStats {
   if (maxAgeDays <= 0) return { deletedFiles: 0, deletedDirs: 0, bytesFreed: 0 }
 
-  const scratch = getScratchPath()
   const cutoff = Date.now() - maxAgeDays * 86400_000
-  let deletedFiles = 0
-  let deletedDirs = 0
-  let bytesFreed = 0
 
   /** 递归遍历，先处理子目录再处理文件，自底向上删空目录 */
-  function walk(dir: string): { files: number; dirs: number; bytes: number } {
+  function walk(dir: string): ScratchCleanupStats {
     let files = 0
     let dirs = 0
     let bytes = 0
@@ -388,22 +380,34 @@ export function cleanupScratch(maxAgeDays: number): {
     try {
       entries = fs.readdirSync(dir)
     } catch {
-      return { files, dirs, bytes }
+      return { deletedFiles: files, deletedDirs: dirs, bytesFreed: bytes }
     }
 
     for (const name of entries) {
       const fullPath = path.join(dir, name)
       let stat: fs.Stats
       try {
-        stat = fs.statSync(fullPath)
+        stat = fs.lstatSync(fullPath)
       } catch {
+        continue
+      }
+      if (stat.isSymbolicLink()) {
+        if (stat.mtimeMs < cutoff) {
+          try {
+            fs.unlinkSync(fullPath)
+            files++
+            bytes += stat.size
+          } catch {
+            /* ignore */
+          }
+        }
         continue
       }
       if (stat.isDirectory()) {
         const sub = walk(fullPath)
-        files += sub.files
-        dirs += sub.dirs
-        bytes += sub.bytes
+        files += sub.deletedFiles
+        dirs += sub.deletedDirs
+        bytes += sub.bytesFreed
         // 子目录清空后，若自身也为空则删除
         try {
           if (fs.readdirSync(fullPath).length === 0) {
@@ -427,21 +431,35 @@ export function cleanupScratch(maxAgeDays: number): {
         }
       }
     }
-    return { files, dirs, bytes }
+    return { deletedFiles: files, deletedDirs: dirs, bytesFreed: bytes }
   }
 
-  const result = walk(scratch)
-  deletedFiles = result.files
-  deletedDirs = result.dirs
-  bytesFreed = result.bytes
+  return walk(root)
+}
 
-  if (deletedFiles > 0) {
+/**
+ * 清理 scratch/ 临时区：删除 mtime 超过 maxAgeDays 天的文件和空目录。
+ *
+ * - maxAgeDays <= 0 时跳过（用户可在设置里关闭自动清理）
+ * - 只清 scratch/，不动 charts/、templates/ 等其他 workspace 子目录
+ * - 保留 .gitkeep 等占位文件
+ * - 启动时调用，确保没有 Agent 正在使用 scratch
+ * - 符号链接过期时只删除链接，不删除它指向的文件
+ *
+ * @returns 清理统计 { deletedFiles, deletedDirs, bytesFreed }
+ */
+export function cleanupScratch(maxAgeDays: number): ScratchCleanupStats {
+  if (maxAgeDays <= 0) return { deletedFiles: 0, deletedDirs: 0, bytesFreed: 0 }
+
+  const result = cleanupExpiredTree(getScratchPath(), maxAgeDays)
+
+  if (result.deletedFiles > 0) {
     // 静态 import：打包后动态 require('../../../utils/logger') 相对 dist-electron 会解析失败
     const log = createLogger('scratch-cleanup')
-    log.info(`cleaned ${deletedFiles} files (${Math.round(bytesFreed / 1024)}KB) older than ${maxAgeDays}d`)
+    log.info(`cleaned ${result.deletedFiles} files (${Math.round(result.bytesFreed / 1024)}KB) older than ${maxAgeDays}d`)
   }
 
-  return { deletedFiles, deletedDirs, bytesFreed }
+  return result
 }
 
 /** 解析路径用于 workspace 边界检查（含符号链接；文件不存在时沿父目录链回退） */
