@@ -309,10 +309,12 @@ const ARCHIVE_MESSAGE_PAGE_CHARS = 20_000
 
 type ArchivedMessage = import('../../ai.service').AiMessage
 
-function asIndex(value: unknown): number | undefined {
-  const n = typeof value === 'string' && value.trim() ? Number(value) : value
-  if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) return undefined
-  return Math.floor(n)
+/** 没给 → undefined；给了但不是非负整数 → null（调用方报错，不悄悄当成 0） */
+function parseIndexArg(value: unknown): number | undefined | null {
+  if (value === undefined || value === null || value === '') return undefined
+  const n = typeof value === 'string' ? Number(value.trim()) : value
+  if (typeof n !== 'number' || !Number.isInteger(n) || n < 0) return null
+  return n
 }
 
 function roleLabelOf(msg: ArchivedMessage): string {
@@ -487,20 +489,23 @@ export function recallCompressed(
     userLines.push(line)
   }
 
-  const messageIndex = asIndex(args.message_index)
+  const refuse = (error: string): ToolResult => {
+    executor.addStep({ type: 'tool_result', content: error, toolName: 'recall', toolResult: error })
+    return { success: false, output: '', error }
+  }
+  const messageIndex = parseIndexArg(args.message_index)
+  const offsetArg = parseIndexArg(args.offset)
+  if (messageIndex === null) return refuse(t('context_tool.recall_arg_invalid', { name: 'message_index', value: String(args.message_index) }))
+  if (offsetArg === null) return refuse(t('context_tool.recall_arg_invalid', { name: 'offset', value: String(args.offset) }))
   if (messageIndex !== undefined) {
     const msg = messages[messageIndex]
     if (!msg) {
-      const error = t('context_tool.recall_index_out_of_range', { archiveId, count: messages.length, index: messageIndex })
-      executor.addStep({ type: 'tool_result', content: error, toolName: 'recall', toolResult: error })
-      return { success: false, output: '', error }
+      return refuse(t('context_tool.recall_index_out_of_range', { archiveId, count: messages.length, index: messageIndex }))
     }
-    const offset = asIndex(args.offset) ?? 0
+    const offset = offsetArg ?? 0
     const length = archivedMessageBody(msg).length
     if (offset > 0 && offset >= length) {
-      const error = t('context_tool.recall_offset_out_of_range', { index: messageIndex, length, offset })
-      executor.addStep({ type: 'tool_result', content: error, toolName: 'recall', toolResult: error })
-      return { success: false, output: '', error }
+      return refuse(t('context_tool.recall_offset_out_of_range', { index: messageIndex, length, offset }))
     }
     pushBoth(`**Message ${messageIndex} / ${messages.length}**`)
     pushBoth('')

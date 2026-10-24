@@ -131,6 +131,19 @@ describe('recall 取归档：一览只露开头，单条能取全文', () => {
     expect(r.error).toContain(String('短内容原样在'.length))
   })
 
+  it('负数、小数、非数字的 offset / message_index 报错，不悄悄当成 0', () => {
+    for (const bad of [{ offset: -5 }, { offset: -16000 }, { offset: 1.5 }, { offset: 'abc' }]) {
+      const r = recallCompressed({ archive_id: 'ca-1', message_index: 2, ...bad }, exec())
+      expect(r.success).toBe(false)
+      expect(r.error).toContain('offset')
+    }
+    const r = recallCompressed({ archive_id: 'ca-1', message_index: -1 }, exec())
+    expect(r.success).toBe(false)
+    expect(r.error).toContain('message_index')
+    // 字符串形式的合法数字照常接受
+    expect(recallCompressed({ archive_id: 'ca-1', message_index: '3', offset: '0' }, exec()).success).toBe(true)
+  })
+
   it('序号超出时报错并说明条数', () => {
     const r = recallCompressed({ archive_id: 'ca-1', message_index: 9 }, exec())
     expect(r.success).toBe(false)
