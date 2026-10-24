@@ -24,7 +24,8 @@ function sse(res, usage, delta, finish) {
 /** 脚本里每一步的写法 */
 /** finish 默认 stop；传 'length' 模拟回答停在输出额度上 */
 export const say = (content, finish = 'stop') => ({ kind: 'text', content, finish })
-export const callTool = (name, args) => ({ kind: 'tool', name, args })
+/** content：同一条消息里调工具之前先说的话（可不给） */
+export const callTool = (name, args, content) => ({ kind: 'tool', name, args, content })
 /** 接口直接报错（400，不会被自动重试） */
 export const fail = (message = 'mock failure') => ({ kind: 'fail', message })
 /** 接上了但一直不回，直到对方断开（用来按 Ctrl+C） */
@@ -93,7 +94,7 @@ export function startMockLlm(script) {
       if (script.jsonForNonStream && body.stream !== true && (action.kind === 'tool' || action.kind === 'text')) {
         const usage = usageFor(action.kind)
         const message = action.kind === 'tool'
-          ? { role: 'assistant', content: null, tool_calls: [{ id: `call_${requests.length}`, type: 'function', function: { name: action.name, arguments: JSON.stringify(action.args) } }] }
+          ? { role: 'assistant', content: action.content ?? null, tool_calls: [{ id: `call_${requests.length}`, type: 'function', function: { name: action.name, arguments: JSON.stringify(action.args) } }] }
           : { role: 'assistant', content: action.content }
         res.writeHead(200, { 'Content-Type': 'application/json', Connection: 'close' })
         res.end(JSON.stringify({
@@ -106,7 +107,7 @@ export function startMockLlm(script) {
       }
 
       if (action.kind === 'tool') {
-        sse(res, usageFor('tool'), { role: 'assistant', tool_calls: [{ index: 0, id: `call_${requests.length}`, type: 'function', function: { name: action.name, arguments: JSON.stringify(action.args) } }] }, 'tool_calls')
+        sse(res, usageFor('tool'), { role: 'assistant', ...(action.content ? { content: action.content } : {}), tool_calls: [{ index: 0, id: `call_${requests.length}`, type: 'function', function: { name: action.name, arguments: JSON.stringify(action.args) } }] }, 'tool_calls')
       } else if (action.kind === 'hang') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', Connection: 'close' })
         const timer = setTimeout(() => res.end(), 120_000)
