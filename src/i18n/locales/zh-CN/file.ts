@@ -171,6 +171,8 @@ export default {
     deleted: '{type}已删除',
     deleteFailed: '删除{type}失败',
     connectRemoteFirst: '请先连接远程服务器',
+    downloadFailed: '下载失败',
+    downloadOutsideName: '「{name}」会写到当前文件夹外面，已跳过',
     transferCancelled: '传输已取消',
     // 预览
     loading: '加载中...',

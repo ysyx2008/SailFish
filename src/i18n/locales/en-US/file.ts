@@ -171,6 +171,8 @@ export default {
     deleted: '{type} deleted',
     deleteFailed: 'Failed to delete {type}',
     connectRemoteFirst: 'Please connect to remote server first',
+    downloadFailed: 'Download failed',
+    downloadOutsideName: 'Skipped "{name}" because it would be written outside the current folder',
     transferCancelled: 'Transfer cancelled',
     // Preview
     loading: 'Loading...',
