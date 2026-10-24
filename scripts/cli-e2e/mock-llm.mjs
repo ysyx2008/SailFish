@@ -43,9 +43,11 @@ export function startMockLlm(script) {
   let userTurns = 0
   let continuations = 0
   const server = http.createServer((req, res) => {
-    let raw = ''
-    req.on('data', (chunk) => { raw += chunk })
+    // 按字节收齐再解码：汉字落在两段数据的交界上时，逐段转字符串会把它拆坏
+    const chunks = []
+    req.on('data', (chunk) => { chunks.push(chunk) })
     req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8')
       let body = {}
       try { body = JSON.parse(raw) } catch { /* 不是 JSON 的请求按没有处理 */ }
       const messages = body.messages ?? []

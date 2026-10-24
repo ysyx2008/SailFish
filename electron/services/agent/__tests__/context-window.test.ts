@@ -1165,6 +1165,11 @@ describe('ContextWindowManager — 历史任务成对保留', () => {
     expect(userMsg).toContain('recall(archive_id')
     // 配对的答复没受牵连
     expect(contents).toContain('看完了，是磁盘满')
+    // 「完整原文见归档」要兑现：被截短的那条，原文整条在归档里
+    const archivedOriginal = run.compressedArchives!
+      .flatMap(a => a.messages)
+      .find(msg => typeof msg.content === 'string' && msg.content.startsWith('帮我看这段日志'))
+    expect(archivedOriginal?.content).toBe(`帮我看这段日志：${huge}`)
   })
 
   it('压不压得动看真实读数：真实值够大就压，哪怕估算看着不够', async () => {

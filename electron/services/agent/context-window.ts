@@ -575,13 +575,15 @@ export class ContextWindowManager {
     pairs: TaskPair[],
     budgetTokens: number,
     archiveId: string
-  ): { messages: AiMessage[]; keptIndices: Set<number> } {
+  ): { messages: AiMessage[]; keptIndices: Set<number>; truncatedIndices: Set<number> } {
     const perMessageCap = Math.max(
       ContextWindowManager.MIN_PRESERVED_MESSAGE_TOKENS,
       Math.floor(budgetTokens / 4)
     )
     const messages: AiMessage[] = []
     const keptIndices = new Set<number>()
+    // 留下来但被截短的：窗口里只剩开头，原文要进归档才对得上「完整原文见归档」
+    const truncatedIndices = new Set<number>()
     let remaining = budgetTokens
 
     for (let i = pairs.length - 1; i >= 0; i--) {
@@ -600,10 +602,14 @@ export class ContextWindowManager {
       messages.unshift(reply)
       messages.unshift(user)
       keptIndices.add(pair.userIndex)
-      if (pair.replyIndex !== undefined) keptIndices.add(pair.replyIndex)
+      if (user.content !== pair.user.content) truncatedIndices.add(pair.userIndex)
+      if (pair.replyIndex !== undefined) {
+        keptIndices.add(pair.replyIndex)
+        if (pair.reply && reply.content !== pair.reply.content) truncatedIndices.add(pair.replyIndex)
+      }
     }
 
-    return { messages, keptIndices }
+    return { messages, keptIndices, truncatedIndices }
   }
 
   /** 单条超长时截断保留头部，标注归档 ID 让 AI 知道去哪找全文。 */
@@ -645,14 +651,14 @@ export class ContextWindowManager {
     // 保留，其余（中间过程的 assistant/tool）连同段 B 一起进归档。
     const systemMessages = run.messages.slice(0, lastUserIndex).filter(m => m.role === 'system')
     const pairs = this.extractTaskPairs(run.messages, lastUserIndex)
-    const { messages: preservedHistory, keptIndices } = this.selectPairsWithinBudget(
+    const { messages: preservedHistory, keptIndices, truncatedIndices } = this.selectPairsWithinBudget(
       pairs,
       this.getPreservedPairsBudget(),
       archiveId
     )
     const historyArchived = run.messages
       .slice(0, lastUserIndex)
-      .filter((m, i) => m.role !== 'system' && !keptIndices.has(i))
+      .filter((m, i) => m.role !== 'system' && (!keptIndices.has(i) || truncatedIndices.has(i)))
 
     if (toCompress.length === 0 && historyArchived.length === 0) return null
 
