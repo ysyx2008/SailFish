@@ -154,6 +154,29 @@ describe('从旧表升级', () => {
   })
 })
 
+describe('同 id 而正文不同的行', () => {
+  it('各自按自己的正文切词，不串到对方身上', async () => {
+    const table = await db.createTable('dupe', [
+      row('x_c0', '苹果香蕉'),
+      row('x_c0', "橙子葡萄 it's quoted"),
+      row('y_c0', '西瓜'),
+    ])
+    const result = await ki.prepare(table)
+    expect(result.backfilled).toBe(3)
+    expect(await table.countRows('tokens IS NULL')).toBe(0)
+
+    const apples = await table.query().where("content = '苹果香蕉'").toArray()
+    const oranges = await table.query().where("content LIKE '橙子%'").toArray()
+    expect(apples).toHaveLength(1)
+    expect(oranges).toHaveLength(1)
+    expect(apples[0].tokens).toBe(ki.tokensText('苹果香蕉'))
+    expect(oranges[0].tokens).toBe(ki.tokensText("橙子葡萄 it's quoted"))
+
+    const hits = await ki.search(table, { query: '橙子', limit: 5 })
+    expect(hits.map((h: any) => h.content)).toEqual(["橙子葡萄 it's quoted"])
+  })
+})
+
 describe('检索', () => {
   let table: any
   const docs = CORPUS.map((content, i) => ({ id: `s${i}_c0`, content }))

@@ -158,13 +158,39 @@ function isLanceCorruptionError(error) {
 
 // ────────────────────────── 表管理 helpers ──────────────────────────
 
+/**
+ * 让当前表具备关键词检索：补列、给还没切词的行切词、建全文索引。
+ * 没做成不挡向量这一半：关键词检索暂不可用，下次启动或下一次检索时再试。
+ */
+async function prepareKeyword() {
+  keywordReady = false
+  const t0 = Date.now()
+  const result = await keyword.prepare(table)
+  keywordReady = true
+  if (result.addedColumn || result.backfilled > 0) {
+    console.log('[LanceDBWorker] 关键词索引已就绪：补列=%s 补切词=%d 行，耗时 %dms',
+      result.addedColumn, result.backfilled, Date.now() - t0)
+  }
+  return result
+}
+
+/** 打开一张已经存在的表（另一个进程或旧版建的也可能缺 tokens 列，所以同样过一遍 prepare） */
+async function openExistingTable() {
+  table = await db.openTable(tableName)
+  try {
+    await prepareKeyword()
+  } catch (error) {
+    console.error('[LanceDBWorker] 关键词索引准备失败，关键词检索暂不可用:', error)
+  }
+}
+
 async function ensureTable(sampleRecord) {
   if (table) return
 
   try {
     const names = await db.tableNames()
     if (names.includes(tableName)) {
-      table = await db.openTable(tableName)
+      await openExistingTable()
       return
     }
   } catch (e) {
@@ -192,7 +218,7 @@ async function ensureTable(sampleRecord) {
     const msg = error instanceof Error ? error.message : String(error)
     if (msg.includes('already exists')) {
       console.warn('[LanceDBWorker] createTable 冲突（磁盘残留表），fallback 到 openTable')
-      table = await db.openTable(tableName)
+      await openExistingTable()
       return
     }
     throw error
@@ -305,16 +331,8 @@ async function handleInitialize(data) {
     } else {
       // 表读得开：让它具备关键词检索（补列、给还没切词的行切词、建全文索引）。
       // 没做成不挡向量这一半，下次启动再试
-      keywordReady = false
       try {
-        const t0 = Date.now()
-        const result = await keyword.prepare(table)
-        keywordReady = true
-        if (result.addedColumn || result.backfilled > 0) {
-          console.log('[LanceDBWorker] 关键词索引已就绪：补列=%s 补切词=%d 行，耗时 %dms',
-            result.addedColumn, result.backfilled, Date.now() - t0)
-        }
-        events.push({ name: 'keywordIndexReady', args: [result] })
+        events.push({ name: 'keywordIndexReady', args: [await prepareKeyword()] })
       } catch (error) {
         console.error('[LanceDBWorker] 关键词索引升级失败，本次启动关键词检索不可用:', error)
       }
@@ -690,7 +708,15 @@ async function handleNameApply(data) {
 
 async function handleKeywordSearch(data) {
   if (!table) return { hits: [] }
-  if (!keywordReady) return { hits: [], error: '关键词索引尚未就绪' }
+  if (!keywordReady) {
+    // 启动时没准备成：这一次再试，不必等下次重启
+    try {
+      await prepareKeyword()
+    } catch (error) {
+      console.error('[LanceDBWorker] 关键词索引准备失败:', error)
+      return { hits: [], error: '关键词索引尚未就绪' }
+    }
+  }
   const { query, limit, hostId, tags } = data || {}
   const run = () => keyword.search(table, { query, limit, hostId, tags })
   try {

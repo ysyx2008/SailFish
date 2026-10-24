@@ -25,6 +25,11 @@ const UNINDEXED_OPTIMIZE_THRESHOLD = 5000
 /** 全是标点 / 空白的词 */
 const PUNCTUATION_ONLY = /^[，。！？、；：""''（）【】《》\s.,!?;:'"()[\]{}<>]+$/
 
+/** SQL 字符串字面量 */
+function sqlString(value) {
+  return "'" + String(value).replace(/'/g, "''") + "'"
+}
+
 class KeywordIndex {
   /**
    * @param {{ lancedb: any, log?: { info: Function, warn: Function } }} options
@@ -103,8 +108,24 @@ class KeywordIndex {
     return { addedColumn: !hasColumn, backfilled, indexed }
   }
 
+  /** 表里出现不止一次的 id（数据里偶有，成因不明）。只在有行等着补词时才扫 */
+  async findDuplicateIds(table) {
+    const counts = new Map()
+    const rows = await table.query().select(['id']).toArray()
+    for (const row of rows) counts.set(row.id, (counts.get(row.id) || 0) + 1)
+    const duplicates = new Set()
+    for (const [id, count] of counts) if (count > 1) duplicates.add(id)
+    return duplicates
+  }
+
   /** @returns {Promise<number>} 补了多少行 */
   async backfill(table) {
+    if ((await table.countRows(TOKEN_COLUMN + ' IS NULL')) === 0) return 0
+
+    // 合并更新按 id 定位，同 id 的每一行都会被写成同一份词；同 id 而正文不同的行
+    // 要按「id + 正文」逐个更新，不然一行的词会落到另一行上
+    const duplicateIds = await this.findDuplicateIds(table)
+
     let total = 0
     let lastFirstId = null
     for (;;) {
@@ -121,16 +142,29 @@ class KeywordIndex {
       }
       lastFirstId = rows[0].id
 
-      // 同一个 id 在源里出现两次，合并更新会报「不明确」。表里偶有重复 id，按 id 去重，
-      // 目标表里同 id 的每一行都会被更新到
       const seen = new Set()
-      const updates = []
+      const merged = []
+      const individually = []
       for (const row of rows) {
-        if (seen.has(row.id)) continue
-        seen.add(row.id)
-        updates.push({ id: row.id, [TOKEN_COLUMN]: this.tokensText(row.content || '') })
+        const content = row.content || ''
+        if (duplicateIds.has(row.id)) {
+          const key = row.id + '\u0000' + content
+          if (seen.has(key)) continue
+          seen.add(key)
+          individually.push({ id: row.id, content })
+        } else {
+          if (seen.has(row.id)) continue
+          seen.add(row.id)
+          merged.push({ id: row.id, [TOKEN_COLUMN]: this.tokensText(content) })
+        }
       }
-      await table.mergeInsert('id').whenMatchedUpdateAll().execute(updates)
+      if (merged.length > 0) await table.mergeInsert('id').whenMatchedUpdateAll().execute(merged)
+      for (const { id, content } of individually) {
+        await table.update({
+          where: 'id = ' + sqlString(id) + ' AND content = ' + sqlString(content),
+          values: { [TOKEN_COLUMN]: this.tokensText(content) },
+        })
+      }
       total += rows.length
 
       // 让出事件循环，worker 内其它消息是串行排队的，这里不阻塞别的进程

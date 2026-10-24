@@ -476,13 +476,31 @@ export class VectorStorage extends EventEmitter {
     return msg.includes('LanceError(IO)') && msg.includes('Not found')
   }
 
+  /** 让当前表具备关键词检索：补列、给还没切词的行切词、建全文索引 */
+  private async prepareKeywordInProc() {
+    this.keywordReady = false
+    const result = await this.keyword!.prepare(this.table)
+    this.keywordReady = true
+    return result
+  }
+
+  /** 打开一张已经存在的表（另一个进程或旧版建的也可能缺 tokens 列，所以同样过一遍 prepare） */
+  private async openExistingTableInProc(): Promise<void> {
+    this.table = await this.db.openTable('knowledge_vectors')
+    try {
+      await this.prepareKeywordInProc()
+    } catch (error) {
+      log.error('关键词索引准备失败，关键词检索暂不可用:', error)
+    }
+  }
+
   private async ensureTableInProc(sampleRecord?: VectorRecord): Promise<void> {
     if (this.table) return
 
     try {
       const names = await this.db.tableNames()
       if (names.includes('knowledge_vectors')) {
-        this.table = await this.db.openTable('knowledge_vectors')
+        await this.openExistingTableInProc()
         return
       }
     } catch (e) {
@@ -510,7 +528,7 @@ export class VectorStorage extends EventEmitter {
       const msg = error instanceof Error ? error.message : String(error)
       if (msg.includes('already exists')) {
         log.warn('createTable 冲突（磁盘残留表），fallback 到 openTable')
-        this.table = await this.db.openTable('knowledge_vectors')
+        await this.openExistingTableInProc()
         return
       }
       throw error
@@ -589,9 +607,7 @@ export class VectorStorage extends EventEmitter {
         } else {
           // 表读得开：补列、给还没切词的行切词、建全文索引。没做成不挡向量这一半，下次启动再试
           try {
-            const result = await this.keyword.prepare(this.table)
-            this.keywordReady = true
-            events.push({ name: 'keywordIndexReady', args: [result] })
+            events.push({ name: 'keywordIndexReady', args: [await this.prepareKeywordInProc()] })
           } catch (error) {
             log.error('关键词索引升级失败，本次启动关键词检索不可用:', error)
           }
@@ -1083,8 +1099,10 @@ export class VectorStorage extends EventEmitter {
       if (result.error) log.warn('关键词检索没有结果:', result.error)
       return result.hits || []
     }
-    if (!this.table || !this.keyword || !this.keywordReady) return []
+    if (!this.table || !this.keyword) return []
     try {
+      // 启动时没准备成：这一次再试，不必等下次重启
+      if (!this.keywordReady) await this.prepareKeywordInProc()
       return await this.keyword.search(this.table, request)
     } catch (error) {
       log.error('Keyword search failed:', error)
