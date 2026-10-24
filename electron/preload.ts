@@ -453,6 +453,8 @@ const electronAPI = {
     connect: (config: SshConfig, options?: { reuseId?: string; attemptId?: string }) =>
       ipcRenderer.invoke('ssh:connect', config, options),
     cancelConnect: (attemptId: string) => ipcRenderer.invoke('ssh:cancelConnect', attemptId),
+    acceptChangedHostKey: (host: string, port: number) =>
+      ipcRenderer.invoke('ssh:acceptChangedHostKey', host, port) as Promise<boolean>,
     write: (id: string, data: string) => ipcRenderer.invoke('ssh:write', id, data),
     resize: (id: string, cols: number, rows: number) =>
       ipcRenderer.invoke('ssh:resize', id, cols, rows),

@@ -176,6 +176,8 @@ export default {
     connectionFailed: 'Connection failed',
     connectionClosed: 'Connection closed',
     reconnect: 'Reconnect',
+    rememberNewHostKey: 'This machine was replaced — remember the new identity',
+    hostKeyRememberFailed: 'That mismatched identity is no longer available. Connect once more',
     reconnecting: 'Reconnecting...',
     dropFiles: 'Drop files here',
     cannotReconnect: 'Cannot reconnect',

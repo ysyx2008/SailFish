@@ -7,6 +7,7 @@ import * as iconv from 'iconv-lite'
 import { isTcpForwardingRefused, JUMP_FORWARDING_REFUSED_MESSAGE, type JumpHostConfig, type SshConfig, type SshEncoding } from '@shared/types'
 import { getUnixProbeCommands } from './host-profile.service'
 import { getSshErrorMessage } from './ssh-error'
+import { hostKeyFailureError, makeHostVerifier } from './ssh-host-key'
 import { SshConnectAttempt, SshConnectCancelledError, forceCloseClient } from './ssh-connect-attempt'
 import { requestLocalNetworkAccessIfDenied } from '../utils/local-network-permission'
 import { createLogger } from '../utils/logger'
@@ -156,12 +157,14 @@ export class SshService {
         readyTimeout: number
         keepaliveInterval: number
         sock?: Readable
+        hostVerifier: (key: Buffer, callback: (accepted: boolean) => void) => void
       } = {
         host: config.host,
         port: config.port,
         username: config.username,
         readyTimeout: 30000,
-        keepaliveInterval: 10000
+        keepaliveInterval: 10000,
+        hostVerifier: makeHostVerifier(config.host, config.port)
       }
 
       // 如果通过跳板机连接，使用传入的 socket
@@ -242,8 +245,8 @@ export class SshService {
         }
         // ⚠️ 勿删：EHOSTUNREACH 时再触发本地网络授权探测（见 local-network-permission.ts）
         requestLocalNetworkAccessIfDenied(err, 'ssh-connect')
-        const friendlyMessage = getSshErrorMessage(err)
-        reject(new Error(friendlyMessage))
+        const hostKeyError = hostKeyFailureError(err, config.host, config.port)
+        reject(hostKeyError ?? new Error(getSshErrorMessage(err)))
       })
 
       client.on('close', () => {
@@ -298,6 +301,7 @@ export class SshService {
         readyTimeout: 30000,
         keepaliveInterval: 10000,
         tryKeyboard: true,
+        hostVerifier: makeHostVerifier(jumpHost.host, jumpHost.port),
         debug: (msg: string) => log.debug(`[jump-ssh] ${msg}`)
       }
 
@@ -371,6 +375,11 @@ export class SshService {
         }
         log.error(`Jump host error:`, err)
         requestLocalNetworkAccessIfDenied(err, 'ssh-jump')
+        const hostKeyError = hostKeyFailureError(err, jumpHost.host, jumpHost.port)
+        if (hostKeyError) {
+          reject(hostKeyError)
+          return
+        }
         const friendlyMessage = getSshErrorMessage(err)
         reject(new Error(`连接跳板机失败: ${friendlyMessage}`))
       })
@@ -421,6 +430,7 @@ export class SshService {
         readyTimeout: 30000,
         keepaliveInterval: 10000,
         tryKeyboard: true,
+        hostVerifier: makeHostVerifier(jumpHost.host, jumpHost.port),
         debug: (msg: string) => log.debug(`[jump-shell] ${msg}`)
       }
 
@@ -511,6 +521,11 @@ export class SshService {
         }
         log.error(`JumpServer direct shell error:`, err)
         requestLocalNetworkAccessIfDenied(err, 'ssh-jumpserver')
+        const hostKeyError = hostKeyFailureError(err, jumpHost.host, jumpHost.port)
+        if (hostKeyError) {
+          reject(hostKeyError)
+          return
+        }
         const friendlyMessage = getSshErrorMessage(err)
         reject(new Error(`连接 JumpServer 失败: ${friendlyMessage}`))
       })
