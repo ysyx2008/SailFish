@@ -1154,13 +1154,54 @@ export class AgentRecordStore {
   // ==================== 清理（供 HistoryService 的 cleanupOldRecords 复用 agent 部分） ====================
 
   /**
+   * 这次按天数清理会删掉的会话号（主树 + watch 树）。
+   * 先于删文件调用。正文还留在保留期内的不算，避免索引日期对不上时把还能打开的对话从知识库清掉。
+   */
+  sessionIdsForCleanup(daysToKeep: number): string[] {
+    const cutoffStr = this.cleanupCutoffStr(daysToKeep)
+    const include = (dateStr: string) => cutoffStr === null || dateStr < cutoffStr
+    const removed = new Set<string>()
+    const kept = new Set<string>()
+
+    for (const dir of [this.agentDir, this.watchDir]) {
+      for (const dateStr of listAgentDateDirs(dir)) {
+        const bucket = include(dateStr) ? removed : kept
+        for (const id of listSessionIdsInDateDir(dir, dateStr)) bucket.add(id)
+      }
+      for (const file of listLegacyAgentDayFiles(dir)) {
+        const dateStr = file.replace(/\.json$/, '')
+        const bucket = include(dateStr) ? removed : kept
+        for (const record of readLegacyAgentDayRecords(path.join(dir, file))) {
+          if (record.id) bucket.add(record.id)
+        }
+      }
+    }
+
+    for (const entry of this.getAllIndexEntries()) {
+      if (include(entry.dateStr)) removed.add(entry.id)
+    }
+    for (const id of kept) removed.delete(id)
+
+    return [...removed]
+  }
+
+  /** `daysToKeep === 0` 表示全部清掉，没有截止日期。 */
+  private cleanupCutoffStr(daysToKeep: number): string | null {
+    if (daysToKeep === 0) return null
+    const cutoffDate = new Date()
+    cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
+    return getDateString(cutoffDate.getTime())
+  }
+
+  /**
    * 清理指定天数之前的 Agent 记录（主树 + watch 树的会话文件 + 旧日文件 + 日期目录）。
    * `daysToKeep = 0` 表示清空全部。返回删除的条目数。调用方负责事后 `rebuildAgentIndex`。
    */
   cleanupOldAgentRecords(daysToKeep: number = 90): number {
     let agentDeleted = 0
+    const cutoffStr = this.cleanupCutoffStr(daysToKeep)
 
-    if (daysToKeep === 0) {
+    if (cutoffStr === null) {
       for (const dir of [this.agentDir, this.watchDir]) {
         if (!fs.existsSync(dir)) continue
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -1177,10 +1218,6 @@ export class AgentRecordStore {
       this.expertTeamChats.deleteAll()
       this.subAgents.deleteAll()
     } else {
-      const cutoffDate = new Date()
-      cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
-      const cutoffStr = getDateString(cutoffDate.getTime())
-
       for (const dir of [this.agentDir, this.watchDir]) {
         for (const dateStr of listAgentDateDirs(dir)) {
           if (dateStr < cutoffStr) {

@@ -397,7 +397,8 @@ export class HistoryService {
    * 清理指定天数之前的历史记录
    * @param daysToKeep 保留最近几天的记录，0 表示清空全部
    */
-  cleanupOldRecords(daysToKeep: number = 90): { chatDeleted: number; agentDeleted: number } {
+  async cleanupOldRecords(daysToKeep: number = 90): Promise<{ chatDeleted: number; agentDeleted: number }> {
+    const removedSessionIds = this.agentRecordStore.sessionIdsForCleanup(daysToKeep)
     let chatDeleted = 0
 
     // 聊天记录清理（本类职责）
@@ -430,7 +431,28 @@ export class HistoryService {
       this.agentRecordStore.pruneOrphanedSessionData()
     }
 
+    await this.removeConversationKnowledge(removedSessionIds)
+
     return { chatDeleted, agentDeleted }
+  }
+
+  /** 和删掉一条对话同一条路：只清和这些会话绑在一起的检索条目。 */
+  private async removeConversationKnowledge(sessionIds: string[]): Promise<void> {
+    if (sessionIds.length === 0) return
+    try {
+      const { getKnowledgeService } = await import('./knowledge')
+      const knowledge = getKnowledgeService()
+      if (!knowledge) return
+      for (const id of sessionIds) {
+        try {
+          await knowledge.removeConversation(id)
+        } catch (err) {
+          log.warn(`清理旧对话时删除知识库条目失败 (${id}):`, err)
+        }
+      }
+    } catch (err) {
+      log.warn('清理旧对话时没能打开知识库:', err)
+    }
   }
 
   /**

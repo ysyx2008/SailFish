@@ -163,6 +163,33 @@ describe('data-backup', () => {
     expect(fs.existsSync(`${dst}.sft-partial`)).toBe(false)
   })
 
+  it('解压后主密钥和登录信息仍只有本人可读，压缩包里这两份还在', async () => {
+    const src = path.join(tmpRoot, 'userdata-secret')
+    const dst = path.join(tmpRoot, 'secret.zip')
+    fs.mkdirSync(src, { recursive: true })
+    fs.writeFileSync(path.join(src, 'master.key'), Buffer.alloc(16, 7), { mode: 0o600 })
+    fs.writeFileSync(path.join(src, 'credentials.json'), '{"items":{"k":"g1:abc"}}', { mode: 0o600 })
+    fs.writeFileSync(path.join(src, 'notes.txt'), 'ordinary', { mode: 0o644 })
+
+    await exportUserData({ source: src, target: dst })
+    const staging = path.join(tmpRoot, 'secret-staging')
+    await extractBackupToStaging({ archive: dst, staging })
+
+    const keyPath = path.join(staging, 'master.key')
+    const credPath = path.join(staging, 'credentials.json')
+    const notesPath = path.join(staging, 'notes.txt')
+    expect(fs.readFileSync(keyPath).length).toBe(16)
+    expect(fs.readFileSync(credPath, 'utf-8')).toContain('g1:abc')
+    expect(fs.readFileSync(notesPath, 'utf-8')).toBe('ordinary')
+    if (process.platform !== 'win32') {
+      const probe = path.join(tmpRoot, 'mode-probe')
+      fs.writeFileSync(probe, 'x')
+      expect(fs.statSync(keyPath).mode & 0o077).toBe(0)
+      expect(fs.statSync(credPath).mode & 0o077).toBe(0)
+      expect(fs.statSync(notesPath).mode & 0o777).toBe(fs.statSync(probe).mode & 0o777)
+    }
+  })
+
   it('replaceUserDataFromStaging 替换内容并保留 keepNames', () => {
     const userData = path.join(tmpRoot, 'ud')
     const staging = path.join(userData, '.restore-staging')
