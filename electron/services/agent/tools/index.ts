@@ -189,7 +189,7 @@ async function dispatchTool(
     case 'send_input': {
       const requiredPtyId = requireTargetPty(args, ptyId, name)
       if (typeof requiredPtyId !== 'string') return requiredPtyId
-      return sendInput(requiredPtyId, args, config, executor)
+      return sendInput(requiredPtyId, args, toolCall.id, config, executor)
     }
 
     case 'read_file':
