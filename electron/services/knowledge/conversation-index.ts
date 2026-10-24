@@ -6,6 +6,56 @@ export function conversationSessionTag(sessionId: string): string {
   return `${SESSION_TAG_PREFIX}${sessionId}`
 }
 
+/** 一场对话的检索认这场，不认其中某一轮。没标会话时退回这一轮自己的编号。 */
+export function conversationIndexKey(entry: { sessionId?: string; taskId: string }): string {
+  const sessionId = entry.sessionId?.trim()
+  return sessionId || entry.taskId
+}
+
+/** 一条检索条目上的标记：对话、在哪台机器上、属于哪一场 */
+export function conversationIndexTags(entry: { hostId: string; sessionId?: string }): string[] {
+  const tags = ['conversation', entry.hostId]
+  const sessionId = entry.sessionId?.trim()
+  if (sessionId) tags.push(conversationSessionTag(sessionId))
+  return tags
+}
+
+/**
+ * 同一场里留下最近的一条，其余是重复，要收掉。
+ * 时间相同的留下后出现的那条。
+ */
+export function partitionConversationDocs<T extends { createdAt: number }>(
+  docs: readonly T[]
+): { keep?: T; extras: T[] } {
+  if (docs.length === 0) return { extras: [] }
+  let keep = docs[0]
+  const extras: T[] = []
+  for (let i = 1; i < docs.length; i++) {
+    const doc = docs[i]
+    if (doc.createdAt >= keep.createdAt) {
+      extras.push(keep)
+      keep = doc
+    } else {
+      extras.push(doc)
+    }
+  }
+  return { keep, extras }
+}
+
+/** 这条还是最近一轮的内容，不用重写 */
+export function conversationEntryIsCurrent(
+  doc: Pick<KnowledgeDocument, 'content' | 'contentHash' | 'hostId' | 'source' | 'tags'>,
+  next: { content: string; contentHash: string; hostId: string; source: string; tags: readonly string[] }
+): boolean {
+  if (doc.content !== next.content) return false
+  if (doc.contentHash !== next.contentHash) return false
+  if (doc.hostId !== next.hostId) return false
+  if ((doc.source || '') !== next.source) return false
+  if (doc.tags.length !== next.tags.length) return false
+  const have = new Set(doc.tags)
+  return next.tags.every(tag => have.has(tag))
+}
+
 /** 一条知识库文档是否属于指定会话的对话检索条目（对不上的旧条目不会命中） */
 export function isConversationDocForSession(
   doc: Pick<KnowledgeDocument, 'fileType' | 'contentHash' | 'tags'>,

@@ -85,9 +85,9 @@ export class BM25Index extends EventEmitter {
   private indexPath: string
   private isInitialized: boolean = false
 
-  constructor() {
+  constructor(indexPath?: string) {
     super()
-    this.indexPath = path.join(app.getPath('userData'), 'knowledge', 'bm25-index.json')
+    this.indexPath = indexPath ?? path.join(app.getPath('userData'), 'knowledge', 'bm25-index.json')
   }
 
   /**
@@ -223,23 +223,29 @@ export class BM25Index extends EventEmitter {
   }
 
   /**
-   * 删除文档的所有分块
+   * 删除文档的所有分块。
+   * skipSave：一次收掉多份时先只改内存，最后统一落盘，避免每份都重写整份索引。
    */
-  async removeDocumentChunks(docId: string): Promise<number> {
+  async removeDocumentChunks(docId: string, options?: { skipSave?: boolean }): Promise<number> {
+    return this.removeManyDocumentChunks([docId], options)
+  }
+
+  /** 一次收掉多份文档的分块，默认只落盘一次 */
+  async removeManyDocumentChunks(docIds: readonly string[], options?: { skipSave?: boolean }): Promise<number> {
+    if (docIds.length === 0) return 0
+    if (!this.isInitialized) await this.initialize()
+
+    const wanted = new Set(docIds)
     const idsToRemove: string[] = []
-    
-    const docEntries = Array.from(this.documents.entries())
-    for (const [id, doc] of docEntries) {
-      if (doc.docId === docId) {
-        idsToRemove.push(id)
-      }
+    for (const [id, doc] of this.documents) {
+      if (wanted.has(doc.docId)) idsToRemove.push(id)
     }
 
     for (const id of idsToRemove) {
       await this.removeDocument(id)
     }
 
-    if (idsToRemove.length > 0) {
+    if (idsToRemove.length > 0 && !options?.skipSave) {
       await this.saveIndex()
     }
 

@@ -5392,12 +5392,11 @@ ipcMain.handle('history:readExpertTeamChat', async (_event, file: string, cursor
 
 ipcMain.handle('history:deleteAgentRecord', async (_event, id: string) => {
   const ok = (await conv()).delete(id)
+  // 列表只等记录删掉。知识库里这场对话的检索条目在旁边收，不挡住界面。
   if (ok && knowledgeService) {
-    try {
-      await knowledgeService.removeConversation(id)
-    } catch (err) {
+    void knowledgeService.removeConversation(id).catch(err => {
       log.warn('Failed to remove conversation knowledge index:', err)
-    }
+    })
   }
   return ok
 })

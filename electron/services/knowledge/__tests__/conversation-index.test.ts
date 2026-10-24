@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  conversationEntryIsCurrent,
+  conversationIndexKey,
+  conversationIndexTags,
   conversationSessionRelation,
   conversationSessionTag,
   formatRecalledConversation,
   formatRecalledConversations,
   isConversationDocForSession,
   parseConversationContent,
+  partitionConversationDocs,
   RECALLED_CONVERSATIONS_INTRO,
   toRecalledConversation,
 } from '../conversation-index'
@@ -79,6 +83,62 @@ describe('parseConversationContent', () => {
   it('first line is what the user said, the rest is the result', () => {
     expect(parseConversationContent('问题\n第一行\n第二行')).toEqual({ userRequest: '问题', finalResult: '第一行\n第二行' })
     expect(parseConversationContent('只有问题')).toEqual({ userRequest: '只有问题', finalResult: '' })
+  })
+})
+
+describe('one retrieval entry per conversation', () => {
+  it('keys a conversation by the session, and falls back to the turn when there is no session', () => {
+    expect(conversationIndexKey({ sessionId: 'session_a', taskId: 'run_1' })).toBe('session_a')
+    expect(conversationIndexKey({ sessionId: '  ', taskId: 'run_1' })).toBe('run_1')
+    expect(conversationIndexKey({ taskId: 'run_1' })).toBe('run_1')
+  })
+
+  it('tags the entry with the session', () => {
+    expect(conversationIndexTags({ hostId: 'personal', sessionId: 'session_a' }))
+      .toEqual(['conversation', 'personal', 'session:session_a'])
+    expect(conversationIndexTags({ hostId: 'personal' })).toEqual(['conversation', 'personal'])
+  })
+
+  it('keeps the newest entry and treats the rest as duplicates', () => {
+    const docs = [
+      { id: 'old', createdAt: 1 },
+      { id: 'new', createdAt: 3 },
+      { id: 'mid', createdAt: 2 },
+    ]
+    expect(partitionConversationDocs(docs)).toEqual({
+      keep: { id: 'new', createdAt: 3 },
+      extras: [{ id: 'old', createdAt: 1 }, { id: 'mid', createdAt: 2 }],
+    })
+    expect(partitionConversationDocs([])).toEqual({ extras: [] })
+  })
+
+  it('keeps the later entry when timestamps tie', () => {
+    const docs = [{ id: 'a', createdAt: 1 }, { id: 'b', createdAt: 1 }]
+    expect(partitionConversationDocs(docs).keep).toEqual({ id: 'b', createdAt: 1 })
+  })
+
+  it('treats the same content as already current regardless of tag order', () => {
+    const next = {
+      content: '问题\n结果',
+      contentHash: 'hash',
+      hostId: 'personal',
+      source: 'success',
+      tags: ['conversation', 'personal', 'session:session_a'],
+    }
+    expect(conversationEntryIsCurrent({
+      content: next.content,
+      contentHash: next.contentHash,
+      hostId: next.hostId,
+      source: next.source,
+      tags: ['session:session_a', 'personal', 'conversation'],
+    }, next)).toBe(true)
+    expect(conversationEntryIsCurrent({
+      content: '旧的',
+      contentHash: next.contentHash,
+      hostId: next.hostId,
+      source: next.source,
+      tags: next.tags,
+    }, next)).toBe(false)
   })
 })
 

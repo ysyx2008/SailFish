@@ -51,9 +51,12 @@ import {
 import { createLogger } from '../../utils/logger'
 import { wrapKnowledgeRefs } from '../agent/message-envelope'
 import {
-  conversationSessionTag,
+  conversationEntryIsCurrent,
+  conversationIndexKey,
+  conversationIndexTags,
   formatRecalledConversations,
   isConversationDocForSession,
+  partitionConversationDocs,
   toRecalledConversation,
   type RecalledConversation,
   type RecallingConversation,
@@ -921,6 +924,10 @@ export class KnowledgeService extends EventEmitter {
 
   /** 入库与孤儿清理的让路闸：入库优先，清理让路后补做 */
   private readonly ingestGate = new IngestGate(() => this.scheduleOrphanCleanupAsync())
+  /** 这场对话已经删了，后到的索引不要再写回来 */
+  private readonly removedConversationIds = new Set<string>()
+  /** 同一场的写入和删除排成一队，避免删完又被刚结束的那一轮写回来 */
+  private conversationIndexChain: Promise<void> = Promise.resolve()
 
   /**
    * 后台清理孤儿 chunk（索引里有、documents.json 里没有的 docId）。
@@ -3169,8 +3176,17 @@ export class KnowledgeService extends EventEmitter {
    */
   async indexConversation(entry: ConversationIndexEntry): Promise<string | null> {
     if (!entry.userRequest || !entry.hostId) return null
+    if (this.removedConversationIds.has(conversationIndexKey(entry))) return null
 
-    return this.ingestGate.ingest(() => this.writeConversationIndex(entry))
+    return this.enqueueConversationIndex(() =>
+      this.ingestGate.ingest(() => this.writeConversationIndex(entry))
+    )
+  }
+
+  private enqueueConversationIndex<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.conversationIndexChain.then(task, task)
+    this.conversationIndexChain = run.then(() => undefined, () => undefined)
+    return run
   }
 
   private async writeConversationIndex(entry: ConversationIndexEntry): Promise<string | null> {
@@ -3183,56 +3199,41 @@ export class KnowledgeService extends EventEmitter {
         ? `${entry.userRequest}\n${entry.finalResult}`
         : entry.userRequest
 
-      // 以 taskId 作为去重依据，同一任务不重复索引
-      const contentHash = this.computeContentHash(`conv:${entry.taskId}`)
-      const existing = Array.from(this.documentsIndex.values()).find(
-        d => d.fileType === 'conversation' && d.contentHash === contentHash
-      )
-      if (existing) return existing.id
-
-      const docId = uuidv4()
+      // 一场对话只留一条，认这场，不认其中某一轮
+      const sessionKey = conversationIndexKey(entry)
+      if (this.removedConversationIds.has(sessionKey)) return null
+      const contentHash = this.computeContentHash(`conv:${sessionKey}`)
+      const tags = conversationIndexTags(entry)
       const now = entry.timestamp || Date.now()
-      const tags = ['conversation', entry.hostId]
-      if (entry.sessionId) tags.push(conversationSessionTag(entry.sessionId))
-
-      const document: KnowledgeDocument = {
-        id: docId,
-        filename: `conv_${entry.hostId}_${entry.taskId}`,
+      const matches = Array.from(this.documentsIndex.values()).filter(doc =>
+        isConversationDocForSession(doc, sessionKey, contentHash)
+      )
+      const { keep, extras } = partitionConversationDocs(matches)
+      const next = {
         content: indexText,
-        fileSize: Buffer.from(indexText).length,
-        fileType: 'conversation',
         contentHash,
         hostId: entry.hostId,
+        source: entry.status,
         tags,
-        createdAt: now,
-        updatedAt: now,
-        chunkCount: 1,
-        source: entry.status
       }
+
+      if (keep && extras.length === 0 && conversationEntryIsCurrent(keep, next)) {
+        return keep.id
+      }
+
+      if (keep) {
+        await this.replaceConversationEntry(keep, extras, { entry, indexText, contentHash, tags, now })
+        return keep.id
+      }
+
+      const docId = uuidv4()
+      const document = this.conversationDocument(docId, entry, indexText, contentHash, tags, now, now)
 
       const embedding = await this.embeddingService.embedSingle(indexText)
-
-      const record: VectorRecord = {
-        id: uuidv4(),
-        docId,
-        content: indexText,
-        vector: embedding,
-        filename: document.filename,
-        hostId: entry.hostId,
-        tags: document.tags.join(','),
-        chunkIndex: 0,
-        createdAt: now
-      }
+      const record = this.conversationVectorRecord(document, embedding, now)
 
       await this.vectorStorage.addRecords([record])
-      await this.bm25Index.addDocuments([{
-        id: record.id,
-        docId: record.docId,
-        content: indexText,
-        filename: record.filename,
-        hostId: record.hostId,
-        tags: record.tags
-      }])
+      await this.bm25Index.addDocuments([this.conversationBm25Doc(record)])
 
       this.documentsIndex.set(docId, document)
       this.saveDocumentsIndex()
@@ -3244,42 +3245,161 @@ export class KnowledgeService extends EventEmitter {
     }
   }
 
+  /** 把这场已经有的那一条换成最近一轮，重复的条目一次收掉，不逐条整理向量库 */
+  private async replaceConversationEntry(
+    keep: KnowledgeDocument,
+    extras: KnowledgeDocument[],
+    next: {
+      entry: ConversationIndexEntry
+      indexText: string
+      contentHash: string
+      tags: string[]
+      now: number
+    }
+  ): Promise<void> {
+    const contentChanged = keep.content !== next.indexText
+    const dropIds = extras.map(doc => doc.id)
+    const vectorDropIds = contentChanged ? [keep.id, ...dropIds] : dropIds
+
+    if (contentChanged) {
+      const embedding = await this.embeddingService.embedSingle(next.indexText)
+      const record = this.conversationVectorRecord(
+        this.conversationDocument(keep.id, next.entry, next.indexText, next.contentHash, next.tags, keep.createdAt, next.now),
+        embedding,
+        next.now,
+      )
+      await this.bm25Index.removeManyDocumentChunks(vectorDropIds, { skipSave: true })
+      await this.bm25Index.addDocuments([this.conversationBm25Doc(record)], { skipSave: true })
+      await this.bm25Index.saveIndex()
+      if (vectorDropIds.length > 0) {
+        await this.vectorStorage.removeDocumentChunksMany(vectorDropIds, { compact: false })
+      }
+      await this.vectorStorage.addRecords([record])
+    } else if (dropIds.length > 0) {
+      await this.bm25Index.removeManyDocumentChunks(dropIds)
+      await this.vectorStorage.removeDocumentChunksMany(dropIds, { compact: false })
+    }
+
+    if (dropIds.length > 0) {
+      await this.vectorStorage.removeNames(dropIds.map(fileNameKey)).catch(error => {
+        log.warn('收起重复的对话检索条目时没能清掉文件名向量:', error)
+      })
+    }
+
+    for (const extra of extras) {
+      this.documentsIndex.delete(extra.id)
+      this.cardVectors.remove(extra.id)
+    }
+    this.documentsIndex.set(keep.id, this.conversationDocument(
+      keep.id,
+      next.entry,
+      next.indexText,
+      next.contentHash,
+      next.tags,
+      contentChanged ? next.now : keep.createdAt,
+      next.now,
+    ))
+    this.saveDocumentsIndex()
+  }
+
+  private conversationDocument(
+    id: string,
+    entry: ConversationIndexEntry,
+    indexText: string,
+    contentHash: string,
+    tags: string[],
+    createdAt: number,
+    updatedAt: number,
+  ): KnowledgeDocument {
+    return {
+      id,
+      filename: `conv_${entry.hostId}_${entry.taskId}`,
+      content: indexText,
+      fileSize: Buffer.from(indexText).length,
+      fileType: 'conversation',
+      contentHash,
+      hostId: entry.hostId,
+      tags,
+      createdAt,
+      updatedAt,
+      chunkCount: 1,
+      source: entry.status,
+    }
+  }
+
+  private conversationVectorRecord(document: KnowledgeDocument, embedding: number[], createdAt: number): VectorRecord {
+    return {
+      id: uuidv4(),
+      docId: document.id,
+      content: document.content,
+      vector: embedding,
+      filename: document.filename,
+      hostId: document.hostId || '',
+      tags: document.tags.join(','),
+      chunkIndex: 0,
+      createdAt,
+    }
+  }
+
+  private conversationBm25Doc(record: VectorRecord): { id: string; docId: string; content: string; filename: string; hostId: string; tags: string } {
+    return {
+      id: record.id,
+      docId: record.docId,
+      content: record.content,
+      filename: record.filename,
+      hostId: record.hostId,
+      tags: record.tags,
+    }
+  }
+
   /**
    * 删除指定会话对应的对话检索条目（向量 + 关键词索引 + 文档清单）。
-   * 只删对得上号的；对不上的旧条目不动。
+   * 只删对得上号的；对不上的旧条目不动。多条一次收完，只整理一次向量库。
    */
   async removeConversation(sessionId: string): Promise<number> {
-    if (!sessionId.trim()) return 0
+    const id = sessionId.trim()
+    if (!id) return 0
+    this.removedConversationIds.add(id)
+    // 让出这一轮，调用方（删一条对话）可以先把列表更新掉，再在旁边收拾检索条目
+    await new Promise<void>(resolve => setImmediate(resolve))
 
     try {
-      if (!this.isInitialized) {
-        if (!this.isEnabled()) return 0
-        await this.initialize()
-      }
-
-      const sessionContentHash = this.computeContentHash(`conv:${sessionId}`)
-      const docs = Array.from(this.documentsIndex.values()).filter(doc =>
-        isConversationDocForSession(doc, sessionId, sessionContentHash)
+      return await this.enqueueConversationIndex(() =>
+        this.ingestGate.ingest(() => this.removeConversationNow(id))
       )
-      if (docs.length === 0) return 0
-
-      let deleted = 0
-      for (const doc of docs) {
-        try {
-          const ok = await this.removeDocument(doc.id, false, true)
-          if (ok) deleted++
-        } catch (error) {
-          log.warn(`删除对话索引条目失败: ${doc.id}`, error)
-        }
-      }
-      if (deleted > 0) {
-        this.saveDocumentsIndex()
-      }
-      return deleted
     } catch (error) {
       log.warn('删除对话索引失败:', error)
       return 0
     }
+  }
+
+  private async removeConversationNow(sessionId: string): Promise<number> {
+    if (!this.isInitialized) {
+      if (!this.isEnabled()) return 0
+      await this.initialize()
+    }
+
+    const sessionContentHash = this.computeContentHash(`conv:${sessionId}`)
+    const docs = Array.from(this.documentsIndex.values()).filter(doc =>
+      isConversationDocForSession(doc, sessionId, sessionContentHash)
+    )
+    if (docs.length === 0) return 0
+
+    for (const doc of docs) {
+      this.documentsIndex.delete(doc.id)
+      this.cardVectors.remove(doc.id)
+    }
+    // 先把清单落下，搜索立刻不再翻到它；向量和关键词索引接着收
+    this.saveDocumentsIndex()
+
+    const docIds = docs.map(doc => doc.id)
+    await this.bm25Index.removeManyDocumentChunks(docIds)
+    // 只标删掉，不立刻整库整理：整理要好几秒，还会和正在入库的内容撞在一起
+    await this.vectorStorage.removeDocumentChunksMany(docIds, { compact: false })
+    await this.vectorStorage.removeNames(docIds.map(fileNameKey)).catch(error => {
+      log.warn('删对话检索条目时没能清掉文件名向量:', error)
+    })
+    return docs.length
   }
 
   /**
