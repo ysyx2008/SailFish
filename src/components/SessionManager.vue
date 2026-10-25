@@ -1065,17 +1065,28 @@ const closeGroupDialog = () => { showGroupEditor.value = false; editingGroup.val
   text-overflow: ellipsis;
 }
 
-/* 行内操作按钮：统一 22×22 热区，hover 整行时出现 */
+/* 行内操作按钮：统一 22×22 热区。平时不占位（名字用满整行），悬停或键盘聚焦到这一行时才浮在右侧出现 */
 .session-actions {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 2px;
+  padding-left: 4px;
+  background: var(--bg-surface);
+  border-radius: 4px;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.15s ease;
-  flex-shrink: 0;
 }
 
-.session-item:hover .session-actions { opacity: 1; }
+.session-item:hover .session-actions,
+.session-item:focus-within .session-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
 
 .session-action-btn {
   width: 22px;
