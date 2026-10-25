@@ -14,7 +14,7 @@ export {
   SYSTEM_PATH_PATTERNS,
 } from './types'
 
-export { defaultAuditContext } from './assess-shell'
+export { defaultAuditContext, remoteAuditContext } from './assess-shell'
 
 export { assessAuditedCall, assessRedirectPaths, aggregateHasUnknown } from './assess-call'
 
@@ -62,6 +62,9 @@ export {
 } from './whitelist'
 
 export { getArgvCommandRule } from './resolve-argv-rule'
+
+export { checkReadOnlyCommand } from './read-only'
+export type { ReadOnlySituation } from './read-only'
 
 export { resolveTrustCommandOffer } from './trust-command-offer'
 export type { TrustCommandOffer } from './trust-command-offer'

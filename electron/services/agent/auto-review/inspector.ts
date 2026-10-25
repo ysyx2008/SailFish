@@ -12,7 +12,7 @@
 import type { ToolCall, ToolDefinition } from '../../ai.service'
 import type { SftpService } from '../../sftp.service'
 import type { SshConfig } from '../../ssh.service'
-import { assessShellRisk, defaultAuditContext, extractAuditedCalls } from '../command-audit'
+import { checkReadOnlyCommand } from '../command-audit'
 
 export const INSPECT_LOCAL_TOOL = 'inspect_local'
 export const INSPECT_REMOTE_TOOL = 'inspect_remote'
@@ -35,26 +35,6 @@ export interface InspectorDeps {
   remote?: RemoteInspectTarget
   /** 只读就返回 null，否则返回拒绝理由 */
   checkReadOnly: (command: string) => Promise<string | null>
-}
-
-const DISCARD_TARGET = '/dev/null'
-
-/**
- * 「安全」不等于「只读」：写到临时目录或私有目录的命令，审计也可能判为安全。
- * 所以四条都要满足：完整解析且没有不认识的子命令；整条与每个子命令本身都是安全级；
- * 没有写文件的重定向（丢弃输出除外）；只在 bash/zsh 这类能完整解析重定向的 shell 上开放。
- */
-export async function checkReadOnlyCommand(command: string, cwd?: string): Promise<string | null> {
-  const ctx = defaultAuditContext(cwd)
-  if (ctx.shell !== 'bash') return '本机核查只支持 bash/zsh 这类 shell。'
-  const assessment = await assessShellRisk(command, ctx)
-  if (!assessment.parsed || assessment.hasUnknown) return '命令没能完整解析，或含不认识的子命令。'
-  if (assessment.level !== 'safe' || assessment.calls.some(c => c.commandLevel !== 'safe')) {
-    return `命令审计认为它不是只读（${assessment.level}）。`
-  }
-  const { writeRedirects } = await extractAuditedCalls(command, ctx)
-  if (writeRedirects.some(r => r.target !== DISCARD_TARGET)) return '命令里有写文件的重定向。'
-  return null
 }
 
 export const INSPECTOR_TOOLS: ToolDefinition[] = [
@@ -159,7 +139,7 @@ export function buildInspectorDeps(env: InspectorEnvironment): InspectorDeps {
   return {
     local: createLocalRunner(env.execute, env.localCwd),
     remote: env.remote ? createSftpTarget(env.remote.sftp, env.remote.ssh, env.remote.ptyId) : undefined,
-    checkReadOnly: command => checkReadOnlyCommand(command, env.localCwd),
+    checkReadOnly: command => checkReadOnlyCommand(command, { kind: 'local', cwd: env.localCwd }),
   }
 }
 
