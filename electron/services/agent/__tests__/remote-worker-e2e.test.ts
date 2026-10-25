@@ -297,6 +297,31 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     expect(trail?.autoReview?.rationale).toContain('你点名了这台')
   })
 
+  it('替我审批：专家要问时，话在确认前面，卡上不写', async () => {
+    const services = makeServices(
+      parentOnlyDispatch(['systemctl restart nginx'], '没有批准'),
+      '{"outcome":"ask_user","card":"这批会重启 nginx"}',
+    )
+    const { result, confirmations, steps } = runParent(services, 'relaxed', () => false, 'autoReview')
+    await result
+    expect(confirmations).toHaveLength(1)
+    expect(confirmations[0]!.remoteAccess?.expert).toBeUndefined()
+    const trail = steps.find(s => s.type === 'auto_review' && s.autoReview?.outcome === 'handed_over')
+    expect(trail?.autoReview?.rationale).toContain('这批会重启 nginx')
+    expect(host.connections).toBe(0)
+  })
+
+  it('替我审批：专家没说完，先说明没评成再弹卡', async () => {
+    const services = makeServices(parentOnlyDispatch(['uptime'], '没有批准'), 'not json')
+    const { result, confirmations, steps } = runParent(services, 'relaxed', () => false, 'autoReview')
+    await result
+    expect(confirmations).toHaveLength(1)
+    expect(confirmations[0]!.remoteAccess?.expert).toBeUndefined()
+    const trail = steps.find(s => s.type === 'auto_review' && s.autoReview?.outcome === 'handed_over')
+    expect(trail?.autoReview?.reason).toBe('failed')
+    expect(host.connections).toBe(0)
+  })
+
   it('严格：专家放行也弹卡，卡上是专家的话', async () => {
     const services = makeServices(parentOnlyDispatch(['uptime'], '没有批准'), '{"outcome":"allow","card":"只是看运行时长"}')
     const { result, confirmations } = runParent(services, 'strict', () => false)

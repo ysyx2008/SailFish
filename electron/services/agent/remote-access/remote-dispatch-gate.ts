@@ -45,6 +45,11 @@ export interface RemoteDispatchContext {
   autoReview?: boolean
   /** 专家没让用户点头就放行了：把它的理由留在这场对话的过程里 */
   onExpertAllowed?: (note: string, request: RemoteAccessRequest) => void
+  /**
+   * 替我审批下没放行，先在确认卡前面留一行再问用户。
+   * note 是专家写的话；没有就是没给出结论。
+   */
+  onExpertHandedOver?: (note: string | undefined, request: RemoteAccessRequest) => void
 }
 
 export type GateOutcome<T> = { ok: true; value: T } | { ok: false; error: string }
@@ -152,7 +157,7 @@ export class RemoteDispatchGate {
    *
    * 专家的结论怎么落到审批方式：
    * - 严格、宽松：放行也弹卡（卡上是专家的话）；问用户弹卡；拒绝退回
-   * - 替我审批：放行直接过并留痕；问用户弹卡；拒绝退回
+   * - 替我审批：放行直接过并留痕；没放行先在卡前面留一行再弹卡（卡上不写专家的话）；拒绝退回
    * - 自由：不问人。放行直接过；问用户或拒绝都退回
    * - 专家没给出结论（出错、超时、看不懂）：非自由弹卡交给用户；自由退回只读判定
    * - 没有人在场且不是自由：没人能批，不必再问专家
@@ -178,7 +183,7 @@ export class RemoteDispatchGate {
 
     if (result.kind === 'cancelled') return t('remote.expert_cancelled')
     if (result.kind === 'unavailable') {
-      if (mode !== 'free') return this.askApproval(request, title, rejectedText)
+      if (mode !== 'free') return this.handToUser(request, undefined, title, rejectedText)
       return this.checkReadOnly(request.commands)
     }
 
@@ -186,7 +191,7 @@ export class RemoteDispatchGate {
     if (verdict.outcome === 'refuse') return t('remote.expert_refused', { reason: verdict.reason })
     if (verdict.outcome === 'ask_user') {
       if (mode === 'free') return t('remote.expert_cannot_ask', { card: verdict.card })
-      return this.askApproval({ ...request, expert: { card: verdict.card } }, title, rejectedText)
+      return this.handToUser(request, verdict.card, title, rejectedText)
     }
     // 替你放行只属于「替我审批」。宽松和严格一样，放行也弹卡，由用户自己点。
     const passesWithoutAsking = mode === 'free' || (mode === 'relaxed' && this.ctx.autoReview === true)
@@ -201,6 +206,23 @@ export class RemoteDispatchGate {
       if (reason) return t('remote.not_read_only', { index: i + 1, command: commands[i]!, reason })
     }
     return null
+  }
+
+  /**
+   * 要问用户。替我审批先在卡前面留一行（和原来交给你定一样），卡上不重复写专家的话。
+   * 严格、宽松把专家的话写在卡上。
+   */
+  private async handToUser(
+    request: RemoteAccessRequest,
+    note: string | undefined,
+    title: string,
+    rejectedText: string,
+  ): Promise<string | null> {
+    if (this.ctx.autoReview) {
+      this.ctx.onExpertHandedOver?.(note, request)
+      return this.askApproval(request, title, rejectedText)
+    }
+    return this.askApproval(note ? { ...request, expert: { card: note } } : request, title, rejectedText)
   }
 
   /** 批准返回 null，否则返回给模型的原因 */

@@ -254,8 +254,9 @@ describe('运维专家的结论怎么落到审批方式', () => {
   function expertGate(result: Awaited<ReturnType<Judge>>, overrides: Partial<RemoteDispatchContext> = {}) {
     const judge = vi.fn<Judge>(async () => result)
     const onExpertAllowed = vi.fn()
-    const g = gateWith({ expert: { judge }, onExpertAllowed, ...overrides })
-    return { ...g, judge, onExpertAllowed }
+    const onExpertHandedOver = vi.fn()
+    const g = gateWith({ expert: { judge }, onExpertAllowed, onExpertHandedOver, ...overrides })
+    return { ...g, judge, onExpertAllowed, onExpertHandedOver }
   }
   const run = (gate: RemoteDispatchGate, commands = ['df -h']) => gate.authorizeDispatch([{ hosts: ['a1'] }], commands)
 
@@ -294,6 +295,24 @@ describe('运维专家的结论怎么落到审批方式', () => {
       expect((confirm.mock.calls[0] as unknown as [{ expert?: { card: string } }])[0].expert).toEqual({ card: '只是看状态' })
       expect(onExpertAllowed).not.toHaveBeenCalled()
     }
+  })
+
+  it('替我审批：专家要问时，话留在卡前面，卡上不写', async () => {
+    const { gate, confirm, onExpertHandedOver } = expertGate(ask, { executionMode: 'relaxed', autoReview: true })
+    const r = await run(gate)
+    expect(r.ok).toBe(true)
+    expect(onExpertHandedOver).toHaveBeenCalledTimes(1)
+    expect(onExpertHandedOver.mock.calls[0]![0]).toBe('会重启 nginx')
+    expect((confirm.mock.calls[0] as unknown as [{ expert?: unknown }])[0].expert).toBeUndefined()
+  })
+
+  it('替我审批：专家没给出结论，先留一行再弹卡，卡上没有专家的话', async () => {
+    const { gate, confirm, onExpertHandedOver } = expertGate(unavailable, { executionMode: 'relaxed', autoReview: true })
+    const r = await run(gate)
+    expect(r.ok).toBe(true)
+    expect(onExpertHandedOver).toHaveBeenCalledTimes(1)
+    expect(onExpertHandedOver.mock.calls[0]![0]).toBeUndefined()
+    expect((confirm.mock.calls[0] as unknown as [{ expert?: unknown }])[0].expert).toBeUndefined()
   })
 
   it('替我审批：专家放行不弹卡，理由留进过程', async () => {

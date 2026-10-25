@@ -284,6 +284,21 @@ function remoteGateFor(config: AgentConfig | undefined, executor: ToolExecutorCo
           autoReview: { outcome: 'approved', rationale: note },
         })
       },
+      onExpertHandedOver: (note, request) => {
+        const action = t('remote.expert_action', { count: request.hosts.length })
+        executor.addStep({
+          type: 'auto_review',
+          content: [
+            t('autoReview.handed_over', { action }),
+            note ? `> ${note.replace(/\n+/g, ' ')}` : t('autoReview.reason.failed'),
+          ].join('\n\n'),
+          toolName,
+          toolCallId,
+          autoReview: note
+            ? { outcome: 'handed_over', reason: 'not_approved', rationale: note }
+            : { outcome: 'handed_over', reason: 'failed' },
+        })
+      },
     } : {}),
   })
 }

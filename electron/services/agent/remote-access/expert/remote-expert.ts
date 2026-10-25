@@ -48,7 +48,6 @@ export type ExpertResult =
   | { kind: 'cancelled' }
 
 const DEFAULT_TIMEOUT_MS = 60_000
-const MAX_OUTPUT_TOKENS = 1200
 
 export class RemoteExpert {
   constructor(private readonly env: RemoteExpertEnv) {}
@@ -67,7 +66,8 @@ export class RemoteExpert {
     const signal = env.signal ? AbortSignal.any([env.signal, timeout]) : timeout
     try {
       const result = await untilAborted(
-        env.chat(messages, [], env.profileId, signal, { toolChoice: 'none', maxOutputTokens: MAX_OUTPUT_TOKENS }),
+        // 输出上限跟模型配置走。推理型模型的思考也算在里面，单独压小会把结论截掉，看起来像没给意见。
+        env.chat(messages, [], env.profileId, signal, { toolChoice: 'none' }),
         signal,
       )
       if (result.usage) env.onUsage?.(result.usage)
