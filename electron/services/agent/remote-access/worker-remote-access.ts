@@ -43,15 +43,29 @@ export class WorkerRemoteAccess {
     const { grant, pool, recorder, workerName } = this.deps
     const trimmed = command.trim()
 
+    // 没跑出去的尝试也留一行：伙计反复试范围外的主机、单外的命令，恰是事后最该看到的
+    const deny = async (name: string, failure: string, text: string): Promise<RemoteRunOutcome> => {
+      await recorder.record({
+        at: Date.now(), worker: workerName, hostId, hostName: name, command: trimmed,
+        exitCode: null, failure, durationMs: 0,
+      })
+      return refused(text)
+    }
+
     const granted = grant.findHost(hostId)
     if (!granted) {
-      return refused(t('remote.tool_host_out_of_scope', { host: hostId, list: formatHosts(grant) }))
+      return deny(hostId, t('remote.log_host_out_of_scope'), t('remote.tool_host_out_of_scope', { host: hostId, list: formatHosts(grant) }))
     }
     if (!trimmed || !grant.permitsCommand(trimmed)) {
-      return refused(t('remote.tool_command_not_listed', { list: formatCommands(grant) }))
+      return deny(granted.name, t('remote.log_command_not_listed'), t('remote.tool_command_not_listed', { list: formatCommands(grant) }))
     }
     const host = this.deps.resolveHost(hostId)
-    if (!host) return refused(t('remote.tool_host_gone', { name: granted.name }))
+    if (!host) return deny(granted.name, t('remote.log_host_gone'), t('remote.tool_host_gone', { name: granted.name }))
+    // 批准时看到的是哪个地址，连的就必须是那个地址；会话批准后被改过（或删了重建）就不连
+    const current = `${host.username}@${host.host}:${host.port}`
+    if (current !== granted.address) {
+      return deny(granted.name, t('remote.log_host_changed'), t('remote.tool_host_changed', { name: granted.name, approved: granted.address, current }))
+    }
 
     const seconds = clampTimeout(timeoutSeconds)
     const result = await pool.exec(host, trimmed, { timeoutMs: seconds * 1000, signal })
