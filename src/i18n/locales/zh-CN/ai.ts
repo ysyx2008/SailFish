@@ -367,6 +367,7 @@ export default {
     mediumRisk: '中风险',
     lowRisk: '低风险',
     remoteAccess: {
+      expertTitle: '运维专家的话',
       ungrouped: '未分组',
       hostsTitle: '主机',
       commandsTitle: '批准后能原样跑的命令',

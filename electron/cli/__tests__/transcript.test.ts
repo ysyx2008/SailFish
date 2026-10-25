@@ -192,6 +192,20 @@ describe('confirmationLines', () => {
     expect(text).toContain('未分组')
     expect(text.indexOf('uptime')).toBeLessThan(text.indexOf('web-01'))
   })
+
+  it('运维专家写的话排在最前，多行也完整', () => {
+    const lines = describeRemoteAccess({
+      commands: ['uptime'],
+      hosts: [{ id: 'a1', name: 'web-01', address: 'deploy@10.0.0.11:22' }],
+      workerCount: 1,
+      expert: { card: '这批会重启 nginx\n你原话只说了看看' },
+    })
+    const text = lines.join('\n')
+    expect(lines[0]).toContain('运维专家')
+    expect(text).toContain('这批会重启 nginx')
+    expect(text).toContain('你原话只说了看看')
+    expect(text.indexOf('你原话只说了看看')).toBeLessThan(text.indexOf('uptime'))
+  })
 })
 
 describe('CliTranscript 目标续跑', () => {
