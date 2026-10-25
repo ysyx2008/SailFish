@@ -44,6 +44,8 @@ export class RemoteExecError extends Error {
 export interface RemoteExecLimits {
   /** 连接闲多久后自动断 */
   idleCloseMs: number
+  /** 跳板名额不够、有主机在排队时，刚用完的连接多留多久再让出（同一台紧接着的下一条命令能接着用） */
+  evictGraceMs: number
   /** 同一个跳板上同时开着的转发（通往目标机的连接）上限 */
   jumpForwardLimit: number
   /** 同时握手的连接数上限 */
@@ -61,6 +63,7 @@ export interface RemoteExecLimits {
 /** 内部常量，不给人填 */
 export const DEFAULT_REMOTE_EXEC_LIMITS: RemoteExecLimits = {
   idleCloseMs: 60_000,
+  evictGraceMs: 300,
   jumpForwardLimit: 4,
   handshakeLimit: 8,
   loginRejectLimit: 3,
@@ -248,12 +251,9 @@ export class RemoteExecPool {
   private releaseConn(conn: Conn): void {
     conn.active = Math.max(0, conn.active - 1)
     if (conn.closed || conn.active > 0) return
-    // 别的主机在排队等这个跳板的名额：让出来
-    if (conn.link && conn.link.forwards.waiting > 0) {
-      this.closeConn(conn)
-      return
-    }
-    conn.idleTimer = setTimeout(() => this.closeConn(conn), this.limits.idleCloseMs)
+    // 别的主机在排队等这个跳板的名额：很快让出来，只留一小会儿给紧接着的下一条命令
+    const waiting = !!conn.link && conn.link.forwards.waiting > 0
+    conn.idleTimer = setTimeout(() => this.closeConn(conn), waiting ? this.limits.evictGraceMs : this.limits.idleCloseMs)
     conn.idleTimer.unref?.()
   }
 
@@ -417,9 +417,13 @@ export class RemoteExecPool {
     return link
   }
 
+  /** 闲着的连接给名额让位：不立刻关，留一小会儿给同一台紧接着的下一条命令 */
   private evictIdle(link: JumpLink): void {
     for (const conn of [...link.conns]) {
-      if (conn.active === 0 && !conn.closed) this.closeConn(conn)
+      if (conn.active !== 0 || conn.closed) continue
+      if (conn.idleTimer) clearTimeout(conn.idleTimer)
+      conn.idleTimer = setTimeout(() => this.closeConn(conn), this.limits.evictGraceMs)
+      conn.idleTimer.unref?.()
     }
   }
 

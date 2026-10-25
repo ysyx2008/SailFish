@@ -51,7 +51,14 @@ export interface FakeHost {
 
 let hostKey: string | undefined
 function getHostKey(): string {
-  hostKey ??= utils.generateKeyPairSync('ed25519').private
+  if (!hostKey) {
+    // ssh2 生成的 ed25519 私钥偶尔解析不回来，生成后自己试读一次，不行就重来
+    for (let i = 0; i < 20 && !hostKey; i++) {
+      const candidate = utils.generateKeyPairSync('ed25519').private
+      if (!(utils.parseKey(candidate) instanceof Error)) hostKey = candidate
+    }
+    if (!hostKey) throw new Error('无法生成可用的主机密钥')
+  }
   return hostKey
 }
 

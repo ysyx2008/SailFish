@@ -6,6 +6,7 @@ import { execFile, spawnSync } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
+import * as net from 'node:net'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -25,6 +26,18 @@ export interface RealSshdFleet {
   stop(): Promise<void>
 }
 
+/** 向系统要一个当下空闲的端口（别的进程，包括上次没收干净的 sshd，占着的不会被选中） */
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer()
+    probe.once('error', reject)
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address() as net.AddressInfo
+      probe.close(() => resolve(port))
+    })
+  })
+}
+
 export function hasRealSshd(): boolean {
   return process.platform !== 'win32' && fs.existsSync('/usr/sbin/sshd') && spawnSync('which', ['ssh-keygen']).status === 0
 }
@@ -35,11 +48,11 @@ async function keygen(file: string): Promise<void> {
 
 /**
  * 起 count 个 sshd，各占一个端口。共用一把登录用的钥匙，主机密钥各自一把。
- * basePort 起往上找空闲端口。
+ * 端口向系统要空闲的。
  */
 export async function startRealSshds(
   count: number,
-  opts: { basePort?: number; allowTcpForwarding?: boolean[] } = {},
+  opts: { allowTcpForwarding?: boolean[] } = {},
 ): Promise<RealSshdFleet> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sft-real-sshd-'))
   const clientKey = path.join(dir, 'client_key')
@@ -51,14 +64,13 @@ export async function startRealSshds(
 
   const username = os.userInfo().username
   const hosts: RealSshd[] = []
-  let port = opts.basePort ?? 22800 + Math.floor(Math.random() * 1000)
 
   for (let i = 0; i < count; i++) {
     const hostKey = path.join(dir, `host_key_${i}`)
     await keygen(hostKey)
     const pidFile = path.join(dir, `sshd_${i}.pid`)
     const config = path.join(dir, `sshd_${i}.conf`)
-    const myPort = port++
+    const myPort = await freePort()
     fs.writeFileSync(config, [
       `Port ${myPort}`,
       'ListenAddress 127.0.0.1',

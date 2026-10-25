@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * 确认卡里的「远程访问」一栏：哪些主机（按分组归好）、批准后能原样跑哪些命令。
+ * 确认卡里的「远程访问」一栏：批准后能原样跑哪些命令、哪些主机（按分组归好）。
+ * 命令放前面：它们条数少、是真正被批准的东西；主机多时清单很长，放后面滚动查看。
  */
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -33,6 +34,10 @@ const summary = computed(() =>
 <template>
   <div class="remote-access">
     <p class="remote-access-summary">{{ summary }}</p>
+    <div class="remote-access-title">{{ t('ai.remoteAccess.commandsTitle') }}</div>
+    <ol class="remote-access-commands">
+      <li v-for="(command, index) in request.commands" :key="index"><code>{{ command }}</code></li>
+    </ol>
     <div class="remote-access-title">{{ t('ai.remoteAccess.hostsTitle') }}</div>
     <div v-for="group in groups" :key="group.title" class="remote-access-group">
       <div class="remote-access-group-name">{{ group.title }}</div>
@@ -43,10 +48,6 @@ const summary = computed(() =>
         </li>
       </ul>
     </div>
-    <div class="remote-access-title">{{ t('ai.remoteAccess.commandsTitle') }}</div>
-    <ol class="remote-access-commands">
-      <li v-for="(command, index) in request.commands" :key="index"><code>{{ command }}</code></li>
-    </ol>
   </div>
 </template>
 

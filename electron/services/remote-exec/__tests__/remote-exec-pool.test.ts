@@ -230,6 +230,23 @@ describe('跳板', () => {
   })
 })
 
+describe('跳板排队时的让位', () => {
+  it('让位前留一小会儿：同一台紧接着的下一条命令接着用原连接，不重连', async () => {
+    const jump = await fakeHost({ allowForward: true })
+    const a = await fakeHost()
+    const b = await fakeHost()
+    const p = pool({ jumpForwardLimit: 1, idleCloseMs: 60_000, evictGraceMs: 400 })
+    await p.exec(hostSpec(a, { jumpHost: jumpOf(jump) }), 'echo a1', T)
+    const waiting = p.exec(hostSpec(b, { jumpHost: jumpOf(jump) }), 'echo b1', T)
+    await new Promise(r => setTimeout(r, 50))
+    const again = await p.exec(hostSpec(a, { jumpHost: jumpOf(jump) }), 'echo a2', T)
+    expect(again.output).toBe('a2\n')
+    expect((await waiting).output).toBe('b1\n')
+    expect(a.connections).toBe(1)
+    expect(jump.peakTunnels).toBe(1)
+  })
+})
+
 describe('超时、按停、断线', () => {
   it('超时先发 KILL 信号：远程进程收到信号后结束，不靠硬关通道', async () => {
     const h = await fakeHost()
