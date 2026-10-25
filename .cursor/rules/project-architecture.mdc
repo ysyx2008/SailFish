@@ -49,6 +49,7 @@ SailFish/
 │       ├── ssh.service.ts       # SSH 连接管理
 │       ├── sftp.service.ts      # SFTP 文件传输
 │       ├── unified-terminal.service.ts # local/ssh 统一终端抽象
+│       ├── remote-exec/ # 后台远程通道（不开终端窗在已存主机上跑命令：连接复用、跳板限流、认证失败不重试、超时必杀；通用底层，见 remote-exec/SPEC.md）
 │       ├── host-profile.service.ts     # 主机画像
 │       ├── history.service.ts   # 历史运维：聊天记录(ChatRecord) + Token 统计 + 导入导出 + 清理；组合 AgentRecordStore
 │       ├── history/             # 会话存储底层
@@ -77,6 +78,8 @@ SailFish/
 │       │   ├── sailfish.ts      # SailFish Agent 实现
 │       │   ├── prompt-builder.ts / context-builder.ts / task-memory.ts
 │       │   ├── tools.ts + tools/        # 工具定义 + 执行（含 sub-agent.ts 并行子 Agent）
+│       │   ├── remote-access/           # 伙计的远程范围：授权闸（派出/补单前的只读预检 + 按审批方式批准）、主机与命令清单、伙计侧执行与留痕
+│       │   ├── command-audit/           # 命令审计（风险分级 + 只读判定，本机/远程两种处境）
 │       │   ├── skills/          # 技能包（见下方「AI Agent 架构」）
 │       │   ├── orchestrator.ts  # 多 Agent 编排
 │       │   ├── streaming-tool-executor.ts  # 流式工具并行执行
