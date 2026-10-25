@@ -366,6 +366,13 @@ export default {
     highRisk: '高风险',
     mediumRisk: '中风险',
     lowRisk: '低风险',
+    remoteAccess: {
+      ungrouped: '未分组',
+      hostsTitle: '主机',
+      commandsTitle: '批准后能原样跑的命令',
+      summaryDispatch: '{workers} 个伙计，连 {hosts} 台主机，共 {commands} 条命令',
+      summaryFollowup: '给伙计 {name} 补命令：他的 {hosts} 台主机，新增 {commands} 条命令',
+    },
     riskReasons: '判定原因',
     autoReviewNote: '替我审批看过',
     autoReviewHandedOver: '评审员没有替你放行，交给你定。',

@@ -365,6 +365,13 @@ export default {
     highRisk: 'High Risk',
     mediumRisk: 'Medium Risk',
     lowRisk: 'Low Risk',
+    remoteAccess: {
+      ungrouped: 'Ungrouped',
+      hostsTitle: 'Hosts',
+      commandsTitle: 'Commands they may run exactly as written once approved',
+      summaryDispatch: '{workers} helper(s), {hosts} host(s), {commands} command(s) in total',
+      summaryFollowup: 'Adding commands for helper {name}: their {hosts} host(s), {commands} new command(s)',
+    },
     riskReasons: 'Assessment Reasons',
     autoReviewNote: 'Reviewed for you',
     autoReviewHandedOver: 'The reviewer did not approve this; over to you.',

@@ -16,6 +16,7 @@ import { useTerminalStore } from '../stores/terminal'
 import { useComposerQuoteStore } from '../stores/composer-quote'
 import AgentPlanView from './AgentPlanView.vue'
 import AssignedByHint from './AssignedByHint.vue'
+import ConfirmRemoteAccess from './ConfirmRemoteAccess.vue'
 import AiComposer from './AiComposer.vue'
 import GoalPill from './GoalPill.vue'
 import { rememberLiveGoalFor, revealLiveGoal } from '../composables/goal/live'
@@ -3035,7 +3036,8 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                 </div>
                 <div class="confirm-detail">
                   <div class="confirm-tool-name">{{ pendingConfirm.displayName || toolDisplayName(t, pendingConfirm.toolName) }}</div>
-                  <pre class="confirm-args-inline">{{ formatConfirmArgs(pendingConfirm) }}</pre>
+                  <ConfirmRemoteAccess v-if="pendingConfirm.remoteAccess" :request="pendingConfirm.remoteAccess" />
+                  <pre v-else class="confirm-args-inline">{{ formatConfirmArgs(pendingConfirm) }}</pre>
                   <div v-if="pendingConfirm.reasons && pendingConfirm.reasons.length > 0" class="confirm-reasons">
                     <div class="confirm-reasons-title">{{ t('ai.riskReasons') }}</div>
                     <ul class="confirm-reasons-list">

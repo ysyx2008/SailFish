@@ -24,6 +24,15 @@ import {
 } from '../expert-team'
 import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
 import { createTeamTexts, expertOpening, formatTranscript, renamedList } from './expert-team-text'
+import { inferConversationKind } from '@shared/types'
+import { conversationPolicy } from '../../conversation/policy'
+import { getConfigService } from '../../config.service'
+import { RemoteExecPool, resolveRemoteHost } from '../../remote-exec'
+import { RemoteDispatchGate, type SavedSessionRef } from '../remote-access/remote-dispatch-gate'
+import type { RemoteGrant } from '../remote-access/remote-grant'
+import { RemoteOpRecorder } from '../remote-access/remote-op-recorder'
+import { WorkerRemoteAccess } from '../remote-access/worker-remote-access'
+import { describeRemoteScope } from '../remote-access/worker-situation'
 
 const log = createLogger('SubAgent')
 /** 直接带回对话的结果：各人上限乘这一轮派过的人数，大致不超过这个预算 */
@@ -122,6 +131,11 @@ export class SubAgentWorkspace {
     return chat && chat.written > 0 ? chat.file : undefined
   }
 
+  /** 这一轮的落盘目录 */
+  get directory(): string {
+    return this.dir
+  }
+
   /** 直接带回对话的字数上限：这一轮派得越多越紧 */
   static inlineLimit(dispatched: number): number {
     const share = Math.floor(INLINE_RESULT_BUDGET / Math.max(1, dispatched))
@@ -200,6 +214,61 @@ export function workspaceOf(roster: SubAgentRoster): SubAgentWorkspace {
     workspaces.set(roster, workspace)
   }
   return workspace
+}
+
+/** 这场伙计共用的远程通道：花名册整场被打断时一起关掉 */
+const remotePools = new WeakMap<SubAgentRoster, RemoteExecPool>()
+
+function remotePoolOf(roster: SubAgentRoster): RemoteExecPool {
+  let pool = remotePools.get(roster)
+  if (!pool || pool.isDisposed) {
+    const fresh = new RemoteExecPool()
+    pool = fresh
+    remotePools.set(roster, fresh)
+    roster.onAbortAll(() => fresh.dispose())
+  }
+  return pool
+}
+
+const recorders = new WeakMap<SubAgentRoster, RemoteOpRecorder>()
+
+function recorderOf(roster: SubAgentRoster): RemoteOpRecorder {
+  let recorder = recorders.get(roster)
+  if (!recorder) {
+    recorder = new RemoteOpRecorder(workspaceOf(roster).directory)
+    recorders.set(roster, recorder)
+  }
+  return recorder
+}
+
+function remoteAccessFor(roster: SubAgentRoster, name: string, grant: RemoteGrant): WorkerRemoteAccess {
+  return new WorkerRemoteAccess({
+    workerName: name,
+    grant,
+    pool: remotePoolOf(roster),
+    recorder: recorderOf(roster),
+    resolveHost: (hostId) => {
+      const config = getConfigService()
+      const session = config.getSshSessions().find(s => s.id === hostId)
+      return session ? resolveRemoteHost(session, config.getSessionGroups()) : undefined
+    },
+  })
+}
+
+function remoteGateFor(config: AgentConfig | undefined, executor: ToolExecutorConfig, toolCallId: string | undefined, toolName: string): RemoteDispatchGate {
+  const saved = getConfigService()
+  const kind = inferConversationKind(executor.agentId)
+  return new RemoteDispatchGate({
+    sessions: saved.getSshSessions() as readonly SavedSessionRef[],
+    groups: saved.getSessionGroups(),
+    executionMode: config?.executionMode ?? 'strict',
+    conversationAllows: conversationPolicy(kind).workersMayUseRemoteHosts,
+    attended: !executor.getAgentContext?.()?.unattended,
+    confirm: (request, toolArgs, displayName, reasons) =>
+      executor.waitForConfirmation(
+        toolCallId ?? toolName, toolName, toolArgs, 'moderate', displayName, reasons, undefined, { remoteAccess: request },
+      ),
+  })
 }
 
 /** 伙计工具清单：按元数据过滤，不再分 read/write */
@@ -435,10 +504,11 @@ export function spawnDeps(
     sanitize: sanitizeParentMessages,
     formatKnock,
     archiveResult: (name, text) => workspace.keepResult(name, text, roster.list().length),
+    remoteAccessFor: (name, grant) => remoteAccessFor(roster, name, grant),
   }
 }
 
-type ParsedSpawnTask = SpawnTask & { forkTurns: ForkTurns }
+type ParsedSpawnTask = SpawnTask & { forkTurns: ForkTurns; hosts?: string[] }
 
 function optionalName(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined
@@ -447,6 +517,26 @@ function optionalName(value: unknown): string | undefined {
 /** 一句话简述：折成一行（它要摆进总览的一行和每位专家开场里的团员名单） */
 function oneLine(value: unknown): string | undefined {
   return typeof value === 'string' ? tidyLabel(value) || undefined : undefined
+}
+
+/** hosts：已存会话 id 的数组，去掉重复；不写返回 undefined */
+function parseHosts(value: unknown, where: string): { hosts?: string[] } | { error: string } {
+  if (value === undefined) return {}
+  if (!Array.isArray(value) || value.some(v => typeof v !== 'string' || v.trim() === '')) {
+    return { error: `${where}：hosts 必须是字符串数组，每项是 list_ssh_sessions 返回的 sessionId` }
+  }
+  const hosts = [...new Set((value as string[]).map(v => v.trim()))]
+  return hosts.length > 0 ? { hosts } : {}
+}
+
+/** remote_commands：每条一项，去掉首尾空白；不写返回空数组 */
+export function parseRemoteCommands(args: Record<string, unknown>): { commands: string[] } | { error: string } {
+  const raw = args.remote_commands
+  if (raw === undefined) return { commands: [] }
+  if (!Array.isArray(raw) || raw.some(v => typeof v !== 'string' || v.trim() === '')) {
+    return { error: 'remote_commands 必须是字符串数组，每条是一条命令' }
+  }
+  return { commands: [...new Set((raw as string[]).map(v => v.trim()))] }
 }
 
 function isBatchArgs(value: unknown): value is { instruction: string } {
@@ -482,12 +572,15 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
         problems.push(`子任务 ${i + 1} 的 role 最长 ${MAX_ROLE_CHARS} 个字，这次 ${labelLength(role)} 个字。`)
       }
       const description = oneLine(task.description)
+      const hosts = parseHosts(task.hosts, `子任务 ${i + 1}`)
+      if ('error' in hosts) return { error: hosts.error }
       tasks.push({
         name,
         description: description ?? (role ? name ?? role : 'task'),
         prompt: task.prompt,
         forkTurns,
         ...(role ? { role } : {}),
+        ...hosts,
       })
     }
   }
@@ -510,12 +603,15 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
         return { error: `batch 第 ${i + 1} 条缺少 input` }
       }
       const name = optionalName(item.name)
+      const hosts = parseHosts(item.hosts, `batch 第 ${i + 1} 条`)
+      if ('error' in hosts) return { error: hosts.error }
       tasks.push({
         name,
         description: oneLine(item.description) ?? (name ?? `${i + 1}`),
         prompt: `${batch.instruction}\n${item.input}`,
         shownPrompt: item.input,
         forkTurns,
+        ...hosts,
       })
     }
   }
@@ -538,6 +634,43 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
   }
   if (problems.length) return { error: `没派：${problems.join('')}` }
   return { tasks, team }
+}
+
+/**
+ * 派出前的远程授权：带了 hosts 的伙计要过只读判定、按这场对话的审批方式确认。
+ * 通过后，每位伙计的任务后面接上他的处境说明，范围跟着他走。
+ */
+async function authorizeRemoteScopes(
+  args: Record<string, unknown>,
+  tasks: ParsedSpawnTask[],
+  config: AgentConfig,
+  executor: ToolExecutorConfig,
+  toolCallId: string | undefined,
+): Promise<{ tasks: SpawnTask[] } | { error: string }> {
+  const parsedCommands = parseRemoteCommands(args)
+  if ('error' in parsedCommands) return { error: parsedCommands.error }
+  const commands = parsedCommands.commands
+  if (commands.length === 0 && !tasks.some(task => task.hosts)) {
+    return { tasks }
+  }
+
+  const gate = remoteGateFor(config, executor, toolCallId, 'dispatch_agents')
+  const outcome = await gate.authorizeDispatch(tasks, commands)
+  if (!outcome.ok) return { error: outcome.error }
+
+  return {
+    tasks: tasks.map((task, i): SpawnTask => {
+      const grant = outcome.value[i]
+      const { hosts: _hosts, ...rest } = task
+      if (!grant) return rest
+      return {
+        ...rest,
+        shownPrompt: task.shownPrompt ?? task.prompt,
+        prompt: `${task.prompt}\n\n${describeRemoteScope(grant)}`,
+        remoteGrant: grant,
+      }
+    }),
+  }
 }
 
 export async function dispatchSubAgents(
@@ -570,6 +703,9 @@ export async function dispatchSubAgents(
     }
   }
 
+  const remote = await authorizeRemoteScopes(args, parsedTasks, _config, executor, _toolCallId)
+  if ('error' in remote) return { success: false, output: '', error: remote.error }
+
   const progressStep = executor.addStep({
     type: 'tool_call',
     content: dispatchTitle(parsedTasks.length, allExperts, team),
@@ -590,7 +726,7 @@ export async function dispatchSubAgents(
     return { success: false, output: '', error: deps.error }
   }
 
-  const names = roster.spawn(parsedTasks, deps, team ? { team } : undefined)
+  const names = roster.spawn(remote.tasks, deps, team ? { team } : undefined)
   const workspace = workspaceOf(roster)
   workspace.writeOverview(roster.list())
   const created = team ? roster.teamOf(names[0]) : undefined
@@ -613,12 +749,28 @@ export async function dispatchSubAgents(
   }
 }
 
-export async function followupAgent(args: Record<string, unknown>, executor: ToolExecutorConfig): Promise<ToolResult> {
+export async function followupAgent(
+  args: Record<string, unknown>,
+  executor: ToolExecutorConfig,
+  config?: AgentConfig,
+  toolCallId?: string,
+): Promise<ToolResult> {
   const roster = executor.getSubAgentRoster?.()
   if (!roster) return { success: false, output: '', error: '没有花名册' }
   const name = typeof args.name === 'string' ? args.name.trim() : ''
   const message = typeof args.message === 'string' ? args.message.trim() : ''
   if (!name || !message) return { success: false, output: '', error: '需要 name 和 message' }
+
+  const parsedCommands = parseRemoteCommands(args)
+  if ('error' in parsedCommands) return { success: false, output: '', error: parsedCommands.error }
+  const remoteCommands = parsedCommands.commands
+  const grant = roster.remoteGrantOf(name)
+  if (remoteCommands.length > 0) {
+    if (!roster.get(name)) return { success: false, output: '', error: `没有叫 ${name} 的伙计` }
+    const gate = remoteGateFor(config, executor, toolCallId, 'followup_agent')
+    const outcome = await gate.authorizeFollowup(name, grant, remoteCommands)
+    if (!outcome.ok) return { success: false, output: '', error: outcome.error }
+  }
 
   const progressStep = executor.addStep({
     type: 'tool_call',
@@ -632,7 +784,12 @@ export async function followupAgent(args: Record<string, unknown>, executor: Too
   const deps = spawnDeps(executor, progressStep.id, new Set([name]))
   if ('error' in deps) return { success: false, output: '', error: deps.error }
 
-  const result = roster.followup(name, message, deps)
+  // 他还在跑时一收到话就可能用上新命令，所以先记进单子，再交话
+  if (grant && remoteCommands.length > 0) grant.addCommands(remoteCommands)
+  const followupMessage = grant && remoteCommands.length > 0
+    ? `${message}\n\n${describeRemoteScope(grant)}`
+    : message
+  const result = roster.followup(name, followupMessage, deps)
   if (!result.ok) {
     executor.updateStep(progressStep.id, { success: false, content: result.error })
     return { success: false, output: '', error: result.error }

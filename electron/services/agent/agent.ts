@@ -6650,6 +6650,7 @@ export abstract class Agent {
         trustCommandOffer,
         ...(place ? { fromWorker: true } : {}),
         ...(autoReview ? { autoReview } : {}),
+        ...(opts?.remoteAccess ? { remoteAccess: opts.remoteAccess } : {}),
         resolve: (approved, modifiedArgs) => finish(approved, modifiedArgs),
       }
       pending.confirmation = confirmation

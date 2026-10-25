@@ -10,6 +10,8 @@ import type { ChildRecorder, ChildState, ChildStateInput } from '../history/sub-
 import type { AgentContext, AgentStep, RunOptions } from './types'
 import { applyForkTurns, type ForkTurns } from './sanitize-parent-messages'
 import { ExpertTeam, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER, tidyLabel, type TeamMessage } from './expert-team'
+import type { RemoteGrant } from './remote-access/remote-grant'
+import type { WorkerRemoteAccess } from './remote-access/worker-remote-access'
 
 export type ChildStatus = 'pending' | 'running' | 'completed' | 'failed' | 'interrupted'
 
@@ -45,6 +47,8 @@ export interface ChildAgentHandle {
   readonly childRecorder?: ChildRecorder
   /** 进专家团：之后能在群里说话 */
   joinTeam?(seat: TeamSeat): void
+  /** 给这位伙计接上远程通道（只有带了远程范围的伙计才会调用） */
+  setRemoteAccess?(access: WorkerRemoteAccess): void
 }
 
 /** 这场会话里以前派出的、已经停下的伙计（存在盘上，还没被叫起来） */
@@ -88,6 +92,8 @@ export interface SpawnTask {
   /** 默认全带。none 不带对话，last N 只带最近几轮。 */
   forkTurns?: ForkTurns
   shownPrompt?: string
+  /** 这位伙计的远程范围；不写就碰不到远程 */
+  remoteGrant?: RemoteGrant
 }
 
 /** 专家团里各种时刻交给专家或组长的话 */
@@ -113,6 +119,8 @@ export interface RosterSpawnDeps {
   sanitize: (messages: AiMessage[]) => AiMessage[]
   formatKnock: (child: ChildSnapshot) => string
   archiveResult?: (name: string, text: string) => string
+  /** 按名字和范围造出这位伙计的远程通道 */
+  remoteAccessFor?: (name: string, grant: RemoteGrant) => WorkerRemoteAccess
   /**
    * 这一批派出的名字。spawn 在刷新进度前写入。
    * 进度回调只该更新这几位，后一批不能把前一张卡片刷成整场花名册。
@@ -139,6 +147,7 @@ interface ChildSlot extends ChildSnapshot {
   segment: number
   /** 这一段被打断了：它收干净回来时记成已打断，不管它是抛错还是照常返回 */
   interruptRequested?: boolean
+  remoteGrant?: RemoteGrant
 }
 
 interface TeamEntry {
@@ -208,6 +217,7 @@ export class SubAgentRoster {
   /** 还没被 waitForNews 领走的敲门，按先后排队。 */
   private unreadNews: string[] = []
   private readonly knockSettleMs: number
+  private readonly abortHooks: Array<() => void> = []
 
   constructor(options?: { knockSettleMs?: number }) {
     this.knockSettleMs = options?.knockSettleMs ?? KNOCK_SETTLE_MS
@@ -284,6 +294,16 @@ export class SubAgentRoster {
   get(name: string): ChildSnapshot | undefined {
     const slot = this.children.get(name)
     return slot ? snapshotOf(slot) : undefined
+  }
+
+  /** 这位伙计的远程范围；没有就是不碰远程 */
+  remoteGrantOf(name: string): RemoteGrant | undefined {
+    return this.children.get(name)?.remoteGrant
+  }
+
+  /** 整场被打断时要一起收尾的东西（比如远程通道）。abortAll 时各调用一次 */
+  onAbortAll(hook: () => void): void {
+    this.abortHooks.push(hook)
   }
 
   asSubAgentResults(): SubAgentResult[] {
@@ -416,6 +436,7 @@ export class SubAgentRoster {
         steps: [],
         forkTurns: task.forkTurns ?? { kind: 'all' },
         segment: 0,
+        ...(task.remoteGrant ? { remoteGrant: task.remoteGrant } : {}),
       })
       names.push(name)
     }
@@ -660,6 +681,9 @@ export class SubAgentRoster {
       slot.status = 'interrupted'
       persistSlot(slot)
     }
+    for (const hook of this.abortHooks) {
+      try { hook() } catch { /* 收尾失败不挡住别的收尾 */ }
+    }
     this.wake()
   }
 
@@ -693,6 +717,7 @@ export class SubAgentRoster {
     if (!slot) return
     const handle = deps.createChild(name)
     slot.handle = handle
+    if (slot.remoteGrant && deps.remoteAccessFor) handle.setRemoteAccess?.(deps.remoteAccessFor(name, slot.remoteGrant))
     slot.status = 'running'
     if (team) {
       handle.joinTeam?.({

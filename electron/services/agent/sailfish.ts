@@ -20,6 +20,7 @@ import type { AgentRun } from './types'
 import { toolStepsFromRecords, type ChildAgentHandle, type DormantChild, type TeamSeat } from './sub-agent-roster'
 import type { PersistedChild } from '../history/sub-agent-record-store'
 import { sanitizeToolCallSequence } from './context-builder'
+import type { WorkerRemoteAccess } from './remote-access/worker-remote-access'
 import { COMPANION_WORKBENCH_AGENT_TOOLS } from '@sailfish/workbench-companion/agent-tools'
 import { COMPANION_AGENT_KEY } from '@shared/types'
 import { PromptBuilder } from './prompt-builder'
@@ -123,7 +124,8 @@ export class SailFish extends Agent {
       unattended,
       supportsGoal: this.supportsGoal(),
       hasArtifactPanel: this.hasArtifactPanel(),
-      hasTerminalSeat: this.hasTerminalSeat()
+      hasTerminalSeat: this.hasTerminalSeat(),
+      remoteAccess: this.remoteAccess?.grant.hasHosts() === true,
     }, this.services.pluginRegistry)
 
     // 联络专属工具由联络工作台贡献（manage_tasks 任务管理），不进 agent 通用注册表
@@ -146,7 +148,15 @@ export class SailFish extends Agent {
       createChildAgent: (name) => this.spawnChild(name),
       restoreDormantChildren: () => this.restoreDormantChildren(),
       teamSeat: this._teamSeat,
+      getRemoteAccess: () => this.remoteAccess,
     }
+  }
+
+  /** 派出时给这位伙计接上的远程通道；没有就碰不到远程 */
+  private remoteAccess?: WorkerRemoteAccess
+
+  setRemoteAccess(access: WorkerRemoteAccess): void {
+    this.remoteAccess = access
   }
 
   private spawnChild(name: string): ChildAgentHandle {

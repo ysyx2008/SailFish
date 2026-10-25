@@ -237,7 +237,8 @@ export class WebChatService {
           toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
           riskLevel: confirmation.riskLevel,
           displayName: confirmation.displayName,
-          reasons: confirmation.reasons
+          reasons: confirmation.reasons,
+          ...(confirmation.remoteAccess ? { remoteAccess: confirmation.remoteAccess } : {})
         })
       },
       onComplete: (_runId: string, result: string, pendingUserMessages?: Array<string | import('@shared/types').PendingUserHandoff>) => {

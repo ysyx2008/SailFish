@@ -29,8 +29,10 @@ import {
   labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER,
   teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT
 } from './expert-team'
+import { REMOTE_OUTPUT_INLINE_CHARS, REMOTE_TIMEOUT_DEFAULT_SECONDS, REMOTE_TIMEOUT_MAX_SECONDS } from './remote-access/limits'
 
 const SUB_AGENT_NAME_DESCRIPTION = '能反映出他在干什么的短名字，让用户一眼看懂（如「读 nginx 配置」）。不要用人名、编号或跟任务无关的代号。可选，不填则从任务简述生成'
+const HOSTS_DESCRIPTION = '这个伙计能连的已存主机（sessionId）。不写就碰不到远程。'
 const FORK_TURNS_DESCRIPTION = '带多少对话。默认 all。none=不带，all=全带，正整数字符串（如 1、3）=只带最近几轮。'
 
 /** @deprecated Use TerminalType from @shared/types */
@@ -151,6 +153,11 @@ export interface ToolMeta {
    * 伙计看到的工具说明。处境和主人不同时写这一份，避免共用说明骗人。
    */
   descriptionForSubAgent?: string
+
+  /**
+   * 只给带了远程主机范围的伙计。没有范围的 Agent（秘书、普通伙计）清单里没有它。
+   */
+  requiresRemoteAccess?: boolean
 
   /**
    * 动手范围。pane = 对着看得见的那扇窗干活（跑命令、动那台的文件）。
@@ -515,6 +522,8 @@ export interface GetAgentToolsOptions {
    * 没有时不给管理终端窗格的工具：联络只有聊天区，打不开终端。
    */
   hasTerminalSeat?: boolean
+  /** 这位伙计带了远程主机范围：为真时才带上只给有范围的伙计的工具 */
+  remoteAccess?: boolean
 }
 
 /**
@@ -1277,7 +1286,9 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       type: 'function',
       function: {
         name: 'dispatch_agents',
-        description: `派出这场任务里的同事并行干活：不带 role 的是伙计，带 role 的是专家。派出的都立刻开工，立刻返回每个人的名字。两种写法：tasks 每人各写一份指令；batch 一份共同指令加一批条目，每个条目派一个人。同一次可以两种一起用。再带 team，这次 tasks 里的专家（${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位，每位都带 role，不和 batch 同用）组成专家团，在群里点名交接，你是组长，团里的规矩在派出后的回执里。同时向模型发几个请求由系统按接口的承受情况调节，暂时发不出去的排队，轮到了再发。每个伙计各自占用对话上下文和费用。一场任务里没做完的伙计最多 ${MAX_LIVE_CHILDREN} 个，这次要派的加上没做完的超过这个数时，整批不派。`,
+        description: `派出这场任务里的同事并行干活：不带 role 的是伙计，带 role 的是专家。派出的都立刻开工，立刻返回每个人的名字。两种写法：tasks 每人各写一份指令；batch 一份共同指令加一批条目，每个条目派一个人。同一次可以两种一起用。再带 team，这次 tasks 里的专家（${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位，每位都带 role，不和 batch 同用）组成专家团，在群里点名交接，你是组长，团里的规矩在派出后的回执里。同时向模型发几个请求由系统按接口的承受情况调节，暂时发不出去的排队，轮到了再发。每个伙计各自占用对话上下文和费用。一场任务里没做完的伙计最多 ${MAX_LIVE_CHILDREN} 个，这次要派的加上没做完的超过这个数时，整批不派。
+
+伙计也能在已存的 SSH 主机上后台跑命令：给伙计写 hosts（list_ssh_sessions 返回的 sessionId），并在 remote_commands 里列出这一批要在远程跑的命令。派出前这些主机和命令按当前执行模式走确认，批准后才开工；关切、唤醒里派不出去。伙计只能在自己的主机上原样跑单上的命令，不开终端窗。目前只接受只读命令，有一条判定不是只读，整批不派，回执里写明是哪条、为什么。`,
         parameters: {
           type: 'object',
           properties: {
@@ -1290,7 +1301,8 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
                   role: { type: 'string', description: `专家角色，几个字，最长 ${MAX_ROLE_CHARS} 个字。带了就是专家，界面上显示为角色标签；专家的名字和角色都不能用「${TEAM_LEADER}」。带 team 时 tasks 里每一项都要带，主持、协调这类位置也一样` },
                   description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
                   prompt: { type: 'string', description: '详细任务指令' },
-                  fork_turns: { type: 'string', description: FORK_TURNS_DESCRIPTION }
+                  fork_turns: { type: 'string', description: FORK_TURNS_DESCRIPTION },
+                  hosts: { type: 'array', items: { type: 'string' }, description: HOSTS_DESCRIPTION }
                 },
                 required: ['description', 'prompt']
               },
@@ -1309,7 +1321,8 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
                     properties: {
                       name: { type: 'string', description: SUB_AGENT_NAME_DESCRIPTION },
                       description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
-                      input: { type: 'string', description: '这个伙计自己的那部分，接在共同指令后面' }
+                      input: { type: 'string', description: '这个伙计自己的那部分，接在共同指令后面' },
+                      hosts: { type: 'array', items: { type: 'string' }, description: HOSTS_DESCRIPTION }
                     },
                     required: ['description', 'input']
                   }
@@ -1317,6 +1330,11 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
                 fork_turns: { type: 'string', description: `${FORK_TURNS_DESCRIPTION}这一批共用。` }
               },
               required: ['instruction', 'items']
+            },
+            remote_commands: {
+              type: 'array',
+              items: { type: 'string' },
+              description: '这一批要在远程跑的命令，每条一项。伙计只能原样跑这些。有伙计写了 hosts 就必填。'
             }
           },
           required: []
@@ -1340,7 +1358,12 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
           type: 'object',
           properties: {
             name: { type: 'string', description: 'dispatch_agents 返回的名字' },
-            message: { type: 'string', description: '要补充的交代' }
+            message: { type: 'string', description: '要补充的交代' },
+            remote_commands: {
+              type: 'array',
+              items: { type: 'string' },
+              description: '补给这个伙计的远程命令。用户批准后才交给他，他能连的主机不变。'
+            }
           },
           required: ['name', 'message']
         }
@@ -1475,10 +1498,7 @@ SSH 断线：ensure_connected 或依赖用时懒重连（结果会告知，不�
 
 ${sshUsageDesc}
 
-适用场景：
-- 多机巡检 / 灰度对比（dev/staging/prod 平铺为多窗格）
-- 跨主机故障排查
-- 用户说"在 xxx 服务器上看一下..."时，对照本清单找到对应 sessionId`,
+sessionId 也可以写进 dispatch_agents 的 hosts，让伙计在后台连那几台。用户说"在 xxx 服务器上看一下..."时，对照本清单找到对应 sessionId。`,
         parameters: {
           type: 'object',
           properties: {}
@@ -1490,6 +1510,29 @@ ${sshUsageDesc}
         parallelizable: true,
         allowedForSubAgent: false,
         streamDisplay: { titleKey: 'tool.list_ssh_sessions' },
+      }
+    } as ToolDefinitionWithMeta,
+    {
+      type: 'function',
+      function: {
+        name: 'remote_exec',
+        description: `在派给你的远程主机上后台跑一条命令，返回退出码和输出。不开终端，不能交互（不能输密码，不能用 vim、top 这类全屏程序）。只能跑批准过的命令，原文一字不差；别的命令、别的主机会被拒绝。超时默认 ${REMOTE_TIMEOUT_DEFAULT_SECONDS} 秒，最长 ${REMOTE_TIMEOUT_MAX_SECONDS} 秒。输出超过 ${REMOTE_OUTPUT_INLINE_CHARS} 字时只留开头和结尾，全文存成文件，路径随结果给出。`,
+        parameters: {
+          type: 'object',
+          properties: {
+            host: { type: 'string', description: '主机的 sessionId，见你的任务说明' },
+            command: { type: 'string', description: '批准清单里的一条命令，原文' },
+            timeout_seconds: { type: 'number', description: '超时秒数' }
+          },
+          required: ['host', 'command']
+        }
+      },
+      _meta: {
+        supportedModes: ['assistant'],
+        requiresRemoteAccess: true,
+        parallelizable: true,
+        argRole: { summaryLine: 'command' },
+        streamDisplay: { titleKey: 'tool.remote_exec', titleField: 'command' },
       }
     } as ToolDefinitionWithMeta,
 
@@ -1523,10 +1566,15 @@ ${sshUsageDesc}
 
   ]
 
+  // 只给带了远程范围的伙计的工具：按处境出现，不靠工具名
+  const situationTools = options?.remoteAccess
+    ? builtinTools
+    : builtinTools.filter(tool => !(tool as ToolDefinitionWithMeta)._meta?.requiresRemoteAccess)
+
   // 根据运行模式过滤工具
-  let filteredTools: ToolDefinition[] = builtinTools
+  let filteredTools: ToolDefinition[] = situationTools
   if (options?.mode) {
-    filteredTools = builtinTools.filter(tool => {
+    filteredTools = situationTools.filter(tool => {
       const meta = (tool as ToolDefinitionWithMeta)._meta
       // 没有 _meta 或没有 supportedModes 的工具支持所有模式
       if (!meta?.supportedModes) return true

@@ -1894,7 +1894,8 @@ export class IMService {
               toolName: confirmation.toolName,
               toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
               riskLevel: confirmation.riskLevel,
-              displayName: confirmation.displayName
+              displayName: confirmation.displayName,
+              ...(confirmation.remoteAccess ? { remoteAccess: confirmation.remoteAccess } : {})
             })
           }
 

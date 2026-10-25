@@ -4352,7 +4352,8 @@ function createRendererAgentCallbacks(
         toolArgs: JSON.parse(JSON.stringify(confirmation.toolArgs)),
         riskLevel: confirmation.riskLevel,
         displayName: confirmation.displayName,
-        reasons: confirmation.reasons
+        reasons: confirmation.reasons,
+        ...(confirmation.remoteAccess ? { remoteAccess: confirmation.remoteAccess } : {})
       })
       // 任务栏/Dock 提醒 + 系统通知（仅在窗口不在前台时触发）
       const riskEmoji = confirmation.riskLevel === 'dangerous' ? '⚠️ ' : ''

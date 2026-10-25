@@ -130,17 +130,24 @@ export interface ConversationPolicy {
    * - watch/wakeup=queued：后台自己跑，晚一点不要紧，别挤掉当面的请求。
    */
   modelRequestPriority: Extract<ModelRequestPriority, 'urgent' | 'queued'>
+
+  /**
+   * 派出的伙计能否去连用户已存的远程主机（派出前要用户批准，见伙计的远程范围）。
+   * - task/companion=true：用户在场，能当场批准或拒绝；自由模式下用户已选了不问。
+   * - watch/wakeup=false：后台执行，它们的执行方式是系统定的，不是用户当场选的。
+   */
+  workersMayUseRemoteHosts: boolean
 }
 
 /**
  * 四类会话的行为策略。
  *
- * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview | autoReviewEarlierWordsWithinMs | restoreSkillsOnReopen | skillNotesOnUserMessage | supportsGoal | hasArtifactPanel | hasTerminalSeat | modelRequestPriority |
- * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|--------------------------------|-----------------------|-------------------------|--------------|------------------|-----------------|----------------------|
- * | task      | true        | false                      | true          | main        | false              | true               | null（整场）                    | true                  | true                    | true         | true             | true            | urgent               |
- * | companion | true        | true                       | true          | main        | false              | true               | 24h                            | false                 | true                    | false        | false            | false           | urgent               |
- * | watch     | false       | false                      | false         | watch       | false（预留）       | false              | null                           | false                 | false                   | false        | false            | false           | queued               |
- * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              | null                           | false                 | false                   | false        | false            | false           | queued               |
+ * | kind      | accumulates | seedFromHistoryOnColdStart | visibleInList | historyTree | perWatchContinuity | autoApprovalReview | autoReviewEarlierWordsWithinMs | restoreSkillsOnReopen | skillNotesOnUserMessage | supportsGoal | hasArtifactPanel | hasTerminalSeat | modelRequestPriority | workersMayUseRemoteHosts |
+ * |-----------|-------------|----------------------------|---------------|-------------|--------------------|--------------------|--------------------------------|-----------------------|-------------------------|--------------|------------------|-----------------|----------------------| --------------------------|
+ * | task      | true        | false                      | true          | main        | false              | true               | null（整场）                    | true                  | true                    | true         | true             | true            | urgent               | true                     |
+ * | companion | true        | true                       | true          | main        | false              | true               | 24h                            | false                 | true                    | false        | false            | false           | urgent               | true                     |
+ * | watch     | false       | false                      | false         | watch       | false（预留）       | false              | null                           | false                 | false                   | false        | false            | false           | queued               | false                    |
+ * | wakeup    | false       | true                       | false         | watch       | false（预留）       | false              | null                           | false                 | false                   | false        | false            | false           | queued               | false                    |
  *
  * 注：wakeup 从 watch 中独立出来——关切是用户配置的一次性任务（prompt 自带指令，逐次失忆，
  * 避免 A 关切串味到 B），wakeup 是 Agent 自主循环（需要历史记忆辅助决策「该不该主动找人、
@@ -162,7 +169,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     supportsGoal: true,
     hasArtifactPanel: true,
     hasTerminalSeat: true,
-    modelRequestPriority: 'urgent'
+    modelRequestPriority: 'urgent',
+    workersMayUseRemoteHosts: true
   },
   companion: {
     accumulates: true,
@@ -177,7 +185,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     supportsGoal: false,
     hasArtifactPanel: false,
     hasTerminalSeat: false,
-    modelRequestPriority: 'urgent'
+    modelRequestPriority: 'urgent',
+    workersMayUseRemoteHosts: true
   },
   watch: {
     accumulates: false,
@@ -192,7 +201,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     supportsGoal: false,
     hasArtifactPanel: false,
     hasTerminalSeat: false,
-    modelRequestPriority: 'queued'
+    modelRequestPriority: 'queued',
+    workersMayUseRemoteHosts: false
   },
   wakeup: {
     accumulates: false,
@@ -207,7 +217,8 @@ export const CONVERSATION_POLICY: Record<ConversationKind, ConversationPolicy> =
     supportsGoal: false,
     hasArtifactPanel: false,
     hasTerminalSeat: false,
-    modelRequestPriority: 'queued'
+    modelRequestPriority: 'queued',
+    workersMayUseRemoteHosts: false
   }
 }
 

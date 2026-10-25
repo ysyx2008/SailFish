@@ -23,6 +23,7 @@ describe('CONVERSATION_POLICY 策略表', () => {
       hasArtifactPanel: true,
       hasTerminalSeat: true,
       modelRequestPriority: 'urgent',
+      workersMayUseRemoteHosts: true,
     })
   })
 
@@ -38,6 +39,13 @@ describe('CONVERSATION_POLICY 策略表', () => {
     expect(conversationPolicy('companion').hasTerminalSeat).toBe(false)
     expect(conversationPolicy('watch').hasTerminalSeat).toBe(false)
     expect(conversationPolicy('wakeup').hasTerminalSeat).toBe(false)
+  })
+
+  it('伙计连远程主机：用户在场的任务和联络可以，后台的关切和唤醒不可以', () => {
+    expect(conversationPolicy('task').workersMayUseRemoteHosts).toBe(true)
+    expect(conversationPolicy('companion').workersMayUseRemoteHosts).toBe(true)
+    expect(conversationPolicy('watch').workersMayUseRemoteHosts).toBe(false)
+    expect(conversationPolicy('wakeup').workersMayUseRemoteHosts).toBe(false)
   })
 
   it('模型请求：任务和联络有人当面等不排队，关切和唤醒在后台排队', () => {

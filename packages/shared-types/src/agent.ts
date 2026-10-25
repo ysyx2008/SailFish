@@ -834,4 +834,25 @@ export interface PendingConfirmation {
   }
   /** 替我审批评审过但没有放行时带上：为什么交回用户 */
   autoReview?: AutoReviewTrail
+  /** 这次确认是批准一批伙计去连哪些远程主机、跑哪些命令（卡片据此按主机和命令清单展示） */
+  remoteAccess?: RemoteAccessRequest
+}
+
+/** 请用户批准的一次远程访问：哪些主机、哪些命令、给谁用 */
+export interface RemoteAccessRequest {
+  hosts: Array<{
+    /** 已存会话的 id */
+    id: string
+    name: string
+    /** user@host:port */
+    address: string
+    /** 所在分组名；没分组不写 */
+    group?: string
+  }>
+  /** 批准后伙计能原样跑的命令，一条一项 */
+  commands: string[]
+  /** 这次派出的伙计数；补单时不写 */
+  workerCount?: number
+  /** 补单给谁；派出时不写 */
+  forWorker?: string
 }
