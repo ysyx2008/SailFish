@@ -162,6 +162,8 @@ export interface ToolExecutorConfig {
    * 此时依赖此 getter 的工具应优雅降级或返回错误。
    */
   getAgentContext?: () => import('../types').AgentContext | undefined
+  /** 运维专家要用的模型通道和用户原话；拿不到（测试、精简环境）就按原来的只读判定 */
+  getRemoteExpertEnv?: () => import('../remote-access/expert').RemoteExpertEnv | undefined
   /**
    * 获取用户配置的 AI Rules（项目级编码约定）。
    *

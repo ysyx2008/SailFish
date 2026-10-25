@@ -54,13 +54,13 @@ function makeServices(responder: (args: {
   childIndex: number
   parentIndex: number
   messages: Array<{ role?: string; content?: unknown }>
-}) => LlmResponse): AgentServices {
+}) => LlmResponse, expertReply = ''): AgentServices {
   let childIndex = 0
   let parentIndex = 0
   return {
     aiService: {
       chat: vi.fn().mockResolvedValue(''),
-      chatWithTools: vi.fn(async () => ({ content: '', tool_calls: [] })),
+      chatWithTools: vi.fn(async () => ({ content: expertReply, tool_calls: [] })),
       chatWithToolsStream: vi.fn(async (
         messages: Array<{ role?: string; content?: unknown }>,
         tools: ToolDefinition[],
@@ -136,7 +136,7 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  function runParent(services: AgentServices, mode: 'relaxed' | 'free', decide: (c: PendingConfirmation) => boolean) {
+  function runParent(services: AgentServices, mode: 'strict' | 'relaxed' | 'free', decide: (c: PendingConfirmation) => boolean) {
     const parent = new SailFish(services)
     parent.setAgentId('e2e-remote')
     parent.updateConfig({ executionMode: mode })
@@ -242,17 +242,95 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     expect(seen).toContain('不在你的范围里')
   })
 
-  it('命令不是只读：整批退回，主人看到原因，没有问人也没有伙计', async () => {
-    const services = makeServices(({ isChild, parentIndex, messages }) => {
-      if (isChild) return { content: '不该有伙计' }
-      if (parentIndex === 0) return { tool_calls: [dispatch(['h1'], ['rm -rf /var/log/app'])] }
-      return { content: lastUserText(messages).includes('不是只读') ? '换只读命令' : '？' }
-    })
+  const parentOnlyDispatch = (cmds: string[], onAfter: string) => ({ isChild, parentIndex, messages }: { isChild: boolean; parentIndex: number; messages: Array<{ role?: string; content?: unknown }> }): LlmResponse => {
+    if (isChild) return { content: '不该有伙计' }
+    if (parentIndex === 0) return { tool_calls: [dispatch(['h1'], cmds)] }
+    return { content: lastUserText(messages).includes(onAfter) ? '收到' : '？' }
+  }
+
+  it('专家拒绝：整批退回，主人看到专家的理由，没有问人也没有伙计、没连主机', async () => {
+    const services = makeServices(
+      parentOnlyDispatch(['rm -rf /var/log/app'], '会删日志'),
+      '{"outcome":"refuse","reason":"会删日志"}',
+    )
     const { result, confirmations } = runParent(services, 'relaxed', () => true)
     await result
     expect(confirmations).toHaveLength(0)
     expect(llmCalls.some(c => isChildCallNames(c.tools))).toBe(false)
+    expect(toolOutputsOf(llmCalls.at(-1)!)).toContain('会删日志')
+    expect(host.connections).toBe(0)
+  })
+
+  it('宽松：专家放行就不弹卡，伙计照单跑，过程里留着专家的理由', async () => {
+    const services = makeServices(({ isChild, childIndex, parentIndex, messages }) => {
+      if (isChild) {
+        if (childIndex === 0) return { tool_calls: [tc('remote_exec', { host: 'h1', command: 'echo ALLOWED' }, 'c1')] }
+        return { content: '跑完了' }
+      }
+      if (parentIndex === 0) return { tool_calls: [dispatch(['h1'], ['echo ALLOWED'])] }
+      return { content: lastUserText(messages).includes('跑完') ? '汇总' : '再等等' }
+    }, '{"outcome":"allow","card":"你点名了这台，只是回显一句话"}')
+    const { result, confirmations, steps } = runParent(services, 'relaxed', () => false)
+    await result
+    expect(confirmations).toHaveLength(0)
+    expect(host.commands).toEqual(['echo ALLOWED'])
+    const trail = steps.find(s => s.type === 'auto_review' && s.autoReview?.outcome === 'approved')
+    expect(trail?.autoReview?.rationale).toContain('你点名了这台')
+  })
+
+  it('严格：专家放行也弹卡，卡上是专家的话', async () => {
+    const services = makeServices(parentOnlyDispatch(['uptime'], '没有批准'), '{"outcome":"allow","card":"只是看运行时长"}')
+    const { result, confirmations } = runParent(services, 'strict', () => false)
+    await result
+    expect(confirmations).toHaveLength(1)
+    expect(confirmations[0]!.remoteAccess?.expert?.card).toBe('只是看运行时长')
+    expect(host.connections).toBe(0)
+  })
+
+  it('宽松：专家说要问，弹卡，卡上是专家的话；用户点头后伙计才开工', async () => {
+    const services = makeServices(({ isChild, childIndex, parentIndex, messages }) => {
+      if (isChild) {
+        if (childIndex === 0) return { tool_calls: [tc('remote_exec', { host: 'h1', command: 'systemctl restart nginx' }, 'c1')] }
+        return { content: '跑完了' }
+      }
+      if (parentIndex === 0) return { tool_calls: [dispatch(['h1'], ['systemctl restart nginx'])] }
+      return { content: lastUserText(messages).includes('跑完') ? '汇总' : '再等等' }
+    }, '{"outcome":"ask_user","card":"这批会重启生产的 nginx，你原话只说了看看"}')
+    const { result, confirmations } = runParent(services, 'relaxed', () => true)
+    await result
+    expect(confirmations).toHaveLength(1)
+    expect(confirmations[0]!.remoteAccess?.expert?.card).toContain('重启生产的 nginx')
+    expect(confirmations[0]!.autoReview).toBeUndefined()
+  })
+
+  it('自由：专家说要问也不问人，整批退回并把它的话告诉主人', async () => {
+    const services = makeServices(
+      parentOnlyDispatch(['systemctl restart nginx'], '不会问用户'),
+      '{"outcome":"ask_user","card":"这批会重启 nginx"}',
+    )
+    const { result, confirmations } = runParent(services, 'free', () => true)
+    await result
+    expect(confirmations).toHaveLength(0)
+    expect(llmCalls.some(c => isChildCallNames(c.tools))).toBe(false)
+    expect(toolOutputsOf(llmCalls.at(-1)!)).toContain('这批会重启 nginx')
+    expect(host.connections).toBe(0)
+  })
+
+  it('自由：专家出错时退回只读判定，不是只读的整批退回', async () => {
+    const services = makeServices(parentOnlyDispatch(['rm -rf /var/log/app'], '不是只读'), 'not json')
+    const { result, confirmations } = runParent(services, 'free', () => true)
+    await result
+    expect(confirmations).toHaveLength(0)
+    expect(llmCalls.some(c => isChildCallNames(c.tools))).toBe(false)
     expect(toolOutputsOf(llmCalls.at(-1)!)).toContain('不是只读')
+  })
+
+  it('宽松：专家出错时交给用户（弹卡，卡上没有专家的话），不默默放行', async () => {
+    const services = makeServices(parentOnlyDispatch(['uptime'], '没有批准'), 'not json')
+    const { result, confirmations } = runParent(services, 'relaxed', () => false)
+    await result
+    expect(confirmations).toHaveLength(1)
+    expect(confirmations[0]!.remoteAccess?.expert).toBeUndefined()
     expect(host.connections).toBe(0)
   })
 })

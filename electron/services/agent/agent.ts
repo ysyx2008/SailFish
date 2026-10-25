@@ -107,6 +107,8 @@ import { collapseRepeatedToolOutputs, reduceRepeatedToolOutput } from './repeate
 import { emptyFailureRepeatState, noteFailureRepeat } from './failure-repeat'
 import { t, getLocale, type TranslationKey } from './i18n'
 import { AutoApprovalReviewer, buildInspectorDeps, resolveInspectPtyId, type AutoReviewResult } from './auto-review'
+import { collectUserWords } from './auto-review/evidence'
+import type { RemoteExpertEnv } from './remote-access/expert'
 import { resolveSubAgentBlockDangerous } from './command-audit/fail-closed-policy'
 import { listFreeZoneDirs } from './command-audit/workspace-guard'
 import { CommandExecutorService } from '../command-executor.service'
@@ -6141,6 +6143,7 @@ export abstract class Agent {
       pluginRegistry: this.services.pluginRegistry,
       addStep: (step) => this.addStep(step),
       updateStep: (stepId, updates) => this.updateStep(stepId, updates),
+      getRemoteExpertEnv: () => this.remoteExpertEnv(run),
       waitForConfirmation: async (toolCallId, toolName, toolArgs, riskLevel, displayName, reasons, trustCommandOffer, opts) => {
         // 「本次允许」：Agent 实例内存白名单（跨 Run，关 tab / 重启清空）
         const candidates = buildAllowlistKeyCandidates(toolName, toolArgs)
@@ -6709,6 +6712,20 @@ export abstract class Agent {
     const approval = this._runFollowsChannel ? undefined : this.getApproval()
     if (approval) return approval === 'autoReview'
     return this.services.configService?.isAutoApprovalReviewEnabled?.() === true
+  }
+
+  /** 运维专家用的模型通道与用户原话；没有模型服务时返回 undefined */
+  private remoteExpertEnv(run: AgentRun): RemoteExpertEnv | undefined {
+    const aiService = this.services.aiService
+    if (!aiService?.chatWithTools) return undefined
+    return {
+      chat: (messages, tools, profileId, signal, options) => aiService.chatWithTools(messages, tools, profileId, signal, options),
+      profileId: this.profileId || this.services.configService?.getActiveAiProfile() || undefined,
+      locale: getLocale(),
+      words: () => collectUserWords(run.steps, this.earlierStepsForAutoReview()),
+      signal: run.abortController?.signal,
+      onUsage: usage => this.addSideUsage(run, usage),
+    }
   }
 
   private getAutoReviewer(): AutoApprovalReviewer {

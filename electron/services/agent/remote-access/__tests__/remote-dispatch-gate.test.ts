@@ -243,3 +243,131 @@ describe('RemoteGrant', () => {
     expect(g.commands).toEqual(['df -h', 'uptime'])
   })
 })
+
+describe('运维专家的结论怎么落到审批方式', () => {
+  type Judge = NonNullable<RemoteDispatchContext['expert']>['judge']
+  const allow: Awaited<ReturnType<Judge>> = { kind: 'verdict', verdict: { outcome: 'allow', note: '只是看状态' } }
+  const ask: Awaited<ReturnType<Judge>> = { kind: 'verdict', verdict: { outcome: 'ask_user', card: '会重启 nginx' } }
+  const refuse: Awaited<ReturnType<Judge>> = { kind: 'verdict', verdict: { outcome: 'refuse', reason: '会格式化磁盘' } }
+  const unavailable: Awaited<ReturnType<Judge>> = { kind: 'unavailable', detail: 'timeout' }
+
+  function expertGate(result: Awaited<ReturnType<Judge>>, overrides: Partial<RemoteDispatchContext> = {}) {
+    const judge = vi.fn<Judge>(async () => result)
+    const onExpertAllowed = vi.fn()
+    const g = gateWith({ expert: { judge }, onExpertAllowed, ...overrides })
+    return { ...g, judge, onExpertAllowed }
+  }
+  const run = (gate: RemoteDispatchGate, commands = ['df -h']) => gate.authorizeDispatch([{ hosts: ['a1'] }], commands)
+
+  // 模式 × 结论：是否弹卡、是否放行
+  const TABLE: Array<[mode: 'strict' | 'relaxed' | 'free', label: string, result: Awaited<ReturnType<Judge>>, outcome: 'pass' | 'rejected', cards: number]> = [
+    ['strict', '放行', allow, 'pass', 1],
+    ['strict', '问用户', ask, 'pass', 1],
+    ['strict', '拒绝', refuse, 'rejected', 0],
+    ['relaxed', '放行', allow, 'pass', 0],
+    ['relaxed', '问用户', ask, 'pass', 1],
+    ['relaxed', '拒绝', refuse, 'rejected', 0],
+    ['free', '放行', allow, 'pass', 0],
+    ['free', '问用户', ask, 'rejected', 0],
+    ['free', '拒绝', refuse, 'rejected', 0],
+  ]
+
+  it.each(TABLE)('%s · 专家%s', async (mode, _label, result, outcome, cards) => {
+    const { gate, confirm } = expertGate(result, { executionMode: mode })
+    const r = await run(gate)
+    expect(r.ok).toBe(outcome === 'pass')
+    expect(confirm).toHaveBeenCalledTimes(cards)
+  })
+
+  it('弹卡时带着专家写的话', async () => {
+    const { gate, confirm } = expertGate(ask)
+    await run(gate)
+    const request = (confirm.mock.calls[0] as unknown as [{ expert?: { card: string } }])[0]
+    expect(request.expert).toEqual({ card: '会重启 nginx' })
+  })
+
+  it('严格模式下专家放行：卡上带的是它的放行理由', async () => {
+    const { gate, confirm } = expertGate(allow, { executionMode: 'strict' })
+    await run(gate)
+    expect((confirm.mock.calls[0] as unknown as [{ expert?: { card: string } }])[0].expert).toEqual({ card: '只是看状态' })
+  })
+
+  it('没让用户点头就放行时，理由留进过程；弹了卡的不重复留', async () => {
+    const free = expertGate(allow, { executionMode: 'free' })
+    await run(free.gate)
+    expect(free.onExpertAllowed).toHaveBeenCalledTimes(1)
+    expect(free.onExpertAllowed.mock.calls[0]![0]).toBe('只是看状态')
+
+    const strict = expertGate(allow, { executionMode: 'strict' })
+    await run(strict.gate)
+    expect(strict.onExpertAllowed).not.toHaveBeenCalled()
+  })
+
+  it('拒绝：理由原样退给秘书', async () => {
+    const { gate } = expertGate(refuse)
+    const r = await run(gate)
+    expect(!r.ok && r.error).toContain('会格式化磁盘')
+  })
+
+  it('自由模式下专家要问：不问人，把专家的话退给秘书', async () => {
+    const { gate } = expertGate(ask, { executionMode: 'free' })
+    const r = await run(gate)
+    expect(!r.ok && r.error).toContain('会重启 nginx')
+  })
+
+  it('专家没给出结论：非自由模式交给用户弹卡，卡上没有专家的话', async () => {
+    for (const mode of ['strict', 'relaxed'] as const) {
+      const { gate, confirm } = expertGate(unavailable, { executionMode: mode })
+      const r = await run(gate)
+      expect(r.ok).toBe(true)
+      expect(confirm).toHaveBeenCalledTimes(1)
+      expect((confirm.mock.calls[0] as unknown as [{ expert?: unknown }])[0].expert).toBeUndefined()
+    }
+  })
+
+  it('专家没给出结论：自由模式退回只读判定——只读的过，其余退回', async () => {
+    const readOnly = expertGate(unavailable, { executionMode: 'free' })
+    expect((await run(readOnly.gate, ['df -h'])).ok).toBe(true)
+    const write = expertGate(unavailable, { executionMode: 'free' })
+    const r = await run(write.gate, ['rm -rf /var/log/app'])
+    expect(!r.ok && r.error).toContain('不是只读')
+  })
+
+  it('专家取消（整场被停）：退回，不弹卡', async () => {
+    const { gate, confirm } = expertGate({ kind: 'cancelled' })
+    const r = await run(gate)
+    expect(r.ok).toBe(false)
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('没有人在场且不是自由：没人能批，不必再问专家', async () => {
+    const { gate, judge } = expertGate(allow, { attended: false })
+    const r = await run(gate)
+    expect(!r.ok && r.error).toContain('没有人能确认')
+    expect(judge).not.toHaveBeenCalled()
+  })
+
+  it('没有人在场但自由模式：专家放行就过', async () => {
+    const { gate } = expertGate(allow, { attended: false, executionMode: 'free' })
+    expect((await run(gate)).ok).toBe(true)
+  })
+
+  it('补单走同一套：专家放行、宽松、不弹卡', async () => {
+    const { gate, confirm, judge } = expertGate(allow)
+    const grant = new RemoteGrant([{ id: 'a1', name: 'web-01', address: 'deploy@10.0.0.11:22' }], ['df -h'])
+    const r = await gate.authorizeFollowup('wk', grant, ['uptime'])
+    expect(r.ok).toBe(true)
+    expect(confirm).not.toHaveBeenCalled()
+    expect((judge.mock.calls[0] as unknown as [{ forWorker?: string }])[0].forWorker).toBe('wk')
+  })
+
+  it('专家看到的是这一批的主机与命令原文', async () => {
+    const { gate, judge } = expertGate(allow)
+    await gate.authorizeDispatch([{ hosts: ['a1', 'a2'] }], ['df -h', 'uptime'])
+    const input = (judge.mock.calls[0] as unknown as [{ hosts: Array<{ name: string; group?: string }>; commands: string[]; executionMode: string }])[0]
+    expect(input.hosts.map(h => h.name)).toEqual(['web-01', 'web-02'])
+    expect(input.hosts[0]!.group).toBe('生产')
+    expect(input.commands).toEqual(['df -h', 'uptime'])
+    expect(input.executionMode).toBe('relaxed')
+  })
+})

@@ -2,12 +2,14 @@
  * 伙计远程范围的授权门：派出（或补单）之前，把「哪几个伙计连哪些已存主机、跑哪些命令」
  * 判清楚、问清楚，通过了才交出 RemoteGrant。
  *
- * 顺序：参数合理 → 这类会话允许 → 主机都是已存的 → 命令都只读 → 按这场对话的审批方式确认。
+ * 顺序：参数合理 → 这类会话允许 → 主机都是已存的 → 运维专家判断 → 按专家结论和这场对话的审批方式处理。
+ * 没有专家可用（取不到模型通道）时退回原来的做法：命令都只读、再按审批方式确认。
  * 任何一步不过都整批退回，回执写明原因；通过之前不开工、不连任何主机。
  */
 import type { ExecutionMode, JumpHostGroupRef, RemoteAccessRequest } from '@shared/types'
 import { checkReadOnlyCommand } from '../command-audit'
 import { t } from '../i18n'
+import type { ExpertInput, ExpertResult } from './expert'
 import { RemoteGrant, type GrantedHost } from './remote-grant'
 
 /** 一批最多这么多条命令、每条最多这么多字。只防写错量级，不管该几条 */
@@ -34,6 +36,10 @@ export interface RemoteDispatchContext {
   attended: boolean
   /** 交给这场对话的确认渠道（含「替我审批」）；返回 true 才算批准 */
   confirm: (request: RemoteAccessRequest, toolArgs: Record<string, unknown>, displayName: string, reasons: string[]) => Promise<boolean>
+  /** 运维专家；没有就按原来的只读判定 */
+  expert?: { judge: (input: ExpertInput) => Promise<ExpertResult> }
+  /** 专家没让用户点头就放行了：把它的理由留在这场对话的过程里 */
+  onExpertAllowed?: (note: string, request: RemoteAccessRequest) => void
 }
 
 export type GateOutcome<T> = { ok: true; value: T } | { ok: false; error: string }
@@ -63,16 +69,13 @@ export class RemoteDispatchGate {
     const resolved = this.resolveHosts(workers)
     if ('error' in resolved) return { ok: false, error: resolved.error }
 
-    const readOnly = await this.checkReadOnly(commands)
-    if (readOnly) return { ok: false, error: readOnly }
-
     const request: RemoteAccessRequest = {
       hosts: uniqueHosts(resolved.perWorker.flat()),
       commands: [...commands],
       workerCount: resolved.perWorker.filter(h => h.length > 0).length,
     }
-    const approval = await this.askApproval(request, t('remote.confirm_title_dispatch', { count: request.workerCount ?? 0 }), t('remote.rejected'))
-    if (approval) return { ok: false, error: approval }
+    const verdict = await this.vet(request, t('remote.confirm_title_dispatch', { count: request.workerCount ?? 0 }), t('remote.rejected'))
+    if (verdict) return { ok: false, error: verdict }
 
     return {
       ok: true,
@@ -93,16 +96,13 @@ export class RemoteDispatchGate {
     if (shape) return { ok: false, error: shape }
     if (!this.ctx.conversationAllows) return { ok: false, error: t('remote.background_denied_followup') }
 
-    const readOnly = await this.checkReadOnly(commands)
-    if (readOnly) return { ok: false, error: readOnly }
-
     const request: RemoteAccessRequest = {
       hosts: [...grant.hosts],
       commands: [...commands],
       forWorker: workerName,
     }
-    const approval = await this.askApproval(request, t('remote.confirm_title_followup', { name: workerName }), t('remote.followup_rejected', { name: workerName }))
-    if (approval) return { ok: false, error: approval }
+    const verdict = await this.vet(request, t('remote.confirm_title_followup', { name: workerName }), t('remote.followup_rejected', { name: workerName }))
+    if (verdict) return { ok: false, error: verdict }
     return { ok: true, value: undefined }
   }
 
@@ -142,6 +142,52 @@ export class RemoteDispatchGate {
     return { perWorker }
   }
 
+  /**
+   * 这一批能不能去做。通过返回 null，否则返回给模型的原因。
+   *
+   * 专家的结论怎么落到审批方式：
+   * - 严格：放行也弹卡（卡上是专家的话）；问用户弹卡；拒绝退回
+   * - 宽松（含替我审批）：放行直接过；问用户弹卡；拒绝退回
+   * - 自由：不问人。放行直接过；问用户或拒绝都退回
+   * - 专家没给出结论（出错、超时、看不懂）：非自由弹卡交给用户；自由退回只读判定
+   * - 没有人在场且不是自由：没人能批，不必再问专家
+   */
+  private async vet(request: RemoteAccessRequest, title: string, rejectedText: string): Promise<string | null> {
+    const expert = this.ctx.expert
+    if (!expert) {
+      const readOnly = await this.checkReadOnly(request.commands)
+      return readOnly ?? await this.askApproval(request, title, rejectedText)
+    }
+
+    const mode = this.ctx.executionMode
+    if (mode !== 'free' && !this.ctx.attended) return t('remote.nobody_to_confirm')
+
+    const result = await expert.judge({
+      hosts: request.hosts,
+      commands: request.commands,
+      ...(request.workerCount !== undefined ? { workerCount: request.workerCount } : {}),
+      ...(request.forWorker ? { forWorker: request.forWorker } : {}),
+      executionMode: mode,
+      attended: this.ctx.attended,
+    })
+
+    if (result.kind === 'cancelled') return t('remote.expert_cancelled')
+    if (result.kind === 'unavailable') {
+      if (mode !== 'free') return this.askApproval(request, title, rejectedText)
+      return this.checkReadOnly(request.commands)
+    }
+
+    const { verdict } = result
+    if (verdict.outcome === 'refuse') return t('remote.expert_refused', { reason: verdict.reason })
+    if (verdict.outcome === 'ask_user') {
+      if (mode === 'free') return t('remote.expert_cannot_ask', { card: verdict.card })
+      return this.askApproval({ ...request, expert: { card: verdict.card } }, title, rejectedText)
+    }
+    if (mode === 'strict') return this.askApproval({ ...request, expert: { card: verdict.note } }, title, rejectedText)
+    this.ctx.onExpertAllowed?.(verdict.note, request)
+    return null
+  }
+
   private async checkReadOnly(commands: readonly string[]): Promise<string | null> {
     for (let i = 0; i < commands.length; i++) {
       const reason = await checkReadOnlyCommand(commands[i]!, { kind: 'remote' })
@@ -156,6 +202,7 @@ export class RemoteDispatchGate {
     if (this.ctx.executionMode === 'free') return null
     if (!this.ctx.attended) return t('remote.nobody_to_confirm')
     const toolArgs: Record<string, unknown> = {
+      ...(request.expert ? { expert_note: request.expert.card } : {}),
       hosts: request.hosts.map(h => ({ name: h.name, address: h.address, ...(h.group ? { group: h.group } : {}) })),
       remote_commands: request.commands,
       ...(request.workerCount !== undefined ? { workers: request.workerCount } : {}),

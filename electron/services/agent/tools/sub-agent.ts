@@ -28,6 +28,7 @@ import { inferConversationKind } from '@shared/types'
 import { conversationPolicy } from '../../conversation/policy'
 import { getConfigService } from '../../config.service'
 import { RemoteExecPool, resolveRemoteHost } from '../../remote-exec'
+import { RemoteExpert } from '../remote-access/expert'
 import { RemoteDispatchGate, type SavedSessionRef } from '../remote-access/remote-dispatch-gate'
 import type { RemoteGrant } from '../remote-access/remote-grant'
 import { RemoteOpRecorder } from '../remote-access/remote-op-recorder'
@@ -258,16 +259,31 @@ function remoteAccessFor(roster: SubAgentRoster, name: string, grant: RemoteGran
 function remoteGateFor(config: AgentConfig | undefined, executor: ToolExecutorConfig, toolCallId: string | undefined, toolName: string): RemoteDispatchGate {
   const saved = getConfigService()
   const kind = inferConversationKind(executor.agentId)
+  const expertEnv = executor.getRemoteExpertEnv?.()
   return new RemoteDispatchGate({
     sessions: saved.getSshSessions() as readonly SavedSessionRef[],
     groups: saved.getSessionGroups(),
     executionMode: config?.executionMode ?? 'strict',
     conversationAllows: conversationPolicy(kind).workersMayUseRemoteHosts,
     attended: !executor.getAgentContext?.()?.unattended,
+    // 有专家时，这一批由专家判；「替我审批」的评审员不再对同一件事重复判
     confirm: (request, toolArgs, displayName, reasons) =>
       executor.waitForConfirmation(
-        toolCallId ?? toolName, toolName, toolArgs, 'moderate', displayName, reasons, undefined, { remoteAccess: request },
+        toolCallId ?? toolName, toolName, toolArgs, 'moderate', displayName, reasons, undefined,
+        { remoteAccess: request, ...(expertEnv ? { humanOnly: true } : {}) },
       ),
+    ...(expertEnv ? {
+      expert: new RemoteExpert(expertEnv),
+      onExpertAllowed: (note, request) => {
+        executor.addStep({
+          type: 'auto_review',
+          content: [t('autoReview.approved', { action: t('remote.expert_action', { count: request.hosts.length }) }), `> ${note.replace(/\n+/g, ' ')}`].join('\n\n'),
+          toolName,
+          toolCallId,
+          autoReview: { outcome: 'approved', rationale: note },
+        })
+      },
+    } : {}),
   })
 }
 
