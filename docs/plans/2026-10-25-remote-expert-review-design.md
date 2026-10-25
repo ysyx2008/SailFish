@@ -40,19 +40,19 @@
 ## 四、界面与展示
 
 - `RemoteAccessRequest` 加可选 `expert?: { card: string }`；`ConfirmRemoteAccess.vue` 在命令清单上方显示专家写的话；命令行 `describeRemoteAccess`、IM 的确认文本同步带上。
-- 专家直接放行时，派出那一步的卡片（「派出 N 个伙计」）下面加一行「专家看过 · 放行：<一句话理由>」，点开可看完整理由。这同时回答了「替我审批放行后界面上没有信息」的问题，只在这一步加，不改别的工具的折叠规则。
+- 专家放行时，沿用「替我审批」已有的那条过程记录（类型 `auto_review`，结论「已放行」+ 专家的一句理由），界面上显示方式和现在一致，不新增组件、不改折叠规则。
 - 被拒绝时，回执给秘书的文字里写明专家的理由（秘书据此改批）。
 - i18n：中英文各加几条。
 
 ## 五、动哪些文件（预计）
 
-- `shared/types/agent.ts`（`RemoteAccessRequest.expert`、派出步骤的专家结论字段）
+- `shared/types/agent.ts`（`RemoteAccessRequest.expert`）
 - `electron/services/agent/remote-access/remote-dispatch-gate.ts`（把「命令全部只读」一步换成专家）
 - `electron/services/agent/remote-access/expert/*`（新，4 个文件）
 - `electron/services/agent/tools/sub-agent.ts`（装配、拿用户原话与模型通道）
 - `electron/services/agent/agent.ts`（暴露「判断用的模型通道、用户原话」给工具层；改动很小）
 - `electron/services/agent/i18n.ts`、`src/i18n/locales/{zh-CN,en-US}/ai.ts`
-- `src/components/ConfirmRemoteAccess.vue`、派出步骤的卡片组件
+- `src/components/ConfirmRemoteAccess.vue`
 - `electron/cli/transcript.ts`、`electron/cli/index.ts`、`electron/services/im/im.service.ts`、`remote-access/describe.ts`
 - 测试：专家解析、各审批方式落地表的每一格、失败回退；端到端脚本 `remote-real-host.mts` 增场景（真模型判写操作 / 判危险 / 自由模式拒绝）
 - 文档：`project-architecture.mdc` 一句话；`docs/ideas.md` 对应条目
@@ -93,6 +93,6 @@
 
 1. 专家本体（解析 + 事实 + 调用）。验收：解析单测（缺字段/乱值/越权 allow 的各种坏输出都落到 ask_user）；失败、超时、取消的回退。
 2. 接入授权门，落地表：每个审批方式 × 结论的单测，共 20 格左右。
-3. 界面 / 命令行 / IM 展示。验收：界面用 `launchApp` 截图看卡与派出步骤那一行。
+3. 界面 / 命令行 / IM 展示。验收：界面用 `launchApp` 截图看卡，并确认放行时有那条过程记录。
 4. 端到端：真机「Vmware Fusion」「MacBook Air Server」上跑——只读放行、写操作问用户、危险（用无害但名字吓人的命令，如 `echo rm -rf /` 不会真执行；真危险的只用假模型 + 假主机）、自由模式拒绝、专家失败回退。
 5. 文档与想法本。
