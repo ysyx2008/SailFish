@@ -13,11 +13,9 @@
 
 ## 二、容易撤销（硬性要求）
 
-1. 授权门里的「怎么判」抽成一个接口 `RemoteApprovalStrategy`：
-   - `ReadOnlyGateStrategy`：现有行为原样搬进去（只读判定 + `askApproval`），一行逻辑不改；
-   - `ExpertStrategy`：新做的。
-2. 配置项 `agent.remoteApprovalStrategy`：`expert | readonly`。**默认 `expert`**（这条分支的目的就是试它）；改成 `readonly` 立刻回到老行为，不需要改代码、不影响已有会话和留痕。没有设置界面，只在配置文件里改（用户要界面再加）。
-3. 提交拆成独立几次：①抽接口（行为不变，测试全过）②专家本体 ③界面与命令行展示 ④端到端与文档。整段撤回 = revert ②③④。
+开工前在当前提交打轻量标签 `checkpoint/before-remote-expert`（不推送）。不满意时 `git reset --hard checkpoint/before-remote-expert` 一次退回（分支还没合入，改写这条分支的历史不影响 `develop`），或用 `git revert checkpoint/before-remote-expert..HEAD` 逐条反向提交。不做运行期开关、不留旧逻辑的双份实现，代码里只有一套。
+
+提交拆成独立几次，每次都能单独通过测试：①专家本体 ②接入授权门 ③界面与命令行展示 ④端到端与文档。
 
 ## 三、专家
 
@@ -34,7 +32,7 @@
 |---|---|---|---|---|
 | 严格 | 仍弹卡（卡上的话用专家写的） | 弹卡 | 退回秘书 | 弹卡（兜底卡） |
 | 宽松 / 替我审批 | 不弹，界面留痕 | 弹卡 | 退回秘书 | 弹卡 |
-| 自由 | 不弹 | 当 refuse 退回（自由不问人），理由里写明「换审批方式可执意去做」 | 退回 | **回退到 `ReadOnlyGateStrategy`**（只读的放行，其余退回），免得没人把关时全放 |
+| 自由 | 不弹 | 当 refuse 退回（自由不问人），理由里写明「换审批方式可执意去做」 | 退回 | **回退到只读判定**（只读的放行，其余退回；直接用命令审计现有的只读判定），免得没人把关时全放 |
 | 没人在场（命令行宽松） | 同宽松 | 没人能批，退回 | 退回 | 退回 |
 
 放行不是替代原来的「替我审批」评审员：开着「替我审批」时，原有的评审员对这一步已经没有额外事要做（专家已经对照原话判过了），派伙计这一步不再重复调一次评审员，避免同一件事被两个 AI 各问一遍。
@@ -49,16 +47,14 @@
 ## 五、动哪些文件（预计）
 
 - `shared/types/agent.ts`（`RemoteAccessRequest.expert`、派出步骤的专家结论字段）
-- `electron/services/agent/remote-access/remote-dispatch-gate.ts`（接口 + 两个策略的装配）
+- `electron/services/agent/remote-access/remote-dispatch-gate.ts`（把「命令全部只读」一步换成专家）
 - `electron/services/agent/remote-access/expert/*`（新，4 个文件）
-- `electron/services/agent/remote-access/read-only-gate-strategy.ts`（新，搬出原逻辑）
 - `electron/services/agent/tools/sub-agent.ts`（装配、拿用户原话与模型通道）
 - `electron/services/agent/agent.ts`（暴露「判断用的模型通道、用户原话」给工具层；改动很小）
 - `electron/services/agent/i18n.ts`、`src/i18n/locales/{zh-CN,en-US}/ai.ts`
 - `src/components/ConfirmRemoteAccess.vue`、派出步骤的卡片组件
 - `electron/cli/transcript.ts`、`electron/cli/index.ts`、`electron/services/im/im.service.ts`、`remote-access/describe.ts`
-- 配置读取：`electron/services/config.service.ts`（一个键）
-- 测试：专家解析、各审批方式落地表的每一格、失败回退、策略切换；端到端脚本 `remote-real-host.mts` 增场景（真模型判写操作 / 判危险 / 自由模式拒绝）
+- 测试：专家解析、各审批方式落地表的每一格、失败回退；端到端脚本 `remote-real-host.mts` 增场景（真模型判写操作 / 判危险 / 自由模式拒绝）
 - 文档：`project-architecture.mdc` 一句话；`docs/ideas.md` 对应条目
 
 ## 六、专家提示词（草稿，待用户审）
@@ -95,9 +91,8 @@
 
 ## 七、任务拆解与验收
 
-1. 抽 `RemoteApprovalStrategy`，原逻辑搬进 `ReadOnlyGateStrategy`。验收：现有 remote 相关测试全部不改即过。
-2. 专家本体（解析 + 事实 + 调用）。验收：解析单测（缺字段/乱值/越权 allow 的各种坏输出都落到 ask_user）；失败、超时、取消的回退。
-3. 落地表：每个审批方式 × 结论的单测，共 20 格左右。
-4. 界面 / 命令行 / IM 展示。验收：界面用 `launchApp` 截图看卡与派出步骤那一行。
-5. 端到端：真机「Vmware Fusion」「MacBook Air Server」上跑——只读放行、写操作问用户、危险（用无害但名字吓人的命令，如 `echo rm -rf /` 不会真执行；真危险的只用假模型 + 假主机）、自由模式拒绝、专家失败回退、切回 `readonly` 策略行为复原。
-6. 文档与想法本。
+1. 专家本体（解析 + 事实 + 调用）。验收：解析单测（缺字段/乱值/越权 allow 的各种坏输出都落到 ask_user）；失败、超时、取消的回退。
+2. 接入授权门，落地表：每个审批方式 × 结论的单测，共 20 格左右。
+3. 界面 / 命令行 / IM 展示。验收：界面用 `launchApp` 截图看卡与派出步骤那一行。
+4. 端到端：真机「Vmware Fusion」「MacBook Air Server」上跑——只读放行、写操作问用户、危险（用无害但名字吓人的命令，如 `echo rm -rf /` 不会真执行；真危险的只用假模型 + 假主机）、自由模式拒绝、专家失败回退。
+5. 文档与想法本。
