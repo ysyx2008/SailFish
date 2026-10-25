@@ -3,7 +3,8 @@
  * 目标是桌面里存的那台「MacBook Air Server」（Linux，开着）。
  *
  *   npx tsx scripts/cli-e2e/remote-real-host.mts
- *   E2E_HOST_NAME=另一台的名字 …    # 换目标（按已存会话的名字）
+ *   E2E_HOST_NAME='Vmware Fusion' …  # 换目标（按已存会话的名字；默认那台不在同一网络时用）
+ * 运维专家这里不作答（假模型回一句不成结论的话），走的是「专家没结论 → 自由模式退回只读判定」；专家的各种结论见 remote-hosts.mts 的 5～8 号场景。
  *   E2E_SHOW=1 …                    # 打出命令行真实输出
  *
  * 只借用这一台的会话设置和凭据（复制到临时目录，不动桌面数据）；只跑只读命令。

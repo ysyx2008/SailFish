@@ -1,6 +1,6 @@
 # 伙计远程命令：专家判断取代只读门槛（方案）
 
-日期：2026-10-25　状态：未开工，等用户确认方案与提示词
+日期：2026-10-25　状态：已完成（待用户验收合入，分支 `feat/worker-remote-hosts`；撤销标签 `checkpoint/before-remote-expert`）
 
 设计目标已写入 `electron/services/agent/SPEC.md`「伙计可以在派给它的已存主机上后台干活」第 6～8 条。本文只讲怎么做。
 
