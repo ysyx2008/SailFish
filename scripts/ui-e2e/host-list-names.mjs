@@ -8,6 +8,7 @@
  * 1. 名字很长的主机在 283 宽下完整显示，不被省略号截断
  * 2. 平时看不见操作按钮、点不到；悬停那一行才出现
  * 3. 悬停时按钮浮在右侧，不把名字往左挤（名字宽度不变）
+ * 4. 右边缘能拖：变宽、拖到头停住，对话侧栏宽度不动，宽度记下来
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -28,6 +29,7 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sft-host-list-'))
 fs.writeFileSync(path.join(dataDir, 'qiyu-terminal-config.json'), JSON.stringify({
   setupCompleted: true,
   recallSidebarWidth: 283,
+  hostSidebarWidth: 283,
   sshSessions: NAMES.map((name, i) => ({
     id: `s${i}`, name, host: `10.0.0.${i + 1}`, port: 22, username: 'yushen', authType: 'password', encoding: 'utf-8', createdAt: i,
   })),
@@ -54,6 +56,12 @@ try {
     if (!found) await sleep(250)
   }
   check('主机管理侧栏打开、列表出现了', found)
+  // 记下的宽度是 283，等配置盖过首帧的默认宽度
+  for (let i = 0; i < 30; i++) {
+    const w = await page.evaluate(() => document.querySelector('.sidebar--hosts')?.getBoundingClientRect().width ?? 0)
+    if (Math.abs(w - 283) < 2) break
+    await sleep(100)
+  }
 
   const measure = () => page.evaluate((names) => {
     const rows = [...document.querySelectorAll('.session-item')]
@@ -92,6 +100,40 @@ try {
   check('按钮浮在右侧，没有把名字挤窄', hovered.nameWidth === idle[0].nameWidth, `${idle[0].nameWidth} -> ${hovered.nameWidth}`)
   const others = (await measure()).slice(1)
   check('没悬停的行按钮仍然隐藏', others.every((r) => r.actionsOpacity === 0))
+
+  const hostWidth = () => page.evaluate(() => document.querySelector('.sidebar--hosts').getBoundingClientRect().width)
+  const before = await hostWidth()
+  const handle = page.locator('.sidebar--hosts .sidebar-resize-handle')
+  const box = await handle.boundingBox()
+  check('右边有拖动手柄', !!box && box.height > 40, JSON.stringify(box))
+  if (box) {
+    const y = Math.min(box.y + 120, box.y + box.height - 20)
+    const target = before + 80
+    await page.mouse.move(box.x + box.width / 2, y)
+    await page.mouse.down()
+    await page.mouse.move(target, y, { steps: 12 })
+    await page.mouse.up()
+    await sleep(200)
+    const wider = await hostWidth()
+    const info = await page.evaluate(() => ({
+      inner: window.innerWidth,
+      style: getComputedStyle(document.querySelector('.sidebar--hosts')).width,
+      saved: localStorage.getItem('sft-host-sidebar-width'),
+    }))
+    check('往右拖，面板变宽', wider > before + 60, `${before} -> ${wider} ${JSON.stringify(info)}`)
+    const recall = await page.evaluate(() => document.querySelector('.sidebar--recall')?.getBoundingClientRect().width)
+    check('对话侧栏宽度没被带着变', Math.abs(recall - 283) < 2, String(recall))
+    const saved = await page.evaluate(() => localStorage.getItem('sft-host-sidebar-width'))
+    check('宽度记下来了', Math.abs(Number(saved) - wider) < 2, saved)
+
+    await page.mouse.move(wider - 2, box.y + 120)
+    await page.mouse.down()
+    await page.mouse.move(80, box.y + 120, { steps: 6 })
+    await page.mouse.up()
+    await sleep(150)
+    const narrow = await hostWidth()
+    check('往左拖到头停在 240', Math.abs(narrow - 240) < 2, String(narrow))
+  }
 } finally {
   await app.close().catch(() => {})
   if (!process.env.E2E_KEEP) fs.rmSync(dataDir, { recursive: true, force: true })

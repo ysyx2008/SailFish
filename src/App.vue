@@ -640,6 +640,16 @@ onMounted(async () => {
     }
   } catch { /* ignore */ }
 
+  // 主机管理侧栏宽度，和对话侧栏同一套记法
+  try {
+    const savedHostWidth = await window.electronAPI.config.get('hostSidebarWidth') as number | undefined
+    if (typeof savedHostWidth === 'number' && Number.isFinite(savedHostWidth)) {
+      const clamped = clampRecallSidebarWidth(savedHostWidth)
+      hostSidebarWidth.value = clamped
+      writeCachedHostSidebarWidth(clamped)
+    }
+  } catch { /* ignore */ }
+
   // 加载最近对话侧栏折叠状态
   try {
     const savedCollapsed = await window.electronAPI.config.get('recallSidebarCollapsed') as boolean | undefined
@@ -1239,10 +1249,31 @@ const showTabWorkbench = computed(
 // 主导航侧栏：未收起时始终在
 const showRecallSidebar = computed(() => !recallSidebarCollapsed.value)
 
-// 主机管理侧栏：叠在主导航侧栏上时与它同宽，独占最左时用默认宽度
-const hostSidebarWidth = computed(() =>
-  showRecallSidebar.value ? `${recallSidebarWidth.value}px` : 'var(--sidebar-width)'
-)
+// 主机管理侧栏有自己的宽度，和对话侧栏一样能拖、能记住。叠在对话侧栏上时也各算各的。
+const HOST_SIDEBAR_WIDTH_STORAGE_KEY = 'sft-host-sidebar-width'
+
+function readCachedHostSidebarWidth(): number {
+  try {
+    if (typeof localStorage === 'undefined') return DEFAULT_RECALL_SIDEBAR_WIDTH
+    const raw = localStorage.getItem(HOST_SIDEBAR_WIDTH_STORAGE_KEY)
+    if (raw == null) return DEFAULT_RECALL_SIDEBAR_WIDTH
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed)) return DEFAULT_RECALL_SIDEBAR_WIDTH
+    return clampRecallSidebarWidth(parsed)
+  } catch {
+    return DEFAULT_RECALL_SIDEBAR_WIDTH
+  }
+}
+
+function writeCachedHostSidebarWidth(width: number): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    localStorage.setItem(HOST_SIDEBAR_WIDTH_STORAGE_KEY, String(width))
+  } catch { /* localStorage 不可用时静默降级 */ }
+}
+
+const hostSidebarWidth = ref(readCachedHostSidebarWidth())
+const isHostSidebarResizing = ref(false)
 
 const sidebarToggleAttention = computed(() =>
   recallSidebarCollapsed.value && (
@@ -1413,6 +1444,30 @@ const startRecallSidebarResize = (_e: MouseEvent) => {
   isRecallSidebarResizing.value = true
   document.addEventListener('mousemove', handleRecallSidebarResize)
   document.addEventListener('mouseup', stopRecallSidebarResize)
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+const handleHostSidebarResize = (e: MouseEvent) => {
+  if (!isHostSidebarResizing.value) return
+  hostSidebarWidth.value = clampRecallSidebarWidth(e.clientX)
+}
+
+const stopHostSidebarResize = () => {
+  if (!isHostSidebarResizing.value) return
+  isHostSidebarResizing.value = false
+  document.removeEventListener('mousemove', handleHostSidebarResize)
+  document.removeEventListener('mouseup', stopHostSidebarResize)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  writeCachedHostSidebarWidth(hostSidebarWidth.value)
+  window.electronAPI.config.set('hostSidebarWidth', hostSidebarWidth.value).catch(() => {})
+}
+
+const startHostSidebarResize = (_e: MouseEvent) => {
+  isHostSidebarResizing.value = true
+  document.addEventListener('mousemove', handleHostSidebarResize)
+  document.addEventListener('mouseup', stopHostSidebarResize)
   document.body.style.cursor = 'col-resize'
   document.body.style.userSelect = 'none'
 }
@@ -1721,7 +1776,7 @@ onUnmounted(() => {
           />
         </div>
         <div
-          class="recall-sidebar-resize-handle"
+          class="sidebar-resize-handle"
           :class="{ resizing: isRecallSidebarResizing }"
           @mousedown="startRecallSidebarResize"
         />
@@ -1733,9 +1788,9 @@ onUnmounted(() => {
         :class="{
           'sidebar--overlay': showRecallSidebar,
           'is-collapsed': !showSidebar,
-          'is-resizing': isRecallSidebarResizing,
+          'is-resizing': isHostSidebarResizing,
         }"
-        :style="{ '--sidebar-panel-width': hostSidebarWidth, width: showSidebar ? hostSidebarWidth : '0px' }"
+        :style="{ '--sidebar-panel-width': `${hostSidebarWidth}px`, width: showSidebar ? `${hostSidebarWidth}px` : '0px' }"
         :inert="showSidebar ? undefined : true"
       >
         <div class="sidebar-header">
@@ -1747,6 +1802,11 @@ onUnmounted(() => {
         <div class="sidebar-content">
           <SessionManager @open-sftp="openSftp" />
         </div>
+        <div
+          class="sidebar-resize-handle"
+          :class="{ resizing: isHostSidebarResizing }"
+          @mousedown="startHostSidebarResize"
+        />
       </aside>
 
       <!-- 终端区域 / 欢迎页 / 智能巡检 -->
@@ -2462,7 +2522,7 @@ onUnmounted(() => {
 
 /* 内容按展开宽度定住，宽度收缩时才是被裁走，而不是跟着挤成一团。
    拖宽手柄自己贴着右边缘，不参与这个定宽。 */
-.sidebar > :not(.recall-sidebar-resize-handle) {
+.sidebar > :not(.sidebar-resize-handle) {
   width: var(--sidebar-panel-width, var(--sidebar-width));
 }
 
@@ -2549,7 +2609,7 @@ onUnmounted(() => {
   background: var(--bg-secondary);
 }
 
-.recall-sidebar-resize-handle {
+.sidebar-resize-handle {
   position: absolute;
   top: var(--workbench-panel-header-height);
   right: 0;
@@ -2561,7 +2621,7 @@ onUnmounted(() => {
   z-index: 5;
 }
 
-.recall-sidebar-resize-handle::after {
+.sidebar-resize-handle::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -2575,17 +2635,17 @@ onUnmounted(() => {
   transition: opacity 0.2s ease;
 }
 
-.recall-sidebar-resize-handle:hover::after,
-.recall-sidebar-resize-handle.resizing::after {
+.sidebar-resize-handle:hover::after,
+.sidebar-resize-handle.resizing::after {
   opacity: 1;
 }
 
-.recall-sidebar-resize-handle:hover,
-.recall-sidebar-resize-handle.resizing {
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle.resizing {
   background: linear-gradient(180deg, transparent, rgba(var(--accent-rgb, 137, 180, 250), 0.3), transparent);
 }
 
-.recall-sidebar-resize-handle.resizing::after {
+.sidebar-resize-handle.resizing::after {
   background: var(--accent-primary);
   box-shadow: 0 0 10px var(--accent-primary);
 }
