@@ -216,12 +216,19 @@ interface ModelPlan {
   hostIds: string[]
   commands: string[]
   timeoutSeconds?: number
+  /** 运维专家怎么答（给出 JSON 文本）；不给就让专家那一次请求得到一句不成结论的话 */
+  expert?: (body: { messages?: Array<{ role: string; content?: unknown }> }) => string
 }
+
+/** 运维专家的请求：没有工具、系统说明里要求按 outcome 给结论 */
+const isExpertRequest = (body: { messages?: Array<{ role: string; content?: unknown }> }) =>
+  String(body.messages?.[0]?.content ?? '').includes('outcome')
 
 function fleetModel(plan: ModelPlan) {
   const groups = assign(plan.hostIds)
   let dispatched = false
   return startMockLlm({
+    side: plan.expert ? (body: { messages?: Array<{ role: string; content?: unknown }> }) => (isExpertRequest(body) ? plan.expert!(body) : undefined) : undefined,
     respond(body: { tools?: Array<{ function: { name: string } }>; messages?: Array<{ role: string; content?: unknown }> }) {
       const tools = (body.tools ?? []).map(t => t.function.name)
       const messages = body.messages ?? []
@@ -367,6 +374,90 @@ async function scenarioRelaxedNoTty(fleet: Fleet) {
   await llm.close()
 }
 
+/** 专家那一次请求的全文 */
+const expertRequests = (llm: { requests: Array<{ hasTools: boolean; body: { messages?: Array<{ role: string; content?: unknown }> } }> }) =>
+  llm.requests.filter(r => !r.hasTools && isExpertRequest(r.body)).map(r => (r.body.messages ?? []).map(m => String(m.content ?? '')).join('\n'))
+
+/** 秘书收到派出结果的那一次请求里，工具返回的内容 */
+const dispatchResult = (llm: { requests: Array<{ hasTools: boolean; lastRole?: string; lastText: string }> }) =>
+  llm.requests.filter(r => r.hasTools && r.lastRole === 'tool').map(r => r.lastText).join('\n')
+
+async function scenarioExpertAllowsWrite(fleet: Fleet) {
+  console.log('\n[5] 自由模式：专家放行一条会写文件的命令（只读判定会拒的），伙计照跑')
+  const hostIds = fleet.okIds.slice(23, 26)
+  const marker = path.join(os.tmpdir(), `sft-expert-write-${process.pid}.txt`)
+  fs.rmSync(marker, { force: true })
+  const command = `echo SFT_EXPERT_WROTE >> ${marker}`
+  const llm = await fleetModel({ hostIds, commands: [command], expert: () => JSON.stringify({ outcome: 'allow', card: '只往临时文件追加一行，不影响服务' }) })
+  const sb = sandbox(fleet, llm.port)
+  const run = runCli(['agent:run', '在这几台上记一笔', '--free', '--once'], sb, 90_000)
+  const { code, out } = await run.done
+  if (process.env.E2E_SHOW) console.log(out.split('\n').map(l => `    | ${l}`).join('\n'))
+  check('命令行正常收工', code === 0, `exit=${code}`)
+  const written = fs.existsSync(marker) ? fs.readFileSync(marker, 'utf8').split('\n').filter(Boolean).length : 0
+  check(`三台都真的执行了（文件里 ${written} 行）`, written === hostIds.length, dispatchResult(llm).slice(0, 800))
+  const seen = expertRequests(llm)
+  check('专家被问了一次（一批只问一次）', seen.length === 1, `次数=${seen.length}`)
+  check('专家看到的是这批命令原文', seen[0]?.includes('SFT_EXPERT_WROTE') ?? false)
+  check('专家看到了主机名', hostIds.every(id => seen[0]?.includes(String(fleet.sessions.find(s => s.id === id)?.name))), seen[0]?.slice(0, 600))
+  check('专家看到了用户原话', seen[0]?.includes('在这几台上记一笔') ?? false)
+  fs.rmSync(marker, { force: true })
+  await llm.close()
+}
+
+async function scenarioExpertRefuses(fleet: Fleet) {
+  console.log('\n[6] 自由模式：专家拒绝，一台都不连，理由退回给秘书')
+  const hostIds = fleet.okIds.slice(26, 29)
+  const llm = await fleetModel({ hostIds, commands: ['uptime'], expert: () => JSON.stringify({ outcome: 'refuse', reason: '用户只让看状态，这批会改动线上服务' }) })
+  const sb = sandbox(fleet, llm.port)
+  const before = hostIds.map(id => fleet.proxies.get(id)!.total())
+  const run = runCli(['agent:run', '看看', '--free', '--once'], sb, 60_000)
+  await run.done
+  const after = hostIds.map(id => fleet.proxies.get(id)!.total())
+  check('一台都没连', after.every((n, i) => n === before[i]), `${before} -> ${after}`)
+  check('没有留下操作记录', findFiles(sb.dataDir, 'remote-ops.jsonl').length === 0)
+  check('专家的理由原样到了秘书手里', dispatchResult(llm).includes('用户只让看状态，这批会改动线上服务'), dispatchResult(llm).slice(0, 500))
+  await llm.close()
+}
+
+async function scenarioExpertAsksInFree(fleet: Fleet) {
+  console.log('\n[7] 自由模式：专家认为该问用户——自由模式不问人，把专家的话退给秘书')
+  const hostIds = fleet.okIds.slice(29, 31)
+  const llm = await fleetModel({ hostIds, commands: ['uptime'], expert: () => JSON.stringify({ outcome: 'ask_user', card: '这批命令涉及生产主机，需要你点头' }) })
+  const sb = sandbox(fleet, llm.port)
+  const before = hostIds.map(id => fleet.proxies.get(id)!.total())
+  const run = runCli(['agent:run', '看看', '--free', '--once'], sb, 60_000)
+  await run.done
+  const after = hostIds.map(id => fleet.proxies.get(id)!.total())
+  check('一台都没连', after.every((n, i) => n === before[i]), `${before} -> ${after}`)
+  check('专家的话到了秘书手里', dispatchResult(llm).includes('这批命令涉及生产主机，需要你点头'), dispatchResult(llm).slice(0, 500))
+  await llm.close()
+}
+
+async function scenarioExpertUnavailable(fleet: Fleet) {
+  console.log('\n[8] 自由模式：专家没给出结论——只读的照跑，写操作退回')
+  const hostIds = fleet.okIds.slice(31, 33)
+  const readOnly = await fleetModel({ hostIds, commands: ['uptime'] })
+  const sbA = sandbox(fleet, readOnly.port)
+  const runA = runCli(['agent:run', '看看', '--free', '--once'], sbA, 60_000)
+  const resA = await runA.done
+  const entriesA = findFiles(sbA.dataDir, 'remote-ops.jsonl').flatMap(f => fs.readFileSync(f, 'utf8').trim().split('\n'))
+  check('只读命令照常跑完', resA.code === 0 && entriesA.length === hostIds.length, `code=${resA.code} 记录=${entriesA.length}`)
+  check('专家确实被问过', expertRequests(readOnly).length === 1)
+  await readOnly.close()
+
+  const marker = path.join(os.tmpdir(), `sft-expert-down-${process.pid}.txt`)
+  fs.rmSync(marker, { force: true })
+  const write = await fleetModel({ hostIds, commands: [`echo x >> ${marker}`] })
+  const sbB = sandbox(fleet, write.port)
+  const runB = runCli(['agent:run', '记一笔', '--free', '--once'], sbB, 60_000)
+  await runB.done
+  check('写操作没有执行', !fs.existsSync(marker))
+  check('退回的话里说明了原因', /不是只读|只读/.test(dispatchResult(write)), dispatchResult(write).slice(0, 500))
+  fs.rmSync(marker, { force: true })
+  await write.close()
+}
+
 async function scenarioRealModel(fleet: Fleet) {
   console.log('\n[4] 真模型：自然语言交代，模型自己找主机、写命令清单、派伙计（11 台，含 3 台有问题的）')
   const pick = [...fleet.okIds.slice(0, 4), ...fleet.okIds.slice(10, 14), fleet.badKeyId, fleet.closedPortId, fleet.bastionId]
@@ -405,6 +496,10 @@ try {
   if (pick(2)) await scenarioAbort(fleet)
   if (pick(3)) await scenarioRelaxedNoTty(fleet)
   if (pick(4)) await scenarioRealModel(fleet)
+  if (pick(5)) await scenarioExpertAllowsWrite(fleet)
+  if (pick(6)) await scenarioExpertRefuses(fleet)
+  if (pick(7)) await scenarioExpertAsksInFree(fleet)
+  if (pick(8)) await scenarioExpertUnavailable(fleet)
 } finally {
   await fleet.stop()
   if (!process.env.E2E_KEEP) for (const d of tempDirs) fs.rmSync(d, { recursive: true, force: true })
