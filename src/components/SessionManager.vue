@@ -1074,8 +1074,8 @@ const closeGroupDialog = () => { showGroupEditor.value = false; editingGroup.val
   display: flex;
   align-items: center;
   gap: 2px;
-  padding-left: 4px;
-  background: var(--bg-surface);
+  padding-left: 0;
+  background: transparent;
   border-radius: 4px;
   opacity: 0;
   pointer-events: none;
@@ -1086,6 +1086,13 @@ const closeGroupDialog = () => { showGroupEditor.value = false; editingGroup.val
 .session-item:focus-within .session-actions {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* 按钮出现时，名字在按钮左边慢慢淡出（按钮区约 94px，淡出带 36px），透过去的是行本身的底色 */
+.session-item:hover .session-name,
+.session-item:focus-within .session-name {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 130px), transparent calc(100% - 94px));
+  mask-image: linear-gradient(to right, #000 calc(100% - 130px), transparent calc(100% - 94px));
 }
 
 .session-action-btn {

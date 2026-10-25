@@ -41,6 +41,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const shot = async (name) => { if (shotDir) await page.screenshot({ path: path.join(shotDir, `${name}.png`) }) }
 
 try {
+  await sleep(3000)
+  // 本机另有旗鱼在跑时会弹「浏览器助手没连上」，与本检查无关，点掉
+  await page.getByRole('button', { name: '确定' }).click({ timeout: 2000 }).catch(() => {})
   // 进「终端」页，再点「连接远程主机」打开主机管理侧栏
   await page.getByText('终端', { exact: true }).first().click({ timeout: 90_000 })
   await sleep(800); await shot('terminal-page')
