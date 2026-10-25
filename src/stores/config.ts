@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import { jumpHostFromGroup, type AiModelType, type AiProfile, type ApiFormat, type ExecutionMode, type JumpHostConfig, type ProactiveCompactStyle, type SessionSortBy, type SshEncoding, type SystemColorScheme, type UiThemeMode } from '@shared/types'
+import { effectiveJumpHost, jumpHostFromGroup, type AiModelType, type AiProfile, type ApiFormat, type ExecutionMode, type JumpHostConfig, type ProactiveCompactStyle, type SessionSortBy, type SshEncoding, type SystemColorScheme, type UiThemeMode } from '@shared/types'
 import { clampUiZoomFactor, DEFAULT_CUE_SOUND_SETTINGS, DEFAULT_PROACTIVE_COMPACT, DEFAULT_UI_THEME, DEFAULT_UI_THEME_MODE, normalizeCueSoundSettings, normalizeProactiveCompact, resolveEffectiveUiTheme, UI_ZOOM_DEFAULT } from '@shared/types'
 import { setLocale, type LocaleType } from '../i18n'
 import { uiThemes, type UiThemeName } from '../themes/ui-themes'
@@ -826,20 +826,7 @@ export const useConfigStore = defineStore('config', () => {
    * 优先级：会话自定义 > 分组继承 > 无
    */
   function getEffectiveJumpHost(session: SshSession): JumpHostConfig | undefined {
-    // 如果会话显式禁用跳板机
-    if (session.jumpHostOverride === null) {
-      return undefined
-    }
-    // 如果会话有自定义跳板机
-    if (session.jumpHostOverride) {
-      return session.jumpHostOverride
-    }
-    // 继承分组的跳板机
-    if (session.groupId) {
-      const group = sessionGroups.value.find(g => g.id === session.groupId)
-      return group?.jumpHost ? jumpHostFromGroup(group.name, group.jumpHost) : undefined
-    }
-    return undefined
+    return effectiveJumpHost(session, sessionGroups.value)
   }
 
   // ==================== 主题 ====================
