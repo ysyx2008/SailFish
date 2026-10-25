@@ -83,7 +83,7 @@
 - ask_user：需要用户自己点头。用 card 写一段给用户看的话，说明这批会做什么、哪里值得留意、为什么要问他。
 - refuse：这批事情不该这样做。用 reason 写给秘书，说明原因，便于它改。
 
-自由模式下用户不想被打断，所以那里没有 ask_user。
+自由模式下用户不想被打断：需要他点头的、你认为不该做的，都用 refuse，把该告诉他的话写进 reason。
 
 只输出一个 JSON 对象：
 {"outcome": "allow|ask_user|refuse", "card": "给用户看的话（ask_user 必填，allow 时一句话说明为什么放行）", "reason": "给秘书的原因（refuse 必填）"}

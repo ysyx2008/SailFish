@@ -23,7 +23,7 @@ const POLICY_ZH = `你是运维专家。有一个 AI 助手能在用户的电脑
 - ask_user：需要用户自己点头。写一段给用户看的话，说明这批会做什么、哪里值得留意、为什么要问他。
 - refuse：这批事情不该这样做。写给秘书，说明原因，便于它改。
 
-自由模式下用户不想被打断，那里没有 ask_user。
+自由模式下用户不想被打断：需要他点头的、你认为不该做的，都用 refuse，把该告诉他的话写进 reason。
 
 最后只输出一个 JSON 对象，不要多余的文字：
 {"outcome": "allow|ask_user|refuse", "card": "allow 时一句话说明为什么放行；ask_user 时给用户看的话", "reason": "refuse 时给秘书的原因"}`
@@ -47,7 +47,7 @@ You can give one of three conclusions:
 - ask_user: the user needs to say yes himself. Write a message for the user: what this batch will do, what deserves attention, why you are asking.
 - refuse: this should not be done this way. Write the reason for the secretary so it can revise.
 
-In free mode the user does not want to be interrupted, so ask_user is not available there.
+In free mode the user does not want to be interrupted: anything that needs their yes, and anything you think should not be done, use refuse and put what they should be told into reason.
 
 Output only one JSON object, nothing else:
 {"outcome": "allow|ask_user|refuse", "card": "for allow: one sentence on why it is fine; for ask_user: the message for the user", "reason": "for refuse: the reason for the secretary"}`
