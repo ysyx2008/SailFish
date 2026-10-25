@@ -54,6 +54,8 @@ export interface CommandRule {
   readOnlySubcommands?: ReadonlySet<string>
   /** 只读判定用：位置参数的限制（有的命令第二个操作数是输出文件，或位置参数是在改设置） */
   readOnlyOperands?: { max?: number; pattern?: RegExp }
+  /** 只读判定用：这些选项日常算安全，但会让命令去执行别处配置里的程序，只读判定不接受 */
+  readOnlyForbiddenFlags?: ReadonlySet<string>
 }
 
 /** 一个查看用子命令的参数约束 */
@@ -183,6 +185,7 @@ function rule(
     inlineProgram: opts.inlineProgram,
     readOnlySubcommands: opts.readOnlySubcommands,
     readOnlyOperands: opts.readOnlyOperands,
+    readOnlyForbiddenFlags: opts.readOnlyForbiddenFlags,
   }
 }
 
@@ -257,6 +260,9 @@ export const ARGV_COMMAND_RULES: Record<string, CommandRule> = {
     valueFlags: new Set(['-C', '--git-dir', '--work-tree', '-c']),
     pathMode: 'none',
     readOnlySubcommands: GIT_READ_ONLY,
+    // -c 能临时改配置（diff.external、core.fsmonitor、core.pager 这些都会去执行程序）；
+    // --git-dir / --work-tree 把配置来源换成别处
+    readOnlyForbiddenFlags: new Set(['-c', '--git-dir', '--work-tree']),
   }),
   // node: -e / --eval 不作为 safeFlag —— 内联 JS 代码无法静态审计，
   // 由 indirection-guard 在共享层直接 blocked。--version 仍 safe。

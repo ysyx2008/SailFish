@@ -387,3 +387,44 @@ export async function extractAuditedCalls(
   }
   return { calls, writeRedirects: allWriteRedirects }
 }
+
+const DISCARD_TARGET = '/dev/null'
+/** 会写文件的重定向（`>&` 要看目标：数字和 `-` 是复制/关闭文件描述符，别的是写文件） */
+const WRITE_REDIRECT_OPS = new Set(['>', '>>', '>|', '&>', '&>>', '<>', '>&'])
+const FD_TARGET = /^(\d+|-)$/
+
+/**
+ * 只读判定要额外盯的几样，直接看语法树，不经过风险分级那一套：
+ * - 后台运行（`&`、coproc）：命令脱离前台后，超时和按停都杀不到它；
+ * - 写文件的重定向：包括目标是变量、命令替换这种看不出值的（风险分级会把它们丢掉）；
+ * - 命令前面的变量赋值（只在 forbidAssignments 时查）：能改命令的行为。
+ * 有问题返回原因，没有返回 null。
+ */
+export async function findReadOnlyHazard(
+  command: string,
+  ctx: AuditContext,
+  forbidAssignments: boolean,
+): Promise<string | null> {
+  const dialect = shellDialect(ctx)
+  const ast = await parseShellCommand(command, dialect)
+  const { walk, wordToLit } = await getShellAstModule()
+  let hazard: string | null = null
+  walk(ast as unknown as import('@questi0nm4rk/shell-ast').ShellNode, {
+    Stmt: (stmt: Stmt) => {
+      if (!hazard && (stmt.background || stmt.coprocess)) hazard = '命令里有放到后台运行的写法，超时和按停时杀不到它。'
+    },
+    Redirect: (r: Redirect) => {
+      if (hazard || !WRITE_REDIRECT_OPS.has(r.op)) return
+      const target = wordToLit(r.word)
+      if (target === null) hazard = '命令里有写文件的重定向，目标看不出值。'
+      else if (r.op === '>&' && FD_TARGET.test(target)) return
+      else if (unescapeShellWordLiteral(target) !== DISCARD_TARGET) hazard = '命令里有写文件的重定向。'
+    },
+    CallExpr: (call: CallExprNode) => {
+      if (!hazard && forbidAssignments && call.assigns.length > 0) {
+        hazard = '命令前面带变量赋值，会改变命令的行为，远程不接受。'
+      }
+    },
+  })
+  return hazard
+}

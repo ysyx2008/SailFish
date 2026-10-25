@@ -7,16 +7,17 @@
  * 四条都要满足：
  * 1. 完整解析，没有不认识的命令；
  * 2. 整体和每个命令本身都是安全级；
- * 3. 没有写文件的重定向（丢弃输出除外）；
+ * 3. 没有写文件的重定向（丢弃输出除外，目标看不出值的也不行），没有放到后台运行的写法；
  * 4. 没有任何命令带「会写文件」或「要跑一段程序」的标记；命令表上限定了子命令或位置参数的，也得守住。
  *
  * 处境不同，判法不同：
  * - 本机：用本机的当前目录和本机 shell，只支持 bash/zsh 这类能完整解析重定向的 shell；
  * - 远程：按 POSIX shell 解析，不给自由区和工作区，`~` 不展开成本机主目录，不读用户自定义的命令规则；
- *   另外不接受转手执行别的命令的写法（sudo、env 一类）和看不出值的参数（变量、命令替换）。
+ *   另外不接受转手执行别的命令的写法（sudo、env 一类）、看不出值的参数（变量、命令替换），
+ *   以及命令前面带变量赋值（`LD_PRELOAD=… ls`、`GIT_EXTERNAL_DIFF=… git diff`）。
  */
 import { assessShellRisk, defaultAuditContext, remoteAuditContext } from './assess-shell'
-import { extractAuditedCalls } from './extract-calls'
+import { extractAuditedCalls, findReadOnlyHazard } from './extract-calls'
 import { getArgvCommandRule } from './resolve-argv-rule'
 import type { AuditContext, AuditedCall, CommandRiskAssessment } from './types'
 import { getBuiltinArgvCommandRule } from './whitelist'
@@ -24,8 +25,6 @@ import { getBuiltinArgvCommandRule } from './whitelist'
 export type ReadOnlySituation =
   | { kind: 'local'; cwd?: string }
   | { kind: 'remote' }
-
-const DISCARD_TARGET = '/dev/null'
 
 function notSafeReason(assessment: CommandRiskAssessment): string {
   const call = assessment.calls.find(c => c.commandLevel !== 'safe') ?? assessment.calls.find(c => c.level !== 'safe')
@@ -38,6 +37,8 @@ function violatesRuleLimits(call: AuditedCall, ctx: AuditContext): string | null
   const rule = ctx.target === 'remote' ? getBuiltinArgvCommandRule(call.cmd) : getArgvCommandRule(call.cmd)
   if (!rule) return `${call.cmd} 不在命令表里。`
   if (rule.writesTo) return `${call.cmd} 会写文件。`
+  const forbidden = call.flags.find(f => rule.readOnlyForbiddenFlags?.has(f))
+  if (forbidden) return `${call.cmd} ${forbidden} 会让命令去执行别处配置里的程序。`
   if (rule.inlineProgram) return `${call.cmd} 要跑一段程序，程序里能写文件、调别的命令，看不出它做什么。`
   if (rule.readOnlySubcommands) {
     const [sub] = call.paths
@@ -68,8 +69,10 @@ export async function checkReadOnlyCommand(
     return notSafeReason(assessment)
   }
 
-  const { calls, writeRedirects } = await extractAuditedCalls(command, ctx)
-  if (writeRedirects.some(r => r.target !== DISCARD_TARGET)) return '命令里有写文件的重定向。'
+  const hazard = await findReadOnlyHazard(command, ctx, remote)
+  if (hazard) return hazard
+
+  const { calls } = await extractAuditedCalls(command, ctx)
 
   for (const call of calls) {
     if (remote) {
