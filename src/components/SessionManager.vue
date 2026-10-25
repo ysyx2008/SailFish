@@ -1074,20 +1074,12 @@ const closeGroupDialog = () => { showGroupEditor.value = false; editingGroup.val
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 1px 3px;
-  /* 薄玻璃：底几乎是透的，名字的字形模糊地留在里面；上沿一条高光、四周一圈细边 */
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, #fff 16%, transparent),
-    transparent
-  );
-  -webkit-backdrop-filter: blur(8px) saturate(1.8);
-  backdrop-filter: blur(8px) saturate(1.8);
-  border: 1px solid color-mix(in srgb, #fff 28%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 55%, transparent),
-    0 1px 2px color-mix(in srgb, #000 18%, transparent);
-  border-radius: 8px;
+  padding: 0 2px;
+  /* 半透明底：被盖住的名字隐约透出来，按钮仍然看得清 */
+  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  border-radius: 4px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
@@ -1097,18 +1089,6 @@ const closeGroupDialog = () => { showGroupEditor.value = false; editingGroup.val
 .session-item:focus-within .session-actions {
   opacity: 1;
   pointer-events: auto;
-}
-
-[data-ui-theme="light"] .session-actions {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, #fff 62%, transparent),
-    color-mix(in srgb, #fff 34%, transparent)
-  );
-  border-color: color-mix(in srgb, #000 10%, transparent);
-  box-shadow:
-    inset 0 1px 0 #fff,
-    0 1px 2px color-mix(in srgb, #000 10%, transparent);
 }
 
 .session-action-btn {
