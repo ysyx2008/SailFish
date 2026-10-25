@@ -18,6 +18,7 @@ import electronLog from 'electron-log/main'
 import { isSameSkillId } from '@sailfish/shared-types'
 import { CliTranscript, confirmationLines } from './transcript'
 import { agentTaskFromWords } from './invoke'
+import { describeRemoteAccess } from '../services/agent/remote-access/describe'
 import { cliLaunch } from './launch'
 import { composeLine, parseSlash, pathExists, taskFromCompose } from './compose'
 import { CliGoalCommand } from './goal-command'
@@ -1554,6 +1555,7 @@ async function agentRun(args: string[], surface: 'plain' | 'screen' = 'plain'): 
         riskLabel,
         reasons: confirmation.reasons,
         reviewerNote: reviewerNote(confirmation),
+        remoteAccessLines: confirmation.remoteAccess ? describeRemoteAccess(confirmation.remoteAccess) : undefined,
       })) io.show(line)
       void (async () => {
         if (mode === 'free') {
@@ -2000,6 +2002,7 @@ async function companionChat(args: string[]): Promise<void> {
         riskLabel,
         reasons: confirmation.reasons,
         reviewerNote: note,
+        remoteAccessLines: confirmation.remoteAccess ? describeRemoteAccess(confirmation.remoteAccess) : undefined,
       })) console.log(line)
       void (async () => {
         if (mode === 'free') {

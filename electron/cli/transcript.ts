@@ -23,6 +23,8 @@ export interface ConfirmationViewInput {
   riskLabel?: string
   reasons?: string[]
   reviewerNote?: string
+  /** 要连远程主机的确认：主机和命令清单已经排好的行，替代参数原文 */
+  remoteAccessLines?: string[]
 }
 
 export interface CliTranscriptOptions {
@@ -50,7 +52,7 @@ export function confirmationLines(input: ConfirmationViewInput): string[] {
   const headline = risk ? `要你点头才能继续（${risk}）` : '要你点头才能继续'
   const title = (input.displayName || input.toolName || '这一步').trim()
   const lines = [headline, `  ${title}`]
-  const body = actionBody(input.toolArgs)
+  const body = input.remoteAccessLines?.length ? input.remoteAccessLines.join('\n') : actionBody(input.toolArgs)
   if (body && body !== title) {
     for (const line of body.split('\n')) lines.push(`  ${line}`)
   }

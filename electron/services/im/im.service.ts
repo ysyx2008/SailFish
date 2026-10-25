@@ -45,6 +45,7 @@ import { getDocumentParserService, type ParsedDocument } from '../document-parse
 import { getConfigService } from '../config.service'
 import { t } from '../agent/i18n'
 import { t as mainT } from '../../i18n/main-i18n'
+import { describeRemoteAccess } from '../agent/remote-access/describe'
 import { createLogger } from '../../utils/logger'
 import path from 'path'
 import fs from 'fs'
@@ -1902,8 +1903,10 @@ export class IMService {
           // 替我审批这一下，对话里已经有「正在替你看 / 交给你定」，不再发确认卡
           if (confirmation.autoReview) return
 
-          const argsText = JSON.stringify(confirmation.toolArgs, null, 2)
-            .substring(0, 500)
+          // 要连远程主机的确认：命令和主机清单是用户批准的内容，整份给出不截断；别的确认只给参数的前 500 字
+          const argsText = confirmation.remoteAccess
+            ? describeRemoteAccess(confirmation.remoteAccess).join('\n')
+            : JSON.stringify(confirmation.toolArgs, null, 2).substring(0, 500)
           sendWhileUserWaits(async () => {
             if (adapter.sendConfirmCard) {
               await adapter.sendConfirmCard(

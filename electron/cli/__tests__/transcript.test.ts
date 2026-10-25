@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { CliTranscript, confirmationLines, visibleReply } from '../transcript'
+import { describeRemoteAccess } from '../../services/agent/remote-access/describe'
 import { agentTaskFromWords } from '../invoke'
 
 function capture(options: { tty?: boolean; verbose?: boolean; color?: boolean } = {}) {
@@ -165,6 +166,31 @@ describe('confirmationLines', () => {
     expect(text).toContain('会删除目录')
     expect(text).not.toContain('timeout')
     expect(text).not.toContain('{')
+  })
+
+  it('要连远程主机的确认：命令清单和主机清单整份摆出来，不是只有一句标题', () => {
+    const lines = confirmationLines({
+      toolName: 'dispatch_agents',
+      displayName: '派出伙计连接远程主机',
+      riskLabel: '中风险',
+      toolArgs: { hosts: ['a1', 'a2'], remote_commands: ['df -h', 'uptime'] },
+      remoteAccessLines: describeRemoteAccess({
+        workerCount: 2,
+        commands: ['df -h', 'uptime'],
+        hosts: [
+          { id: 'a1', name: 'web-01', address: 'deploy@10.0.0.11:22', group: '生产' },
+          { id: 'a2', name: 'lab', address: 'root@10.0.1.5:22' },
+        ],
+      }),
+    })
+    const text = lines.join('\n')
+    expect(text).toContain('派出伙计连接远程主机')
+    expect(text).toContain('1. df -h')
+    expect(text).toContain('2. uptime')
+    expect(text).toContain('生产')
+    expect(text).toContain('web-01 deploy@10.0.0.11:22')
+    expect(text).toContain('未分组')
+    expect(text.indexOf('uptime')).toBeLessThan(text.indexOf('web-01'))
   })
 })
 
