@@ -38,6 +38,11 @@ export interface RemoteDispatchContext {
   confirm: (request: RemoteAccessRequest, toolArgs: Record<string, unknown>, displayName: string, reasons: string[]) => Promise<boolean>
   /** 运维专家；没有就按原来的只读判定 */
   expert?: { judge: (input: ExpertInput) => Promise<ExpertResult> }
+  /**
+   * 这场对话开着替我审批。
+   * 只有这时，专家的「放行」才直接做；宽松仍弹卡，由用户自己点。
+   */
+  autoReview?: boolean
   /** 专家没让用户点头就放行了：把它的理由留在这场对话的过程里 */
   onExpertAllowed?: (note: string, request: RemoteAccessRequest) => void
 }
@@ -146,8 +151,8 @@ export class RemoteDispatchGate {
    * 这一批能不能去做。通过返回 null，否则返回给模型的原因。
    *
    * 专家的结论怎么落到审批方式：
-   * - 严格：放行也弹卡（卡上是专家的话）；问用户弹卡；拒绝退回
-   * - 宽松（含替我审批）：放行直接过；问用户弹卡；拒绝退回
+   * - 严格、宽松：放行也弹卡（卡上是专家的话）；问用户弹卡；拒绝退回
+   * - 替我审批：放行直接过并留痕；问用户弹卡；拒绝退回
    * - 自由：不问人。放行直接过；问用户或拒绝都退回
    * - 专家没给出结论（出错、超时、看不懂）：非自由弹卡交给用户；自由退回只读判定
    * - 没有人在场且不是自由：没人能批，不必再问专家
@@ -183,7 +188,9 @@ export class RemoteDispatchGate {
       if (mode === 'free') return t('remote.expert_cannot_ask', { card: verdict.card })
       return this.askApproval({ ...request, expert: { card: verdict.card } }, title, rejectedText)
     }
-    if (mode === 'strict') return this.askApproval({ ...request, expert: { card: verdict.note } }, title, rejectedText)
+    // 替你放行只属于「替我审批」。宽松和严格一样，放行也弹卡，由用户自己点。
+    const passesWithoutAsking = mode === 'free' || (mode === 'relaxed' && this.ctx.autoReview === true)
+    if (!passesWithoutAsking) return this.askApproval({ ...request, expert: { card: verdict.note } }, title, rejectedText)
     this.ctx.onExpertAllowed?.(verdict.note, request)
     return null
   }

@@ -6144,6 +6144,7 @@ export abstract class Agent {
       addStep: (step) => this.addStep(step),
       updateStep: (stepId, updates) => this.updateStep(stepId, updates),
       getRemoteExpertEnv: () => this.remoteExpertEnv(run),
+      isAutoReview: () => this.autoReviewApplies(run.context.unattended),
       waitForConfirmation: async (toolCallId, toolName, toolArgs, riskLevel, displayName, reasons, trustCommandOffer, opts) => {
         // 「本次允许」：Agent 实例内存白名单（跨 Run，关 tab / 重启清空）
         const candidates = buildAllowlistKeyCandidates(toolName, toolArgs)

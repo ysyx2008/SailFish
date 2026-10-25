@@ -274,6 +274,7 @@ function remoteGateFor(config: AgentConfig | undefined, executor: ToolExecutorCo
       ),
     ...(expertEnv ? {
       expert: new RemoteExpert(expertEnv),
+      autoReview: executor.isAutoReview?.() === true,
       onExpertAllowed: (note, request) => {
         executor.addStep({
           type: 'auto_review',

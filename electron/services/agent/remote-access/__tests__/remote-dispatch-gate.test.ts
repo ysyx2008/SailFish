@@ -264,7 +264,7 @@ describe('运维专家的结论怎么落到审批方式', () => {
     ['strict', '放行', allow, 'pass', 1],
     ['strict', '问用户', ask, 'pass', 1],
     ['strict', '拒绝', refuse, 'rejected', 0],
-    ['relaxed', '放行', allow, 'pass', 0],
+    ['relaxed', '放行', allow, 'pass', 1],
     ['relaxed', '问用户', ask, 'pass', 1],
     ['relaxed', '拒绝', refuse, 'rejected', 0],
     ['free', '放行', allow, 'pass', 0],
@@ -286,10 +286,23 @@ describe('运维专家的结论怎么落到审批方式', () => {
     expect(request.expert).toEqual({ card: '会重启 nginx' })
   })
 
-  it('严格模式下专家放行：卡上带的是它的放行理由', async () => {
-    const { gate, confirm } = expertGate(allow, { executionMode: 'strict' })
-    await run(gate)
-    expect((confirm.mock.calls[0] as unknown as [{ expert?: { card: string } }])[0].expert).toEqual({ card: '只是看状态' })
+  it('严格和宽松下专家放行：都弹卡，卡上是它的放行理由', async () => {
+    for (const mode of ['strict', 'relaxed'] as const) {
+      const { gate, confirm, onExpertAllowed } = expertGate(allow, { executionMode: mode })
+      const r = await run(gate)
+      expect(r.ok).toBe(true)
+      expect((confirm.mock.calls[0] as unknown as [{ expert?: { card: string } }])[0].expert).toEqual({ card: '只是看状态' })
+      expect(onExpertAllowed).not.toHaveBeenCalled()
+    }
+  })
+
+  it('替我审批：专家放行不弹卡，理由留进过程', async () => {
+    const { gate, confirm, onExpertAllowed } = expertGate(allow, { executionMode: 'relaxed', autoReview: true })
+    const r = await run(gate)
+    expect(r.ok).toBe(true)
+    expect(confirm).not.toHaveBeenCalled()
+    expect(onExpertAllowed).toHaveBeenCalledTimes(1)
+    expect(onExpertAllowed.mock.calls[0]![0]).toBe('只是看状态')
   })
 
   it('没让用户点头就放行时，理由留进过程；弹了卡的不重复留', async () => {
@@ -352,12 +365,12 @@ describe('运维专家的结论怎么落到审批方式', () => {
     expect((await run(gate)).ok).toBe(true)
   })
 
-  it('补单走同一套：专家放行、宽松、不弹卡', async () => {
+  it('补单走同一套：宽松下专家放行也弹卡', async () => {
     const { gate, confirm, judge } = expertGate(allow)
     const grant = new RemoteGrant([{ id: 'a1', name: 'web-01', address: 'deploy@10.0.0.11:22' }], ['df -h'])
     const r = await gate.authorizeFollowup('wk', grant, ['uptime'])
     expect(r.ok).toBe(true)
-    expect(confirm).not.toHaveBeenCalled()
+    expect(confirm).toHaveBeenCalledTimes(1)
     expect((judge.mock.calls[0] as unknown as [{ forWorker?: string }])[0].forWorker).toBe('wk')
   })
 

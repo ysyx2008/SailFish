@@ -136,10 +136,12 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  function runParent(services: AgentServices, mode: 'strict' | 'relaxed' | 'free', decide: (c: PendingConfirmation) => boolean) {
+  function runParent(services: AgentServices, mode: 'strict' | 'relaxed' | 'free', decide: (c: PendingConfirmation) => boolean, approval?: 'autoReview') {
     const parent = new SailFish(services)
     parent.setAgentId('e2e-remote')
-    parent.updateConfig({ executionMode: mode })
+    // updateConfig 会把这一轮标成「渠道指定了执行档」，审批方式就不再看会话上的替我审批
+    if (approval) parent.setApproval(approval)
+    else parent.updateConfig({ executionMode: mode })
     const confirmations: PendingConfirmation[] = []
     const steps: AgentStep[] = []
     const result = parent.run('巡检一下 web-01', ctx(), {
@@ -261,7 +263,7 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     expect(host.connections).toBe(0)
   })
 
-  it('宽松：专家放行就不弹卡，伙计照单跑，过程里留着专家的理由', async () => {
+  it('宽松：专家放行也弹卡，不替你做；点头后伙计才跑', async () => {
     const services = makeServices(({ isChild, childIndex, parentIndex, messages }) => {
       if (isChild) {
         if (childIndex === 0) return { tool_calls: [tc('remote_exec', { host: 'h1', command: 'echo ALLOWED' }, 'c1')] }
@@ -270,7 +272,24 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
       if (parentIndex === 0) return { tool_calls: [dispatch(['h1'], ['echo ALLOWED'])] }
       return { content: lastUserText(messages).includes('跑完') ? '汇总' : '再等等' }
     }, '{"outcome":"allow","card":"你点名了这台，只是回显一句话"}')
-    const { result, confirmations, steps } = runParent(services, 'relaxed', () => false)
+    const { result, confirmations, steps } = runParent(services, 'relaxed', () => true)
+    await result
+    expect(confirmations).toHaveLength(1)
+    expect(confirmations[0]!.remoteAccess?.expert?.card).toContain('你点名了这台')
+    expect(host.commands).toEqual(['echo ALLOWED'])
+    expect(steps.some(s => s.type === 'auto_review' && s.autoReview?.outcome === 'approved')).toBe(false)
+  })
+
+  it('替我审批：专家放行不弹卡，伙计照单跑，过程里留着专家的理由', async () => {
+    const services = makeServices(({ isChild, childIndex, parentIndex, messages }) => {
+      if (isChild) {
+        if (childIndex === 0) return { tool_calls: [tc('remote_exec', { host: 'h1', command: 'echo ALLOWED' }, 'c1')] }
+        return { content: '跑完了' }
+      }
+      if (parentIndex === 0) return { tool_calls: [dispatch(['h1'], ['echo ALLOWED'])] }
+      return { content: lastUserText(messages).includes('跑完') ? '汇总' : '再等等' }
+    }, '{"outcome":"allow","card":"你点名了这台，只是回显一句话"}')
+    const { result, confirmations, steps } = runParent(services, 'relaxed', () => false, 'autoReview')
     await result
     expect(confirmations).toHaveLength(0)
     expect(host.commands).toEqual(['echo ALLOWED'])

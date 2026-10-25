@@ -164,6 +164,8 @@ export interface ToolExecutorConfig {
   getAgentContext?: () => import('../types').AgentContext | undefined
   /** 运维专家要用的模型通道和用户原话；拿不到（测试、精简环境）就按原来的只读判定 */
   getRemoteExpertEnv?: () => import('../remote-access/expert').RemoteExpertEnv | undefined
+  /** 这场对话开着替我审批。远程这一批只有这时才由专家直接放行，宽松仍弹卡 */
+  isAutoReview?: () => boolean
   /**
    * 获取用户配置的 AI Rules（项目级编码约定）。
    *
