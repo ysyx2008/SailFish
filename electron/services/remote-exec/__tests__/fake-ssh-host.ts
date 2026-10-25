@@ -26,6 +26,8 @@ export interface FakeHostOptions {
   allowForward?: boolean
   /** 收到 KILL 信号也不理 */
   ignoreSignal?: boolean
+  /** 收到 exec 请求既不接受也不拒绝，一直不回（模拟通道打不开） */
+  stallExec?: boolean
 }
 
 export interface FakeHost {
@@ -106,6 +108,7 @@ export async function startFakeHost(opts: FakeHostOptions = {}): Promise<FakeHos
             rejectExec()
             return
           }
+          if (opts.stallExec) return
           const stream = acceptExec()
           state.commands.push(info.command)
           runCommand(info.command, stream, session, client, state, opts)

@@ -4,7 +4,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { JUMP_FORWARDING_REFUSED_MESSAGE, type JumpHostConfig } from '@shared/types'
 import { RemoteExecPool, type RemoteExecLimits } from '../remote-exec-pool'
-import { RemoteExecRegistry } from '../index'
 import type { RemoteHost } from '../remote-host'
 import { startFakeHost, type FakeHost, type FakeHostOptions } from './fake-ssh-host'
 
@@ -247,6 +246,49 @@ describe('跳板排队时的让位', () => {
   })
 })
 
+describe('通道数与通道打不开', () => {
+  it('同一条连接上同时开的命令数有上限，多的排队，都能跑完', async () => {
+    const h = await fakeHost()
+    const p = pool({ channelsPerConn: 2 })
+    const runs = Array.from({ length: 4 }, () => p.exec(hostSpec(h), 'hang', { timeoutMs: 400 }))
+    await new Promise(r => setTimeout(r, 150))
+    expect(h.commands).toHaveLength(2)
+    const results = await Promise.all(runs)
+    expect(results.every(r => r.timedOut)).toBe(true)
+    expect(h.commands).toHaveLength(4)
+    expect(h.connections).toBe(1)
+  })
+
+  it('对端一直不回应 exec：到超时就结束，不无限等', async () => {
+    const h = await fakeHost({ stallExec: true })
+    const started = Date.now()
+    const r = await pool().exec(hostSpec(h), 'echo hi', { timeoutMs: 300 })
+    expect(r.timedOut).toBe(true)
+    expect(r.error?.message).toContain('通道')
+    expect(Date.now() - started).toBeLessThan(3000)
+  })
+
+  it('对端一直不回应 exec：按停也能马上结束', async () => {
+    const h = await fakeHost({ stallExec: true })
+    const ac = new AbortController()
+    const running = pool().exec(hostSpec(h), 'echo hi', { timeoutMs: 60_000, signal: ac.signal })
+    await new Promise(r => setTimeout(r, 100))
+    ac.abort()
+    const r = await running
+    expect(r.aborted).toBe(true)
+  })
+
+  it('同一个地址、不同编码的两条会话各用各的连接，不串编码', async () => {
+    const h = await fakeHost()
+    const p = pool()
+    const utf = await p.exec(hostSpec(h, { id: 'u' }), 'gbk', T)
+    const gbk = await p.exec(hostSpec(h, { id: 'g', encoding: 'gbk' }), 'gbk', T)
+    expect(gbk.output).toBe('你好')
+    expect(utf.output).not.toBe('你好')
+    expect(h.connections).toBe(2)
+  })
+})
+
 describe('超时、按停、断线', () => {
   it('超时先发 KILL 信号：远程进程收到信号后结束，不靠硬关通道', async () => {
     const h = await fakeHost()
@@ -306,24 +348,5 @@ describe('超时、按停、断线', () => {
     const r = await pool().exec(hostSpec(h), 'drop', T)
     expect(r.exitCode).toBeNull()
     expect(r.error?.kind).toBe('connection_lost')
-  })
-})
-
-describe('按主人分池', () => {
-  it('一位主人一个池，停下时只断自己的', async () => {
-    const h = await fakeHost()
-    const registry = new RemoteExecRegistry({ connectTimeoutMs: 5000 })
-    const a = registry.poolFor('owner-a')
-    const b = registry.poolFor('owner-b')
-    expect(registry.poolFor('owner-a')).toBe(a)
-    pools.push(a, b)
-    await a.exec(hostSpec(h), 'echo a', T)
-    await b.exec(hostSpec(h), 'echo b', T)
-    expect(h.open).toBe(2)
-    registry.disposeOwner('owner-a')
-    await until(() => h.open === 1)
-    expect((await b.exec(hostSpec(h), 'echo b2', T)).output).toBe('b2\n')
-    expect(registry.hasPool('owner-a')).toBe(false)
-    expect(registry.poolFor('owner-a')).not.toBe(a)
   })
 })

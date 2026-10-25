@@ -48,6 +48,8 @@ export interface RemoteExecLimits {
   evictGraceMs: number
   /** 同一个跳板上同时开着的转发（通往目标机的连接）上限 */
   jumpForwardLimit: number
+  /** 同一条连接上同时开着的命令通道数上限（OpenSSH 默认一条连接最多 10 个会话） */
+  channelsPerConn: number
   /** 同时握手的连接数上限 */
   handshakeLimit: number
   /** 同一组账号连着被几台主机拒绝，就不再用它登录 */
@@ -65,6 +67,7 @@ export const DEFAULT_REMOTE_EXEC_LIMITS: RemoteExecLimits = {
   idleCloseMs: 60_000,
   evictGraceMs: 300,
   jumpForwardLimit: 4,
+  channelsPerConn: 6,
   handshakeLimit: 8,
   loginRejectLimit: 3,
   connectTimeoutMs: 30_000,
@@ -127,6 +130,8 @@ interface Conn {
   idleTimer?: NodeJS.Timeout
   link?: JumpLink
   releaseForward?: () => void
+  /** 这条连接上同时跑的命令数 */
+  channels: AsyncLimiter
 }
 
 const abortedError = (): RemoteExecError => new RemoteExecError('aborted', '已按停，连接已断开。')
@@ -184,12 +189,23 @@ export class RemoteExecPool {
     } catch (e) {
       return fail(e)
     }
+    let releaseChannel: (() => void) | undefined
     try {
+      // 同一条连接上同时开的命令数有上限：多的排队，别一下子把对端的会话数打满
+      releaseChannel = await conn.channels.acquire(this.anySignal(opts.signal), abortedError)
       const result = await this.runOnConn(conn, command, opts)
       return { ...base, ...result, durationMs: Date.now() - started }
+    } catch (e) {
+      return fail(e)
     } finally {
+      releaseChannel?.()
       this.releaseConn(conn)
     }
+  }
+
+  /** 池整体的停止信号，加上这一次调用自己的（有的话）：任一个触发都算停 */
+  private anySignal(own?: AbortSignal): AbortSignal {
+    return own ? AbortSignal.any([this.lifetime.signal, own]) : this.lifetime.signal
   }
 
   /** 主人停下：在跑的、排队的、已建的全部断开。之后这个池不再接活 */
@@ -300,7 +316,7 @@ export class RemoteExecPool {
       }
       this.credentialRejections.delete(credential)
 
-      const conn: Conn = { key, host, client, active: 0, closed: false, link, releaseForward }
+      const conn: Conn = { key, host, client, active: 0, closed: false, link, releaseForward, channels: new AsyncLimiter(this.limits.channelsPerConn) }
       this.conns.set(key, conn)
       link?.conns.add(conn)
       client.on('close', () => this.closeConn(conn))
@@ -518,7 +534,19 @@ export class RemoteExecPool {
   private async forward(link: JumpLink, host: RemoteHost): Promise<Duplex> {
     const jumpClient = await this.ensureLinkClient(link)
     return new Promise<Duplex>((resolve, reject) => {
+      let timedOut = false
+      const timer = setTimeout(() => {
+        timedOut = true
+        reject(new RemoteExecError('connect_failed', '通过跳板机建立隧道超时。'))
+      }, this.limits.connectTimeoutMs)
+      timer.unref?.()
       jumpClient.forwardOut('127.0.0.1', 0, host.host, host.port, (err, stream) => {
+        clearTimeout(timer)
+        if (timedOut) {
+          // 已经放弃等了，晚到的通道不能留着
+          if (!err) stream.destroy()
+          return
+        }
         if (!err) {
           resolve(stream)
           return
@@ -591,7 +619,31 @@ export class RemoteExecPool {
         resolve({ ...empty, aborted: true, error: { kind: 'aborted', message: abortedError().message } })
         return
       }
+      // 通道打开前也要受超时和按停管：对端一直不回应时，不能比调用方给的时间多等
+      let openAbandoned = false
+      const abandonOpen = (result: Omit<RemoteExecResult, 'hostId' | 'hostName' | 'durationMs'>) => {
+        if (openAbandoned) return
+        openAbandoned = true
+        clearTimeout(openTimer)
+        for (const sig of signals) sig.removeEventListener('abort', onOpenAbort)
+        resolve(result)
+      }
+      const onOpenAbort = () => abandonOpen({ ...empty, aborted: true, error: { kind: 'aborted', message: abortedError().message } })
+      const openTimer = setTimeout(() => abandonOpen({
+        ...empty, timedOut: true,
+        error: { kind: 'connect_failed', message: '命令没能发出去：通道一直没打开。' },
+      }), opts.timeoutMs)
+      openTimer.unref?.()
+      for (const sig of signals) sig.addEventListener('abort', onOpenAbort, { once: true })
+
       conn.client.exec(command, opts.pty ? { pty: true } : {}, (err, stream) => {
+        if (openAbandoned) {
+          // 调用方已经走了，晚到的通道直接关掉
+          if (!err) { try { stream.close() } catch { /* 已关 */ } }
+          return
+        }
+        clearTimeout(openTimer)
+        for (const sig of signals) sig.removeEventListener('abort', onOpenAbort)
         if (err) {
           const error = /unable to exec/i.test(err.message)
             ? { kind: 'exec_unsupported' as const, message: '这台不支持直接执行命令。' }
@@ -603,7 +655,9 @@ export class RemoteExecPool {
         const chunks: Buffer[] = []
         let kept = 0
         let truncated = false
+        let finished = false
         const onData = (data: Buffer) => {
+          if (finished) return
           const room = this.limits.maxOutputBytes - kept
           if (room <= 0) {
             truncated = true
@@ -619,7 +673,6 @@ export class RemoteExecPool {
 
         let timedOut = false
         let aborted = false
-        let finished = false
         let timeoutTimer: NodeJS.Timeout | undefined
         let killTimer: NodeJS.Timeout | undefined
         let forceTimer: NodeJS.Timeout | undefined
@@ -631,6 +684,10 @@ export class RemoteExecPool {
           if (killTimer) clearTimeout(killTimer)
           if (forceTimer) clearTimeout(forceTimer)
           for (const s of signals) s.removeEventListener('abort', onAbort)
+          stream.removeListener('data', onData)
+          stream.stderr.removeListener('data', onData)
+          // 强收的情况下通道可能还没真正关，别留着无主的通道
+          try { stream.destroy() } catch { /* 已关 */ }
           const raw = Buffer.concat(chunks)
           const output = conn.host.encoding === 'utf-8' ? raw.toString('utf-8') : iconv.decode(raw, conn.host.encoding)
           const lost = !timedOut && !aborted && exitCode === null && !signal

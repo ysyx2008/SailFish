@@ -67,10 +67,11 @@ export function credentialGroupKey(c: LoginCredential): string {
 
 /** 一台目标主机在连接表里的键：同一台（含走同一个跳板）复用一条连接 */
 export function hostConnectionKey(h: RemoteHost): string {
-  const via = h.jumpHost ? `${h.jumpHost.username}@${h.jumpHost.host}:${h.jumpHost.port}` : ''
-  return `${h.username}@${h.host}:${h.port}|${via}`
+  const via = h.jumpHost ? jumpLinkKey(h.jumpHost) : ''
+  // 同一个地址、不同凭据或不同编码的两条已存会话不能共用连接（用错编码解码、串用别人的登录）
+  return `${credentialGroupKey(h).replace('\0', '@')}@${h.host}:${h.port}|${via}|${h.encoding}`
 }
 
 export function jumpLinkKey(j: JumpHostConfig): string {
-  return `${j.username}@${j.host}:${j.port}`
+  return `${credentialGroupKey(j).replace('\0', '@')}@${j.host}:${j.port}`
 }
