@@ -366,7 +366,6 @@ export default {
     mediumRisk: 'Medium Risk',
     lowRisk: 'Low Risk',
     remoteAccess: {
-      expertTitle: 'From the operations expert',
       ungrouped: 'Ungrouped',
       hostsTitle: 'Hosts',
       commandsTitle: 'Commands they may run exactly as written once approved',

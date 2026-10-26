@@ -33,10 +33,6 @@ const summary = computed(() =>
 
 <template>
   <div class="remote-access">
-    <div v-if="request.expert" class="remote-access-expert">
-      <div class="remote-access-title">{{ t('ai.remoteAccess.expertTitle') }}</div>
-      <p class="remote-access-expert-card">{{ request.expert.card }}</p>
-    </div>
     <p class="remote-access-summary">{{ summary }}</p>
     <div class="remote-access-title">{{ t('ai.remoteAccess.commandsTitle') }}</div>
     <ol class="remote-access-commands">
@@ -65,23 +61,6 @@ const summary = computed(() =>
   color: #fff;
   max-height: 320px;
   overflow-y: auto;
-}
-
-.remote-access-expert {
-  margin-bottom: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.remote-access-expert .remote-access-title {
-  margin-top: 0;
-}
-
-.remote-access-expert-card {
-  margin: 0;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  color: #fff;
 }
 
 .remote-access-summary {
@@ -132,11 +111,6 @@ const summary = computed(() =>
   color: var(--text-primary);
 }
 
-[data-color-scheme="light"] .remote-access-expert {
-  border-bottom-color: var(--border-color);
-}
-
-[data-color-scheme="light"] .remote-access-expert-card,
 [data-color-scheme="light"] .remote-access-summary,
 [data-color-scheme="light"] .remote-access-group-name {
   color: var(--text-primary);

@@ -269,7 +269,7 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
       parentOnlyDispatch(['rm -rf /var/log/app'], '会删日志'),
       '{"outcome":"refuse","reason":"会删日志"}',
     )
-    const { result, confirmations } = runParent(services, 'relaxed', () => true)
+    const { result, confirmations } = runParent(services, 'relaxed', () => true, 'autoReview')
     await result
     expect(confirmations).toHaveLength(0)
     expect(llmCalls.some(c => isChildCallNames(c.tools))).toBe(false)
@@ -277,21 +277,20 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     expect(host.connections).toBe(0)
   })
 
-  it('宽松：专家放行也弹卡，不替你做；点头后伙计才跑', async () => {
+  it('宽松：每批都由你看，直接弹卡，不请专家，写操作也不挡；点头后伙计才跑', async () => {
     const services = makeServices(({ isChild, childIndex, parentIndex, messages }) => {
       if (isChild) {
-        if (childIndex === 0) return { tool_calls: [tc('remote_exec', { host: 'h1', command: 'echo ALLOWED' }, 'c1')] }
+        if (childIndex === 0) return { tool_calls: [tc('remote_exec', { host: 'h1', command: 'echo ALLOWED > /tmp/x' }, 'c1')] }
         return { content: '跑完了' }
       }
-      if (parentIndex === 0) return { tool_calls: [dispatch(['h1'], ['echo ALLOWED'])] }
+      if (parentIndex === 0) return { tool_calls: [dispatch(['h1'], ['echo ALLOWED > /tmp/x'])] }
       return { content: lastUserText(messages).includes('跑完') ? '汇总' : '再等等' }
-    }, '{"outcome":"allow","card":"你点名了这台，只是回显一句话"}')
+    }, '{"outcome":"refuse","reason":"专家不该被请来"}')
     const { result, confirmations, steps } = runParent(services, 'relaxed', () => true)
     await result
     expect(confirmations).toHaveLength(1)
-    expect(confirmations[0]!.remoteAccess?.expert?.card).toContain('你点名了这台')
-    expect(host.commands).toEqual(['echo ALLOWED'])
-    expect(steps.some(s => s.type === 'auto_review' && s.autoReview?.outcome === 'approved')).toBe(false)
+    expect(host.commands).toEqual(['echo ALLOWED > /tmp/x'])
+    expect(steps.some(s => s.type === 'auto_review')).toBe(false)
   })
 
   it('替我审批：专家放行不弹卡，伙计照单跑，过程里留着专家的理由', async () => {
@@ -323,7 +322,6 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     const { result, confirmations, steps } = runParent(services, 'relaxed', () => false, 'autoReview')
     await result
     expect(confirmations).toHaveLength(1)
-    expect(confirmations[0]!.remoteAccess?.expert).toBeUndefined()
     const reviews = steps.filter(s => s.type === 'auto_review')
     expect(new Set(reviews.map(s => s.id)).size).toBe(1)
     const trail = reviews[reviews.length - 1]
@@ -337,7 +335,6 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     const { result, confirmations, steps } = runParent(services, 'relaxed', () => false, 'autoReview')
     await result
     expect(confirmations).toHaveLength(1)
-    expect(confirmations[0]!.remoteAccess?.expert).toBeUndefined()
     const reviews = steps.filter(s => s.type === 'auto_review')
     expect(new Set(reviews.map(s => s.id)).size).toBe(1)
     const trail = reviews[reviews.length - 1]
@@ -345,29 +342,13 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     expect(host.connections).toBe(0)
   })
 
-  it('严格：专家放行也弹卡，卡上是专家的话', async () => {
-    const services = makeServices(parentOnlyDispatch(['uptime'], '没有批准'), '{"outcome":"allow","card":"只是看运行时长"}')
-    const { result, confirmations } = runParent(services, 'strict', () => false)
+  it('严格：直接弹卡，不请专家；不批准就不派', async () => {
+    const services = makeServices(parentOnlyDispatch(['uptime'], '没有批准'), '{"outcome":"allow","card":"不该被请来"}')
+    const { result, confirmations, steps } = runParent(services, 'strict', () => false)
     await result
     expect(confirmations).toHaveLength(1)
-    expect(confirmations[0]!.remoteAccess?.expert?.card).toBe('只是看运行时长')
+    expect(steps.some(s => s.type === 'auto_review')).toBe(false)
     expect(host.connections).toBe(0)
-  })
-
-  it('宽松：专家说要问，弹卡，卡上是专家的话；用户点头后伙计才开工', async () => {
-    const services = makeServices(({ isChild, childIndex, parentIndex, messages }) => {
-      if (isChild) {
-        if (childIndex === 0) return { tool_calls: [tc('remote_exec', { host: 'h1', command: 'systemctl restart nginx' }, 'c1')] }
-        return { content: '跑完了' }
-      }
-      if (parentIndex === 0) return { tool_calls: [dispatch(['h1'], ['systemctl restart nginx'])] }
-      return { content: lastUserText(messages).includes('跑完') ? '汇总' : '再等等' }
-    }, '{"outcome":"ask_user","card":"这批会重启生产的 nginx，你原话只说了看看"}')
-    const { result, confirmations } = runParent(services, 'relaxed', () => true)
-    await result
-    expect(confirmations).toHaveLength(1)
-    expect(confirmations[0]!.remoteAccess?.expert?.card).toContain('重启生产的 nginx')
-    expect(confirmations[0]!.autoReview).toBeUndefined()
   })
 
   it('自由：专家说要问也不问人，整批退回并把它的话告诉主人', async () => {
@@ -390,15 +371,6 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     expect(confirmations).toHaveLength(0)
     expect(llmCalls.some(c => isChildCallNames(c.tools))).toBe(false)
     expect(toolOutputsOf(llmCalls.at(-1)!)).toContain('不是只读')
-  })
-
-  it('宽松：专家出错时交给用户（弹卡，卡上没有专家的话），不默默放行', async () => {
-    const services = makeServices(parentOnlyDispatch(['uptime'], '没有批准'), 'not json')
-    const { result, confirmations } = runParent(services, 'relaxed', () => false)
-    await result
-    expect(confirmations).toHaveLength(1)
-    expect(confirmations[0]!.remoteAccess?.expert).toBeUndefined()
-    expect(host.connections).toBe(0)
   })
 })
 

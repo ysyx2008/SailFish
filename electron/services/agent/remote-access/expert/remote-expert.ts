@@ -36,7 +36,8 @@ export interface ExpertInput {
   workerCount?: number
   /** 补单：给哪个已派出的伙计补命令 */
   forWorker?: string
-  executionMode: 'strict' | 'relaxed' | 'free'
+  /** 用户为这场对话选的审批方式；严格、宽松每批都由用户看，不请专家 */
+  approval: 'autoReview' | 'free'
   /** 此刻有没有人能当场回答 */
   attended: boolean
   /** 结论一出来就叫一次，说明变长再叫。用来让界面先显示结论、说明随后补上 */
@@ -104,7 +105,7 @@ export class RemoteExpert {
     const scope = input.forWorker
       ? `给已经派出的伙计「${input.forWorker}」补几条命令，他连的主机不变。`
       : `这一批派 ${input.workerCount ?? '若干'} 个伙计，共涉及 ${input.hosts.length} 台主机。`
-    const mode = input.executionMode === 'strict' ? '严格' : input.executionMode === 'free' ? '自由' : '宽松'
+    const mode = input.approval === 'free' ? '自由' : '替我审批'
     return [
       '【用户原话】',
       words.length ? formatUserWords(words) : '（没有）',

@@ -855,6 +855,4 @@ export interface RemoteAccessRequest {
   workerCount?: number
   /** 补单给谁；派出时不写 */
   forWorker?: string
-  /** 运维专家写给用户的话；没经过专家（或专家没给出结论）时不写 */
-  expert?: { card: string }
 }

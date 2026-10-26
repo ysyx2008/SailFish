@@ -2,8 +2,8 @@
  * 伙计远程范围的授权门：派出（或补单）之前，把「哪几个伙计连哪些已存主机、跑哪些命令」
  * 判清楚、问清楚，通过了才交出 RemoteGrant。
  *
- * 顺序：参数合理 → 这类会话允许 → 主机都是已存的 → 运维专家判断 → 按专家结论和这场对话的审批方式处理。
- * 没有专家可用（取不到模型通道）时退回原来的做法：命令都只读、再按审批方式确认。
+ * 顺序：参数合理 → 这类会话允许 → 主机都是已存的 → 按这场对话的审批方式处理：
+ * 严格、宽松直接问用户；替我审批、自由由运维专家判断。
  * 任何一步不过都整批退回，回执写明原因；通过之前不开工、不连任何主机。
  */
 import type { ExecutionMode, JumpHostGroupRef, RemoteAccessRequest } from '@shared/types'
@@ -36,12 +36,9 @@ export interface RemoteDispatchContext {
   attended: boolean
   /** 交给这场对话的确认渠道（含「替我审批」）；返回 true 才算批准 */
   confirm: (request: RemoteAccessRequest, toolArgs: Record<string, unknown>, displayName: string, reasons: string[]) => Promise<boolean>
-  /** 运维专家；没有就按原来的只读判定 */
+  /** 运维专家；没有就按原来的只读判定。只在替我审批和自由模式下用到 */
   expert?: { judge: (input: ExpertInput) => Promise<ExpertResult> }
-  /**
-   * 这场对话开着替我审批。
-   * 只有这时，专家的「放行」才直接做；宽松仍弹卡，由用户自己点。
-   */
+  /** 这场对话开着替我审批（执行档仍是宽松）。严格、宽松每批都由用户看，不请专家 */
   autoReview?: boolean
   /** 专家没让用户点头就放行了：把它的理由留在这场对话的过程里 */
   onExpertAllowed?: (note: string, request: RemoteAccessRequest) => void
@@ -168,21 +165,23 @@ export class RemoteDispatchGate {
   /**
    * 这一批能不能去做。通过返回 null，否则返回给模型的原因。
    *
-   * 专家的结论怎么落到审批方式：
-   * - 严格、宽松：放行也弹卡（卡上是专家的话）；问用户弹卡；拒绝退回
-   * - 替我审批：放行直接过并留痕；没放行先在卡前面留一行再弹卡（卡上不写专家的话）；拒绝退回
-   * - 自由：不问人。放行直接过；问用户或拒绝都退回
-   * - 专家没给出结论（出错、超时、看不懂）：非自由弹卡交给用户；自由退回只读判定
+   * 谁来判，跟这场对话的审批方式走：
+   * - 严格、宽松：每批都由用户看，直接弹卡，不请专家，也不要求命令只读
+   * - 替我审批：请专家。放行直接过并留痕；没放行先在卡前面留一行再弹卡；拒绝退回
+   * - 自由：请专家，不问人。放行直接过；问用户或拒绝都退回
+   * - 专家没给出结论（出错、超时、看不懂）：替我审批弹卡交给用户；自由退回只读判定
    * - 没有人在场且不是自由：没人能批，不必再问专家
+   * 没有专家可用（取不到模型通道）时，自由和替我审批退回原来的做法：命令都只读，再按审批方式确认。
    */
   private async vet(request: RemoteAccessRequest, title: string, rejectedText: string): Promise<string | null> {
     const expert = this.ctx.expert
+    const mode = this.ctx.executionMode
+    if (mode !== 'free' && !this.ctx.autoReview) return this.askApproval(request, title, rejectedText)
     if (!expert) {
       const readOnly = await this.checkReadOnly(request.commands)
       return readOnly ?? await this.askApproval(request, title, rejectedText)
     }
 
-    const mode = this.ctx.executionMode
     if (mode !== 'free' && !this.ctx.attended) return t('remote.nobody_to_confirm')
 
     this.ctx.onExpertLive?.({ kind: 'looking' }, request)
@@ -191,7 +190,7 @@ export class RemoteDispatchGate {
       commands: request.commands,
       ...(request.workerCount !== undefined ? { workerCount: request.workerCount } : {}),
       ...(request.forWorker ? { forWorker: request.forWorker } : {}),
-      executionMode: mode,
+      approval: mode === 'free' ? 'free' : 'autoReview',
       attended: this.ctx.attended,
       onPartial: (partial) => this.ctx.onExpertLive?.({ kind: 'writing', partial }, request),
     })
@@ -216,9 +215,6 @@ export class RemoteDispatchGate {
       if (mode === 'free') return t('remote.expert_cannot_ask', { card: verdict.card })
       return this.handToUser(request, verdict.card, title, rejectedText)
     }
-    // 替你放行只属于「替我审批」。宽松和严格一样，放行也弹卡，由用户自己点。
-    const passesWithoutAsking = mode === 'free' || (mode === 'relaxed' && this.ctx.autoReview === true)
-    if (!passesWithoutAsking) return this.askApproval({ ...request, expert: { card: verdict.note } }, title, rejectedText)
     this.ctx.onExpertAllowed?.(verdict.note, request)
     return null
   }
@@ -231,21 +227,15 @@ export class RemoteDispatchGate {
     return null
   }
 
-  /**
-   * 要问用户。替我审批先在卡前面留一行（和原来交给你定一样），卡上不重复写专家的话。
-   * 严格、宽松把专家的话写在卡上。
-   */
+  /** 替我审批要问用户：先在卡前面留一行（和原来交给你定一样），卡上不重复写专家的话 */
   private async handToUser(
     request: RemoteAccessRequest,
     note: string | undefined,
     title: string,
     rejectedText: string,
   ): Promise<string | null> {
-    if (this.ctx.autoReview) {
-      this.ctx.onExpertHandedOver?.(note, request)
-      return this.askApproval(request, title, rejectedText)
-    }
-    return this.askApproval(note ? { ...request, expert: { card: note } } : request, title, rejectedText)
+    this.ctx.onExpertHandedOver?.(note, request)
+    return this.askApproval(request, title, rejectedText)
   }
 
   /** 批准返回 null，否则返回给模型的原因 */
@@ -254,7 +244,6 @@ export class RemoteDispatchGate {
     if (this.ctx.executionMode === 'free') return null
     if (!this.ctx.attended) return t('remote.nobody_to_confirm')
     const toolArgs: Record<string, unknown> = {
-      ...(request.expert ? { expert_note: request.expert.card } : {}),
       hosts: request.hosts.map(h => ({ name: h.name, address: h.address, ...(h.group ? { group: h.group } : {}) })),
       remote_commands: request.commands,
       ...(request.workerCount !== undefined ? { workers: request.workerCount } : {}),

@@ -258,18 +258,15 @@ function remoteAccessFor(roster: SubAgentRoster, name: string, grant: RemoteGran
 
 /**
  * 专家看这一批时，界面上始终只有一行：先显示「在看」，结论一到就换成结论，说明写长了就改这一行。
- * 静默放行（自由、替我审批）写完后收进过程；其余留在外面，和确认卡一起看得见。
+ * 专家只在替我审批和自由模式下出场。放行写完后收进过程；要问用户或拒绝的留在外面，和确认卡一起看得见。
  */
 function expertLiveSteps(
-  config: AgentConfig | undefined,
   executor: ToolExecutorConfig,
   toolCallId: string | undefined,
   toolName: string,
 ) {
   let stepId: string | undefined
   let wrote = false
-  const executionMode = config?.executionMode ?? 'strict'
-  const silentAllow = executionMode === 'free' || executor.isAutoReview?.() === true
 
   const actionOf = (request: RemoteAccessRequest) => t('remote.expert_action', { count: request.hosts.length })
   const quote = (text: string) => text.trim().replace(/\n+/g, ' ')
@@ -295,16 +292,15 @@ function expertLiveSteps(
   }
 
   const titleFor = (partial: ExpertPartial, action: string) => {
-    if (partial.outcome === 'allow' && silentAllow) return t('autoReview.approved', { action })
+    if (partial.outcome === 'allow') return t('autoReview.approved', { action })
     if (partial.outcome === 'refuse') return t('remote.expert_live_refuse', { action })
-    if (partial.outcome === 'allow') return t('remote.expert_live_allow', { action })
     return t('autoReview.handed_over', { action })
   }
 
   const paintPartial = (partial: ExpertPartial, request: RemoteAccessRequest, done: boolean) => {
     wrote = true
     const action = actionOf(request)
-    const silent = done && partial.outcome === 'allow' && silentAllow
+    const silent = done && partial.outcome === 'allow'
     const line = quote(partial.text)
     const content = line ? `${titleFor(partial, action)}\n\n> ${line}` : titleFor(partial, action)
     show(request, content, !done, silent
@@ -384,7 +380,7 @@ function remoteGateFor(config: AgentConfig | undefined, executor: ToolExecutorCo
     ...(expertEnv ? {
       expert: new RemoteExpert(expertEnv),
       autoReview: executor.isAutoReview?.() === true,
-      ...expertLiveSteps(config, executor, toolCallId, toolName),
+      ...expertLiveSteps(executor, toolCallId, toolName),
     } : {}),
   })
 }

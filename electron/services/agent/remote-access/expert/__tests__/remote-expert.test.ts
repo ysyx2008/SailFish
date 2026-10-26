@@ -82,7 +82,7 @@ const INPUT: ExpertInput = {
   hosts: [{ name: 'db1', address: 'ops@10.0.0.1:22', group: '生产' }],
   commands: ['uptime', 'systemctl restart nginx'],
   workerCount: 1,
-  executionMode: 'relaxed',
+  approval: 'autoReview',
   attended: true,
 }
 
@@ -112,7 +112,7 @@ describe('RemoteExpert.judge', () => {
     expect(user).toContain('解析为只读')
     expect(user).toContain('systemctl restart nginx')
     expect(user).toMatch(/restart[\s\S]*不算只读|不算只读[\s\S]*restart/)
-    expect(user).toContain('宽松')
+    expect(user).toContain('替我审批')
   })
 
   it('用量交给调用方记账', async () => {

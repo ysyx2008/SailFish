@@ -1,12 +1,12 @@
 /**
- * 派伙计连远程主机的确认卡——运维专家写的话显示在最前面。
+ * 派伙计连远程主机的确认卡——运维专家的话在卡前面那一行里，卡上不再重复。
  * 临时数据目录，窗口不抢前台。往一个助手页里直接放一张确认卡，量卡的样子并截图。
  *
  *   npx vite build && node scripts/ui-e2e/remote-expert-card.mjs
  *   E2E_SHOT=/tmp/shots node scripts/ui-e2e/remote-expert-card.mjs
  *
- * 1. 专家写了话：卡上最前面是「运维专家的话」和原文，后面才是命令与主机
- * 2. 专家没写话：卡跟以前一样，没有这一栏
+ * 1. 请求带着专家的话：卡上也没有这一栏，只有命令与主机
+ * 2. 请求没带：同上
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -86,7 +86,6 @@ const confirmation = (expert) => ({
       { id: 'a1', name: 'web-01', address: 'deploy@10.0.0.11:22', group: '生产' },
       { id: 'a2', name: 'lab', address: 'root@10.0.1.5:22' },
     ],
-    ...(expert ? { expert: { card: expert } } : {}),
   },
 })
 
@@ -100,14 +99,12 @@ try {
   await page.locator('.ai-messages-wrapper:visible').first().waitFor({ state: 'attached', timeout: 30_000 })
   await pushStep({ id: 'u1', type: 'user_task', content: '帮我看看生产机的磁盘', timestamp: Date.now() })
 
-  console.log('\n[1] 专家写了话')
+  console.log('\n[1] 请求里带着专家的话（给命令行、IM 用）：桌面确认卡不重复写')
   await setConfirm(confirmation('其中 systemctl restart nginx 会让生产站点短暂中断，你原话只让我看磁盘。\n是否仍要批准？'))
   await page.locator('.remote-access').first().waitFor({ state: 'visible', timeout: 15_000 })
   const card = page.locator('.remote-access').first()
   const text = await card.innerText()
-  check('有「运维专家的话」标题', /运维专家的话/.test(text), text)
-  check('专家的原文完整显示（含换行后的第二句）', /短暂中断/.test(text) && /是否仍要批准/.test(text), text)
-  check('专家的话在命令清单前面', text.indexOf('短暂中断') < text.indexOf('批准后能原样跑的命令'), text)
+  check('卡上没有「运维专家的话」', !/运维专家/.test(text) && !/短暂中断/.test(text), text)
   check('命令与主机照常显示', /df -h/.test(text) && /web-01/.test(text) && /未分组/.test(text), text)
   const box = await card.boundingBox()
   check('卡没有被撑出屏幕', box && box.width > 100 && box.width < 1600, JSON.stringify(box))

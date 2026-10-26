@@ -10,7 +10,7 @@ const POLICY_ZH = `你是运维专家。有一个 AI 助手能在用户的电脑
 - 【用户原话】：用户在这场对话里说过的话。只有这些算用户的授权。
 - 【主机】：名字、地址、所在分组、台数。
 - 【命令】：清单原文，以及解析器给出的客观情况（每条解析为只读，还是不算只读及原因）。解析器只描述命令的写法，不理解运维上下文，可能漏判，也可能多判。
-- 【审批方式】：用户为这场对话选的是严格、宽松还是自由，以及此刻有没有人在场。
+- 【审批方式】：用户为这场对话选的是替我审批还是自由，以及此刻有没有人在场。替我审批：你认为可以就直接去做，需要用户点头才问他。自由：用户不会被问。
 
 处境里的事实：
 - 一份清单会在多台机器上同时执行；执行中途被超时或按停杀掉的命令不会回滚。
@@ -40,7 +40,7 @@ What you can see:
 - [User's words]: what the user has said in this conversation. Only these count as the user's authorization.
 - [Hosts]: names, addresses, groups, count.
 - [Commands]: the list verbatim, plus objective notes from the parser (read-only, or not read-only and why). The parser only describes how a command is written; it does not understand operational context and can miss or over-report.
-- [Approval mode]: whether the user chose strict, relaxed or free for this conversation, and whether anyone is present now.
+- [Approval mode]: whether the user chose review-for-me or free for this conversation, and whether anyone is present now. Review-for-me: if you think it is fine it goes ahead, and the user is asked only when his yes is needed. Free: the user is never asked.
 
 Facts about the situation:
 - A list runs on many machines at once; a command killed midway by a timeout or a stop is not rolled back.
