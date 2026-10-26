@@ -1,0 +1,189 @@
+/**
+ * 主机管理列表：名字用满整行，操作按钮只在悬停时浮出来——桌面应用里的真窗口端到端。
+ * 临时数据目录，窗口不抢前台。主导航宽度设成 283（用户常见的宽度）。
+ *
+ *   npx vite build && node scripts/ui-e2e/host-list-names.mjs
+ *   E2E_SHOT=/tmp/shots node scripts/ui-e2e/host-list-names.mjs   # 顺便存截图
+ *
+ * 1. 名字很长的主机在 283 宽下完整显示，不被省略号截断
+ * 2. 平时看不见操作按钮、点不到；悬停那一行才出现
+ * 3. 悬停时按钮浮在右侧，不把名字往左挤（名字宽度不变）
+ * 4. 右边缘能拖：变宽、拖到头停住，对话侧栏宽度不动，宽度记下来
+ */
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { launchApp } from './launch.mjs'
+
+const failures = []
+const check = (label, pass, detail) => {
+  if (pass) console.log(`  OK   ${label}`)
+  else {
+    failures.push(label)
+    console.error(`  FAIL ${label}${detail ? ` — ${String(detail).slice(0, 500)}` : ''}`)
+  }
+}
+
+const JUMP_GROUP = '跳板机后面的机器'
+const JUMP_HOST = '60.166.4.238'
+const NAMES = ['MacBook Air Server', '192.168.230.130', 'Jump Server', '绿联4600NAS']
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sft-host-list-'))
+fs.writeFileSync(path.join(dataDir, 'qiyu-terminal-config.json'), JSON.stringify({
+  setupCompleted: true,
+  recallSidebarWidth: 283,
+  hostSidebarWidth: 283,
+  sshSessions: [
+    ...NAMES.map((name, i) => ({
+      id: `s${i}`, name, host: `10.0.0.${i + 1}`, port: 22, username: 'yushen', authType: 'password', encoding: 'utf-8', createdAt: i,
+    })),
+    { id: 'j1', name: 'ai-bak', host: '10.1.0.1', port: 22, username: 'yushen', authType: 'password', encoding: 'utf-8', createdAt: 9, groupId: 'g-jump' },
+  ],
+  sessionGroups: [
+    { id: 'g-jump', name: JUMP_GROUP, createdAt: 0, jumpHost: { host: JUMP_HOST, port: 16208, username: 'yushen', authType: 'password' } },
+  ],
+}, null, '\t'))
+
+const shotDir = process.env.E2E_SHOT
+if (shotDir) fs.mkdirSync(shotDir, { recursive: true })
+const app = await launchApp(dataDir)
+const page = await app.firstWindow()
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const shot = async (name) => { if (shotDir) await page.screenshot({ path: path.join(shotDir, `${name}.png`) }) }
+
+try {
+  await sleep(3000)
+  // 本机另有旗鱼在跑时会弹「浏览器助手没连上」，与本检查无关，点掉
+  await page.getByRole('button', { name: '确定' }).click({ timeout: 2000 }).catch(() => {})
+  // 进「终端」页，再点「连接远程主机」打开主机管理侧栏
+  await page.getByText('终端', { exact: true }).first().click({ timeout: 90_000 })
+  await sleep(800); await shot('terminal-page')
+  await page.getByText('连接远程主机').first().click({ timeout: 30_000 })
+  let found = false
+  for (let i = 0; i < 40 && !found; i++) {
+    found = await page.evaluate(() => (document.querySelector('.sidebar--hosts')?.getBoundingClientRect().width ?? 0) > 100 && !!document.querySelector('.session-name')).catch(() => false)
+    if (!found) await sleep(250)
+  }
+  check('主机管理侧栏打开、列表出现了', found)
+  // 记下的宽度是 283，等配置盖过首帧的默认宽度
+  for (let i = 0; i < 30; i++) {
+    const w = await page.evaluate(() => document.querySelector('.sidebar--hosts')?.getBoundingClientRect().width ?? 0)
+    if (Math.abs(w - 283) < 2) break
+    await sleep(100)
+  }
+
+  const measure = () => page.evaluate((names) => {
+    const rows = [...document.querySelectorAll('.session-item')]
+    return names.map((name) => {
+      const row = rows.find((r) => r.querySelector('.session-name')?.textContent === name)
+      if (!row) return null
+      const nameEl = row.querySelector('.session-name')
+      const actions = row.querySelector('.session-actions')
+      const style = getComputedStyle(actions)
+      return {
+        name,
+        truncated: nameEl.scrollWidth > nameEl.clientWidth,
+        nameWidth: nameEl.clientWidth,
+        actionsOpacity: Number(style.opacity),
+        actionsPointer: style.pointerEvents,
+      }
+    })
+  }, NAMES)
+
+  await sleep(400)
+  await shot('idle')
+  const idle = await measure()
+  const sidebarWidth = await page.evaluate(() => document.querySelector('.sidebar--hosts')?.getBoundingClientRect().width)
+  console.log(`  主机管理侧栏宽 ${sidebarWidth}px`)
+  check('四个名字都在列表里', idle.every(Boolean))
+  check('名字都完整显示，没有被省略号截断', idle.every((r) => r && !r.truncated), JSON.stringify(idle.filter((r) => r?.truncated)))
+  check('平时操作按钮看不见、点不到', idle.every((r) => r && r.actionsOpacity === 0 && r.actionsPointer === 'none'))
+
+  // 悬停第一行
+  const row = page.locator('.session-item', { hasText: NAMES[0] }).first()
+  await row.hover({ force: true })
+  await sleep(400)
+  await shot('hover')
+  const hovered = (await measure())[0]
+  check('悬停那一行，按钮出现并可点', hovered.actionsOpacity === 1 && hovered.actionsPointer === 'auto', JSON.stringify(hovered))
+  check('按钮浮在右侧，没有把名字挤窄', hovered.nameWidth === idle[0].nameWidth, `${idle[0].nameWidth} -> ${hovered.nameWidth}`)
+  const others = (await measure()).slice(1)
+  check('没悬停的行按钮仍然隐藏', others.every((r) => r.actionsOpacity === 0))
+
+  // 带跳板机的分组：名字不被挤掉；跳板机在最右，悬停时让给按钮
+  const groupInfo = () => page.evaluate((groupName) => {
+    const header = [...document.querySelectorAll('.group-header')].find((h) => h.querySelector('.group-name')?.textContent === groupName)
+    if (!header) return null
+    const nameEl = header.querySelector('.group-name')
+    const badge = header.querySelector('.jump-host-badge')
+    const actions = header.querySelector('.group-header-right')
+    const hb = header.getBoundingClientRect()
+    const bb = badge.getBoundingClientRect()
+    return {
+      nameTruncated: nameEl.scrollWidth > nameEl.clientWidth,
+      badgeOpacity: Number(getComputedStyle(badge).opacity),
+      badgeRightGap: Math.round(hb.right - bb.right),
+      nameRight: Math.round(nameEl.getBoundingClientRect().right),
+      badgeLeft: Math.round(bb.left),
+      actionsPointer: getComputedStyle(actions).pointerEvents,
+    }
+  }, JUMP_GROUP)
+  await page.mouse.move(600, 600)
+  await sleep(300)
+  await shot('group-idle')
+  const gi = await groupInfo()
+  check('带跳板机的分组：名字完整显示', !!gi && !gi.nameTruncated, JSON.stringify(gi))
+  check('跳板机在分组头最右、平时看得见', !!gi && gi.badgeOpacity === 1 && gi.badgeRightGap <= 8 && gi.badgeLeft > gi.nameRight, JSON.stringify(gi))
+  await page.locator('.group-header', { hasText: JUMP_GROUP }).first().hover({ force: true })
+  await sleep(400)
+  await shot('group-hover')
+  const gh = await groupInfo()
+  check('悬停分组头：跳板机让位，按钮可点', !!gh && gh.badgeOpacity === 0 && gh.actionsPointer === 'auto', JSON.stringify(gh))
+
+  const hostWidth = () => page.evaluate(() => document.querySelector('.sidebar--hosts').getBoundingClientRect().width)
+  const before = await hostWidth()
+  const handle = page.locator('.sidebar--hosts .sidebar-resize-handle')
+  const box = await handle.boundingBox()
+  check('右边有拖动手柄', !!box && box.height > 40, JSON.stringify(box))
+  if (box) {
+    const y = Math.min(box.y + 120, box.y + box.height - 20)
+    const target = before + 80
+    await page.mouse.move(box.x + box.width / 2, y)
+    await page.mouse.down()
+    await page.mouse.move(target, y, { steps: 12 })
+    await page.mouse.up()
+    await sleep(200)
+    const wider = await hostWidth()
+    const info = await page.evaluate(() => ({
+      inner: window.innerWidth,
+      style: getComputedStyle(document.querySelector('.sidebar--hosts')).width,
+      saved: localStorage.getItem('sft-host-sidebar-width'),
+    }))
+    check('往右拖，面板变宽', wider > before + 60, `${before} -> ${wider} ${JSON.stringify(info)}`)
+    const recall = await page.evaluate(() => document.querySelector('.sidebar--recall')?.getBoundingClientRect().width)
+    check('对话侧栏宽度没被带着变', Math.abs(recall - 283) < 2, String(recall))
+    const saved = await page.evaluate(() => localStorage.getItem('sft-host-sidebar-width'))
+    check('宽度记下来了', Math.abs(Number(saved) - wider) < 2, saved)
+
+    await page.mouse.move(wider - 2, box.y + 120)
+    await page.mouse.down()
+    await page.mouse.move(80, box.y + 120, { steps: 6 })
+    await page.mouse.up()
+    await sleep(150)
+    const narrow = await hostWidth()
+    check('往左拖到头停在 240', Math.abs(narrow - 240) < 2, String(narrow))
+    await page.mouse.move(700, 700)
+    await sleep(300)
+    const gn = await groupInfo()
+    check('最窄时带跳板机的分组名仍完整（跳板机先缩）', !!gn && !gn.nameTruncated, JSON.stringify(gn))
+  }
+} finally {
+  await app.close().catch(() => {})
+  if (!process.env.E2E_KEEP) fs.rmSync(dataDir, { recursive: true, force: true })
+}
+
+if (failures.length > 0) {
+  console.error(`\n${failures.length} 项没过：\n- ${failures.join('\n- ')}`)
+  process.exit(1)
+}
+console.log('\n全部通过')
+process.exit(0)

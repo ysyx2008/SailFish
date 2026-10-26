@@ -504,11 +504,16 @@ const closeGroupDialog = () => { showGroupEditor.value = false; editingGroup.val
               />
               <span class="group-name">{{ groupName }}</span>
               <span class="group-count">{{ groupData.sessions.length }}</span>
-              <span v-if="groupData.group?.jumpHost" class="jump-host-badge" :title="t('session.form.jumpHost')">
-                <ExternalLink :size="10" />
-                {{ groupData.group.jumpHost.host }}
-              </span>
             </div>
+            <span
+              v-if="groupData.group?.jumpHost"
+              class="jump-host-badge"
+              :title="t('session.form.jumpHost') + '：' + groupData.group.jumpHost.host"
+              @click.stop="toggleGroupCollapse(groupName as string)"
+            >
+              <ExternalLink :size="10" />
+              <span class="jump-host-text">{{ groupData.group.jumpHost.host }}</span>
+            </span>
             <div class="group-header-right">
               <button class="group-action-btn" @click.stop="openNewSessionInGroup(groupName as string)" :title="t('session.newHost')">
                 <Plus :size="13" />
@@ -901,12 +906,15 @@ const closeGroupDialog = () => { showGroupEditor.value = false; editingGroup.val
   align-items: center;
   gap: 4px;
   min-width: 0;
-  flex: 1;
+  /* 按内容宽度起算，放不下时才收缩（跳板机标签缩得更狠） */
+  flex: 1 1 auto;
   cursor: pointer;
 }
 
 /* 分组名：比主机名更小更紧，但字间距拉开一点，给"标题"的气质 */
 .group-name {
+  /* 空间不够时先让跳板机标签缩（它缩得更狠），分组名最后才被省略 */
+  flex-shrink: 1;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -923,10 +931,28 @@ const closeGroupDialog = () => { showGroupEditor.value = false; editingGroup.val
 }
 
 .group-header-right {
+  /* 平时不占位，悬停这一行时才浮在右侧，名字和标签能用满整行 */
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 2px;
-  flex-shrink: 0;
+  padding: 0 2px;
+  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  border-radius: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.group-header:hover .group-header-right,
+.group-header:focus-within .group-header-right {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .group-count {
@@ -946,7 +972,7 @@ const closeGroupDialog = () => { showGroupEditor.value = false; editingGroup.val
   text-transform: none;
 }
 
-/* jump-host：中性灰，避免抢 accent，与其他分组头视觉平衡 */
+/* jump-host：放在分组头最右，中性灰，避免抢 accent；空间不够时它先缩 */
 .jump-host-badge {
   display: inline-flex;
   align-items: center;
@@ -962,10 +988,24 @@ const closeGroupDialog = () => { showGroupEditor.value = false; editingGroup.val
   overflow: hidden;
   max-width: 160px;
   white-space: nowrap;
-  text-overflow: ellipsis;
-  flex-shrink: 0;
+  flex-shrink: 10000;
+  min-width: 0;
+  transition: opacity 0.15s ease;
+  cursor: pointer;
   letter-spacing: 0;
   text-transform: none;
+}
+
+.group-header:hover .jump-host-badge,
+.group-header:focus-within .jump-host-badge {
+  /* 悬停时这一块让给右侧浮出来的按钮 */
+  opacity: 0;
+}
+
+.jump-host-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .jump-host-badge svg {
@@ -985,14 +1025,12 @@ const closeGroupDialog = () => { showGroupEditor.value = false; editingGroup.val
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  opacity: 0;
+  opacity: 0.7;
   transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
 .group-action-btn:focus,
 .group-action-btn:focus-visible { outline: none; }
-
-.group-header:hover .group-action-btn { opacity: 0.7; }
 
 .group-action-btn:hover {
   opacity: 1 !important;
@@ -1065,17 +1103,31 @@ const closeGroupDialog = () => { showGroupEditor.value = false; editingGroup.val
   text-overflow: ellipsis;
 }
 
-/* 行内操作按钮：统一 22×22 热区，hover 整行时出现 */
+/* 行内操作按钮：统一 22×22 热区。平时不占位（名字用满整行），悬停或键盘聚焦到这一行时才浮在右侧出现 */
 .session-actions {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 2px;
+  padding: 0 2px;
+  /* 半透明底：被盖住的名字隐约透出来，按钮仍然看得清 */
+  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  border-radius: 4px;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.15s ease;
-  flex-shrink: 0;
 }
 
-.session-item:hover .session-actions { opacity: 1; }
+.session-item:hover .session-actions,
+.session-item:focus-within .session-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
 
 .session-action-btn {
   width: 22px;
