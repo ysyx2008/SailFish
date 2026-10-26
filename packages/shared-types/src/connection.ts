@@ -37,6 +37,35 @@ export function jumpHostFromGroup(groupName: string, jumpHost: JumpHostConfig): 
   return jumpHost
 }
 
+/** 算跳板时只用到的会话字段（前后端各有一份完整的 SshSession，这里只要结构） */
+export interface JumpHostSessionRef {
+  /** 覆盖分组跳板机：null 表示显式不用，undefined 表示继承分组 */
+  jumpHostOverride?: JumpHostConfig | null
+  groupId?: string
+}
+
+/** 算跳板时只用到的分组字段 */
+export interface JumpHostGroupRef {
+  id: string
+  name: string
+  jumpHost?: JumpHostConfig
+}
+
+/**
+ * 会话最终生效的跳板机。优先级：会话自定义 > 分组继承 > 无。
+ * 前端开窗和后台远程通道共用这一条规则，不各写一份。
+ */
+export function effectiveJumpHost(
+  session: JumpHostSessionRef,
+  groups: readonly JumpHostGroupRef[]
+): JumpHostConfig | undefined {
+  if (session.jumpHostOverride === null) return undefined
+  if (session.jumpHostOverride) return session.jumpHostOverride
+  if (!session.groupId) return undefined
+  const group = groups.find(g => g.id === session.groupId)
+  return group?.jumpHost ? jumpHostFromGroup(group.name, group.jumpHost) : undefined
+}
+
 /** 跳板机拒绝端口转发时给用户看的说明 */
 export const JUMP_FORWARDING_REFUSED_MESSAGE =
   '这台跳板机不允许端口转发，旗鱼无法经它连到目标机器。若是普通 Linux 跳板，请允许端口转发；若是 JumpServer，请在跳板机配置里勾选「这是 JumpServer」。'

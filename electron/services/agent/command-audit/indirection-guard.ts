@@ -126,7 +126,7 @@ function isInterpreterInline(call: AuditedCall): string | null {
  *
  * env 特例：单独执行（无 args）是打印环境变量的只读操作，safe。
  */
-function isWrappedOrOrchestrated(call: AuditedCall): string | null {
+function isWrappedOrOrchestrated(call: AuditedCall, allowOrchestrator: boolean): string | null {
   // wrapper 已 unwrap：内层命令已知，跳过 guard 让内层走正常审计
   if (call.wrapper?.name) {
     return null
@@ -141,7 +141,7 @@ function isWrappedOrOrchestrated(call: AuditedCall): string | null {
   if (WRAPPER_CMDS.has(call.cmd)) {
     return t('risk.reason.wrapper_cmd', { cmd: call.cmd })
   }
-  if (ORCHESTRATOR_CMDS.has(call.cmd)) {
+  if (ORCHESTRATOR_CMDS.has(call.cmd) && !allowOrchestrator) {
     return t('risk.reason.orchestrator_cmd', { cmd: call.cmd })
   }
   return null
@@ -156,7 +156,15 @@ export interface GuardHit {
   level: 'dangerous' | 'moderate'
   reason: string
 }
-export function checkIndirectionGuard(call: AuditedCall): GuardHit | null {
+export interface IndirectionGuardOptions {
+  /**
+   * 这次调用是命令表上的查看用子命令（`docker ps`）：调度器本身不再算「转手执行别的命令」。
+   * 只放开调度器这一条，解释器内联、包装器、结构性 flag 照查。
+   */
+  allowOrchestrator?: boolean
+}
+
+export function checkIndirectionGuard(call: AuditedCall, opts: IndirectionGuardOptions = {}): GuardHit | null {
   // basename 化 cmd（/bin/zsh → zsh, C:\...\node.exe → node）
   // assessAuditedCall 里 getArgvCommandRule 才做 basename。
   // guard 在 rule 查找之前跑，所以这里自己 normalize 一次。
@@ -180,7 +188,7 @@ export function checkIndirectionGuard(call: AuditedCall): GuardHit | null {
     return { level: 'moderate', reason: inlineReason }
   }
 
-  const wrapperReason = isWrappedOrOrchestrated(normalizedCall)
+  const wrapperReason = isWrappedOrOrchestrated(normalizedCall, opts.allowOrchestrator === true)
   if (wrapperReason) {
     // wrapper 未 unwrap（xargs/docker/npx 等），内层命令不可知，
     // 无法静态审计，降为 moderate。strict 确认，relaxed 放行。

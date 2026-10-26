@@ -39,6 +39,8 @@ export interface ConfirmationOptions {
    * 只能由人批准：插件显式要求审批属于开发者门禁，「替我审批」不代批。
    */
   humanOnly?: boolean
+  /** 这次确认批准的是一批远程主机和命令：卡片按主机、命令清单展示，评审员看到同一份 */
+  remoteAccess?: import('@shared/types').RemoteAccessRequest
 }
 
 export interface ToolExecutorConfig {
@@ -160,6 +162,10 @@ export interface ToolExecutorConfig {
    * 此时依赖此 getter 的工具应优雅降级或返回错误。
    */
   getAgentContext?: () => import('../types').AgentContext | undefined
+  /** 运维专家要用的模型通道和用户原话；拿不到（测试、精简环境）就按原来的只读判定 */
+  getRemoteExpertEnv?: () => import('../remote-access/expert').RemoteExpertEnv | undefined
+  /** 这场对话开着替我审批。远程这一批只有这时才由专家直接放行，宽松仍弹卡 */
+  isAutoReview?: () => boolean
   /**
    * 获取用户配置的 AI Rules（项目级编码约定）。
    *
@@ -202,6 +208,8 @@ export interface ToolExecutorConfig {
   createChildAgent?: (name: string) => import('../sub-agent-roster').ChildAgentHandle
   /** 这场会话以前派出的、已经停下的伙计（存在盘上，点名再交代时叫醒） */
   restoreDormantChildren?: () => import('../sub-agent-roster').DormantChild[]
+  /** 这位伙计的远程通道：派出时带了主机范围才有 */
+  getRemoteAccess?: () => import('../remote-access/worker-remote-access').WorkerRemoteAccess | undefined
   /**
    * 记下这次工具调用是对哪台主机动手。
    * 由会动手的工具经 hostScope 元数据触发，不按工具名分支。

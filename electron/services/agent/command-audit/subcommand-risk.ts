@@ -7,7 +7,7 @@
 import type { RiskLevel } from '@shared/types/agent'
 import { t, type TranslationKey } from '../i18n'
 import type { AuditedCall } from './types'
-import { basenameCommand, normalizeFlags } from './whitelist'
+import { assessCommandFlags, basenameCommand, normalizeFlags, type CommandRule } from './whitelist'
 
 export interface SubcommandRisk {
   level: RiskLevel
@@ -92,9 +92,54 @@ function assessGit(call: AuditedCall): SubcommandRisk | undefined {
   return { level: 'dangerous', reason: t(GIT_LOSS_REASON[loss], { cmd: `git ${subcommand}` }) }
 }
 
+// ==================== 会一直输出下去的写法 ====================
+
+/** 间隔后面不跟次数（`vmstat 1`、`iostat -x 1`）：会一直输出，不自己结束 */
+function assessIntervalWithoutCount(call: AuditedCall): SubcommandRisk | undefined {
+  const operands = call.paths
+  const last = operands[operands.length - 1]
+  if (last === undefined || !/^\d+$/.test(last)) return undefined
+  const beforeLast = operands[operands.length - 2]
+  if (beforeLast !== undefined && /^\d+$/.test(beforeLast)) return undefined
+  return { level: 'moderate', reason: t('risk.reason.runs_forever', { cmd: basenameCommand(call.cmd) }) }
+}
+
+/** `top` 要 `-b`（不开交互界面）和 `-n`（跑几次）一起出现才会自己结束 */
+function assessTop(call: AuditedCall): SubcommandRisk | undefined {
+  const flags = new Set(normalizeFlags(call.flags))
+  if (flags.has('-b') && flags.has('-n')) return undefined
+  return { level: 'moderate', reason: t('risk.reason.runs_forever', { cmd: 'top' }) }
+}
+
 const SUBCOMMAND_CHECKS = new Map<string, (call: AuditedCall) => SubcommandRisk | undefined>([
   ['git', assessGit],
+  ['vmstat', assessIntervalWithoutCount],
+  ['iostat', assessIntervalWithoutCount],
+  ['mpstat', assessIntervalWithoutCount],
+  ['sar', assessIntervalWithoutCount],
+  ['top', assessTop],
 ])
+
+// ==================== 查看用的子命令 ====================
+
+/**
+ * 命令表上给了「这些子命令算安全」时，看这次调用是否命中：
+ * 第一个位置参数是表上的子命令，选项都在这个子命令的选项表里，必须出现的选项都在，
+ * 后面的第一个位置参数（若有）符合要求。有看不出值的参数时不降级。
+ * 返回 true 才可以按安全算；没命中照旧用规则本身的等级。
+ */
+export function matchesSafeSubcommand(rule: CommandRule, call: AuditedCall): boolean {
+  const table = rule.safeSubcommands
+  if (!table || call.dynamicPaths) return false
+  const [name, ...rest] = call.paths
+  if (name === undefined || !Object.prototype.hasOwnProperty.call(table, name)) return false
+  const sub = table[name]!
+  const flags = normalizeFlags(call.flags)
+  if (assessCommandFlags({ ...rule, baseLevel: 'safe', safeFlags: new Set(sub.flags) }, flags) !== 'safe') return false
+  if (sub.requiredFlags?.some(f => !flags.includes(f))) return false
+  if (sub.nextOperand && rest.length > 0 && !sub.nextOperand.has(rest[0]!)) return false
+  return true
+}
 
 export function assessSubcommandRisk(call: AuditedCall): SubcommandRisk | undefined {
   return SUBCOMMAND_CHECKS.get(basenameCommand(call.cmd).toLowerCase())?.(call)

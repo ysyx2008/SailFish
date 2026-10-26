@@ -33,6 +33,12 @@ export interface AuditContext {
   /** shell 类型，影响审计策略 */
   shell?: 'bash' | 'zsh' | 'sh' | 'powershell' | 'cmd' | 'unknown'
   /**
+   * 命令在哪台机器上跑。不传按本机。
+   * remote：远程主机的处境——按 POSIX shell 解析，不用本机的工作区、临时目录、主目录做路径分区，
+   * 也不读用户为本机加的命令规则。
+   */
+  target?: 'local' | 'remote'
+  /**
    * 当前执行模式（用于解析失败 / 未知命令 按 mode 选档位）。
    * 不传时回退旧行为：解析失败 dangerous、未知命令 moderate。
    */

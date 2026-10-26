@@ -32,7 +32,7 @@ export type AutoReviewChat = (
   tools: ToolDefinition[],
   profileId: string | undefined,
   signal: AbortSignal,
-  options?: { toolChoice?: 'auto' | 'none'; maxOutputTokens?: number },
+  options?: { toolChoice?: 'auto' | 'none'; maxOutputTokens?: number; onContent?: (delta: string) => void },
 ) => Promise<ChatWithToolsResult>
 
 export type HandOverReason = AutoReviewHandOverReason

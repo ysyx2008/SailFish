@@ -47,6 +47,14 @@ export function defaultAuditContext(cwd?: string): AuditContext {
   }
 }
 
+/**
+ * 远程主机的审计上下文：按 POSIX shell 解析，不带本机的工作区和当前目录。
+ * 命令表只认内置的，路径分区不做（见 AuditContext.target）。
+ */
+export function remoteAuditContext(): AuditContext {
+  return { shell: 'sh', target: 'remote' }
+}
+
 /** 整串命令级 blocked 模式（AST 前后都跑，防 fork bomb 等） */
 function assessFullStringBlocked(command: string): RiskLevel | null {
   const cmd = command.toLowerCase().trim()
@@ -158,8 +166,10 @@ export async function assessShellRisk(
     }
   }
 
-  const usePwshAst = process.platform === 'win32' && getDefaultShellKind() === 'powershell'
-  const useCmdLegacy = process.platform === 'win32'
+  // 远程命令跑在远程的 shell 里，不看本机是不是 Windows
+  const onLocalWindows = process.platform === 'win32' && ctx.target !== 'remote'
+  const usePwshAst = onLocalWindows && getDefaultShellKind() === 'powershell'
+  const useCmdLegacy = onLocalWindows
     && getDefaultShellKind() === 'cmd'
     && isWindowsNativeShellCommand(command)
 

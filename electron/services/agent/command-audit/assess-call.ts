@@ -4,13 +4,13 @@
 import type { RiskLevel } from '@shared/types/agent'
 import { t } from '../i18n'
 import { getScratchPath } from '../tools/file'
-import type { AuditContext, AuditedCall, AuditedRedirect, CallRiskAssessment } from './types'
-import { assessCommandFlags } from './whitelist'
+import type { AuditContext, AuditedCall, AuditedRedirect, CallRiskAssessment, WorkspaceZone } from './types'
+import { assessCommandFlags, getBuiltinArgvCommandRule } from './whitelist'
 import { getArgvCommandRule } from './resolve-argv-rule'
 import { adjustRiskByPathZones, resolveAnchorDir } from './workspace-guard'
 import { maxRisk } from './risk-level'
 import { checkIndirectionGuard } from './indirection-guard'
-import { assessSubcommandRisk } from './subcommand-risk'
+import { assessSubcommandRisk, matchesSafeSubcommand } from './subcommand-risk'
 import { resolveFailClosedLevel, resolveOutsideWritesUpgrade, resolveExtraFreeDirs } from './fail-closed-policy'
 
 function collectWritePaths(call: AuditedCall, extraPaths: string[]): string[] {
@@ -93,10 +93,14 @@ export function assessAuditedCall(
   // 间接执行守卫：解释器内联 / 包装器 / 调度器 / 结构性 flag 规则
   // 命中后等级由用户策略决定（默认 strict→dangerous、relaxed→moderate）。
   // 若命令本身为 dangerous，保底 dangerous；用户升成硬拒则保底 blocked。
-  const guardHit = checkIndirectionGuard(call)
+  // 远程只认内置命令表：用户为本机加的规则不算数
+  const remote = ctx.target === 'remote'
+  const rule = remote ? getBuiltinArgvCommandRule(call.cmd) : getArgvCommandRule(call.cmd)
+  const safeSubcommand = rule !== undefined && matchesSafeSubcommand(rule, call)
+  const guardHit = checkIndirectionGuard(call, { allowOrchestrator: safeSubcommand })
   if (guardHit) {
     const policyLevel = resolveFailClosedLevel('indirection', ctx)
-    const argvRule = getArgvCommandRule(call.cmd)
+    const argvRule = rule
     if (argvRule?.baseLevel === 'blocked') {
       return {
         level: 'blocked',
@@ -118,7 +122,6 @@ export function assessAuditedCall(
   }
 
   const cwd = ctx.cwd ?? getScratchPath()
-  const rule = getArgvCommandRule(call.cmd)
 
   if (!rule) {
     return assessUnknownCall(call, ctx, extraWritePaths, cwdAnchored)
@@ -158,7 +161,7 @@ export function assessAuditedCall(
   const writePaths = rule.writesTo
     ? [...call.paths, ...redirectPaths, ...extraWritePaths]
     : [...redirectPaths, ...extraWritePaths]
-  const flagLevel = assessCommandFlags(rule, call.flags)
+  const flagLevel = safeSubcommand ? 'safe' : assessCommandFlags(rule, call.flags)
   const subcommandRisk = assessSubcommandRisk(call)
   const commandLevel = subcommandRisk ? maxRisk(flagLevel, subcommandRisk.level) : flagLevel
   const reasons: string[] = []
@@ -175,20 +178,23 @@ export function assessAuditedCall(
     reasons.push(t('risk.reason.unknown_flag'))
   }
 
-  const pathAdjust = adjustRiskByPathZones(
-    commandLevel,
-    allPaths,
-    writePaths,
-    writes,
-    cwd,
-    {
-      outsideWritesUpgrade: resolveOutsideWritesUpgrade(ctx),
-      extraFreeDirs: resolveExtraFreeDirs(ctx),
-      cmd: call.cmd,
-      redirectWritePaths: redirectPaths,
-      cwdAnchored,
-    },
-  )
+  // 远程：本机的工作区、临时目录、主目录、数据目录都不是远程的东西，不做路径分区
+  const pathAdjust = remote
+    ? { level: commandLevel, zones: [] as WorkspaceZone[], reasons: [] as string[] }
+    : adjustRiskByPathZones(
+        commandLevel,
+        allPaths,
+        writePaths,
+        writes,
+        cwd,
+        {
+          outsideWritesUpgrade: resolveOutsideWritesUpgrade(ctx),
+          extraFreeDirs: resolveExtraFreeDirs(ctx),
+          cmd: call.cmd,
+          redirectWritePaths: redirectPaths,
+          cwdAnchored,
+        },
+      )
   reasons.push(...pathAdjust.reasons)
 
   let level: RiskLevel

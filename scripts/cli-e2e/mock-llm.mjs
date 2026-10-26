@@ -34,7 +34,9 @@ export const hang = () => ({ kind: 'hang' })
 /**
  * @param script.onUser    用户（含命令行里敲的话）开头的一轮：(text, n, entry) => 动作；entry 是这次请求的全部内容
  * @param script.onContinue 目标续跑的一轮：(n) => 动作
+ * @param script.respond   给了就整个接管：(整份请求体, 记录) => 动作；主人和并行的伙计共用同一个假模型时用它
  * 工具返回后的那一次请求默认回一句话；要换脚本，给 afterTool。
+ * script.side：没有工具的旁路请求：(整份请求体, 记录) => 回一段文字；不给或回 undefined 就回「好」。
  * script.jsonForNonStream：非流式调用（写交接小结之类）回一整份 JSON；不开就和以前一样一律回事件流。
  * script.usage：(entry, action) => { prompt_tokens, completion_tokens }，要模拟「接口报多少真实用量」时给；
  *   返回 null = 这次不报用量（有的服务商就是不报），返回 undefined = 用默认值。
@@ -60,6 +62,18 @@ export function startMockLlm(script) {
 
       // 起标题、整理记忆这类旁路请求：没有工具，随便回一句
       if (!hasTools) {
+        // 要自己写旁路回答（比如让运维专家给出结论）：script.side 回一段文字；回 undefined 就还是「好」
+        const sideText = script.side?.(body, entry)
+        entry.sideReply = sideText
+        if (typeof sideText === 'string') {
+          if (body.stream !== true) {
+            res.writeHead(200, { 'Content-Type': 'application/json', Connection: 'close' })
+            res.end(JSON.stringify({ id: 'x', object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: sideText }, finish_reason: 'stop' }], usage: { ...USAGE.side, total_tokens: 320 } }))
+          } else {
+            sse(res, USAGE.side, { role: 'assistant', content: sideText }, 'stop')
+          }
+          return
+        }
         if (body.stream === false) {
           res.writeHead(200, { 'Content-Type': 'application/json', Connection: 'close' })
           res.end(JSON.stringify({ id: 'x', object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: '好' }, finish_reason: 'stop' }], usage: { ...USAGE.side, total_tokens: 320 } }))
@@ -70,7 +84,11 @@ export function startMockLlm(script) {
       }
 
       let action
-      if (last?.role === 'tool') {
+      if (script.respond) {
+        // 要看整份请求才能决定怎么回的场景（并行的主人和伙计各走各的）
+        action = script.respond(body, entry)
+        entry.phase = 'respond'
+      } else if (last?.role === 'tool') {
         action = script.afterTool?.(last, entry) ?? say('好的。')
         entry.phase = 'after-tool'
       } else if (last?.role === 'user' && lastText.includes('[系统·目标续跑]')) {

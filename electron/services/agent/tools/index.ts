@@ -31,6 +31,7 @@ import { manageTasks } from './task-manager'
 import { executeWebSearch } from './web-search'
 import { executeWebFetch } from './web-fetch'
 import { listSshSessionsTool, managePaneTool } from './split-pane'
+import { remoteExecTool } from './remote-exec'
 import { listWorkbenchArtifactsTool, manageWorkbenchArtifactsTool } from './workbench'
 import { goalTool } from './goal'
 
@@ -298,7 +299,7 @@ async function dispatchTool(
     case 'dispatch_agents':
       return dispatchSubAgents(args, config, executor, toolCall.id)
     case 'followup_agent':
-      return followupAgent(args, executor)
+      return followupAgent(args, executor, config, toolCall.id)
     case 'wait_agents':
       return waitAgents(args, executor)
     case 'interrupt_agent':
@@ -329,6 +330,8 @@ async function dispatchTool(
       return managePaneTool(args, executor.agentId || ptyId, executor)
     case 'list_ssh_sessions':
       return listSshSessionsTool()
+    case 'remote_exec':
+      return remoteExecTool(args, executor)
 
     case 'list_workbench_artifacts':
       return listWorkbenchArtifactsTool(executor)
