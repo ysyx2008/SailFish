@@ -20,7 +20,7 @@ import { getScratchPath } from './file'
 import { createLogger } from '../../../utils/logger'
 import { t } from '../i18n'
 import {
-  labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER,
+  labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, SECRETARY, TEAM_LEADER,
   teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT, type ExpertTeam
 } from '../expert-team'
 import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
@@ -699,6 +699,9 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
       }
       if (role && (name?.trim() === TEAM_LEADER || role === TEAM_LEADER)) {
         return { error: `「${TEAM_LEADER}」留给派出专家团的你，专家的名字和角色都不能用它（子任务 ${i + 1}）` }
+      }
+      if (role && name?.trim() === SECRETARY) {
+        return { error: `「${SECRETARY}」是组织里最上面那位，专家的名字不能用它（子任务 ${i + 1}）` }
       }
       if (role && labelLength(role) > MAX_ROLE_CHARS) {
         problems.push(`子任务 ${i + 1} 的 role 最长 ${MAX_ROLE_CHARS} 个字，这次 ${labelLength(role)} 个字。`)

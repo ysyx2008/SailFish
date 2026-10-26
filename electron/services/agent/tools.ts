@@ -27,7 +27,7 @@ import { getAllTerminalTools } from './skills/terminal/tools'
 import { MAX_LIVE_CHILDREN } from './sub-agent-roster'
 import { MAX_ORG_DEPTH } from './org-ledger'
 import {
-  labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER,
+  labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, SECRETARY, TEAM_LEADER,
   teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT
 } from './expert-team'
 import { REMOTE_OUTPUT_INLINE_CHARS, REMOTE_TIMEOUT_DEFAULT_SECONDS, REMOTE_TIMEOUT_MAX_SECONDS } from './remote-access/limits'
@@ -1438,7 +1438,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       type: 'function',
       function: {
         name: 'team_say',
-        description: `在专家团的群里说一句。群里的话全团都看得见，用户也看得见。to 写要谁接手（专家名字，或「${TEAM_LEADER}」）：被点到的专家会接着干，他正忙着就等手上这一步走完再看；点到组长，组长会收到。不写 to 就只是告知，不叫醒任何人。专家之间互相叫醒每满 ${WAKES_PER_CHECKPOINT} 次会停下来等组长看过，这期间点名只记在群里、先不叫醒人。`,
+        description: `在专家团的群里说一句。群里的话全团都看得见，用户也看得见。to 写要谁接手（专家名字，或「${TEAM_LEADER}」）：被点到的专家会接着干，他正忙着就等手上这一步走完再看；点到组长，组长会收到；在项目组织下面几层的团里，还可以点「${SECRETARY}」，话会直接带到最上面的秘书那里。不写 to 就只是告知，不叫醒任何人。专家之间互相叫醒每满 ${WAKES_PER_CHECKPOINT} 次会停下来等组长看过，这期间点名只记在群里、先不叫醒人。`,
         parameters: {
           type: 'object',
           properties: {

@@ -27,6 +27,7 @@ export async function teamSay(args: Record<string, unknown>, executor: ToolExecu
   if (result.queued.length) parts.push(t('expert.say_queued', { names: result.queued.join('、') }))
   if (result.skipped.length) parts.push(t('expert.say_skipped', { names: result.skipped.join('、') }))
   if (result.toLeader) parts.push(t('expert.say_leader'))
+  if (result.toSecretary) parts.push(t('expert.say_secretary'))
   if (result.checkpointReached) parts.push(t('expert.say_checkpoint', { limit: WAKES_PER_CHECKPOINT }))
   return { success: true, output: parts.join('') }
 }

@@ -2,9 +2,11 @@
  * 一个专家团：团员、群消息、每人读到哪、这一段专家互相叫醒了几次。
  * 只管群里的事，谁在跑、怎么叫醒由花名册管。
  */
-import { EXPERT_TEAM_LEADER, type ExpertTeamView } from '@shared/types'
+import { EXPERT_TEAM_LEADER, SECRETARY_NAME, type ExpertTeamView } from '@shared/types'
 
 export const TEAM_LEADER = EXPERT_TEAM_LEADER
+/** 任何一层的群里都能点名：秘书在组织最上面，顶层的团里他就是组长 */
+export const SECRETARY = SECRETARY_NAME
 
 /** 专家互相叫醒每满这么多次，停下来等组长看一眼 */
 export const WAKES_PER_CHECKPOINT = 30
@@ -74,6 +76,8 @@ export interface TeamPostOutcome {
   skipped: string[]
   /** 点到了组长 */
   toLeader: boolean
+  /** 点到了秘书 */
+  toSecretary: boolean
   /** 这一条让叫醒次数满了这一段，从现在起等组长 */
   checkpointReached: boolean
 }
@@ -112,9 +116,9 @@ export class ExpertTeam {
     return m ? { ...m } : undefined
   }
 
-  /** 不是团员、也不是组长的名字 */
+  /** 不是团员、也不是组长和秘书的名字 */
   unknownNames(names: string[]): string[] {
-    return names.filter(n => n !== TEAM_LEADER && !this.has(n))
+    return names.filter(n => n !== TEAM_LEADER && n !== SECRETARY && !this.has(n))
   }
 
   isWaitingLeader(): boolean {
@@ -141,18 +145,19 @@ export class ExpertTeam {
     const skipped = named.filter(n => asleep.has(n))
     const experts = named.filter(n => !asleep.has(n))
     const toLeader = targets.includes(TEAM_LEADER)
+    const toSecretary = targets.includes(SECRETARY)
 
     if (this.waitingLeader) {
       for (const n of experts) {
         if (!this.pendingWakes.includes(n)) this.pendingWakes.push(n)
       }
-      return { message, wakeNow: [], queued: experts, skipped, toLeader, checkpointReached: false }
+      return { message, wakeNow: [], queued: experts, skipped, toLeader, toSecretary, checkpointReached: false }
     }
 
     this.wakesThisStretch += experts.length
     const checkpointReached = experts.length > 0 && this.wakesThisStretch >= WAKES_PER_CHECKPOINT
     if (checkpointReached) this.waitingLeader = true
-    return { message, wakeNow: experts, queued: [], skipped, toLeader, checkpointReached }
+    return { message, wakeNow: experts, queued: [], skipped, toLeader, toSecretary, checkpointReached }
   }
 
   /**
@@ -165,6 +170,14 @@ export class ExpertTeam {
     this.waitingLeader = false
     const release = this.pendingWakes.splice(0).filter(n => n !== to)
     return { message, release }
+  }
+
+  /**
+   * 不是这个团的组长、却在群里对某位专家说话的人（秘书回应点名）。只记进群里：
+   * 组长没有看过，叫醒次数和等组长期间被点到的人都不动。
+   */
+  outsiderSpoke(from: string, to: string, text: string): TeamMessage {
+    return this.record(from, [to], text)
   }
 
   /** 这个人还没看过的群消息（不含他自己说的），取完就算看过 */

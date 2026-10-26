@@ -61,6 +61,31 @@ export class OrgLedger {
     return undefined
   }
 
+  /** 秘书的花名册（第 0 层） */
+  root(): SubAgentRoster | undefined {
+    for (const [roster, node] of this.nodes) {
+      if (node.depth === 0) return roster
+    }
+    return undefined
+  }
+
+  /**
+   * 这份花名册往上数，秘书直接派的那位组长。点名秘书的话要记在他名下，
+   * 秘书等消息时（wait_agents）才会被这一条叫醒。
+   */
+  ancestorUnderRoot(roster: SubAgentRoster): string | undefined {
+    let current: SubAgentRoster = roster
+    for (let hops = 0; hops <= MAX_ORG_DEPTH + 1; hops++) {
+      const node = this.nodes.get(current)
+      if (!node?.owner) return undefined
+      const parent = this.rosterOf(node.owner)
+      if (!parent) return undefined
+      if (this.nodes.get(parent)?.depth === 0) return node.owner
+      current = parent
+    }
+    return undefined
+  }
+
   rosters(): SubAgentRoster[] {
     return [...this.nodes.keys()]
   }

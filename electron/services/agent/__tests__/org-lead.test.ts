@@ -17,6 +17,7 @@ import { MAX_LIVE_CHILDREN, SubAgentRoster, type ChildAgentHandle, type RosterSp
 import { MAX_ORG_DEPTH, type LeadSeat } from '../org-ledger'
 import { filterSubAgentTools, getAgentTools } from '../tools'
 import { parseDispatchTasks, denyIfNotForThisAgent } from '../tools/sub-agent'
+import { createTeamTexts } from '../tools/expert-team-text'
 import type { ToolExecutorConfig } from '../tools/types'
 import type { AgentContext } from '../types'
 import type { AiMessage } from '../../ai.service'
@@ -265,5 +266,129 @@ describe('派出参数里的 lead', () => {
     const parsed = parseDispatchTasks({ tasks: [{ description: '研发', prompt: 'p', role: '研发' }] })
     expect('error' in parsed).toBe(false)
     if (!('error' in parsed)) expect(parsed.tasks[0]).not.toHaveProperty('lead')
+  })
+})
+
+describe('点名秘书', () => {
+  const tick = (ms = 10) => new Promise(resolve => setTimeout(resolve, ms))
+
+  /** 组长在自己名下建一个两人的团，团员的发言入口记下来 */
+  function leadWithTeam(says: Array<(to: string[], text: string) => unknown>, members: ChildAgentHandle[], rosters: SubAgentRoster[]): ChildAgentHandle {
+    let seat: LeadSeat | undefined
+    let roster: SubAgentRoster | undefined
+    return {
+      isRunning: () => !!roster?.hasLive(),
+      abort: () => { roster?.abortAll(); return true },
+      addUserMessage: () => true,
+      becomeLead: (s) => { seat = s },
+      async run() {
+        roster = new SubAgentRoster({ knockSettleMs: 0 })
+        if (seat) roster.attachLedger(seat.ledger, seat.name, seat.depth)
+        rosters.push(roster)
+        roster.spawn(
+          [
+            { description: '前端', prompt: 'p', role: '前端专家' },
+            { description: '后端', prompt: 'p', role: '后端专家' },
+          ],
+          { ...deps(() => {
+            const w = worker(5000)
+            w.joinTeam = (j: { say: (to: string[], text: string) => unknown }) => { says.push(j.say) }
+            members.push(w)
+            return w
+          }), teamTexts: createTeamTexts(team => `/tmp/${team.name}.md`) },
+          { team: '项目团' },
+        )
+        while (roster.hasLive()) await roster.waitForKnock(new AbortController().signal)
+        return 'done'
+      },
+    }
+  }
+
+  it('下面几层的团里点名秘书：秘书那边收到敲门，话记在群里', async () => {
+    const root = new SubAgentRoster({ knockSettleMs: 0 })
+    const knocks: string[] = []
+    const says: Array<(to: string[], text: string) => unknown> = []
+    const members: ChildAgentHandle[] = []
+    const rosters: SubAgentRoster[] = []
+    root.spawn(
+      [{ description: '研发组', prompt: 'p', role: '研发组长', lead: true }],
+      deps(() => leadWithTeam(says, members, rosters), knocks),
+    )
+    await tick()
+    expect(says).toHaveLength(2)
+
+    const result = says[0](['秘书'], '需要你定一下范围') as { ok: boolean; toSecretary?: boolean }
+    expect(result.ok).toBe(true)
+    expect(result.toSecretary).toBe(true)
+    expect(knocks.some(k => k.includes('需要你定一下范围') && k.includes('点名秘书'))).toBe(true)
+    // 敲门之后秘书的 wait_agents 能被叫醒
+    const news = await root.waitForNews(undefined, new AbortController().signal)
+    expect(news.arrived.map(c => c.name)).toEqual(['研发组'])
+    root.abortAll()
+  })
+
+  it('秘书点名回应：记进那个群、送到被点名的人，不算组长看过', async () => {
+    const root = new SubAgentRoster({ knockSettleMs: 0 })
+    const says: Array<(to: string[], text: string) => unknown> = []
+    const members: ChildAgentHandle[] = []
+    const rosters: SubAgentRoster[] = []
+    root.spawn(
+      [{ description: '研发组', prompt: 'p', role: '研发组长', lead: true }],
+      deps(() => leadWithTeam(says, members, rosters)),
+    )
+    await tick()
+    const reply = root.followup('前端', '范围就这些', deps(() => worker()))
+    expect(reply.ok).toBe(true)
+    const team = rosters[0].listTeams()[0]
+    const last = team.transcript().at(-1)!
+    expect(last.from).toBe('秘书')
+    expect(last.to).toEqual(['前端'])
+    expect((members[0] as ReturnType<typeof worker>).received.join('\n')).toContain('范围就这些')
+    root.abortAll()
+  })
+
+  it('最上面一层的团里，点名秘书等同点名组长；组长只管自己这一枝', async () => {
+    const root = new SubAgentRoster({ knockSettleMs: 0 })
+    const knocks: string[] = []
+    const says: Array<(to: string[], text: string) => unknown> = []
+    root.spawn(
+      [
+        { description: '前端', prompt: 'p', role: '前端专家' },
+        { description: '后端', prompt: 'p', role: '后端专家' },
+      ],
+      { ...deps(() => {
+        const w = worker(5000)
+        w.joinTeam = (j: { say: (to: string[], text: string) => unknown }) => { says.push(j.say) }
+        return w
+      }, knocks), teamTexts: createTeamTexts(team => `/tmp/${team.name}.md`) },
+      { team: '顶层团' },
+    )
+    const result = says[0](['秘书'], '找你') as { ok: boolean; toLeader?: boolean; toSecretary?: boolean }
+    expect(result.toLeader).toBe(true)
+    expect(result.toSecretary).toBe(false)
+    expect(knocks).toHaveLength(1)
+    root.abortAll()
+
+    // 组长越过自己这一枝去叫别的组长名下的人：找不到
+    const root2 = new SubAgentRoster({ knockSettleMs: 0 })
+    const rosters: SubAgentRoster[] = []
+    root2.spawn(
+      [
+        { description: '甲组', prompt: 'p', role: '甲组长', lead: true },
+        { description: '乙组', prompt: 'p', role: '乙组长', lead: true },
+      ],
+      deps(name => name === '甲组'
+        ? lead({ members: [{ description: '甲员', prompt: 'p' }], memberDelayMs: 5000, rosters })
+        : lead({ members: [{ description: '乙员', prompt: 'p' }], memberDelayMs: 5000, rosters })),
+    )
+    await tick()
+    expect(rosters[0].followup('乙员', 'hi', deps(() => worker())).ok).toBe(false)
+    expect(root2.followup('乙员', 'hi', deps(() => worker())).ok).toBe(true)
+    root2.abortAll()
+  })
+
+  it('秘书这个名字不给专家用', () => {
+    const parsed = parseDispatchTasks({ tasks: [{ role: '专家', name: '秘书', description: 'x', prompt: 'y' }] })
+    expect('error' in parsed && parsed.error).toMatch(/秘书/)
   })
 })

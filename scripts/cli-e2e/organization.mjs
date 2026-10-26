@@ -7,6 +7,7 @@
  *
  * 1. 秘书指定一位组长，组长在自己名下派两位伙计，全部做完后一层层交差
  * 2. 组织最多三层：第三层的组长不能再指定组长，组长也不能给手下指定远程主机
+ * 3. 组长名下的专家团里有人点名秘书：话直达秘书，秘书点名回应，记进那个群、送到那位专家
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -197,6 +198,83 @@ scenario('组织最多三层，组长不能给手下指定远程主机', async (
     check('被退回的没有进名册', !children['第四层'] && !children['干活的'], Object.keys(children).join())
     check('全部做完，秘书收到交差', Object.values(children).every((c) => c.state.status === 'completed') && result.out.includes('秘书收到'),
       Object.values(children).map((c) => `${c.state.name}:${c.state.status}`).join(' ') + ' | ' + result.out.slice(-300))
+    const warnings = logWarnings(env.dataDir)
+    check('日志里没有相关警告', warnings.length === 0, warnings.slice(0, 3).join('\n'))
+  } finally { await llm.close() }
+})
+
+// ───────────────────────────────────────────────────────────── 3
+scenario('下面一层的团里点名秘书，秘书点名回应', async () => {
+  const names = ['研发组', '前端', '后端']
+  const env = sandbox(0, 'sft-org-3', tempDirs)
+  const seen = { mention: '', reply: false, sayResult: '', main: [] }
+  const llm = await startMockLlm({
+    onUser: (text, _n, entry) => {
+      const who = whoAsks(entry, names)
+      entry.who = who
+      if (who === 'main') {
+        if (text.includes('点名秘书')) {
+          seen.mention = text
+          return callTool('followup_agent', { name: '前端', message: '范围这样定：只做登录页' })
+        }
+        if (text.includes('[专家') || text.includes('[伙计')) return say('秘书收到：组织做完了')
+        return callTool('dispatch_agents', {
+          tasks: [{ name: '研发组', role: '研发组长', lead: true, description: '带研发组做事', prompt: '我是研发组，组一个两人的项目团' }],
+        })
+      }
+      if (who === '研发组') {
+        if (text.includes('我是研发组，')) {
+          return callTool('dispatch_agents', {
+            team: '项目团',
+            tasks: [
+              { name: '前端', role: '前端专家', description: '前端', prompt: '我是前端，做界面' },
+              { name: '后端', role: '后端专家', description: '后端', prompt: '我是后端，做接口' },
+            ],
+          })
+        }
+        return say('组长汇总：项目团做完了')
+      }
+      if (who === '前端') {
+        if (text.includes('我是前端，')) return callTool('team_say', { to: ['秘书'], message: '需求范围不清，请秘书定一下' })
+        seen.reply = seen.reply || text.includes('范围这样定')
+        return say('前端：收到秘书的答复，做完了')
+      }
+      return say(`${who}：做完了`)
+    },
+    afterTool: (last, entry) => {
+      const who = whoAsks(entry, names)
+      entry.who = who
+      const content = typeof last.content === 'string' ? last.content : JSON.stringify(last.content)
+      if (who === '前端') {
+        if (content.includes('秘书会收到')) {
+          seen.sayResult = content
+          // 手上还有一步没走完，秘书的回应会在这一步走完后送到
+          return callTool('exec', { command: 'sleep 3' })
+        }
+        seen.reply = JSON.stringify(entry.body.messages ?? []).includes('范围这样定')
+        return say('前端：收到秘书的答复，做完了')
+      }
+      if (who === '研发组' || who === 'main') return say('已派出，等他们')
+      return say(`${who}：做完了`)
+    },
+  })
+  env.env.SFT_API_URL = `http://127.0.0.1:${llm.port}/v1`
+  try {
+    const result = await runPlain(['组织研发组做事', '--free'], env, 120_000)
+    check('正常退出', result.code === 0, `exit ${result.code} ${result.err.slice(0, 300)}`)
+    check('团员点名秘书，工具结果说秘书会收到', seen.sayResult.includes('秘书会收到'), seen.sayResult)
+    check('秘书收到敲门，带着原话和团名', seen.mention.includes('需求范围不清') && seen.mention.includes('项目团'), seen.mention.slice(0, 300))
+    check('秘书的回应送到了那位专家手上', seen.reply)
+    check('最后秘书收到组织的交差', result.out.includes('秘书收到'), result.out.slice(-300))
+
+    const { children } = readOrg(env.dataDir)
+    check('专家团成员挂在组长名下', children['前端']?.state.parent === '研发组' && children['后端']?.state.parent === '研发组',
+      JSON.stringify(Object.values(children).map((c) => [c.state.name, c.state.parent])))
+    const chatRoot = path.join(env.dataDir, 'history', 'expert-teams')
+    const chatText = fs.existsSync(chatRoot)
+      ? fs.readdirSync(chatRoot, { recursive: true }).filter((f) => String(f).endsWith('.jsonl')).map((f) => fs.readFileSync(path.join(chatRoot, String(f)), 'utf8')).join('\n')
+      : ''
+    check('群聊记录里有秘书的回应', chatText.includes('范围这样定') && chatText.includes('秘书'), chatText.slice(0, 300))
     const warnings = logWarnings(env.dataDir)
     check('日志里没有相关警告', warnings.length === 0, warnings.slice(0, 3).join('\n'))
   } finally { await llm.close() }

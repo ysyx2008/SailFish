@@ -477,6 +477,9 @@ export interface SubAgentResult {
 /** 组长（派出专家团的秘书）在群里的名字。专家不能叫这个名字。 */
 export const EXPERT_TEAM_LEADER = '组长'
 
+/** 项目组织里任何一层的群都能点名的人：最上面的秘书 */
+export const SECRETARY_NAME = '秘书'
+
 /** 专家团群里的一条话 */
 export interface ExpertTeamMessageView {
   seq: number

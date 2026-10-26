@@ -113,6 +113,14 @@ export function createTeamTexts(transcriptPath: (team: ExpertTeam) => string): T
     leaderMention(team, message) {
       return t('expert.knock_leader', { team: team.name, from: team.label(message.from), text: message.text })
     },
+    secretaryMention(team, message) {
+      return t('expert.knock_secretary', {
+        team: team.name,
+        from: team.label(message.from),
+        text: message.text,
+        path: transcriptPath(team),
+      })
+    },
     checkpoint(team, members) {
       return t('expert.knock_checkpoint', {
         team: team.name,

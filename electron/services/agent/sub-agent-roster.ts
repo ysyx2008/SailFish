@@ -9,7 +9,7 @@ import type { SubAgentResult, SubAgentToolStep, TokenUsage } from '@shared/types
 import type { ChildRecorder, ChildState, ChildStateInput } from '../history/sub-agent-record-store'
 import type { AgentContext, AgentStep, RunOptions } from './types'
 import { applyForkTurns, type ForkTurns } from './sanitize-parent-messages'
-import { ExpertTeam, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER, tidyLabel, type TeamMessage } from './expert-team'
+import { ExpertTeam, MAX_TEAM_SIZE, MIN_TEAM_SIZE, SECRETARY, TEAM_LEADER, tidyLabel, type TeamMessage } from './expert-team'
 import type { RemoteGrant } from './remote-access/remote-grant'
 import type { WorkerRemoteAccess } from './remote-access/worker-remote-access'
 import { MAX_ORG_DEPTH, OrgLedger, type LeadSeat } from './org-ledger'
@@ -77,6 +77,8 @@ export type TeamSayResult =
       queued: string[]
       skipped: string[]
       toLeader: boolean
+      /** 话带到了秘书那里（只有组织里下面几层的团才有） */
+      toSecretary: boolean
       checkpointReached: boolean
     }
   | { ok: false; error: string; members?: string[] }
@@ -109,6 +111,8 @@ export interface TeamTexts {
   wake(team: ExpertTeam, member: string, unread: TeamMessage[], trigger?: TeamMessage): string
   /** 有专家点名组长 */
   leaderMention(team: ExpertTeam, message: TeamMessage): string
+  /** 组织里某个团的专家点名秘书；秘书要回应就点名他，记进那个群 */
+  secretaryMention(team: ExpertTeam, message: TeamMessage): string
   /** 叫醒次数满了这一段，等组长 */
   checkpoint(team: ExpertTeam, members: ChildSnapshot[]): string
   /** 整个专家团停下来了 */
@@ -496,7 +500,7 @@ export class SubAgentRoster {
     this.ensureDormant(deps)
     // 老伙计的名字也占着：同名会把他盘上的对话盖掉
     const used = this.takenNames()
-    if (tasks.some(t => t.role)) used.add(TEAM_LEADER)
+    if (tasks.some(t => t.role)) { used.add(TEAM_LEADER); used.add(SECRETARY) }
     const names: string[] = []
 
     for (const task of tasks) {
@@ -579,7 +583,8 @@ export class SubAgentRoster {
     const { team, deps } = entry
     const unknown = team.unknownNames(to)
     if (unknown.length > 0) {
-      return { ok: false, error: `群里没有 ${unknown.join('、')}`, members: [TEAM_LEADER, ...team.memberNames()] }
+      const reachable = this.depth > 0 ? [TEAM_LEADER, SECRETARY] : [TEAM_LEADER]
+      return { ok: false, error: `群里没有 ${unknown.join('、')}`, members: [...reachable, ...team.memberNames()] }
     }
     if (deps.isParentAborted()) return { ok: false, error: '已中止' }
 
@@ -592,43 +597,62 @@ export class SubAgentRoster {
       else if (delivered === 'handed') handed.push(name)
     }
     const texts = deps.teamTexts!
-    if (outcome.toLeader) {
+    // 最上面一层的团里，秘书就是组长
+    const toLeader = outcome.toLeader || (this.depth === 0 && outcome.toSecretary)
+    if (toLeader) {
       deps.knock(texts.leaderMention(team, outcome.message))
       this.enqueueNews(from)
     }
+    if (outcome.toSecretary && this.depth > 0) this.reachSecretary(texts.secretaryMention(team, outcome.message))
     if (outcome.checkpointReached) {
       deps.knock(texts.checkpoint(team, this.teamMembers(team)))
       this.enqueueNews(from)
     }
     deps.onProgress()
-    if (outcome.toLeader || outcome.checkpointReached) this.wake()
+    if (toLeader || outcome.checkpointReached) this.wake()
     return {
       ok: true,
       woke,
       handed,
       queued: outcome.queued,
       skipped: outcome.skipped,
-      toLeader: outcome.toLeader,
+      toLeader,
+      toSecretary: outcome.toSecretary && this.depth > 0,
       checkpointReached: outcome.checkpointReached,
     }
   }
 
-  followup(name: string, message: string, deps: RunDeps): { ok: boolean; error?: string } {
+  /**
+   * 下面几层的团里有人点名秘书：话送到秘书的花名册，由它敲秘书的门。
+   * 记在秘书直接派的那位组长名下，秘书正在 wait_agents 时也会被叫醒。
+   */
+  private reachSecretary(text: string): void {
+    const root = this.ledger?.root()
+    const under = this.ledger?.ancestorUnderRoot(this)
+    if (!root?.lastDeps || !under) return
+    root.lastDeps.knock(text)
+    root.enqueueNews(under)
+    root.wake()
+  }
+
+  /** from：说话的人。不写就是这份花名册的主人（秘书或组长）；秘书越过组长回应时写秘书 */
+  followup(name: string, message: string, deps: RunDeps, from?: string): { ok: boolean; error?: string } {
     this.ensureDormant(deps)
     this.lastDeps = deps
     const slot = this.children.get(name)
     if (!slot) {
       const sleeper = this.dormant.get(name)
       if (sleeper) return this.wakeDormant(sleeper, message, deps)
-      const owner = this.ledger?.rosterOf(name)
-      if (owner && owner !== this && owner.lastDeps) return owner.followup(name, message, owner.lastDeps)
+      // 只有秘书能越过组长对别的组长名下的人说话；组长只管自己这一枝
+      const owner = this.depth === 0 ? this.ledger?.rosterOf(name) : undefined
+      if (owner && owner !== this && owner.lastDeps) return owner.followup(name, message, owner.lastDeps, SECRETARY)
       return { ok: false, error: `没有叫 ${name} 的伙计` }
     }
     if (!slot.handle) return { ok: false, error: `${name} 还没开工` }
     if (deps.isParentAborted()) return { ok: false, error: '已中止' }
 
     const entry = this.entryOf(name)
-    if (entry) return this.leaderFollowup(slot, entry, message)
+    if (entry) return this.leaderFollowup(slot, entry, message, from)
 
     if (slot.handle.isRunning()) {
       slot.handle.addUserMessage(message)
@@ -689,11 +713,18 @@ export class SubAgentRoster {
   }
 
   /** 组长对专家再交代：进群里，重新数叫醒次数，并叫醒等组长期间被点到的人（期间被打断的不叫） */
-  private leaderFollowup(slot: ChildSlot, entry: TeamEntry, message: string): { ok: boolean; error?: string } {
+  private leaderFollowup(slot: ChildSlot, entry: TeamEntry, message: string, from?: string): { ok: boolean; error?: string } {
     if (!LIVE.has(slot.status) && this.room() <= 0) {
       return { ok: false, error: `没做完的伙计已有 ${MAX_LIVE_CHILDREN} 个，等有人做完再追问 ${slot.name}` }
     }
     const { team, deps } = entry
+    if (from) {
+      // 组长之外的人（秘书）回应：只记进群里、送到被点名的人，不算组长看过
+      const said = team.outsiderSpoke(from, slot.name, message)
+      this.deliverToMember(slot.name, team, deps, said)
+      deps.onProgress()
+      return { ok: true }
+    }
     const { message: said, release } = team.leaderSpoke(slot.name, message)
     this.deliverToMember(slot.name, team, deps, said)
     const interrupted = this.interruptedIn(team)
@@ -745,7 +776,7 @@ export class SubAgentRoster {
     if (!slot) {
       if (deps) this.ensureDormant(deps)
       if (this.dormant.has(name)) return { ok: false, error: `${name} 已经不在跑了` }
-      const owner = this.ledger?.rosterOf(name)
+      const owner = this.depth === 0 ? this.ledger?.rosterOf(name) : undefined
       if (owner && owner !== this) return owner.interrupt(name)
       return { ok: false, error: `没有叫 ${name} 的伙计` }
     }
