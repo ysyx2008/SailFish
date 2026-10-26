@@ -88,6 +88,7 @@ export type {
 
 import type { TerminalType, AgentStep, AgentContextBar, PendingConfirmation, RemoteChannel, AttachmentInfo, AgentRecord, AgentRunningEvent, ApprovalMode, AssignedBy, GoalContract } from '@shared/types'
 import { COMPANION_AGENT_KEY, deriveContextBarFromSteps, inferConversationKind } from '@shared/types'
+import { settleOrphanedSubAgents } from '@shared/utils/sub-agent-settle'
 import { isWorkbenchAvailable } from '../workbench/registry'
 
 export type {
@@ -3409,7 +3410,7 @@ export const useTerminalStore = defineStore('terminal', () => {
     if (!tab) return
 
     // 转换历史记录的 steps 为完整的 AgentStep 数组
-    const convertedSteps = record.steps.map(s => ({
+    const convertedSteps = settleOrphanedSubAgents(record.steps.map(s => ({
       id: s.id,
       type: s.type as AgentStep['type'],
       content: s.content,
@@ -3429,7 +3430,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       subAgents: s.subAgents,
       expertTeam: s.expertTeam,
       canvasData: s.canvasData
-    }))
+    })))
     
     // 兼容旧数据：确保有 user_task 和 final_result 步骤
     const hasUserTask = convertedSteps.some(s => s.type === 'user_task')

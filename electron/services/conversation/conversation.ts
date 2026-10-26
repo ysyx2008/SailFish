@@ -31,6 +31,7 @@ import type {
   PromptUsageMark
 } from '@shared/types'
 import { inferConversationKind, filterPersistableSteps, isApprovalMode, isAssignedBy } from '@shared/types'
+import { settleOrphanedSubAgents } from '@shared/utils/sub-agent-settle'
 import type { AiMessage } from '../ai.service'
 import { TaskMemoryStore, type LookupToolMeta } from '../agent/task-memory'
 import { GoalContract } from '../agent/goal/goal-contract'
@@ -333,7 +334,8 @@ export class Conversation {
    */
   setRestoredTranscript(messages?: AiMessage[], stepRecords?: AgentStepRecord[]): void {
     if (stepRecords && stepRecords.length > 0 && this._steps.length === 0) {
-      this._steps = stepRecords.map(s => stepRecordToStep(s))
+      // 从盘上读回的会话，上个进程派出的伙计已经不在：停在「在干」的记成被打断，下次落盘也就带着这个结论
+      this._steps = settleOrphanedSubAgents(stepRecords.map(s => stepRecordToStep(s)))
     }
     if (messages && messages.length > 0 && this._messages.length === 0) {
       this._messages = messages.map(m => ({ ...m }))

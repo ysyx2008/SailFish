@@ -34,6 +34,8 @@ const items = computed(() => props.steps.map(step => {
   }
 }))
 
+const openItem = computed(() => items.value.find(item => item.step.id === openStepId.value))
+
 const toggle = (stepId: string) => {
   openStepId.value = openStepId.value === stepId ? null : stepId
 }
@@ -94,16 +96,17 @@ onBeforeUnmount(() => {
         </button>
         <ChevronDown :size="13" class="dock-chevron" :class="{ open: openStepId === item.step.id }" />
       </div>
-      <div v-if="openStepId === item.step.id" class="dock-panel">
-        <SubAgentGroup
-          :step-id="item.step.id"
-          :sub-agents="item.step.subAgents ?? []"
-          :expert-team="item.step.expertTeam"
-          always-open
-          plain
-          hide-team-card
-        />
-      </div>
+    </div>
+    <!-- 面板挂在整个栏下面（不是点开那一行下面），下面几行不被盖住 -->
+    <div v-if="openItem" class="dock-panel">
+      <SubAgentGroup
+        :step-id="openItem.step.id"
+        :sub-agents="openItem.step.subAgents ?? []"
+        :expert-team="openItem.step.expertTeam"
+        always-open
+        plain
+        hide-team-card
+      />
     </div>
   </div>
 </template>
@@ -232,7 +235,7 @@ onBeforeUnmount(() => {
   background: rgba(var(--accent-rgb, 137, 180, 250), 0.2);
 }
 
-/* 展开的内容盖在对话上面，不把对话往下挤 */
+/* 展开的内容盖在对话上面（栏的下沿开始），不把对话往下挤，也不盖住栏里别的行 */
 .dock-panel {
   position: absolute;
   left: 0;
