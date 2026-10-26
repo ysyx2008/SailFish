@@ -24,6 +24,19 @@ interface Node {
 
 export class OrgLedger {
   private readonly nodes = new Map<SubAgentRoster, Node>()
+  private readonly listeners = new Set<() => void>()
+
+  /** 组织里有人变了（任何一层）时通知；返回取消订阅 */
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+
+  notify(): void {
+    for (const listener of [...this.listeners]) {
+      try { listener() } catch { /* 界面刷新失败不影响组织 */ }
+    }
+  }
 
   /** 同一位组长再次开跑时换了新的花名册，旧的先退出 */
   register(roster: SubAgentRoster, owner: string | undefined, depth: number): void {

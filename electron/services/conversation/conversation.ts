@@ -1478,6 +1478,7 @@ export class Conversation {
       autoReview: s.autoReview,
       subAgents: s.subAgents,
       expertTeam: s.expertTeam,
+      organization: s.organization,
       canvasData: s.canvasData,
       hugeOutput: s.hugeOutput,
     }

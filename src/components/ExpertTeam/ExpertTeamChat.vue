@@ -10,7 +10,7 @@
 import { computed, nextTick, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft, X, ArrowDown, Crown, MessagesSquare } from 'lucide-vue-next'
-import { EXPERT_TEAM_LEADER, type ExpertTeamChatCursor, type ExpertTeamMessageView } from '@shared/types'
+import { EXPERT_TEAM_LEADER, SECRETARY_NAME, type ExpertTeamChatCursor, type ExpertTeamMessageView, type ExpertTeamView, type SubAgentResult } from '@shared/types'
 import { useTerminalStore } from '../../stores/terminal'
 import { useMarkdown } from '../../composables/useMarkdown'
 import { avatarHue, avatarInitial, continuesPrevious, memberLabel } from '../../utils/expert-team-view'
@@ -23,6 +23,8 @@ const props = withDefaults(defineProps<{
   stepId: string
   /** panel：右侧面板，右上角关掉；overlay：盖在对话栏上，左上角返回对话 */
   mode?: 'panel' | 'overlay'
+  /** 项目组织里某个团的群聊：团名；不写就是这一步自己派出的专家团 */
+  teamName?: string
 }>(), { mode: 'panel' })
 const emit = defineEmits<{ close: [] }>()
 
@@ -41,8 +43,37 @@ const EARLIER_SLACK_PX = 80
 const step = computed(() => terminalStore.tabs
   .find(tab => tab.id === props.tabId)?.agentState?.steps
   .find(s => s.id === props.stepId))
-const team = computed(() => step.value?.expertTeam)
-const agents = computed(() => step.value?.subAgents ?? [])
+/** 项目组织里指定的那个团（派出组长那一步带着全貌） */
+const orgTeam = computed(() => props.teamName
+  ? step.value?.organization?.teams.find(team => team.name === props.teamName)
+  : undefined)
+const team = computed<ExpertTeamView | undefined>(() => {
+  if (!props.teamName) return step.value?.expertTeam
+  const o = orgTeam.value
+  // 组织里的团不带群消息，全文从群聊文件里读
+  return o ? {
+    name: o.name,
+    messages: [],
+    wakes: 0,
+    wakeLimit: o.wakeLimit,
+    waitingLeader: o.waitingLeader,
+    ...(o.transcriptPath ? { transcriptPath: o.transcriptPath } : {}),
+    ...(o.chatFile ? { chatFile: o.chatFile } : {}),
+  } : undefined
+})
+const agents = computed<SubAgentResult[]>(() => {
+  if (!props.teamName) return step.value?.subAgents ?? []
+  return (step.value?.organization?.members ?? [])
+    .filter(m => m.team === props.teamName)
+    .map(m => ({
+      id: m.id,
+      name: m.name,
+      description: m.description,
+      status: m.status,
+      ...(m.waitingForModel ? { waitingForModel: true } : {}),
+      ...(m.role ? { role: m.role } : {}),
+    }))
+})
 
 const readPage = (file: string, cursor: ExpertTeamChatCursor) =>
   window.electronAPI.history.readExpertTeamChat(file, cursor)
@@ -57,9 +88,14 @@ const messages = computed<ExpertTeamMessageView[]>(() =>
   paged.value ? pages.value!.messages : team.value?.messages ?? [])
 /** 单条没放全时，全文在哪 */
 const fullTextPath = computed(() => paged.value ? pages.value!.path : team.value?.transcriptPath)
-const labels = computed(() => ({ leader: t('ai.expertTeam.leader') }))
+/** 组织里的团，组长是那位组长；顶层的团组长就是秘书 */
+const labels = computed(() => ({
+  leader: orgTeam.value?.owner ? t('ai.expertTeam.leaderOf', { name: orgTeam.value.owner }) : t('ai.expertTeam.leader'),
+}))
 
-const nameOf = (from: string) => from === EXPERT_TEAM_LEADER ? labels.value.leader : from
+const nameOf = (from: string) => from === EXPERT_TEAM_LEADER
+  ? labels.value.leader
+  : from === SECRETARY_NAME ? t('ai.expertTeam.secretary') : from
 const roleOf = (from: string) => from === EXPERT_TEAM_LEADER ? '' : agents.value.find(a => (a.name ?? a.id) === from)?.role ?? ''
 const avatarStyle = (name: string) => ({ background: `hsl(${avatarHue(name)} 42% 32%)` })
 const mentions = (m: ExpertTeamMessageView) => m.to.map(name => ({
@@ -150,6 +186,8 @@ watch(lastSeq, async (seq, before) => {
 
 /** 群里有新消息：看全文时去文件里补 */
 const viewLastSeq = computed(() => {
+  // 组织里的团没有那一小段，群里一共几条就是最后一条的序号
+  if (orgTeam.value) return orgTeam.value.messageCount
   const view = team.value?.messages ?? []
   return view[view.length - 1]?.seq ?? 0
 })
@@ -159,7 +197,7 @@ watch(viewLastSeq, (seq) => {
 })
 
 /** 换了一个团就从头打开；这个团的全文文件刚有时换成看全文 */
-watch(() => props.stepId, () => { void openChat(true) })
+watch(() => [props.stepId, props.teamName], () => { void openChat(true) })
 watch(() => team.value?.chatFile, () => { void openChat() })
 
 watch(() => !!team.value, (has, had) => { if (had && !has) emit('close') })

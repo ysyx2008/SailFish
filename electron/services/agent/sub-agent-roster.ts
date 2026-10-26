@@ -293,6 +293,16 @@ export class SubAgentRoster {
     return this.ledger?.root()
   }
 
+  /** 订阅组织里任何一层的变化（界面刷新用）；没有组织时先建出账本 */
+  onOrgChange(listener: () => void): () => void {
+    return this.ensureLedger().subscribe(listener)
+  }
+
+  /** 这份花名册里有人变了，告诉订阅的人；没有组织时什么也不做 */
+  notifyOrg(): void {
+    this.ledger?.notify()
+  }
+
   /** 组织里每一份花名册和它的位置，从上到下；没有组织时是空的 */
   orgEntries(): Array<{ roster: SubAgentRoster; owner?: string; depth: number; reportsTo?: string }> {
     return this.ledger?.entries() ?? []

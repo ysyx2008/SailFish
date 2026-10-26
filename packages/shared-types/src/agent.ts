@@ -480,13 +480,13 @@ export const EXPERT_TEAM_LEADER = '组长'
 /** 项目组织里任何一层的群都能点名的人：最上面的秘书 */
 export const SECRETARY_NAME = '秘书'
 
-/** 专家团群里的一条话 */
 /** 验收人对交上来的东西给的结论 */
 export type TeamVerdict = 'pass' | 'reject'
 
 /** 一个团现在的验收状态：没有验收人 / 有验收人但还没给结论 / 最近一次结论 */
 export type TeamReviewState = 'none' | 'pending' | TeamVerdict
 
+/** 专家团群里的一条话 */
 export interface ExpertTeamMessageView {
   seq: number
   /** 说话的专家名字，或「组长」 */
@@ -522,6 +522,50 @@ export interface ExpertTeamView {
   transcriptPath?: string
   /** 随会话保存的群聊全文，在群聊存储里的相对位置；没有会话时不存 */
   chatFile?: string
+}
+
+/** 项目组织里的一个人（卡片和组织图用） */
+export interface OrganizationMemberView {
+  id: string
+  name: string
+  description: string
+  status: SubAgentResult['status']
+  waitingForModel?: boolean
+  role?: string
+  /** 派出他的组长；秘书直接派的没有 */
+  parent?: string
+  lead?: boolean
+  reviewer?: boolean
+  /** 所在的专家团 */
+  team?: string
+}
+
+/** 项目组织里的一个专家团（群聊全文在 chatFile 里，界面翻页读） */
+export interface OrganizationTeamView {
+  name: string
+  /** 团所在那位组长的名字；秘书自己派的团没有 */
+  owner?: string
+  review: TeamReviewState
+  reviewers?: string[]
+  messageCount: number
+  waitingLeader: boolean
+  /** 每段叫醒满这么多次就等组长 */
+  wakeLimit: number
+  chatFile?: string
+  transcriptPath?: string
+}
+
+/** 项目组织的全貌（派出组长的那一步上实时更新）。人数很多时只放前面一部分，live / total 是真实合计 */
+export interface OrganizationView {
+  members: OrganizationMemberView[]
+  teams: OrganizationTeamView[]
+  /** 没做完的人数 / 全部人数（全组织） */
+  live: number
+  total: number
+  /** members 里没放进来的人数 */
+  omitted?: number
+  /** 系统维护的组织看板文件 */
+  boardPath?: string
 }
 
 /** 从哪里接着读群聊全文：都不给读末尾一页；before 往前一页；after 往后补 */
@@ -630,6 +674,8 @@ export interface AgentStep {
   subAgents?: SubAgentResult[]
   /** 专家团群聊（dispatch_agents 带 team 组团时，实时更新） */
   expertTeam?: ExpertTeamView
+  /** 项目组织全貌（dispatch_agents 指定了组长时，实时更新） */
+  organization?: OrganizationView
   /** Web 搜索结果（web_search 工具专用，供 UI 可展开渲染） */
   webSearchResults?: WebSearchResultItem[]
   /**

@@ -37,6 +37,8 @@ import SubAgentGroup from './SubAgentGroup.vue'
 import SubAgentDock from './SubAgentDock.vue'
 import { toolDisplayName } from '../utils/tool-display'
 import ExpertTeamChat from './ExpertTeam/ExpertTeamChat.vue'
+import OrganizationCard from './Organization/OrganizationCard.vue'
+import OrganizationChart from './Organization/OrganizationChart.vue'
 import ImageContextMenu from './ImageContextMenu.vue'
 import AttachmentContextMenu from './AttachmentContextMenu.vue'
 import AttachmentFileIcon from './AttachmentFileIcon.vue'
@@ -556,7 +558,18 @@ const openExpertTeam = (stepId: string) => {
   if (props.openExpertTeam) props.openExpertTeam(stepId)
   else overlayTeamStepId.value = stepId
 }
-watch(() => props.tabId, () => { overlayTeamStepId.value = null })
+/** 盖在对话栏上的项目组织图，和从图里点开的某个团的群聊（再盖在组织图上） */
+const overlayOrgStepId = ref<string | null>(null)
+const overlayOrgTeam = ref<string | null>(null)
+const openOrganization = (stepId: string) => {
+  overlayOrgStepId.value = stepId
+  overlayOrgTeam.value = null
+}
+watch(() => props.tabId, () => {
+  overlayTeamStepId.value = null
+  overlayOrgStepId.value = null
+  overlayOrgTeam.value = null
+})
 /** 此刻开着群聊的专家团 */
 const openedTeamStepId = computed(() => (props.openExpertTeam ? props.openedExpertTeamStepId : overlayTeamStepId.value) ?? null)
 /** 顶部群聊按钮：没开就打开，开着再点就收起 */
@@ -2680,6 +2693,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         :open-team-step-id="openedTeamStepId"
         @open-team="openExpertTeam"
         @toggle-team="toggleExpertTeam"
+        @open-organization="openOrganization"
       />
 
       <!-- 消息列表（虚拟滚动） -->
@@ -2914,6 +2928,11 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                       :sub-agents="item.step!.subAgents"
                       :expert-team="item.step!.expertTeam"
                       @open-team="openExpertTeam(item.step!.id)"
+                    />
+                    <OrganizationCard
+                      v-if="item.step!.organization"
+                      :organization="item.step!.organization"
+                      @open="openOrganization(item.step!.id)"
                     />
                     <div v-if="item.step!.type === 'user_supplement' && splitSentMessage(item.step!.content, item.step!.attachments).rest.length > 0" class="message-attachments">
                       <span
@@ -3496,6 +3515,24 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
       </div>
     </div>
 
+    <OrganizationChart
+      v-if="overlayOrgStepId"
+      class="organization-overlay"
+      mode="overlay"
+      :tab-id="tabId"
+      :step-id="overlayOrgStepId"
+      @close="overlayOrgStepId = null; overlayOrgTeam = null"
+      @open-team="overlayOrgTeam = $event"
+    />
+    <ExpertTeamChat
+      v-if="overlayOrgStepId && overlayOrgTeam"
+      class="expert-team-overlay"
+      mode="overlay"
+      :tab-id="tabId"
+      :step-id="overlayOrgStepId"
+      :team-name="overlayOrgTeam"
+      @close="overlayOrgTeam = null"
+    />
     <ExpertTeamChat
       v-if="overlayTeamStepId"
       class="expert-team-overlay"

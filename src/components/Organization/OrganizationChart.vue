@@ -1,0 +1,157 @@
+<script setup lang="ts">
+/**
+ * 项目组织图：秘书在最上面，名下按团分组，组长名下再分组，一层层缩进。
+ * 点某个团的「群聊」打开那个团的完整群聊。内容随派出组长的那一步实时更新。
+ */
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { ArrowLeft, X, Network, UserRound } from 'lucide-vue-next'
+import { useTerminalStore } from '../../stores/terminal'
+import { buildOrgTree } from '../../utils/organization-view'
+import OrganizationBranch from './OrganizationBranch.vue'
+
+const props = withDefaults(defineProps<{
+  tabId: string
+  /** 派出组长的那一步 */
+  stepId: string
+  /** panel：右侧面板，右上角关掉；overlay：盖在对话栏上，左上角返回对话 */
+  mode?: 'panel' | 'overlay'
+}>(), { mode: 'overlay' })
+const emit = defineEmits<{ close: []; openTeam: [teamName: string] }>()
+
+const { t } = useI18n()
+const terminalStore = useTerminalStore()
+
+const organization = computed(() => terminalStore.tabs
+  .find(tab => tab.id === props.tabId)?.agentState?.steps
+  .find(s => s.id === props.stepId)?.organization)
+const tree = computed(() => organization.value ? buildOrgTree(organization.value) : [])
+</script>
+
+<template>
+  <section class="organization-chart" :class="`is-${mode}`">
+    <header class="oc-header">
+      <button
+        v-if="mode === 'overlay'"
+        type="button"
+        class="oc-icon-btn"
+        :title="t('ai.organization.back')"
+        :aria-label="t('ai.organization.back')"
+        @click="emit('close')"
+      >
+        <ArrowLeft :size="15" />
+      </button>
+      <span class="oc-title-icon" aria-hidden="true"><Network :size="14" /></span>
+      <div class="oc-title">
+        <span class="oc-title-name">{{ t('ai.organization.title') }}</span>
+        <span v-if="organization" class="oc-title-meta">
+          {{ t('ai.organization.meta', { total: organization.total, live: organization.live, teams: organization.teams.length }) }}
+        </span>
+      </div>
+      <button
+        v-if="mode === 'panel'"
+        type="button"
+        class="oc-icon-btn"
+        :title="t('ai.organization.close')"
+        :aria-label="t('ai.organization.close')"
+        @click="emit('close')"
+      >
+        <X :size="15" />
+      </button>
+    </header>
+
+    <div class="oc-body">
+      <div v-if="!organization" class="oc-empty">{{ t('ai.organization.empty') }}</div>
+      <template v-else>
+        <div class="oc-secretary">
+          <span class="oc-secretary-avatar" aria-hidden="true"><UserRound :size="14" /></span>
+          <span class="oc-secretary-name">{{ t('ai.organization.secretary') }}</span>
+        </div>
+        <OrganizationBranch :groups="tree" class="oc-tree" @open-team="emit('openTeam', $event)" />
+        <p v-if="organization.omitted" class="oc-omitted">
+          {{ t('ai.organization.omitted', { count: organization.omitted, path: organization.boardPath ?? '' }) }}
+        </p>
+      </template>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+.organization-chart {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.organization-chart.is-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 29;
+}
+
+.oc-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  height: var(--workbench-panel-header-height, 38px);
+  padding: 0 10px;
+  background: var(--bg-tertiary, var(--bg-secondary, #252525));
+  border-bottom: 1px solid var(--border-color);
+}
+.oc-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.oc-icon-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.oc-title-icon { display: inline-flex; color: var(--accent-primary); }
+.oc-title { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.oc-title-name { font-size: 13px; font-weight: 600; }
+.oc-title-meta { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.oc-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px 20px;
+}
+.oc-empty { padding: 24px 0; text-align: center; color: var(--text-secondary); font-size: 12px; }
+
+.oc-secretary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 5px 12px 5px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--accent-rgb, 137, 180, 250), 0.5);
+  background: rgba(var(--accent-rgb, 137, 180, 250), 0.1);
+  font-size: 12px;
+  font-weight: 600;
+}
+.oc-secretary-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--accent-primary);
+}
+.oc-tree { margin-left: 14px; padding-left: 12px; border-left: 2px solid var(--border-color); }
+.oc-omitted { margin-top: 12px; font-size: 11px; color: var(--text-secondary); word-break: break-all; }
+</style>

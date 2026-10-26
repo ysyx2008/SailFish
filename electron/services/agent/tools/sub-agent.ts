@@ -26,6 +26,7 @@ import {
 import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
 import { createTeamTexts, expertOpening, formatTranscript, renamedList } from './expert-team-text'
 import { orgOpeningNote, renderBoard, type BoardSection } from './organization-text'
+import type { OrganizationMemberView, OrganizationTeamView, OrganizationView } from '@shared/types'
 import { inferConversationKind } from '@shared/types'
 import { conversationPolicy } from '../../conversation/policy'
 import { getConfigService } from '../../config.service'
@@ -179,10 +180,28 @@ export class SubAgentWorkspace {
   }
 
   /** 看板上每份花名册的最后样子：组长收工、花名册退出账本以后，他那一段还在 */
-  private readonly boardSections = new Map<string, BoardSection & { live: number; total: number }>()
+  private readonly boardSections = new Map<string, RememberedSection>()
 
-  rememberBoardSection(section: BoardSection & { live: number; total: number }): void {
+  rememberBoardSection(section: RememberedSection): void {
     this.boardSections.set(section.owner ?? '', section)
+  }
+
+  /** 组织全貌给界面看：人数多时只放前面一部分（组长优先、没做完的优先），合计是真实的 */
+  organizationView(): OrganizationView {
+    const sections = [...this.boardSections.values()].sort((a, b) => a.depth - b.depth)
+    const all = sections.flatMap(s => s.members)
+    const rank = (m: OrganizationMemberView) => (m.lead ? 0 : 2) + (m.status === 'running' || m.status === 'pending' ? 0 : 1)
+    const kept = all.length > ORG_VIEW_MEMBER_LIMIT
+      ? all.map((m, i) => ({ m, i })).sort((a, b) => rank(a.m) - rank(b.m) || a.i - b.i).slice(0, ORG_VIEW_MEMBER_LIMIT).sort((a, b) => a.i - b.i).map(x => x.m)
+      : all
+    return {
+      members: kept,
+      teams: sections.flatMap(s => s.teamViews).slice(0, ORG_VIEW_TEAM_LIMIT),
+      live: sections.reduce((n, s) => n + s.live, 0),
+      total: sections.reduce((n, s) => n + s.total, 0),
+      ...(all.length > kept.length ? { omitted: all.length - kept.length } : {}),
+      boardPath: this.boardPath,
+    }
   }
 
   /** 组织看板放在秘书这一轮的落盘目录下的 org/ 里；内容没变就不重写 */
@@ -241,6 +260,16 @@ export class SubAgentWorkspace {
 }
 
 const ORG_DIR = 'org'
+/** 推给界面、随派出那一步落盘的组织全貌：人数和团数上限（那一步存盘是一行，太大读回时整步会被略掉） */
+const ORG_VIEW_MEMBER_LIMIT = 200
+const ORG_VIEW_TEAM_LIMIT = 100
+
+interface RememberedSection extends BoardSection {
+  live: number
+  total: number
+  members: OrganizationMemberView[]
+  teamViews: OrganizationTeamView[]
+}
 
 /** 组长的名字做目录名：不能进路径的字符换成 - */
 function tidyDirName(name: string): string {
@@ -280,6 +309,8 @@ export function refreshOrgBoard(roster: SubAgentRoster): void {
       teams: r.listTeams().map(team => ({ name: team.name, review: team.reviewState(), reviewers: team.reviewerNames() })),
       live: r.liveCount(),
       total: r.list().length,
+      members: r.list().map(c => toOrganizationMember(c, r.owner)),
+      teamViews: r.listTeams().map(team => toOrganizationTeam(team, r.owner, workspaceOf(r))),
     })
     if (!watchedForRelease.has(r) && r !== root) {
       watchedForRelease.add(r)
@@ -587,17 +618,50 @@ export function toSubAgentView(c: ChildSnapshot, stepLimit: number = VIEW_STEPS_
   }
 }
 
-/** 派出那一步上显示的人和群聊：只看这一次派的人；他们组了团就带上群聊 */
-export function dispatchStepView(roster: SubAgentRoster, names: ReadonlySet<string>): Pick<AgentStep, 'subAgents' | 'expertTeam'> {
+function toOrganizationMember(c: ChildSnapshot, parent: string | undefined): OrganizationMemberView {
+  return {
+    id: c.name,
+    name: c.name,
+    description: c.description,
+    status: c.status,
+    ...(c.waitingForModel ? { waitingForModel: true } : {}),
+    ...(c.role ? { role: c.role } : {}),
+    ...(parent ? { parent } : {}),
+    ...(c.lead ? { lead: true } : {}),
+    ...(c.reviewer ? { reviewer: true } : {}),
+    ...(c.team ? { team: c.team } : {}),
+  }
+}
+
+function toOrganizationTeam(team: ExpertTeam, owner: string | undefined, workspace: SubAgentWorkspace): OrganizationTeamView {
+  const view = team.view({ transcriptPath: workspace.teamTranscriptPath(team), chatFile: workspace.teamChatFile(team) })
+  return {
+    name: team.name,
+    ...(owner ? { owner } : {}),
+    review: team.reviewState(),
+    ...(view.reviewers ? { reviewers: view.reviewers } : {}),
+    messageCount: team.messageCount(),
+    waitingLeader: team.isWaitingLeader(),
+    wakeLimit: WAKES_PER_CHECKPOINT,
+    ...(view.chatFile ? { chatFile: view.chatFile } : {}),
+    ...(view.transcriptPath ? { transcriptPath: view.transcriptPath } : {}),
+  }
+}
+
+/** 派出那一步上显示的人和群聊：只看这一次派的人；他们组了团就带上群聊；其中有组长就带上整个组织的全貌 */
+export function dispatchStepView(roster: SubAgentRoster, names: ReadonlySet<string>): Pick<AgentStep, 'subAgents' | 'expertTeam' | 'organization'> {
   const mine = roster.list().filter(c => names.has(c.name))
   const teamName = mine.find(c => c.team)?.team
   const team = teamName ? roster.getTeam(teamName) : undefined
   const workspace = workspaceOf(roster)
+  const withOrg = roster.owner === undefined && mine.some(c => c.lead)
+  if (withOrg) refreshOrgBoard(roster)
   return {
     subAgents: mine.map(c => toSubAgentView(c, viewStepsPerAgent(mine.length))),
     ...(team ? {
       expertTeam: team.view({ transcriptPath: workspace.teamTranscriptPath(team), chatFile: workspace.teamChatFile(team) }),
     } : {}),
+    ...(withOrg ? { organization: workspaceOf(roster.orgRoot() ?? roster).organizationView() } : {}),
   }
 }
 
@@ -703,6 +767,8 @@ export function spawnDeps(
     onProgress: () => {
       progress.schedule()
       overviewProgress.schedule()
+      // 组长名下有人变了：秘书那一步上的组织全貌也要刷新
+      if (roster.owner !== undefined) roster.notifyOrg()
     },
     ownedNames,
     isParentAborted: () => executor.isAborted(),
@@ -987,6 +1053,8 @@ export async function dispatchSubAgents(
   }
 
   const names = roster.spawn(remote.tasks, deps, team ? { team } : undefined)
+  // 这一步里指定了组长：整个组织里任何一层有人变了，都刷新这一步
+  if (roster.owner === undefined && remote.tasks.some(task => task.lead)) roster.onOrgChange(() => deps.onProgress())
   const workspace = workspaceOf(roster)
   workspace.writeOverview(roster.list())
   refreshOrgBoard(roster)

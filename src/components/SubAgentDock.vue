@@ -5,9 +5,10 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronDown, MessagesSquare, Check, TriangleAlert } from 'lucide-vue-next'
+import { ChevronDown, MessagesSquare, Check, TriangleAlert, Network } from 'lucide-vue-next'
 import type { AgentStep } from '@shared/types'
 import { describeDock } from '../utils/sub-agent-summary'
+import { describeOrgDock } from '../utils/organization-view'
 import SubAgentGroup from './SubAgentGroup.vue'
 
 const props = defineProps<{
@@ -18,7 +19,7 @@ const props = defineProps<{
   /** 此刻开着群聊的专家团（派出那一步的 id） */
   openTeamStepId?: string | null
 }>()
-const emit = defineEmits<{ openTeam: [stepId: string]; toggleTeam: [stepId: string] }>()
+const emit = defineEmits<{ openTeam: [stepId: string]; toggleTeam: [stepId: string]; openOrganization: [stepId: string] }>()
 const { t } = useI18n()
 
 const root = ref<HTMLElement | null>(null)
@@ -28,7 +29,9 @@ const items = computed(() => props.steps.map(step => {
   const team = step.expertTeam
   return {
     step,
-    ...describeDock(t, step.subAgents ?? []),
+    // 有组织的一批按全组织计数，不只数秘书直接派的那几位
+    ...(step.organization ? describeOrgDock(t, step.organization) : describeDock(t, step.subAgents ?? [])),
+    hasOrganization: !!step.organization,
     teamCount: team ? team.messages.length + (team.earlierOmitted ?? 0) : 0,
     hasTeam: !!team,
   }
@@ -83,6 +86,15 @@ onBeforeUnmount(() => {
           <TriangleAlert v-else :size="13" />
         </span>
         <span class="dock-headline">{{ item.headline }}</span>
+        <button
+          v-if="item.hasOrganization"
+          type="button"
+          class="dock-team"
+          @click.stop="emit('openOrganization', item.step.id)"
+        >
+          <Network :size="12" />
+          <span>{{ t('ai.organization.openChart') }}</span>
+        </button>
         <button
           v-if="item.hasTeam"
           type="button"
