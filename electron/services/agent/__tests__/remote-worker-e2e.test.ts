@@ -301,12 +301,16 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
       parentOnlyDispatch(['rm -rf /var/log/app'], '会删日志'),
       '{"outcome":"refuse","reason":"会删日志"}',
     )
-    const { result, confirmations } = runParent(services, 'relaxed', () => true, 'autoReview')
+    const { result, confirmations, steps } = runParent(services, 'relaxed', () => true, 'autoReview')
     await result
     expect(confirmations).toHaveLength(0)
     expect(llmCalls.some(c => isChildCallNames(c.tools))).toBe(false)
     expect(toolOutputsOf(llmCalls.at(-1)!)).toContain('会删日志')
     expect(host.connections).toBe(0)
+    // 没派出去的那一步留在专家那行前面，标明没有派出
+    const dispatchStep = steps.filter(s => s.type === 'tool_call' && s.toolName === 'dispatch_agents').at(-1)
+    expect(dispatchStep?.content).toContain('没有派出')
+    expect(dispatchStep?.success).toBe(false)
   })
 
   it('宽松：每批都由你看，直接弹卡，不请专家，写操作也不挡；点头后伙计才跑', async () => {
@@ -344,6 +348,11 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     expect(trail?.autoReview?.outcome).toBe('approved')
     expect(trail?.autoReview?.rationale).toContain('你点名了这台')
     expect(reviews[0]?.content).toContain('专家在看')
+    // 「派出伙计」这一步先出现，专家那一行接在它后面
+    const dispatchAt = steps.findIndex(s => s.type === 'tool_call' && s.toolName === 'dispatch_agents')
+    const reviewAt = steps.findIndex(s => s.type === 'auto_review')
+    expect(dispatchAt).toBeGreaterThanOrEqual(0)
+    expect(dispatchAt).toBeLessThan(reviewAt)
   })
 
   it('替我审批：专家要问时，话在确认前面，卡上不写', async () => {

@@ -834,9 +834,7 @@ export async function dispatchSubAgents(
     }
   }
 
-  const remote = await authorizeRemoteScopes(args, parsedTasks, _config, executor, _toolCallId)
-  if ('error' in remote) return { success: false, output: '', error: remote.error }
-
+  // 派出这一步先画出来，再走远程授权：审批（专家的话、确认卡）接在它后面，而不是等批完才出现
   const progressStep = executor.addStep({
     type: 'tool_call',
     content: dispatchTitle(parsedTasks.length, allExperts, team),
@@ -850,6 +848,12 @@ export async function dispatchSubAgents(
     success: true,
     subAgents: []
   })
+
+  const remote = await authorizeRemoteScopes(args, parsedTasks, _config, executor, _toolCallId)
+  if ('error' in remote) {
+    executor.updateStep(progressStep.id, { content: t('dispatch.not_sent', { count: parsedTasks.length }), success: false })
+    return { success: false, output: '', error: remote.error }
+  }
 
   const ownedNames = new Set<string>()
   const deps = spawnDeps(executor, progressStep.id, ownedNames)

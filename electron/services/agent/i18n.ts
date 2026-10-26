@@ -1694,6 +1694,7 @@ const translations = {
 
     // dispatch_agents 并行子任务（customRender 与执行器 addStep 共享前缀，两边必须字节对齐）
     'dispatch.running': '派出 {count} 个伙计',
+    'dispatch.not_sent': '没有派出 {count} 个伙计',
     'dispatch.completed_no_fail': '并行执行完成：{success} 成功',
     'dispatch.completed_with_fail': '并行执行完成：{success} 成功，{fail} 失败',
     'dispatch.result_archived': '[完整结果共 {total} 字符，已保存到 {path}，以下为尾部内容，需要完整细节时用 read_file 读取]',
@@ -3758,6 +3759,7 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
 
     // dispatch_agents sub-tasks (customRender and executor addStep share the same prefix; must stay byte-aligned)
     'dispatch.running': 'Sending {count} colleague(s)',
+    'dispatch.not_sent': 'Did not send {count} colleague(s)',
     'dispatch.completed_no_fail': 'Completed: {success} succeeded',
     'dispatch.completed_with_fail': 'Completed: {success} succeeded, {fail} failed',
     'dispatch.result_archived': '[Full result ({total} chars) saved to {path}; tail shown below, use read_file for complete details]',

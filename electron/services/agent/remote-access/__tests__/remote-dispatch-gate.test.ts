@@ -428,7 +428,7 @@ describe('派出：每个伙计自己的命令清单', () => {
       ['hostname'],
     )
     expect(r.ok).toBe(true)
-    const asked = confirm.mock.calls[0]![0] as unknown as { assignments?: Array<{ workerCount: number; hosts: Array<{ name: string }>; commands: string[] }>; commands: string[]; workerCount: number }
+    const asked = (confirm.mock.calls[0] as unknown as unknown[])[0] as { assignments?: Array<{ workerCount: number; hosts: Array<{ name: string }>; commands: string[] }>; commands: string[]; workerCount: number }
     expect(asked.workerCount).toBe(3)
     expect(asked.commands).toEqual(['hostname', 'df -h', 'uptime'])
     expect(asked.assignments).toHaveLength(2)
@@ -447,7 +447,7 @@ describe('派出：每个伙计自己的命令清单', () => {
   it('清单都一样：还是一张不分块的卡', async () => {
     const { gate, confirm } = gateWith()
     await gate.authorizeDispatch([{ hosts: ['a1'], commands: ['df -h'] }, { hosts: ['a2'], commands: ['df -h'] }], [])
-    const asked = confirm.mock.calls[0]![0] as unknown as { assignments?: unknown; commands: string[] }
+    const asked = (confirm.mock.calls[0] as unknown as unknown[])[0] as { assignments?: unknown; commands: string[] }
     expect(asked.assignments).toBeUndefined()
     expect(asked.commands).toEqual(['df -h'])
   })
