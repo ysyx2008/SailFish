@@ -321,6 +321,16 @@ export class SubAgentRoster {
     return this.children.has(name)
   }
 
+  /** 在这份名册里的人：在干的和已经停下、等着被叫醒的 */
+  hasMember(name: string): boolean {
+    return this.children.has(name) || this.dormant.has(name)
+  }
+
+  /** 这份名册占着的所有名字 */
+  memberNames(): string[] {
+    return [...this.children.keys(), ...this.dormant.keys()]
+  }
+
   private enqueueNews(name: string): void {
     this.unreadNews.push(name)
   }
@@ -551,7 +561,11 @@ export class SubAgentRoster {
     this.ensureDormant(deps)
     // 老伙计的名字也占着：同名会把他盘上的对话盖掉
     const used = this.takenNames()
-    if (tasks.some(t => t.role)) { used.add(TEAM_LEADER); used.add(SECRETARY) }
+    if (tasks.some(t => t.role)) {
+      used.add(TEAM_LEADER)
+      // 「秘书」只在有组织的时候才是个有意义的名字
+      if (this.ledger) used.add(SECRETARY)
+    }
     const names: string[] = []
 
     for (const task of tasks) {
@@ -633,7 +647,8 @@ export class SubAgentRoster {
     const entry = this.entryOf(from)
     if (!entry) return { ok: false, error: `${from} 不在专家团里` }
     const { team, deps } = entry
-    const unknown = team.unknownNames(to)
+    // 没有组织、或者这份花名册就是秘书的：群里没有「秘书」这个人
+    const unknown = team.unknownNames(to).concat(this.depth === 0 ? to.filter(n => n === SECRETARY) : [])
     if (unknown.length > 0) {
       const reachable = this.depth > 0 ? [TEAM_LEADER, SECRETARY] : [TEAM_LEADER]
       return { ok: false, error: `群里没有 ${unknown.join('、')}`, members: [...reachable, ...team.memberNames()] }
@@ -651,7 +666,7 @@ export class SubAgentRoster {
     }
     const texts = deps.teamTexts!
     // 最上面一层的团里，秘书就是组长
-    const toLeader = outcome.toLeader || (this.depth === 0 && outcome.toSecretary)
+    const toLeader = outcome.toLeader
     if (toLeader) {
       deps.knock(texts.leaderMention(team, outcome.message))
       this.enqueueNews(from)

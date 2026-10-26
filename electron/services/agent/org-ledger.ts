@@ -25,6 +25,12 @@ interface Node {
 export class OrgLedger {
   private readonly nodes = new Map<SubAgentRoster, Node>()
   private readonly listeners = new Set<() => void>()
+  /** 已经退出账本的花名册名下的名字：他们的对话还在盘上，名字仍然占着 */
+  private readonly retiredNames = new Set<string>()
+  /** 退出账本之后还要认得的秘书那份花名册（组长比秘书收工得晚时，看板的最后一笔要找到它） */
+  private rootRoster?: SubAgentRoster
+  /** 每份花名册的主人向谁汇报：他所在的花名册退出以后，仍按退出前记着的算 */
+  private readonly reportsToSeen = new Map<SubAgentRoster, string | undefined>()
 
   /** 组织里有人变了（任何一层）时通知；返回取消订阅 */
   subscribe(listener: () => void): () => void {
@@ -41,13 +47,15 @@ export class OrgLedger {
   /** 同一位组长再次开跑时换了新的花名册，旧的先退出 */
   register(roster: SubAgentRoster, owner: string | undefined, depth: number): void {
     for (const [other, node] of this.nodes) {
-      if (other !== roster && node.owner === owner && node.depth === depth) this.nodes.delete(other)
+      if (other !== roster && node.owner === owner && node.depth === depth) this.unregister(other)
     }
     this.nodes.set(roster, { owner, depth })
+    if (depth === 0) this.rootRoster = roster
   }
 
   unregister(roster: SubAgentRoster): void {
-    this.nodes.delete(roster)
+    if (!this.nodes.delete(roster)) return
+    for (const name of roster.memberNames()) this.retiredNames.add(name)
   }
 
   /** 全树没做完的人数 */
@@ -61,25 +69,26 @@ export class OrgLedger {
   usedNames(): Set<string> {
     const names = new Set<string>()
     for (const roster of this.nodes.keys()) {
-      for (const name of roster.childNames()) names.add(name)
+      for (const name of roster.memberNames()) names.add(name)
     }
+    for (const name of this.retiredNames) names.add(name)
     return names
   }
 
   /** 这个名字所在的花名册 */
   rosterOf(name: string): SubAgentRoster | undefined {
     for (const roster of this.nodes.keys()) {
-      if (roster.hasChild(name)) return roster
+      if (roster.hasMember(name)) return roster
     }
     return undefined
   }
 
-  /** 秘书的花名册（第 0 层） */
+  /** 秘书的花名册（第 0 层）；秘书这一轮收工以后仍然认得它 */
   root(): SubAgentRoster | undefined {
     for (const [roster, node] of this.nodes) {
       if (node.depth === 0) return roster
     }
-    return undefined
+    return this.rootRoster
   }
 
   /**
@@ -111,7 +120,12 @@ export class OrgLedger {
     const node = this.nodes.get(roster)
     if (!node?.owner) return undefined
     const holder = this.rosterOf(node.owner)
-    return holder ? this.nodes.get(holder)?.owner : undefined
+    if (holder) {
+      const lead = this.nodes.get(holder)?.owner
+      this.reportsToSeen.set(roster, lead)
+      return lead
+    }
+    return this.reportsToSeen.get(roster)
   }
 
   rosters(): SubAgentRoster[] {

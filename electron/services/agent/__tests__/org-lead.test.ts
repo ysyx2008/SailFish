@@ -348,9 +348,8 @@ describe('点名秘书', () => {
     root.abortAll()
   })
 
-  it('最上面一层的团里，点名秘书等同点名组长；组长只管自己这一枝', async () => {
+  it('没有组织的团里没有「秘书」这个人：点名要报错，和以前一样', () => {
     const root = new SubAgentRoster({ knockSettleMs: 0 })
-    const knocks: string[] = []
     const says: Array<(to: string[], text: string) => unknown> = []
     root.spawn(
       [
@@ -361,15 +360,16 @@ describe('点名秘书', () => {
         const w = worker(5000)
         w.joinTeam = (j: { say: (to: string[], text: string) => unknown }) => { says.push(j.say) }
         return w
-      }, knocks), teamTexts: createTeamTexts(team => `/tmp/${team.name}.md`) },
+      }), teamTexts: createTeamTexts(team => `/tmp/${team.name}.md`) },
       { team: '顶层团' },
     )
-    const result = says[0](['秘书'], '找你') as { ok: boolean; toLeader?: boolean; toSecretary?: boolean }
-    expect(result.toLeader).toBe(true)
-    expect(result.toSecretary).toBe(false)
-    expect(knocks).toHaveLength(1)
+    const result = says[0](['秘书'], '找你') as { ok: boolean; error?: string }
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('群里没有 秘书')
     root.abortAll()
+  })
 
+  it('组长只管自己这一枝', async () => {
     // 组长越过自己这一枝去叫别的组长名下的人：找不到
     const root2 = new SubAgentRoster({ knockSettleMs: 0 })
     const rosters: SubAgentRoster[] = []
@@ -388,9 +388,20 @@ describe('点名秘书', () => {
     root2.abortAll()
   })
 
-  it('秘书这个名字不给专家用', () => {
-    const parsed = parseDispatchTasks({ tasks: [{ role: '专家', name: '秘书', description: 'x', prompt: 'y' }] })
-    expect('error' in parsed && parsed.error).toMatch(/秘书/)
+  it('没有组织时专家可以叫「秘书」；有组织时这个名字留给最上面那位', () => {
+    expect('error' in parseDispatchTasks({ tasks: [{ role: '专家', name: '秘书', description: 'x', prompt: 'y' }] })).toBe(false)
+
+    const plain = new SubAgentRoster({ knockSettleMs: 0 })
+    expect(plain.spawn([{ description: 'x', prompt: 'p', role: '专家', name: '秘书' }], deps(() => worker()))).toEqual(['秘书'])
+    plain.abortAll()
+
+    const org = new SubAgentRoster({ knockSettleMs: 0 })
+    const names = org.spawn(
+      [{ description: '组', prompt: 'p', role: '组长', lead: true }, { description: 'x', prompt: 'p', role: '专家', name: '秘书' }],
+      deps(() => worker()),
+    )
+    expect(names).not.toContain('秘书')
+    org.abortAll()
   })
 })
 
@@ -524,6 +535,51 @@ describe('组织的存盘', () => {
     // 名字全组织不重复：新派的人不能占用盘上组长名下的名字
     root.spawn([{ description: '前端', prompt: 'p' }], d)
     expect(root.childNames()).toEqual(['前端-2'])
+    root.abortAll()
+  })
+})
+
+describe('组长收工之后账本仍然管得住', () => {
+  const tick = (ms = 10) => new Promise(resolve => setTimeout(resolve, ms))
+
+  it('组长收工后，他名下的名字仍然占着：别人不会再派出同名的人盖掉他的对话', async () => {
+    const root = new SubAgentRoster({ knockSettleMs: 0 })
+    root.spawn(
+      [{ description: '甲组', prompt: 'p', role: '甲组长', lead: true }],
+      deps(() => lead({ members: [{ description: '调研员', prompt: 'p' }] })),
+    )
+    await tick(150)
+    const names = root.spawn([{ description: '调研员', prompt: 'p' }], deps(() => worker()))
+    expect(names).toEqual(['调研员-2'])
+    root.abortAll()
+  })
+
+  it('秘书叫得醒组长名下已经停下的人', async () => {
+    const root = new SubAgentRoster({ knockSettleMs: 0 })
+    const rosters: SubAgentRoster[] = []
+    // 组长不收工：手下干完以后一直等着
+    const stay = (): ChildAgentHandle => {
+      let seat: LeadSeat | undefined
+      let roster: SubAgentRoster | undefined
+      return {
+        isRunning: () => true,
+        abort: () => { roster?.abortAll(); return true },
+        addUserMessage: () => true,
+        becomeLead: (s) => { seat = s },
+        async run() {
+          roster = new SubAgentRoster({ knockSettleMs: 0 })
+          if (seat) roster.attachLedger(seat.ledger, seat.name, seat.depth)
+          rosters.push(roster)
+          roster.spawn([{ description: '甲员', prompt: 'p' }], deps(() => worker(10)))
+          await new Promise(resolve => setTimeout(resolve, 5000))
+          return 'x'
+        },
+      }
+    }
+    root.spawn([{ description: '甲组', prompt: 'p', role: '甲组长', lead: true }], deps(() => stay()))
+    await tick(150)
+    expect(rosters[0].hasMember('甲员')).toBe(true)
+    expect(root.interrupt('甲员').error ?? '').not.toContain('没有叫')
     root.abortAll()
   })
 })
