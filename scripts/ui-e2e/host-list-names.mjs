@@ -24,15 +24,23 @@ const check = (label, pass, detail) => {
   }
 }
 
+const JUMP_GROUP = '跳板机后面的机器'
+const JUMP_HOST = '60.166.4.238'
 const NAMES = ['MacBook Air Server', '192.168.230.130', 'Jump Server', '绿联4600NAS']
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sft-host-list-'))
 fs.writeFileSync(path.join(dataDir, 'qiyu-terminal-config.json'), JSON.stringify({
   setupCompleted: true,
   recallSidebarWidth: 283,
   hostSidebarWidth: 283,
-  sshSessions: NAMES.map((name, i) => ({
-    id: `s${i}`, name, host: `10.0.0.${i + 1}`, port: 22, username: 'yushen', authType: 'password', encoding: 'utf-8', createdAt: i,
-  })),
+  sshSessions: [
+    ...NAMES.map((name, i) => ({
+      id: `s${i}`, name, host: `10.0.0.${i + 1}`, port: 22, username: 'yushen', authType: 'password', encoding: 'utf-8', createdAt: i,
+    })),
+    { id: 'j1', name: 'ai-bak', host: '10.1.0.1', port: 22, username: 'yushen', authType: 'password', encoding: 'utf-8', createdAt: 9, groupId: 'g-jump' },
+  ],
+  sessionGroups: [
+    { id: 'g-jump', name: JUMP_GROUP, createdAt: 0, jumpHost: { host: JUMP_HOST, port: 16208, username: 'yushen', authType: 'password' } },
+  ],
 }, null, '\t'))
 
 const shotDir = process.env.E2E_SHOT
@@ -101,6 +109,36 @@ try {
   const others = (await measure()).slice(1)
   check('没悬停的行按钮仍然隐藏', others.every((r) => r.actionsOpacity === 0))
 
+  // 带跳板机的分组：名字不被挤掉；跳板机在最右，悬停时让给按钮
+  const groupInfo = () => page.evaluate((groupName) => {
+    const header = [...document.querySelectorAll('.group-header')].find((h) => h.querySelector('.group-name')?.textContent === groupName)
+    if (!header) return null
+    const nameEl = header.querySelector('.group-name')
+    const badge = header.querySelector('.jump-host-badge')
+    const actions = header.querySelector('.group-header-right')
+    const hb = header.getBoundingClientRect()
+    const bb = badge.getBoundingClientRect()
+    return {
+      nameTruncated: nameEl.scrollWidth > nameEl.clientWidth,
+      badgeOpacity: Number(getComputedStyle(badge).opacity),
+      badgeRightGap: Math.round(hb.right - bb.right),
+      nameRight: Math.round(nameEl.getBoundingClientRect().right),
+      badgeLeft: Math.round(bb.left),
+      actionsPointer: getComputedStyle(actions).pointerEvents,
+    }
+  }, JUMP_GROUP)
+  await page.mouse.move(600, 600)
+  await sleep(300)
+  await shot('group-idle')
+  const gi = await groupInfo()
+  check('带跳板机的分组：名字完整显示', !!gi && !gi.nameTruncated, JSON.stringify(gi))
+  check('跳板机在分组头最右、平时看得见', !!gi && gi.badgeOpacity === 1 && gi.badgeRightGap <= 8 && gi.badgeLeft > gi.nameRight, JSON.stringify(gi))
+  await page.locator('.group-header', { hasText: JUMP_GROUP }).first().hover({ force: true })
+  await sleep(400)
+  await shot('group-hover')
+  const gh = await groupInfo()
+  check('悬停分组头：跳板机让位，按钮可点', !!gh && gh.badgeOpacity === 0 && gh.actionsPointer === 'auto', JSON.stringify(gh))
+
   const hostWidth = () => page.evaluate(() => document.querySelector('.sidebar--hosts').getBoundingClientRect().width)
   const before = await hostWidth()
   const handle = page.locator('.sidebar--hosts .sidebar-resize-handle')
@@ -133,6 +171,10 @@ try {
     await sleep(150)
     const narrow = await hostWidth()
     check('往左拖到头停在 240', Math.abs(narrow - 240) < 2, String(narrow))
+    await page.mouse.move(700, 700)
+    await sleep(300)
+    const gn = await groupInfo()
+    check('最窄时带跳板机的分组名仍完整（跳板机先缩）', !!gn && !gn.nameTruncated, JSON.stringify(gn))
   }
 } finally {
   await app.close().catch(() => {})
