@@ -86,6 +86,21 @@ export class OrgLedger {
     return undefined
   }
 
+  /** 每份花名册在树里的位置，按层数从上到下 */
+  entries(): Array<{ roster: SubAgentRoster; owner?: string; depth: number; reportsTo?: string }> {
+    return [...this.nodes.entries()]
+      .map(([roster, node]) => ({ roster, owner: node.owner, depth: node.depth, reportsTo: this.reportsTo(roster) }))
+      .sort((a, b) => a.depth - b.depth)
+  }
+
+  /** 这份花名册的主人向谁汇报：他自己所在花名册的主人；秘书直接派的写 undefined（向秘书） */
+  reportsTo(roster: SubAgentRoster): string | undefined {
+    const node = this.nodes.get(roster)
+    if (!node?.owner) return undefined
+    const holder = this.rosterOf(node.owner)
+    return holder ? this.nodes.get(holder)?.owner : undefined
+  }
+
   rosters(): SubAgentRoster[] {
     return [...this.nodes.keys()]
   }

@@ -235,6 +235,7 @@ export class SubAgentRoster {
   private unreadNews: string[] = []
   private readonly knockSettleMs: number
   private readonly abortHooks: Array<() => void> = []
+  private readonly releaseHooks: Array<() => void> = []
   /** 项目组织的账本；没有组长时没有 */
   private ledger?: OrgLedger
   /** 这份花名册是谁的：组长的名字，秘书的没有 */
@@ -265,12 +266,35 @@ export class SubAgentRoster {
 
   /** 这份花名册用完了：从账本里退出（组长这一轮收工时） */
   release(): void {
+    for (const hook of this.releaseHooks.splice(0)) {
+      try { hook() } catch { /* 收尾的记录失败不挡着退出 */ }
+    }
     this.ledger?.unregister(this)
+  }
+
+  /** 退出账本之前做一次收尾（比如把最后的样子记进组织看板）；只在下一次 release 时执行 */
+  onRelease(hook: () => void): void {
+    this.releaseHooks.push(hook)
   }
 
   /** 这份花名册里还能不能再指定组长：层数到顶就不行 */
   canAppointLeads(): boolean {
     return this.depth < MAX_ORG_DEPTH
+  }
+
+  /** 这份花名册的主人：秘书的是 undefined，组长的是他的名字 */
+  get owner(): string | undefined {
+    return this.ownerName
+  }
+
+  /** 组织里秘书的花名册；没有组织时是 undefined */
+  orgRoot(): SubAgentRoster | undefined {
+    return this.ledger?.root()
+  }
+
+  /** 组织里每一份花名册和它的位置，从上到下；没有组织时是空的 */
+  orgEntries(): Array<{ roster: SubAgentRoster; owner?: string; depth: number; reportsTo?: string }> {
+    return this.ledger?.entries() ?? []
   }
 
   /** 秘书下面第几层（秘书自己是 0） */

@@ -25,6 +25,7 @@ import {
 } from '../expert-team'
 import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
 import { createTeamTexts, expertOpening, formatTranscript, renamedList } from './expert-team-text'
+import { orgOpeningNote, renderBoard, type BoardSection } from './organization-text'
 import { inferConversationKind } from '@shared/types'
 import { conversationPolicy } from '../../conversation/policy'
 import { getConfigService } from '../../config.service'
@@ -93,6 +94,7 @@ export class SubAgentWorkspace {
   private readonly results = new Map<string, { chars: number; file?: string }>()
   /** 总览上次写进去的内容，没变就不重写 */
   private lastOverview?: string
+  private lastBoard?: string
   /** 每个群聊文件写到第几条 */
   private readonly transcriptCounts = new Map<string, number>()
   /** 团名对应的群聊文件名 */
@@ -155,20 +157,51 @@ export class SubAgentWorkspace {
       t('dispatch.result_archived', { total: originalLength, path: file }))
   }
 
+  /** 一人一行：名字、状态、结果字数、结果文件、任务 */
+  rowsOf(children: ChildSnapshot[]): string[] {
+    return children.map(c => {
+      const kept = this.results.get(c.name)
+      const who = [c.role, c.team && `「${c.team}」`].filter(Boolean).join(' ')
+      const task = who ? `[${who}] ${c.description}` : c.description
+      return [c.name, statusCell(c), kept ? String(kept.chars) : '-', kept?.file ?? '-', task].join(' | ')
+    })
+  }
+
   writeOverview(children: ChildSnapshot[]): void {
     const lines = [
       t('dispatch.overview_title', { total: children.length, counts: formatCounts(children) }),
       t('dispatch.overview_header'),
-      ...children.map(c => {
-        const kept = this.results.get(c.name)
-        const who = [c.role, c.team && `「${c.team}」`].filter(Boolean).join(' ')
-        const task = who ? `[${who}] ${c.description}` : c.description
-        return [c.name, statusCell(c), kept ? String(kept.chars) : '-', kept?.file ?? '-', task].join(' | ')
-      }),
+      ...this.rowsOf(children),
     ]
     const content = lines.join('\n') + '\n'
     if (content === this.lastOverview) return
     if (this.write('overview.md', content)) this.lastOverview = content
+  }
+
+  /** 看板上每份花名册的最后样子：组长收工、花名册退出账本以后，他那一段还在 */
+  private readonly boardSections = new Map<string, BoardSection & { live: number; total: number }>()
+
+  rememberBoardSection(section: BoardSection & { live: number; total: number }): void {
+    this.boardSections.set(section.owner ?? '', section)
+  }
+
+  /** 组织看板放在秘书这一轮的落盘目录下的 org/ 里；内容没变就不重写 */
+  writeBoardFromMemory(): void {
+    const sections = [...this.boardSections.values()].sort((a, b) => a.depth - b.depth)
+    const live = sections.reduce((n, s) => n + s.live, 0)
+    const total = sections.reduce((n, s) => n + s.total, 0)
+    const content = renderBoard(sections, { live, total })
+    if (content === this.lastBoard) return
+    if (this.write(path.join(ORG_DIR, 'board.md'), content)) this.lastBoard = content
+  }
+
+  get boardPath(): string {
+    return path.join(this.dir, ORG_DIR, 'board.md')
+  }
+
+  /** 组长名下的人的结果文件放在这里 */
+  leadDirectory(lead: string): string {
+    return path.join(this.dir, ORG_DIR, tidyDirName(lead))
   }
 
   teamTranscriptPath(team: ExpertTeam): string {
@@ -197,7 +230,7 @@ export class SubAgentWorkspace {
   private write(fileName: string, content: string): string | undefined {
     const filePath = path.join(this.dir, fileName)
     try {
-      fs.mkdirSync(this.dir, { recursive: true })
+      fs.mkdirSync(path.dirname(filePath), { recursive: true })
       fs.writeFileSync(filePath, content, 'utf-8')
       return filePath
     } catch (err) {
@@ -207,15 +240,68 @@ export class SubAgentWorkspace {
   }
 }
 
+const ORG_DIR = 'org'
+
+/** 组长的名字做目录名：不能进路径的字符换成 - */
+function tidyDirName(name: string): string {
+  return name.replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'lead'
+}
+
 const workspaces = new WeakMap<SubAgentRoster, SubAgentWorkspace>()
 
 export function workspaceOf(roster: SubAgentRoster): SubAgentWorkspace {
   let workspace = workspaces.get(roster)
   if (!workspace) {
-    workspace = new SubAgentWorkspace()
+    // 组织里组长名下的人，结果和总览放在秘书那一轮目录下 org/<组长名>/，整个组织共用一处
+    const root = roster.orgRoot()
+    workspace = root && root !== roster && roster.owner
+      ? new SubAgentWorkspace(workspaceOf(root).leadDirectory(roster.owner))
+      : new SubAgentWorkspace()
     workspaces.set(roster, workspace)
   }
   return workspace
+}
+
+/**
+ * 组织看板：全树每份花名册一段，由系统按账本重写。没有组织时什么也不做。
+ * 组长收工后他的花名册退出账本，看板上他那一段保留最后的样子。
+ */
+export function refreshOrgBoard(roster: SubAgentRoster): void {
+  const root = roster.orgRoot()
+  if (!root) return
+  const rootWorkspace = workspaceOf(root)
+  for (const entry of roster.orgEntries()) {
+    const r = entry.roster
+    rootWorkspace.rememberBoardSection({
+      owner: entry.owner,
+      depth: entry.depth,
+      reportsTo: entry.reportsTo,
+      rows: workspaceOf(r).rowsOf(r.list()),
+      teams: r.listTeams().map(team => ({ name: team.name, review: team.reviewState(), reviewers: team.reviewerNames() })),
+      live: r.liveCount(),
+      total: r.list().length,
+    })
+    if (!watchedForRelease.has(r) && r !== root) {
+      watchedForRelease.add(r)
+      r.onRelease(() => refreshOrgBoard(r))
+    }
+  }
+  rootWorkspace.writeBoardFromMemory()
+}
+
+const watchedForRelease = new WeakSet<SubAgentRoster>()
+
+/** 组织里每个人开场多出的一段；没有组织时是空串 */
+function orgNoteFor(roster: SubAgentRoster, child: ChildSnapshot): string {
+  const root = roster.orgRoot()
+  if (!root) return ''
+  const note = orgOpeningNote({
+    boardPath: workspaceOf(root).boardPath,
+    resultDir: workspaceOf(roster).directory,
+    reportsTo: roster.owner,
+    ...(child.lead ? { leadDir: workspaceOf(root).leadDirectory(child.name) } : {}),
+  })
+  return `\n\n${note}`
 }
 
 /** 这场伙计共用的远程通道：花名册整场被打断时一起关掉 */
@@ -581,7 +667,10 @@ export function spawnDeps(
   if (!roster) return { error: 'dispatch_agents 需要主人花名册（内部错误）' }
   const workspace = workspaceOf(roster)
   workspace.attachChats(executor.getExpertTeamChats?.(), executor.getRootSessionId?.() ?? executor.getSessionId?.())
-  const overviewProgress = new ProgressThrottle(() => workspace.writeOverview(roster.list()), OVERVIEW_INTERVAL_MS)
+  const overviewProgress = new ProgressThrottle(() => {
+    workspace.writeOverview(roster.list())
+    refreshOrgBoard(roster)
+  }, OVERVIEW_INTERVAL_MS)
   const progress = new ProgressThrottle(() => {
     const names = ownedNames ?? new Set(roster.list().map(c => c.name))
     for (const team of roster.listTeams()) workspace.writeTeamChat(team)
@@ -600,13 +689,14 @@ export function spawnDeps(
     knock: (message) => {
       progress.flush()
       workspace.writeOverview(roster.list())
+      refreshOrgBoard(roster)
       for (const team of roster.listTeams()) {
         workspace.writeTeamChat(team)
         workspace.writeTeamTranscript(team)
       }
       executor.knockParent?.(message)
     },
-    openingFor: expertOpening,
+    openingFor: (child, team) => expertOpening(child, team) + orgNoteFor(roster, child),
     restoreDormant: executor.restoreDormantChildren,
     resumeNotice: resumeNoticeFor,
     teamTexts: createTeamTexts(team => workspace.teamTranscriptPath(team)),
@@ -899,6 +989,7 @@ export async function dispatchSubAgents(
   const names = roster.spawn(remote.tasks, deps, team ? { team } : undefined)
   const workspace = workspaceOf(roster)
   workspace.writeOverview(roster.list())
+  refreshOrgBoard(roster)
   const created = team ? roster.teamOf(names[0]) : undefined
   if (created) {
     workspace.writeTeamChat(created)

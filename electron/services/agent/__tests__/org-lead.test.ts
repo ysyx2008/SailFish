@@ -18,6 +18,7 @@ import { MAX_ORG_DEPTH, type LeadSeat } from '../org-ledger'
 import { filterSubAgentTools, getAgentTools } from '../tools'
 import { parseDispatchTasks, denyIfNotForThisAgent } from '../tools/sub-agent'
 import { createTeamTexts } from '../tools/expert-team-text'
+import { orgOpeningNote, renderBoard } from '../tools/organization-text'
 import type { ToolExecutorConfig } from '../tools/types'
 import type { AgentContext } from '../types'
 import type { AiMessage } from '../../ai.service'
@@ -475,5 +476,34 @@ describe('验收', () => {
     expect(all).toHaveProperty('error')
     const bad = parseDispatchTasks({ team: 't', tasks: [{ description: 'a', prompt: 'p', role: '甲', reviewer: 'yes' }, { description: 'b', prompt: 'p', role: '乙' }] })
     expect(bad).toHaveProperty('error')
+  })
+})
+
+describe('组织看板与开场', () => {
+  it('看板：每份花名册一段，写明层数、向谁汇报、团的验收状态', () => {
+    const board = renderBoard([
+      { depth: 0, rows: ['研发组 | 在干 | - | - | [研发组长] 带研发组'], teams: [] },
+      { owner: '研发组', depth: 1, rows: ['前端 | 已完成 | 10 | /tmp/前端.md | [前端专家「项目团」] 做界面'], teams: [{ name: '项目团', review: 'reject', reviewers: ['后端'] }] },
+      { owner: '子组', depth: 2, reportsTo: '研发组', rows: [], teams: [{ name: '小团', review: 'none', reviewers: [] }] },
+    ], { live: 1, total: 3 })
+    expect(board).toContain('合计：1 人没做完，共 3 人。')
+    expect(board).toContain('## 秘书名下')
+    expect(board).toContain('## 研发组 名下（第 1 层，向 秘书 汇报）')
+    expect(board).toContain('## 子组 名下（第 2 层，向 研发组 汇报）')
+    expect(board).toContain('团「项目团」，验收：最近一次结论「打回」（后端）')
+    expect(board).toContain('团「小团」，没有验收人')
+    expect(board).toContain('前端 | 已完成 | 10 | /tmp/前端.md')
+  })
+
+  it('开场：看板位置、结果目录、向谁汇报；组长再多一句他名下的目录', () => {
+    const member = orgOpeningNote({ boardPath: '/b/board.md', resultDir: '/b/org/组长', reportsTo: '组长' })
+    expect(member).toContain('/b/board.md')
+    expect(member).toContain('/b/org/组长')
+    expect(member).toContain('向 组长 汇报')
+    expect(member).not.toContain('你是组长')
+    const lead = orgOpeningNote({ boardPath: '/b/board.md', resultDir: '/b', leadDir: '/b/org/甲' })
+    expect(lead).toContain('向 秘书 汇报')
+    expect(lead).toContain('你是组长')
+    expect(lead).toContain('/b/org/甲')
   })
 })

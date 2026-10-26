@@ -132,6 +132,32 @@ scenario('秘书指定组长，组长在自己名下派人，做完一层层交�
       const tools = toolNamesOf(askedTools('甲') ?? { body: {} })
       return tools.length > 0 && !tools.includes('dispatch_agents')
     })())
+    // 共享工作区：看板和各人的结果文件都在秘书这一轮目录的 org/ 下
+    const found = (name) => {
+      const hits = []
+      const walk = (d) => {
+        for (const entry of fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }) : []) {
+          const full = path.join(d, entry.name)
+          if (entry.isDirectory()) walk(full)
+          else if (entry.name === name) hits.push(full)
+        }
+      }
+      walk(path.join(env.dataDir, 'agent-workspace'))
+      return hits
+    }
+    const boards = found('board.md')
+    check('组织看板写出来了', boards.length === 1, boards.join())
+    const board = boards[0] ? fs.readFileSync(boards[0], 'utf8') : ''
+    check('看板上有组长和他名下的人，状态是做完', ['研发组长', '甲', '乙'].every((n) => board.includes(n)) && !board.includes('没做完的人 -'), board.slice(0, 600))
+    check('看板合计写着 0 人没做完', board.includes('0 人没做完'), board.slice(0, 200))
+    const jia = found('甲.md')
+    check('组长名下的人的结果文件放在 org/<组长>/ 下', jia.length === 1 && jia[0].includes(`${path.sep}org${path.sep}`), jia.join())
+    const secretaryOwn = found('研发组长.md')
+    check('组长自己的结果放在秘书这一层，不在 org/ 里', secretaryOwn.length === 1 && !secretaryOwn[0].includes(`${path.sep}org${path.sep}`), secretaryOwn.join())
+    const opening = (who) => JSON.stringify(llm.requests.find((r) => r.hasTools && r.who === who)?.body.messages ?? [])
+    check('组长、手下的开场里有看板位置，组长另有他名下的目录', opening('研发组长').includes('board.md') && opening('甲').includes('board.md') && opening('研发组长').includes('你是组长'),
+      opening('研发组长').slice(0, 300))
+    check('秘书的开场不多这一段', !opening('main').includes('项目组织里'))
     const warnings = logWarnings(env.dataDir)
     check('日志里没有相关警告', warnings.length === 0, warnings.slice(0, 3).join('\n'))
   } finally { await llm.close() }
