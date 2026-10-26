@@ -3096,6 +3096,10 @@ const electronAPI = {
     joinPath: (...parts: string[]) =>
       ipcRenderer.invoke('localFs:joinPath', ...parts) as Promise<string>,
 
+    // 远程条目的名字落到所选目录里；会写到外面时返回 null
+    destinationInside: (localDir: string, entryName: string) =>
+      ipcRenderer.invoke('localFs:destinationInside', localDir, entryName) as Promise<string | null>,
+
     // 获取路径分隔符
     getSeparator: () =>
       ipcRenderer.invoke('localFs:getSeparator') as Promise<string>,

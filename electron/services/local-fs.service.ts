@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 import { EventEmitter } from 'events'
+import { localDestinationInside } from '@shared/utils/local-destination'
 import { createLogger } from '../utils/logger'
 
 const log = createLogger('LocalFS')
@@ -230,6 +231,13 @@ export class LocalFsService extends EventEmitter {
    */
   joinPath(...parts: string[]): string {
     return path.join(...parts)
+  }
+
+  /**
+   * 远程条目的名字落到所选目录里。会写到目录外面时返回 null。
+   */
+  destinationInside(localDir: string, entryName: string): string | null {
+    return localDestinationInside(localDir, entryName)
   }
 
   /**

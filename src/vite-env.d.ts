@@ -1808,6 +1808,7 @@ interface Window {
       getHomeDir: () => Promise<string>
       getParentDir: (path: string) => Promise<string>
       joinPath: (...paths: string[]) => Promise<string>
+      destinationInside: (localDir: string, entryName: string) => Promise<string | null>
       list: (path: string) => Promise<{
         success: boolean
         data?: Array<{

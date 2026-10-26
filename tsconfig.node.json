@@ -24,6 +24,7 @@
   },
   "include": [
     "vite.config.ts",
+    "scripts/page-no-node.ts",
     "electron/**/*.ts",
     "shared/**/*.ts",
     "packages/shared-types/src/**/*.ts",

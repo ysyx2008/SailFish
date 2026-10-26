@@ -6090,6 +6090,12 @@ ipcMain.handle('localFs:joinPath', async (_event, ...parts: string[]) => {
   return localFsService.joinPath(...parts)
 })
 
+// 远程条目的名字落到所选目录里；会写到外面时返回 null
+ipcMain.handle('localFs:destinationInside', async (_event, localDir: string, entryName: string) => {
+  if (typeof localDir !== 'string' || typeof entryName !== 'string') return null
+  return localFsService.destinationInside(localDir, entryName)
+})
+
 // 获取路径分隔符
 ipcMain.handle('localFs:getSeparator', async () => {
   return localFsService.getSeparator()
