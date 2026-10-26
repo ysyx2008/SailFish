@@ -8,11 +8,16 @@
  * 1. 秘书指定一位组长，组长在自己名下派两位伙计，全部做完后一层层交差
  * 2. 组织最多三层：第三层的组长不能再指定组长，组长也不能给手下指定远程主机
  * 3. 组长名下的专家团里有人点名秘书：话直达秘书，秘书点名回应，记进那个群、送到那位专家
+ * 4. 进程被 kill -9：新进程接着同一场会话，秘书再交代组长，组长再把他名下的人叫起来
  */
+import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { callTool, say, startMockLlm } from './mock-llm.mjs'
-import { makeChecker, runPlain, sandbox } from './harness.mjs'
+import { ROOT, makeChecker, runPlain, sandbox, sleep, startPlain, until } from './harness.mjs'
+
+const RUNNER = path.join(ROOT, 'scripts/cli-e2e/resume-runner.cjs')
+const killStrays = (marker) => { try { execSync(`pkill -f '${marker}'`, { stdio: 'ignore' }) } catch { /* 没有残留 */ } }
 
 const { failures, check } = makeChecker()
 const tempDirs = []
@@ -304,6 +309,104 @@ scenario('下面一层的团里点名秘书，秘书点名回应', async () => {
     const warnings = logWarnings(env.dataDir)
     check('日志里没有相关警告', warnings.length === 0, warnings.slice(0, 3).join('\n'))
   } finally { await llm.close() }
+})
+
+// ───────────────────────────────────────────────────────────── 4
+scenario('进程被 kill -9：新进程接着同一场会话，秘书叫醒组长，组长叫醒他名下的人', async () => {
+  const names = ['研发组', '小甲', '小乙']
+  const env = sandbox(0, 'sft-org-4', tempDirs)
+  const makeLlm = (marker) => {
+    const seen = { jiaExec: false, yiDone: false }
+    return startMockLlm({
+      onUser: (text, _n, entry) => {
+        const who = whoAsks(entry, names)
+        entry.who = who
+        if (who === 'main') {
+          if (text.includes('让研发组')) return callTool('followup_agent', { name: '研发组', message: '接着做完' })
+          if (text.includes('[专家') || text.includes('[伙计')) return say('秘书收到：组织做完了')
+          return callTool('dispatch_agents', {
+            tasks: [{ name: '研发组', role: '研发组长', lead: true, description: '带研发组做事', prompt: '我是研发组，带小甲、小乙做事' }],
+          })
+        }
+        if (who === '研发组') {
+          if (text.includes('我是研发组，')) {
+            return callTool('dispatch_agents', {
+              tasks: [
+                { name: '小甲', description: '写文件再慢慢跑', prompt: '我是小甲，写一份文件，然后跑一条很慢的命令' },
+                { name: '小乙', description: '写一份文件', prompt: '我是小乙，写一份文件就行' },
+              ],
+            })
+          }
+          if (text.includes('[上次的情形]')) return callTool('followup_agent', { name: '小甲', message: '接着做完' })
+          return say('组长汇总：都做完了')
+        }
+        if (who === '小甲') {
+          if (text.includes('我是小甲，')) return callTool('write_text_file', { path: path.join(env.cwd, 'jia.txt'), content: 'a', mode: 'create' })
+          return say('小甲：接着做完了')
+        }
+        if (who === '小乙') return callTool('write_text_file', { path: path.join(env.cwd, 'yi.txt'), content: 'b', mode: 'create' })
+        return say('好')
+      },
+      afterTool: (last, entry) => {
+        const who = whoAsks(entry, names)
+        entry.who = who
+        const content = typeof last.content === 'string' ? last.content : ''
+        if (who === '小甲') {
+          if (entry.body.messages.filter((m) => m.role === 'tool').length === 1) { seen.jiaExec = true; return callTool('exec', { command: `sleep ${marker}` }) }
+          return say('小甲：做完了')
+        }
+        if (who === '小乙') { seen.yiDone = true; return say('小乙：做完了') }
+        if (who === '研发组' && content.includes('已向')) return say('组长：已交代，等他')
+        if (who === '研发组' || who === 'main') return say('已派出，等他们')
+        return say('好')
+      },
+    }).then((server) => Object.assign(server, { seen }))
+  }
+
+  const llm1 = await makeLlm(64)
+  env.env.SFT_API_URL = `http://127.0.0.1:${llm1.port}/v1`
+  const first = startPlain(['组织研发组做事', '--free'], env)
+  try {
+    check('小甲开了工、小乙做完了', await until(() => llm1.seen.jiaExec && llm1.seen.yiDone, 60_000), JSON.stringify(llm1.seen))
+    await sleep(1200)
+    first.child.kill('SIGKILL')
+    const exit = await first.done
+    check('进程是被强杀的', exit.signal === 'SIGKILL', JSON.stringify({ code: exit.code, signal: exit.signal }))
+  } finally {
+    await llm1.close()
+    killStrays('sleep 64')
+  }
+
+  const before = readOrg(env.dataDir)
+  check('盘上只有一场主会话，组织里三个人都记下了', before.sessions.length === 1 && ['研发组', '小甲', '小乙'].every((n) => before.children[n]),
+    `${before.sessions.length} ${Object.keys(before.children).join()}`)
+  check('小甲、小乙记着是研发组派的，研发组是组长', before.children['小甲']?.state.parent === '研发组' && before.children['小乙']?.state.parent === '研发组' && before.children['研发组']?.state.lead === true,
+    JSON.stringify(Object.values(before.children).map((c) => [c.state.name, c.state.parent, c.state.lead])))
+  check('小甲盘上还写着「在干」', before.children['小甲']?.state.status === 'running', JSON.stringify(before.children['小甲']?.state))
+  const sessionId = path.basename(before.sessions[0])
+
+  const llm2 = await makeLlm(65)
+  try {
+    const resumed = await runPlain([], {
+      ...env,
+      env: { ...env.env, SFT_API_URL: `http://127.0.0.1:${llm2.port}/v1`, RESUME_SESSION: sessionId, RESUME_LINE: '让研发组接着做完' },
+    }, 90_000, RUNNER)
+    check('新进程说完这一轮', resumed.out.includes('RESUME_DONE'), `${resumed.out.slice(-300)} ${resumed.err.slice(-600)}`)
+    const leadBack = llm2.requests.find((r) => r.who === '研发组' && r.lastText.includes('[上次的情形]'))
+    check('组长被叫醒时带着盘上的对话，并被告知异常退出', !!leadBack && leadBack.lastText.includes('异常退出') && leadBack.lastText.includes('接着做完'), leadBack?.lastText)
+    const jiaBack = llm2.requests.find((r) => r.who === '小甲' && r.lastText.includes('[上次的情形]'))
+    check('组长再把他名下的小甲叫醒，小甲带着盘上的对话', !!jiaBack && jiaBack.lastText.includes('异常退出') && jiaBack.lastText.includes('接着做完'), jiaBack?.lastText)
+    const after = readOrg(env.dataDir)
+    check('全部做完', Object.values(after.children).every((c) => c.state.status === 'completed'),
+      Object.values(after.children).map((c) => `${c.state.name}:${c.state.status}`).join(' '))
+    check('没有另起一个日期目录把记录分成两份', after.sessions.length === 1)
+    check('小甲仍记着是研发组派的', after.children['小甲']?.state.parent === '研发组', JSON.stringify(after.children['小甲']?.state))
+    const warnings = logWarnings(env.dataDir)
+    check('日志里没有相关警告', warnings.length === 0, warnings.slice(0, 3).join('\n'))
+  } finally {
+    await llm2.close()
+    killStrays('sleep 65')
+  }
 })
 
 // ─────────────────────────────────────────────────────────────

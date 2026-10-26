@@ -243,7 +243,8 @@ export class SubAgentRoster {
   /** 这份花名册在第几层，秘书的是 0 */
   private depth = 0
   /** 盘上属于别的花名册的人，只占着名字 */
-  private foreignNames = new Set<string>()
+  /** 别的组长名下的人（盘上记着、不在这份名册里）：名字对应他们的组长 */
+  private foreignNames = new Map<string, string | undefined>()
   /** 最近一次派人、再交代时用的那份；别的花名册替他再交代时用 */
   private lastDeps?: RunDeps
 
@@ -488,17 +489,25 @@ export class SubAgentRoster {
     this.dormantRestored = true
     for (const child of deps.restoreDormant?.() ?? []) {
       if (child.parent !== this.ownerName) {
-        this.foreignNames.add(child.name)
+        this.foreignNames.set(child.name, child.parent)
         continue
       }
       if (!this.children.has(child.name)) this.dormant.set(child.name, child)
     }
   }
 
+  /** 名册里没有这个名字：盘上记着他在别的组长名下时，说明他归哪位组长 */
+  private unknownError(name: string): string {
+    const lead = this.foreignNames.get(name)
+    return lead
+      ? `${name} 是 ${lead} 名下的人，${lead} 现在没在干；再交代 ${lead}，他会从盘上叫起自己名下的人`
+      : `没有叫 ${name} 的伙计`
+  }
+
   /** 全组织已经占着的名字：存盘目录按名字放，重名会把别人的对话盖掉 */
   private takenNames(): Set<string> {
     return new Set([
-      ...this.children.keys(), ...this.dormant.keys(), ...this.foreignNames,
+      ...this.children.keys(), ...this.dormant.keys(), ...this.foreignNames.keys(),
       ...(this.ledger?.usedNames() ?? []),
     ])
   }
@@ -680,7 +689,7 @@ export class SubAgentRoster {
       // 只有秘书能越过组长对别的组长名下的人说话；组长只管自己这一枝
       const owner = this.depth === 0 ? this.ledger?.rosterOf(name) : undefined
       if (owner && owner !== this && owner.lastDeps) return owner.followup(name, message, owner.lastDeps, SECRETARY)
-      return { ok: false, error: `没有叫 ${name} 的伙计` }
+      return { ok: false, error: this.unknownError(name) }
     }
     if (!slot.handle) return { ok: false, error: `${name} 还没开工` }
     if (deps.isParentAborted()) return { ok: false, error: '已中止' }
@@ -812,7 +821,7 @@ export class SubAgentRoster {
       if (this.dormant.has(name)) return { ok: false, error: `${name} 已经不在跑了` }
       const owner = this.depth === 0 ? this.ledger?.rosterOf(name) : undefined
       if (owner && owner !== this) return owner.interrupt(name)
-      return { ok: false, error: `没有叫 ${name} 的伙计` }
+      return { ok: false, error: this.unknownError(name) }
     }
     if (!LIVE.has(slot.status)) return { ok: false, error: `${name} 已经不在跑了` }
     if (slot.status === 'pending' || !slot.handle) {

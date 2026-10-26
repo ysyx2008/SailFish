@@ -507,3 +507,23 @@ describe('组织看板与开场', () => {
     expect(lead).toContain('/b/org/甲')
   })
 })
+
+describe('组织的存盘', () => {
+  const state = (name: string, parent?: string, lead = false) => ({
+    name, description: name, prompt: 'p', status: 'completed' as const, steps: [], ...(parent ? { parent } : {}), ...(lead ? { lead: true, role: '组长甲' } : {}),
+  })
+
+  it('秘书只从盘上取自己直接派的人；组长名下的记作别人的，点名时说明归谁', () => {
+    const root = new SubAgentRoster({ knockSettleMs: 0 })
+    const restoreDormant = () => [state('研发组', undefined, true), state('前端', '研发组')] as any
+    const d = { ...deps(() => worker()), restoreDormant }
+    const reply = root.followup('前端', 'hi', d)
+    expect(reply.ok).toBe(false)
+    expect(reply.error).toContain('研发组')
+    expect(root.followup('不存在', 'hi', d).error).toContain('没有叫')
+    // 名字全组织不重复：新派的人不能占用盘上组长名下的名字
+    root.spawn([{ description: '前端', prompt: 'p' }], d)
+    expect(root.childNames()).toEqual(['前端-2'])
+    root.abortAll()
+  })
+})
