@@ -857,6 +857,8 @@ export default {
       },
       earlierOmitted: '前面还有 {count} 条没放进来，全文在 {path}',
       earlierOmittedNoPath: '前面还有 {count} 条没放进来',
+      verdictPass: '验收：通过',
+      verdictReject: '验收：打回',
       waitingLeader: '等组长',
       leader: '组长',
       title: '专家团「{team}」',

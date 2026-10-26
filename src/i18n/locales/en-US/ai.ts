@@ -856,6 +856,8 @@ export default {
       },
       earlierOmitted: '{count} earlier messages not shown; full chat in {path}',
       earlierOmittedNoPath: '{count} earlier messages not shown',
+      verdictPass: 'Review: pass',
+      verdictReject: 'Review: reject',
       waitingLeader: 'waiting for lead',
       leader: 'Lead',
       title: 'Expert team “{team}”',

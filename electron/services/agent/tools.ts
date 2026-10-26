@@ -1307,7 +1307,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
                 properties: {
                   name: { type: 'string', description: SUB_AGENT_NAME_DESCRIPTION },
                   role: { type: 'string', description: `专家角色，几个字，最长 ${MAX_ROLE_CHARS} 个字。带了就是专家，界面上显示为角色标签；专家的名字和角色都不能用「${TEAM_LEADER}」。带 team 时 tasks 里每一项都要带，主持、协调这类位置也一样` },
-                  lead: { type: 'boolean', description: `指定为组长，只有带 role 的专家能当。组长自己也有派人、再交代、等待、打断这几样，只能用在他名下的人身上；他名下没做完的人不会让他收工。组织最多 ${MAX_ORG_DEPTH} 层，已经在第 ${MAX_ORG_DEPTH} 层的组长不能再指定组长。没做完的人全组织合计仍受上面那个数限制` },
+                  lead: { type: 'boolean', description: `指定为组长，只有带 role 的专家能当。组长自己也有派人、再交代、等待、打断这几样，只能用在他名下的人身上；他名下没做完的人不会让他收工。组织最多 ${MAX_ORG_DEPTH} 层，已经在第 ${MAX_ORG_DEPTH} 层的组长不能再指定组长。没做完的人全组织合计仍受上面那个数限制。组长本身是一个会调用模型的智能体，他名下每个人也各自调用模型` },
                   reviewer: { type: 'boolean', description: '当验收人，只在带 team 时有意义。验收人可以在群里对交上来的东西给「通过」或「打回」的结论，结论记在群里、写进团停下时交给组长的那段话；它只是意见，不拦着团收工。团里不能人人都是验收人' },
                   description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
                   prompt: { type: 'string', description: '详细任务指令' },

@@ -300,6 +300,9 @@ onMounted(() => { void openChat(true) })
                 <span class="etc-time">{{ timeOf(m.at) }}</span>
               </div>
               <div class="etc-bubble" :title="follow ? timeOf(m.at) : undefined">
+                <p v-if="m.verdict" class="etc-verdict" :class="`is-${m.verdict}`">
+                  {{ t(m.verdict === 'pass' ? 'ai.expertTeam.verdictPass' : 'ai.expertTeam.verdictReject') }}
+                </p>
                 <p v-if="m.to.length" class="etc-mentions">
                   <span v-for="mention in mentions(m)" :key="mention.name" class="etc-mention" :title="mention.title">{{ mention.text }}</span>
                 </p>
@@ -675,6 +678,26 @@ onMounted(() => { void openChat(true) })
   border-radius: 12px 4px 12px 12px;
   border-color: rgba(var(--accent-rgb, 137, 180, 250), 0.35);
   background: rgba(var(--accent-rgb, 137, 180, 250), 0.14);
+}
+
+.etc-verdict {
+  margin: 0;
+  align-self: flex-start;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.etc-verdict.is-pass {
+  color: var(--success-color, #4caf50);
+  background: rgba(76, 175, 80, 0.14);
+}
+
+.etc-verdict.is-reject {
+  color: var(--warning-color, #e0a030);
+  background: rgba(224, 160, 48, 0.16);
 }
 
 .etc-mentions {

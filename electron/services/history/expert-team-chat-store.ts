@@ -100,7 +100,7 @@ export class ExpertTeamChatStore {
 type PageBody = Omit<ExpertTeamChatPage, 'path'>
 
 function toLine(m: ExpertTeamMessageView): ExpertTeamMessageView {
-  return { seq: m.seq, from: m.from, to: [...m.to], text: m.text, at: m.at }
+  return { seq: m.seq, from: m.from, to: [...m.to], text: m.text, at: m.at, ...(m.verdict ? { verdict: m.verdict } : {}) }
 }
 
 function clampOffset(value: number, size: number): number {
@@ -120,6 +120,7 @@ function parseLine(bytes: Buffer): ExpertTeamMessageView | null {
     from: m.from,
     to: Array.isArray(m.to) ? m.to.filter((n): n is string => typeof n === 'string') : [],
     at: typeof m.at === 'number' ? m.at : 0,
+    ...(m.verdict === 'pass' || m.verdict === 'reject' ? { verdict: m.verdict } : {}),
   }
   if (m.text.length <= MESSAGE_MAX_CHARS) return { ...base, text: m.text }
   let cut = MESSAGE_MAX_CHARS

@@ -9,12 +9,14 @@
  * 2. 组织最多三层：第三层的组长不能再指定组长，组长也不能给手下指定远程主机
  * 3. 组长名下的专家团里有人点名秘书：话直达秘书，秘书点名回应，记进那个群、送到那位专家
  * 4. 进程被 kill -9：新进程接着同一场会话，秘书再交代组长，组长再把他名下的人叫起来
+ * 5. 团里有验收人：先打回、改完再通过，结论记进群聊，团停下时交给组长的话里带着最近一次结论
+ * 6. 终端里按 Ctrl+C：整个组织一起停下，不留还在干的人，也不留还在跑的命令
  */
 import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { callTool, say, startMockLlm } from './mock-llm.mjs'
-import { ROOT, makeChecker, runPlain, sandbox, sleep, startPlain, until } from './harness.mjs'
+import { ROOT, Terminal, makeChecker, runPlain, sandbox, sleep, startPlain, until } from './harness.mjs'
 
 const RUNNER = path.join(ROOT, 'scripts/cli-e2e/resume-runner.cjs')
 const killStrays = (marker) => { try { execSync(`pkill -f '${marker}'`, { stdio: 'ignore' }) } catch { /* 没有残留 */ } }
@@ -406,6 +408,146 @@ scenario('进程被 kill -9：新进程接着同一场会话，秘书叫醒组�
   } finally {
     await llm2.close()
     killStrays('sleep 65')
+  }
+})
+
+// ───────────────────────────────────────────────────────────── 5
+scenario('团里有验收人：先打回、改完再通过，结论带到组长手上', async () => {
+  const names = ['研发组', '前端', '评审']
+  const env = sandbox(0, 'sft-org-5', tempDirs)
+  const seen = { verdicts: [], leadText: '', reviewerOpening: '' }
+  const llm = await startMockLlm({
+    onUser: (text, _n, entry) => {
+      const who = whoAsks(entry, names)
+      entry.who = who
+      if (who === 'main') {
+        if (text.includes('[专家') || text.includes('[伙计')) return say('秘书收到：组织做完了')
+        return callTool('dispatch_agents', {
+          tasks: [{ name: '研发组', role: '研发组长', lead: true, description: '带研发组做事', prompt: '我是研发组，组一个前端加评审的团' }],
+        })
+      }
+      if (who === '研发组') {
+        if (text.includes('我是研发组，')) {
+          return callTool('dispatch_agents', {
+            team: '项目团',
+            tasks: [
+              { name: '前端', role: '前端专家', description: '写登录页', prompt: '我是前端，写登录页' },
+              { name: '评审', role: '评审专家', reviewer: true, description: '验收登录页', prompt: '我是评审，等前端交活后验收' },
+            ],
+          })
+        }
+        if (text.includes('验收')) seen.leadText = text
+        return say('组长汇总：验收通过，做完了')
+      }
+      if (who === '前端') {
+        if (text.includes('我是前端，')) return callTool('write_text_file', { path: path.join(env.cwd, 'login.txt'), content: 'v1', mode: 'create' })
+        if (text.includes('少了错误处理')) return callTool('team_say', { to: ['评审'], message: '已补上错误处理，请再验' })
+        return say('前端：好')
+      }
+      if (who === '评审') {
+        if (text.includes('我是评审，')) { seen.reviewerOpening = text; return say('评审：等前端交活') }
+        if (text.includes('请验收')) { seen.verdicts.push('reject'); return callTool('team_say', { to: ['前端'], message: '少了错误处理', verdict: 'reject' }) }
+        if (text.includes('已补上')) { seen.verdicts.push('pass'); return callTool('team_say', { to: ['前端'], message: '这版可以', verdict: 'pass' }) }
+        return say('评审：好')
+      }
+      return say('好')
+    },
+    afterTool: (last, entry) => {
+      const who = whoAsks(entry, names)
+      entry.who = who
+      if (who === '前端') {
+        const toolCount = entry.body.messages.filter((m) => m.role === 'tool').length
+        if (toolCount === 1) return callTool('team_say', { to: ['评审'], message: '登录页做好了，请验收' })
+        return say('前端：做完了')
+      }
+      if (who === '评审') return say('评审：已给结论')
+      if (who === '研发组' || who === 'main') return say('已派出，等他们')
+      return say('好')
+    },
+  })
+  env.env.SFT_API_URL = `http://127.0.0.1:${llm.port}/v1`
+  try {
+    const result = await runPlain(['组织研发组做事', '--free'], env, 120_000)
+    check('正常退出', result.code === 0, `exit ${result.code} ${result.err.slice(0, 300)}`)
+    check('评审先打回、再通过', seen.verdicts.join() === 'reject,pass', seen.verdicts.join())
+    check('评审的开场里写着他是验收人', seen.reviewerOpening.includes('验收人'), seen.reviewerOpening.slice(0, 300))
+    check('团停下时交给组长的话里带着最近一次结论「通过」', seen.leadText.includes('验收') && seen.leadText.includes('通过'), seen.leadText.slice(-400))
+    const chatRoot = path.join(env.dataDir, 'history', 'expert-teams')
+    const chatText = fs.existsSync(chatRoot)
+      ? fs.readdirSync(chatRoot, { recursive: true }).filter((f) => String(f).endsWith('.jsonl')).map((f) => fs.readFileSync(path.join(chatRoot, String(f)), 'utf8')).join('\n')
+      : ''
+    check('群聊记录里两次结论都在', chatText.includes('"verdict":"reject"') && chatText.includes('"verdict":"pass"'), chatText.slice(0, 400))
+    const board = (() => {
+      const hits = []
+      const walk = (d) => { for (const e of fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }) : []) { const f = path.join(d, e.name); if (e.isDirectory()) walk(f); else if (e.name === 'board.md') hits.push(f) } }
+      walk(path.join(env.dataDir, 'agent-workspace'))
+      return hits[0] ? fs.readFileSync(hits[0], 'utf8') : ''
+    })()
+    check('看板上团的验收状态是「通过」', board.includes('项目团') && board.includes('通过'), board.slice(0, 500))
+    const warnings = logWarnings(env.dataDir)
+    check('日志里没有相关警告', warnings.length === 0, warnings.slice(0, 3).join('\n'))
+  } finally { await llm.close() }
+})
+
+// ───────────────────────────────────────────────────────────── 6
+scenario('Ctrl+C：整个组织一起停下，不留还在干的人和还在跑的命令', async () => {
+  const names = ['研发组', '小甲', '小乙']
+  const env = sandbox(0, 'sft-org-6', tempDirs)
+  const seen = { jiaExec: false, yiDone: false }
+  const llm = await startMockLlm({
+    onUser: (text, _n, entry) => {
+      const who = whoAsks(entry, names)
+      entry.who = who
+      if (who === 'main') {
+        return callTool('dispatch_agents', {
+          tasks: [{ name: '研发组', role: '研发组长', lead: true, description: '带研发组做事', prompt: '我是研发组，带小甲、小乙做事' }],
+        })
+      }
+      if (who === '研发组') {
+        return callTool('dispatch_agents', {
+          tasks: [
+            { name: '小甲', description: '跑一条很慢的命令', prompt: '我是小甲，跑一条很慢的命令' },
+            { name: '小乙', description: '写一份文件', prompt: '我是小乙，写一份文件' },
+          ],
+        })
+      }
+      if (who === '小甲') return callTool('exec', { command: 'sleep 66' })
+      if (who === '小乙') return callTool('write_text_file', { path: path.join(env.cwd, 'yi.txt'), content: 'b', mode: 'create' })
+      return say('好')
+    },
+    afterTool: (last, entry) => {
+      const who = whoAsks(entry, names)
+      entry.who = who
+      if (who === '小甲') { seen.jiaExec = true; return say('小甲：做完了') }
+      if (who === '小乙') { seen.yiDone = true; return say('小乙：做完了') }
+      return say('已派出，等他们')
+    },
+  })
+  env.env.SFT_API_URL = `http://127.0.0.1:${llm.port}/v1`
+  const term = new Terminal(['组织研发组做事', '--free'], env)
+  try {
+    check('小甲在跑慢命令、小乙做完了', await until(() => seen.jiaExec || seen.yiDone, 60_000) && await until(() => readOrg(env.dataDir).children['小乙']?.state.status === 'completed', 30_000),
+      JSON.stringify(Object.values(readOrg(env.dataDir).children).map((c) => [c.state.name, c.state.status])))
+    await sleep(1500)
+    const mark = term.mark()
+    term.interrupt()
+    check('Ctrl+C：已停下', await term.waitFor('已停下。', { from: mark }), term.since(mark).slice(-400))
+    let children = {}
+    await until(() => {
+      children = readOrg(env.dataDir).children
+      return !Object.values(children).some((c) => c.state.status === 'running' || c.state.status === 'pending')
+    }, 15_000)
+    check('组长、小甲、小乙都记下了，没有一个还写着「在干」', ['研发组', '小甲', '小乙'].every((n) => children[n]) && !Object.values(children).some((c) => c.state.status === 'running'),
+      JSON.stringify(Object.values(children).map((c) => [c.state.name, c.state.status])))
+    check('小甲被中断，小乙做完的仍是做完', children['小甲']?.state.status === 'interrupted' && children['小乙']?.state.status === 'completed',
+      JSON.stringify([children['小甲']?.state.status, children['小乙']?.state.status]))
+    await sleep(500)
+    let leftover = ''
+    try { leftover = execSync("pgrep -f 'sleep 66' || true").toString().trim() } catch { /* 没有 */ }
+    check('那条慢命令没有留在后台', leftover === '', leftover)
+  } finally {
+    await term.close()
+    killStrays('sleep 66')
   }
 })
 
