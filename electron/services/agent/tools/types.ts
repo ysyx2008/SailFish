@@ -202,6 +202,10 @@ export interface ToolExecutorConfig {
   knockParent?: (message: string) => void
   /** 专家团成员在团里的座位（只有专家团里的专家有） */
   teamSeat?: import('../sub-agent-roster').TeamSeat
+  /** 被指定为组长才有 */
+  leadSeat?: import('../org-ledger').LeadSeat
+  /** 盘上的主会话号：伙计和组长名下的人都记在它下面 */
+  getRootSessionId?: () => string | undefined
   /** 未按听众过滤的工具目录，供硬拦 */
   getToolCatalog?: () => import('../../ai.service').ToolDefinition[]
   /** 创建不进会话表的伙计实例 */

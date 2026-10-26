@@ -1730,6 +1730,8 @@ const translations = {
     'dispatch.status_interrupted': '已打断',
     'dispatch.interrupt_ok': '已打断 {name}',
     'dispatch.tool_denied': '此工具仅主人可用',
+    'org.lead_no_remote': '组长不能给名下的人指定远程主机或远程命令；这类授权只有秘书能给，请把需要的告诉秘书。',
+    'org.depth_limit': '没派：组织最多 {max} 层，你已经在最底下一层，名下的人里不能再指定组长。',
     'dispatch.command_blocked': '高危命令被拦下了，原命令：{command}',
     'dispatch.confirm_by': '这是伙计「{name}」要做的',
 
@@ -3795,6 +3797,8 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'dispatch.status_interrupted': 'interrupted',
     'dispatch.interrupt_ok': 'Interrupted {name}',
     'dispatch.tool_denied': 'This tool is only available to the parent agent',
+    'org.lead_no_remote': 'A team lead cannot give their people remote hosts or remote commands; only the secretary can grant those, so tell the secretary what is needed.',
+    'org.depth_limit': 'Not sent: the organization has at most {max} levels and you are already on the lowest one, so you cannot appoint leads among your people.',
     'dispatch.command_blocked': 'Dangerous command was blocked. Original command: {command}',
     'dispatch.confirm_by': 'Helper “{name}” wants to do this',
 

@@ -12,6 +12,7 @@ import { applyForkTurns, type ForkTurns } from './sanitize-parent-messages'
 import { ExpertTeam, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER, tidyLabel, type TeamMessage } from './expert-team'
 import type { RemoteGrant } from './remote-access/remote-grant'
 import type { WorkerRemoteAccess } from './remote-access/worker-remote-access'
+import { MAX_ORG_DEPTH, OrgLedger, type LeadSeat } from './org-ledger'
 
 export type ChildStatus = 'pending' | 'running' | 'completed' | 'failed' | 'interrupted'
 
@@ -25,6 +26,8 @@ export interface ChildSnapshot {
   role?: string
   /** 所在专家团的团名 */
   team?: string
+  /** 是组长：在自己名下组人 */
+  lead?: boolean
   status: ChildStatus
   result?: string
   error?: string
@@ -47,13 +50,15 @@ export interface ChildAgentHandle {
   readonly childRecorder?: ChildRecorder
   /** 进专家团：之后能在群里说话 */
   joinTeam?(seat: TeamSeat): void
+  /** 成为组长：之后自己也有一份花名册，能在自己名下派人 */
+  becomeLead?(seat: LeadSeat): void
   /** 给这位伙计接上远程通道（只有带了远程范围的伙计才会调用） */
   setRemoteAccess?(access: WorkerRemoteAccess): void
 }
 
 /** 这场会话里以前派出的、已经停下的伙计（存在盘上，还没被叫起来） */
 export type DormantChild = Pick<ChildState,
-  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'result' | 'error' | 'blockedReason' | 'interruptedCalls'>
+  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'lead' | 'parent' | 'result' | 'error' | 'blockedReason' | 'interruptedCalls'>
   & {
     status: 'completed' | 'failed' | 'interrupted'
     /** 盘上记的还是「在干」：程序没来得及收尾就没了，最后一轮的内容不明 */
@@ -89,6 +94,8 @@ export interface SpawnTask {
   prompt: string
   /** 专家角色；带了就是专家 */
   role?: string
+  /** 指定为组长（只有专家能当）：他在自己名下组人 */
+  lead?: boolean
   /** 默认全带。none 不带对话，last N 只带最近几轮。 */
   forkTurns?: ForkTurns
   shownPrompt?: string
@@ -148,6 +155,8 @@ interface ChildSlot extends ChildSnapshot {
   /** 这一段被打断了：它收干净回来时记成已打断，不管它是抛错还是照常返回 */
   interruptRequested?: boolean
   remoteGrant?: RemoteGrant
+  /** 派出他的组长；秘书直接派的没有 */
+  parent?: string
 }
 
 interface TeamEntry {
@@ -218,9 +227,55 @@ export class SubAgentRoster {
   private unreadNews: string[] = []
   private readonly knockSettleMs: number
   private readonly abortHooks: Array<() => void> = []
+  /** 项目组织的账本；没有组长时没有 */
+  private ledger?: OrgLedger
+  /** 这份花名册是谁的：组长的名字，秘书的没有 */
+  private ownerName?: string
+  /** 这份花名册在第几层，秘书的是 0 */
+  private depth = 0
+  /** 盘上属于别的花名册的人，只占着名字 */
+  private foreignNames = new Set<string>()
+  /** 最近一次派人、再交代时用的那份；别的花名册替他再交代时用 */
+  private lastDeps?: RunDeps
 
   constructor(options?: { knockSettleMs?: number }) {
     this.knockSettleMs = options?.knockSettleMs ?? KNOCK_SETTLE_MS
+  }
+
+  /** 挂进组长所在的账本：这份是他名下的花名册 */
+  attachLedger(ledger: OrgLedger, owner: string | undefined, depth: number): void {
+    this.ledger = ledger
+    this.ownerName = owner
+    this.depth = depth
+    ledger.register(this, owner, depth)
+  }
+
+  private ensureLedger(): OrgLedger {
+    if (!this.ledger) this.attachLedger(new OrgLedger(), this.ownerName, this.depth)
+    return this.ledger!
+  }
+
+  /** 这份花名册用完了：从账本里退出（组长这一轮收工时） */
+  release(): void {
+    this.ledger?.unregister(this)
+  }
+
+  /** 这份花名册里还能不能再指定组长：层数到顶就不行 */
+  canAppointLeads(): boolean {
+    return this.depth < MAX_ORG_DEPTH
+  }
+
+  /** 秘书下面第几层（秘书自己是 0） */
+  get orgDepth(): number {
+    return this.depth
+  }
+
+  childNames(): string[] {
+    return [...this.children.keys()]
+  }
+
+  hasChild(name: string): boolean {
+    return this.children.has(name)
   }
 
   private enqueueNews(name: string): void {
@@ -279,7 +334,12 @@ export class SubAgentRoster {
 
   /** 保险丝之内还能再派几个。 */
   room(): number {
-    return Math.max(0, MAX_LIVE_CHILDREN - this.liveCount())
+    return Math.max(0, MAX_LIVE_CHILDREN - (this.ledger?.liveCount() ?? this.liveCount()))
+  }
+
+  /** 全组织没做完的人数；没有组织就是自己这份 */
+  orgLiveCount(): number {
+    return this.ledger?.liveCount() ?? this.liveCount()
   }
 
   list(): ChildSnapshot[] {
@@ -395,8 +455,20 @@ export class SubAgentRoster {
     if (this.dormantRestored) return
     this.dormantRestored = true
     for (const child of deps.restoreDormant?.() ?? []) {
+      if (child.parent !== this.ownerName) {
+        this.foreignNames.add(child.name)
+        continue
+      }
       if (!this.children.has(child.name)) this.dormant.set(child.name, child)
     }
+  }
+
+  /** 全组织已经占着的名字：存盘目录按名字放，重名会把别人的对话盖掉 */
+  private takenNames(): Set<string> {
+    return new Set([
+      ...this.children.keys(), ...this.dormant.keys(), ...this.foreignNames,
+      ...(this.ledger?.usedNames() ?? []),
+    ])
   }
 
   /**
@@ -415,9 +487,15 @@ export class SubAgentRoster {
       if (!deps.teamTexts) throw new Error('派专家团缺少 teamTexts')
       if (tasks.some(t => !t.role)) throw new Error('专家团里每位都要有专家角色')
     }
+    if (tasks.some(t => t.lead)) {
+      if (tasks.some(t => t.lead && !t.role)) throw new Error('组长必须是专家，要带角色')
+      if (!this.canAppointLeads()) throw new RangeError(`组织最多 ${MAX_ORG_DEPTH} 层，这里已经是第 ${this.depth} 层，不能再指定组长`)
+      this.ensureLedger()
+    }
+    this.lastDeps = deps
     this.ensureDormant(deps)
     // 老伙计的名字也占着：同名会把他盘上的对话盖掉
-    const used = new Set([...this.children.keys(), ...this.dormant.keys()])
+    const used = this.takenNames()
     if (tasks.some(t => t.role)) used.add(TEAM_LEADER)
     const names: string[] = []
 
@@ -431,6 +509,8 @@ export class SubAgentRoster {
         description: task.description || name,
         prompt: task.prompt,
         role: task.role,
+        ...(task.lead ? { lead: true } : {}),
+        ...(this.ownerName ? { parent: this.ownerName } : {}),
         shownPrompt: task.shownPrompt,
         status: 'pending',
         steps: [],
@@ -535,10 +615,14 @@ export class SubAgentRoster {
 
   followup(name: string, message: string, deps: RunDeps): { ok: boolean; error?: string } {
     this.ensureDormant(deps)
+    this.lastDeps = deps
     const slot = this.children.get(name)
     if (!slot) {
       const sleeper = this.dormant.get(name)
-      return sleeper ? this.wakeDormant(sleeper, message, deps) : { ok: false, error: `没有叫 ${name} 的伙计` }
+      if (sleeper) return this.wakeDormant(sleeper, message, deps)
+      const owner = this.ledger?.rosterOf(name)
+      if (owner && owner !== this && owner.lastDeps) return owner.followup(name, message, owner.lastDeps)
+      return { ok: false, error: `没有叫 ${name} 的伙计` }
     }
     if (!slot.handle) return { ok: false, error: `${name} 还没开工` }
     if (deps.isParentAborted()) return { ok: false, error: '已中止' }
@@ -586,6 +670,8 @@ export class SubAgentRoster {
       prompt: sleeper.prompt,
       shownPrompt: sleeper.shownPrompt,
       role: sleeper.role,
+      ...(sleeper.lead ? { lead: true } : {}),
+      ...(this.ownerName ? { parent: this.ownerName } : {}),
       status: 'running',
       result: sleeper.result,
       steps: revived.steps,
@@ -594,6 +680,7 @@ export class SubAgentRoster {
       segment: 0,
     }
     this.children.set(name, slot)
+    if (slot.lead) revived.handle.becomeLead?.({ ledger: this.ensureLedger(), name, depth: this.depth + 1 })
     persistSlot(slot)
     deps.onProgress()
     const notice = deps.resumeNotice?.(sleeper)
@@ -658,6 +745,8 @@ export class SubAgentRoster {
     if (!slot) {
       if (deps) this.ensureDormant(deps)
       if (this.dormant.has(name)) return { ok: false, error: `${name} 已经不在跑了` }
+      const owner = this.ledger?.rosterOf(name)
+      if (owner && owner !== this) return owner.interrupt(name)
       return { ok: false, error: `没有叫 ${name} 的伙计` }
     }
     if (!LIVE.has(slot.status)) return { ok: false, error: `${name} 已经不在跑了` }
@@ -717,6 +806,7 @@ export class SubAgentRoster {
     if (!slot) return
     const handle = deps.createChild(name)
     slot.handle = handle
+    if (slot.lead) handle.becomeLead?.({ ledger: this.ensureLedger(), name, depth: this.depth + 1 })
     if (slot.remoteGrant && deps.remoteAccessFor) handle.setRemoteAccess?.(deps.remoteAccessFor(name, slot.remoteGrant))
     slot.status = 'running'
     if (team) {
@@ -808,6 +898,8 @@ function persistSlot(slot: ChildSlot): void {
     prompt: slot.prompt,
     shownPrompt: slot.shownPrompt,
     role: slot.role,
+    lead: slot.lead,
+    parent: slot.parent,
     status: slot.status,
     result: slot.result,
     error: slot.error,
@@ -824,6 +916,7 @@ function snapshotOf(slot: ChildSlot): ChildSnapshot {
     prompt: slot.prompt,
     role: slot.role,
     team: slot.team,
+    lead: slot.lead,
     status: slot.status,
     result: slot.result,
     error: slot.error,

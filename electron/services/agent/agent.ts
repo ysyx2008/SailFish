@@ -67,6 +67,7 @@ import { buildGoalSystemSection } from './goal/goal-prompts'
 import { estimateTextTokens } from './token-estimate'
 import { runUntilIdle } from './run-until-idle'
 import { SubAgentRoster } from './sub-agent-roster'
+import type { LeadSeat } from './org-ledger'
 import type { ChildRecorder } from '../history/sub-agent-record-store'
 import { findUnansweredToolCalls } from './unanswered-calls'
 import { isOemFeatureEnabled } from '@shared/oem-features'
@@ -256,6 +257,8 @@ export abstract class Agent {
 
   /** 伙计的确认交给主人这场：问你和替你放行都留在正在看的这场 */
   private _confirmationHost?: Agent
+  /** 被指定为组长才有 */
+  private _leadSeat?: LeadSeat
   /** 卡片上能认出是哪一个伙计 */
   private _workerLabel?: string
   /** 这场同时只问一件：几个伙计和主人自己的确认排着来 */
@@ -556,6 +559,29 @@ export abstract class Agent {
   bindConfirmationHost(host: Agent, label: string): void {
     this._confirmationHost = host
     this._workerLabel = label
+  }
+
+  /** 这场会话最外层的那位：伙计往上一路认到秘书；秘书自己就是 */
+  confirmationRoot(): Agent {
+    return this._confirmationHost ?? this
+  }
+
+  /** 盘上的主会话号。伙计和组长名下的人都记在它下面，不记在各自的临时会话里 */
+  rootSessionId(): string | undefined {
+    return this.confirmationRoot().getSessionId()
+  }
+
+  rootSessionStartTime(): number | undefined {
+    return this.confirmationRoot().getSessionStartTime()
+  }
+
+  /** 成为组长：之后每次开跑都有自己的一份花名册，能在自己名下派人 */
+  becomeLead(seat: LeadSeat): void {
+    this._leadSeat = seat
+  }
+
+  getLeadSeat(): LeadSeat | undefined {
+    return this._leadSeat
   }
 
   /** 文档备份算在哪一场。伙计跟主人这场，一直走到最外层。 */
@@ -1936,8 +1962,11 @@ export abstract class Agent {
       documentContext: undefined,
       terminalOutput: [],
     }
-    if (!this._isSubAgent) {
-      this._subAgentRoster = new SubAgentRoster()
+    if (!this._isSubAgent || this._leadSeat) {
+      const roster = new SubAgentRoster()
+      const seat = this._leadSeat
+      if (seat) roster.attachLedger(seat.ledger, seat.name, seat.depth)
+      this._subAgentRoster = roster
     }
     
     // 注册运行级别回调
@@ -3085,6 +3114,7 @@ export abstract class Agent {
     this.currentStreamingExecutor = undefined
     const roster = this._subAgentRoster
     roster?.abortAll()
+    roster?.release()
     this._previousChildrenSettling = roster?.settled()
     this._subAgentRoster = undefined
   }
@@ -6126,6 +6156,7 @@ export abstract class Agent {
       isSubAgent: this._isSubAgent,
       inReceiptTurn: run.internalNotice && run.noticeKind === 'task_receipt',
       getSessionId: () => this.getSessionId(),
+      getRootSessionId: () => this.rootSessionId(),
       getRecallingConversation: () => this.recallingConversation(),
       getDocumentConversationId: () => this.documentConversationId(),
       getExpertTeamChats: () => this.services.historyService?.getAgentRecordStore().expertTeamChats,

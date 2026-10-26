@@ -43,6 +43,10 @@ export interface ChildState {
   prompt: string
   shownPrompt?: string
   role?: string
+  /** 是组长：在自己名下组人 */
+  lead?: boolean
+  /** 派出他的组长的名字；秘书直接派的没有 */
+  parent?: string
   status: ChildStatus
   result?: string
   error?: string
@@ -56,7 +60,7 @@ export interface ChildState {
 
 /** 名册交给存储的那部分（对话和开局由存储自己记） */
 export type ChildStateInput = Pick<ChildState,
-  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'status' | 'result' | 'error' | 'blockedReason'>
+  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'lead' | 'parent' | 'status' | 'result' | 'error' | 'blockedReason'>
 
 export interface PersistedChild {
   state: ChildState
@@ -159,6 +163,8 @@ export class ChildRecorder {
       prompt: input.prompt,
       ...(input.shownPrompt ? { shownPrompt: input.shownPrompt } : {}),
       ...(input.role ? { role: input.role } : {}),
+      ...(input.lead ? { lead: true } : {}),
+      ...(input.parent ? { parent: input.parent } : {}),
       status: input.status,
       ...(input.result !== undefined ? { result: input.result } : {}),
       ...(input.error ? { error: input.error } : {}),

@@ -25,6 +25,7 @@ import type { TerminalType, RemoteChannel } from '@shared/types'
 import { ASSISTANT_WORKBENCH_AGENT_TOOLS } from '@sailfish/workbench-assistant/agent-tools'
 import { getAllTerminalTools } from './skills/terminal/tools'
 import { MAX_LIVE_CHILDREN } from './sub-agent-roster'
+import { MAX_ORG_DEPTH } from './org-ledger'
 import {
   labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER,
   teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT
@@ -144,6 +145,12 @@ export interface ToolMeta {
    * 规划锁预留同一套过滤钩子，本次不实现锁本身。
    */
   allowedForSubAgent?: boolean
+
+  /**
+   * 被指定为组长的专家能不能用：派人、再交代、等待、打断。和 allowedForSubAgent: false 搭配，
+   * 别的伙计和专家仍然看不到、用不了；组长只能对自己名下的人用。
+   */
+  allowedForLead?: boolean
 
   /**
    * 只给专家团里的专家。主人、伙计、不组团的专家都看不到，执行时也会硬拦。
@@ -1300,6 +1307,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
                 properties: {
                   name: { type: 'string', description: SUB_AGENT_NAME_DESCRIPTION },
                   role: { type: 'string', description: `专家角色，几个字，最长 ${MAX_ROLE_CHARS} 个字。带了就是专家，界面上显示为角色标签；专家的名字和角色都不能用「${TEAM_LEADER}」。带 team 时 tasks 里每一项都要带，主持、协调这类位置也一样` },
+                  lead: { type: 'boolean', description: `指定为组长，只有带 role 的专家能当。组长自己也有派人、再交代、等待、打断这几样，只能用在他名下的人身上；他名下没做完的人不会让他收工。组织最多 ${MAX_ORG_DEPTH} 层，已经在第 ${MAX_ORG_DEPTH} 层的组长不能再指定组长。没做完的人全组织合计仍受上面那个数限制` },
                   description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
                   prompt: { type: 'string', description: '详细任务指令' },
                   fork_turns: { type: 'string', description: FORK_TURNS_DESCRIPTION },
@@ -1346,6 +1354,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       _meta: {
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
+        allowedForLead: true,
         streamDisplay: {
           customRender: dispatchAgentsPrefix,
           customProgress: dispatchAgentsCharCount
@@ -1374,6 +1383,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       _meta: {
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
+        allowedForLead: true,
         streamDisplay: { customRender: followupAgentTitle }
       }
     } as ToolDefinitionWithMeta,
@@ -1400,6 +1410,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       _meta: {
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
+        allowedForLead: true,
         streamDisplay: { customRender: waitAgentsTitle }
       }
     } as ToolDefinitionWithMeta,
@@ -1419,6 +1430,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       _meta: {
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
+        allowedForLead: true,
         streamDisplay: { customRender: interruptAgentTitle }
       }
     } as ToolDefinitionWithMeta,
@@ -1725,9 +1737,12 @@ export function filterTeamMemberTools(tools: readonly ToolDefinition[], inTeam: 
 /**
  * 伙计工具清单：只看元数据，不认工具名。默认能用。
  */
-export function filterSubAgentTools(tools: readonly ToolDefinition[]): ToolDefinition[] {
+export function filterSubAgentTools(tools: readonly ToolDefinition[], options?: { lead?: boolean }): ToolDefinition[] {
   return tools
-    .filter(tool => (tool as ToolDefinitionWithMeta)._meta?.allowedForSubAgent !== false)
+    .filter(tool => {
+      const meta = (tool as ToolDefinitionWithMeta)._meta
+      return meta?.allowedForSubAgent !== false || (options?.lead === true && meta.allowedForLead === true)
+    })
     .map(tool => {
       const alt = (tool as ToolDefinitionWithMeta)._meta?.descriptionForSubAgent
       if (!alt) return tool

@@ -10,6 +10,7 @@ import type { AgentStep, RemoteAccessRequest, SubAgentResult } from '@shared/typ
 import type { AgentContext } from '../types'
 import { getDefaultShell, getLocalOS } from '../../../utils/platform'
 import { getMetaByName } from '../tool-metadata'
+import { MAX_ORG_DEPTH } from '../org-ledger'
 import { MAX_LIVE_CHILDREN, type ChildSnapshot, type DormantChild, type RosterSpawnDeps, type SpawnTask, type SubAgentRoster } from '../sub-agent-roster'
 import { parseForkTurns, sanitizeParentMessages, type ForkTurns } from '../sanitize-parent-messages'
 import type { ToolExecutorConfig, ToolResult, AgentConfig } from './types'
@@ -579,7 +580,7 @@ export function spawnDeps(
   const roster = executor.getSubAgentRoster?.()
   if (!roster) return { error: 'dispatch_agents 需要主人花名册（内部错误）' }
   const workspace = workspaceOf(roster)
-  workspace.attachChats(executor.getExpertTeamChats?.(), executor.getSessionId?.())
+  workspace.attachChats(executor.getExpertTeamChats?.(), executor.getRootSessionId?.() ?? executor.getSessionId?.())
   const overviewProgress = new ProgressThrottle(() => workspace.writeOverview(roster.list()), OVERVIEW_INTERVAL_MS)
   const progress = new ProgressThrottle(() => {
     const names = ownedNames ?? new Set(roster.list().map(c => c.name))
@@ -690,6 +691,12 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
       if ('error' in forkTurns) return { error: `子任务 ${i + 1}：${forkTurns.error}` }
       const name = optionalName(task.name)
       const role = typeof task.role === 'string' ? tidyLabel(task.role) || undefined : undefined
+      if (task.lead !== undefined && typeof task.lead !== 'boolean') {
+        return { error: `子任务 ${i + 1} 的 lead 必须是 true 或 false` }
+      }
+      if (task.lead === true && !role) {
+        return { error: `子任务 ${i + 1} 要当组长就得带 role：只有专家能当组长` }
+      }
       if (role && (name?.trim() === TEAM_LEADER || role === TEAM_LEADER)) {
         return { error: `「${TEAM_LEADER}」留给派出专家团的你，专家的名字和角色都不能用它（子任务 ${i + 1}）` }
       }
@@ -707,6 +714,7 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
         prompt: task.prompt,
         forkTurns,
         ...(role ? { role } : {}),
+        ...(task.lead === true ? { lead: true } : {}),
         ...hosts,
         ...own,
       })
@@ -820,6 +828,13 @@ export async function dispatchSubAgents(
     return { success: false, output: '', error: parsed.error }
   }
   const { tasks: parsedTasks, team } = parsed
+  if (executor.isSubAgent) {
+    const remoteAsked = parsedTasks.some(task => task.hosts || task.remoteCommands) || args.remote_commands !== undefined
+    if (remoteAsked) return { success: false, output: '', error: t('org.lead_no_remote') }
+  }
+  if (parsedTasks.some(task => task.lead) && !roster.canAppointLeads()) {
+    return { success: false, output: '', error: t('org.depth_limit', { max: MAX_ORG_DEPTH }) }
+  }
   const allExperts = parsedTasks.every(task => !!task.role)
   if (parsedTasks.length > roster.room()) {
     return {
@@ -1013,7 +1028,7 @@ export function denyIfNotForThisAgent(executor: ToolExecutorConfig, toolName: st
   if (meta?.onlyForTeamMember && !executor.teamSeat) {
     return { success: false, output: '', error: t('expert.say_denied') }
   }
-  if (executor.isSubAgent && meta?.allowedForSubAgent === false) {
+  if (executor.isSubAgent && meta?.allowedForSubAgent === false && !(meta.allowedForLead && executor.leadSeat)) {
     return { success: false, output: '', error: t('dispatch.tool_denied') }
   }
   return null
