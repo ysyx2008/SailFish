@@ -311,6 +311,7 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     const dispatchStep = steps.filter(s => s.type === 'tool_call' && s.toolName === 'dispatch_agents').at(-1)
     expect(dispatchStep?.content).toContain('没有派出')
     expect(dispatchStep?.success).toBe(false)
+    expect(dispatchStep?.subAgents).toEqual([])
   })
 
   it('宽松：每批都由你看，直接弹卡，不请专家，写操作也不挡；点头后伙计才跑', async () => {
@@ -353,6 +354,8 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     const reviewAt = steps.findIndex(s => s.type === 'auto_review')
     expect(dispatchAt).toBeGreaterThanOrEqual(0)
     expect(dispatchAt).toBeLessThan(reviewAt)
+    // 伙计在批准前就画出来了，是「等着」的样子
+    expect(steps[dispatchAt]?.subAgents).toEqual([expect.objectContaining({ name: 'wk', status: 'pending' })])
   })
 
   it('替我审批：专家要问时，话在确认前面，卡上不写', async () => {

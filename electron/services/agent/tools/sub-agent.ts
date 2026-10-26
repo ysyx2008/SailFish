@@ -846,12 +846,20 @@ export async function dispatchSubAgents(
     },
     riskLevel: 'safe',
     success: true,
-    subAgents: []
+    // 伙计先按「等着」画出来；批准后换成真正派出的样子
+    subAgents: parsedTasks.map((task, i): SubAgentResult => ({
+      id: task.name ?? `pending-${i}`,
+      name: task.name ?? task.description,
+      description: task.description,
+      prompt: task.shownPrompt ?? task.prompt,
+      status: 'pending',
+      ...(task.role ? { role: task.role } : {}),
+    })),
   })
 
   const remote = await authorizeRemoteScopes(args, parsedTasks, _config, executor, _toolCallId)
   if ('error' in remote) {
-    executor.updateStep(progressStep.id, { content: t('dispatch.not_sent', { count: parsedTasks.length }), success: false })
+    executor.updateStep(progressStep.id, { content: t('dispatch.not_sent', { count: parsedTasks.length }), success: false, subAgents: [] })
     return { success: false, output: '', error: remote.error }
   }
 
