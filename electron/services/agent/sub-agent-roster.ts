@@ -5,7 +5,7 @@
  * 点名再交代时从盘上叫醒，接着干。
  */
 import type { AiMessage } from '../ai.service'
-import type { SubAgentResult, SubAgentToolStep, TokenUsage } from '@shared/types'
+import type { SubAgentResult, SubAgentToolStep, TeamVerdict, TokenUsage } from '@shared/types'
 import type { ChildRecorder, ChildState, ChildStateInput } from '../history/sub-agent-record-store'
 import type { AgentContext, AgentStep, RunOptions } from './types'
 import { applyForkTurns, type ForkTurns } from './sanitize-parent-messages'
@@ -28,6 +28,8 @@ export interface ChildSnapshot {
   team?: string
   /** 是组长：在自己名下组人 */
   lead?: boolean
+  /** 是验收人：团里交上来的东西由他给通过或打回的结论 */
+  reviewer?: boolean
   status: ChildStatus
   result?: string
   error?: string
@@ -87,7 +89,7 @@ export type TeamSayResult =
 export interface TeamSeat {
   readonly team: string
   readonly name: string
-  say(to: string[], text: string): TeamSayResult
+  say(to: string[], text: string, verdict?: TeamVerdict): TeamSayResult
 }
 
 export interface SpawnTask {
@@ -98,6 +100,8 @@ export interface SpawnTask {
   role?: string
   /** 指定为组长（只有专家能当）：他在自己名下组人 */
   lead?: boolean
+  /** 当验收人（只在组团时有意义）：可以对交上来的东西给通过或打回的结论 */
+  reviewer?: boolean
   /** 默认全带。none 不带对话，last N 只带最近几轮。 */
   forkTurns?: ForkTurns
   shownPrompt?: string
@@ -491,6 +495,10 @@ export class SubAgentRoster {
       if (!deps.teamTexts) throw new Error('派专家团缺少 teamTexts')
       if (tasks.some(t => !t.role)) throw new Error('专家团里每位都要有专家角色')
     }
+    if (tasks.some(t => t.reviewer)) {
+      if (!teamName) throw new Error('验收人要在专家团里：带 team 才能指定')
+      if (tasks.every(t => t.reviewer)) throw new Error('团里不能人人都是验收人，总得有人做事')
+    }
     if (tasks.some(t => t.lead)) {
       if (tasks.some(t => t.lead && !t.role)) throw new Error('组长必须是专家，要带角色')
       if (!this.canAppointLeads()) throw new RangeError(`组织最多 ${MAX_ORG_DEPTH} 层，这里已经是第 ${this.depth} 层，不能再指定组长`)
@@ -514,6 +522,7 @@ export class SubAgentRoster {
         prompt: task.prompt,
         role: task.role,
         ...(task.lead ? { lead: true } : {}),
+        ...(task.reviewer ? { reviewer: true } : {}),
         ...(this.ownerName ? { parent: this.ownerName } : {}),
         shownPrompt: task.shownPrompt,
         status: 'pending',
@@ -530,7 +539,7 @@ export class SubAgentRoster {
       const finalName = uniqueName(teamName, n => this.teams.has(n))
       team = new ExpertTeam(finalName, names.map(n => {
         const slot = this.children.get(n)!
-        return { name: n, askedName: slot.askedName, role: slot.role!, description: slot.description }
+        return { name: n, askedName: slot.askedName, role: slot.role!, description: slot.description, ...(slot.reviewer ? { reviewer: true } : {}) }
       }))
       this.teams.set(finalName, { team, deps })
       for (const n of names) this.children.get(n)!.team = finalName
@@ -577,7 +586,7 @@ export class SubAgentRoster {
    * 专家在群里说一句：记进群里，点到的专家叫醒（在跑的先记下，等手上这一步走完再看），
    * 点到组长就敲门，满了这一段就停下来等组长。
    */
-  teamSay(from: string, to: string[], text: string): TeamSayResult {
+  teamSay(from: string, to: string[], text: string, verdict?: TeamVerdict): TeamSayResult {
     const entry = this.entryOf(from)
     if (!entry) return { ok: false, error: `${from} 不在专家团里` }
     const { team, deps } = entry
@@ -586,9 +595,10 @@ export class SubAgentRoster {
       const reachable = this.depth > 0 ? [TEAM_LEADER, SECRETARY] : [TEAM_LEADER]
       return { ok: false, error: `群里没有 ${unknown.join('、')}`, members: [...reachable, ...team.memberNames()] }
     }
+    if (verdict && !team.isReviewer(from)) return { ok: false, error: '只有验收人能给验收结论' }
     if (deps.isParentAborted()) return { ok: false, error: '已中止' }
 
-    const outcome = team.post(from, to, text, this.interruptedIn(team))
+    const outcome = team.post(from, to, text, this.interruptedIn(team), verdict)
     const woke: string[] = []
     const handed: string[] = []
     for (const name of outcome.wakeNow) {
@@ -844,7 +854,7 @@ export class SubAgentRoster {
       handle.joinTeam?.({
         team: team.name,
         name,
-        say: (to, text) => this.teamSay(name, to, text),
+        say: (to, text, verdict) => this.teamSay(name, to, text, verdict),
       })
     }
     const seed = applyForkTurns(deps.sanitize(deps.getParentMessages()), slot.forkTurns)
@@ -948,6 +958,7 @@ function snapshotOf(slot: ChildSlot): ChildSnapshot {
     role: slot.role,
     team: slot.team,
     lead: slot.lead,
+    reviewer: slot.reviewer,
     status: slot.status,
     result: slot.result,
     error: slot.error,

@@ -481,6 +481,12 @@ export const EXPERT_TEAM_LEADER = '组长'
 export const SECRETARY_NAME = '秘书'
 
 /** 专家团群里的一条话 */
+/** 验收人对交上来的东西给的结论 */
+export type TeamVerdict = 'pass' | 'reject'
+
+/** 一个团现在的验收状态：没有验收人 / 有验收人但还没给结论 / 最近一次结论 */
+export type TeamReviewState = 'none' | 'pending' | TeamVerdict
+
 export interface ExpertTeamMessageView {
   seq: number
   /** 说话的专家名字，或「组长」 */
@@ -489,6 +495,8 @@ export interface ExpertTeamMessageView {
   to: string[]
   text: string
   at: number
+  /** 验收人说这一句时带的结论 */
+  verdict?: TeamVerdict
   /** 正文太长没放进来的字数，全文在群聊文件里 */
   omitted?: number
 }
@@ -506,6 +514,10 @@ export interface ExpertTeamView {
   wakeLimit: number
   /** 正在等组长看过再接着叫醒 */
   waitingLeader: boolean
+  /** 团里的验收人（名字）；没有就不写 */
+  reviewers?: string[]
+  /** 验收状态；团里没有验收人时不写 */
+  review?: TeamReviewState
   /** 给模型读的群聊文件（临时区，过些天会清掉） */
   transcriptPath?: string
   /** 随会话保存的群聊全文，在群聊存储里的相对位置；没有会话时不存 */

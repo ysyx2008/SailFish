@@ -694,6 +694,12 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
       if (task.lead !== undefined && typeof task.lead !== 'boolean') {
         return { error: `子任务 ${i + 1} 的 lead 必须是 true 或 false` }
       }
+      if (task.reviewer !== undefined && typeof task.reviewer !== 'boolean') {
+        return { error: `子任务 ${i + 1} 的 reviewer 必须是 true 或 false` }
+      }
+      if (task.reviewer === true && !role) {
+        return { error: `子任务 ${i + 1} 要当验收人就得带 role：只有专家能当` }
+      }
       if (task.lead === true && !role) {
         return { error: `子任务 ${i + 1} 要当组长就得带 role：只有专家能当组长` }
       }
@@ -718,6 +724,7 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
         forkTurns,
         ...(role ? { role } : {}),
         ...(task.lead === true ? { lead: true } : {}),
+        ...(task.reviewer === true ? { reviewer: true } : {}),
         ...hosts,
         ...own,
       })
@@ -761,11 +768,13 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
     return { error: 'tasks 和 batch 至少给一个，且不能为空' }
   }
   const team = teamNameFrom(args.team)
+  if (!team && tasks.some(task => task.reviewer)) problems.push('reviewer（验收人）只在带 team 组专家团时才有意义。')
   if (!team) return problems.length ? { error: `没派：${problems.join('')}` } : { tasks }
   if (labelLength(team) > MAX_TEAM_NAME_CHARS) {
     problems.push(`团名最长 ${MAX_TEAM_NAME_CHARS} 个字，这次 ${labelLength(team)} 个字。`)
   }
   if (rawBatch !== undefined) problems.push('带 team 时只用 tasks 写每位专家，不能用 batch。')
+  if (tasks.every(task => task.reviewer)) problems.push('团里不能人人都是验收人，总得有人做事。')
   const noRole = tasks.findIndex(task => !task.role)
   if (noRole >= 0) problems.push(`带 team 时每位都要有 role（专家角色），第 ${noRole + 1} 位没有。`)
   if (tasks.length < MIN_TEAM_SIZE || tasks.length > MAX_TEAM_SIZE) {

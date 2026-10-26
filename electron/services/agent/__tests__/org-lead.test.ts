@@ -392,3 +392,88 @@ describe('点名秘书', () => {
     expect('error' in parsed && parsed.error).toMatch(/秘书/)
   })
 })
+
+describe('验收', () => {
+  const texts = createTeamTexts(team => `/tmp/${team.name}.md`)
+  function team3(reviewerIndex: number | undefined, says: Array<(to: string[], text: string, verdict?: 'pass' | 'reject') => any>, knocks: string[] = []) {
+    const root = new SubAgentRoster({ knockSettleMs: 0 })
+    root.spawn(
+      [
+        { description: '前端', prompt: 'p', role: '前端专家', ...(reviewerIndex === 0 ? { reviewer: true } : {}) },
+        { description: '后端', prompt: 'p', role: '后端专家', ...(reviewerIndex === 1 ? { reviewer: true } : {}) },
+      ],
+      { ...deps(() => {
+        const w = worker(5000)
+        w.joinTeam = (j: any) => { says.push(j.say) }
+        return w
+      }, knocks), teamTexts: texts },
+      { team: '评审团' },
+    )
+    return root
+  }
+
+  it('验收状态：没有验收人 / 还没结论 / 最近一次结论', () => {
+    const says: any[] = []
+    const root = team3(1, says)
+    const team = root.listTeams()[0]
+    expect(team.reviewerNames()).toEqual(['后端'])
+    expect(team.reviewState()).toBe('pending')
+    expect(says[1](['前端'], '打回，缺测试', 'reject').ok).toBe(true)
+    expect(team.reviewState()).toBe('reject')
+    expect(says[1](['前端'], '这次可以', 'pass').ok).toBe(true)
+    expect(team.reviewState()).toBe('pass')
+    expect(team.transcript().map(m => m.verdict)).toEqual(['reject', 'pass'])
+    expect(team.view().review).toBe('pass')
+    expect(team.view().reviewers).toEqual(['后端'])
+    root.abortAll()
+
+    const none: any[] = []
+    const plain = team3(undefined, none)
+    expect(plain.listTeams()[0].reviewState()).toBe('none')
+    expect(plain.listTeams()[0].view().review).toBeUndefined()
+    plain.abortAll()
+  })
+
+  it('只有验收人能带结论', () => {
+    const says: any[] = []
+    const root = team3(1, says)
+    const denied = says[0](['后端'], '我觉得通过', 'pass')
+    expect(denied.ok).toBe(false)
+    expect(root.listTeams()[0].transcript()).toHaveLength(0)
+    root.abortAll()
+  })
+
+  it('交给组长的话里带验收状态，群消息带结论标记；没有验收人就没有这一行', () => {
+    const says: any[] = []
+    const root = team3(1, says)
+    const team = root.listTeams()[0]
+    says[1](['前端'], '打回', 'reject')
+    const members = root.teamMembers(team)
+    expect(texts.stopped(team, members)).toContain('验收：最近一次结论是「打回」')
+    expect(texts.stopped(team, members)).toContain('（验收：打回）')
+    expect(texts.checkpoint(team, members)).toContain('验收：')
+    root.abortAll()
+
+    const none: any[] = []
+    const plain = team3(undefined, none)
+    expect(texts.stopped(plain.listTeams()[0], plain.teamMembers(plain.listTeams()[0]))).not.toContain('验收')
+    plain.abortAll()
+  })
+
+  it('指定验收人的写法检查', () => {
+    expect(parseDispatchTasks({ tasks: [{ description: 'x', prompt: 'p', role: '专家', reviewer: true }] })).toHaveProperty('error')
+    expect(parseDispatchTasks({ tasks: [{ description: 'x', prompt: 'p', reviewer: true }] })).toHaveProperty('error')
+    const ok = parseDispatchTasks({ team: 't', tasks: [
+      { description: 'a', prompt: 'p', role: '甲', reviewer: true },
+      { description: 'b', prompt: 'p', role: '乙' },
+    ] })
+    expect('tasks' in ok && ok.tasks[0].reviewer).toBe(true)
+    const all = parseDispatchTasks({ team: 't', tasks: [
+      { description: 'a', prompt: 'p', role: '甲', reviewer: true },
+      { description: 'b', prompt: 'p', role: '乙', reviewer: true },
+    ] })
+    expect(all).toHaveProperty('error')
+    const bad = parseDispatchTasks({ team: 't', tasks: [{ description: 'a', prompt: 'p', role: '甲', reviewer: 'yes' }, { description: 'b', prompt: 'p', role: '乙' }] })
+    expect(bad).toHaveProperty('error')
+  })
+})

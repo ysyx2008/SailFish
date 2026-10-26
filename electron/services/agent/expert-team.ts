@@ -2,7 +2,7 @@
  * 一个专家团：团员、群消息、每人读到哪、这一段专家互相叫醒了几次。
  * 只管群里的事，谁在跑、怎么叫醒由花名册管。
  */
-import { EXPERT_TEAM_LEADER, SECRETARY_NAME, type ExpertTeamView } from '@shared/types'
+import { EXPERT_TEAM_LEADER, SECRETARY_NAME, type ExpertTeamView, type TeamReviewState, type TeamVerdict } from '@shared/types'
 
 export const TEAM_LEADER = EXPERT_TEAM_LEADER
 /** 任何一层的群里都能点名：秘书在组织最上面，顶层的团里他就是组长 */
@@ -55,6 +55,8 @@ export interface TeamMember {
   askedName?: string
   role: string
   description: string
+  /** 验收人：看别人交上来的东西，可以给通过或打回的结论 */
+  reviewer?: boolean
 }
 
 export interface TeamMessage {
@@ -64,6 +66,8 @@ export interface TeamMessage {
   to: string[]
   text: string
   at: number
+  /** 验收人说这一句时带的结论 */
+  verdict?: TeamVerdict
 }
 
 export interface TeamPostOutcome {
@@ -116,6 +120,24 @@ export class ExpertTeam {
     return m ? { ...m } : undefined
   }
 
+  isReviewer(name: string): boolean {
+    return this.members.some(m => m.name === name && m.reviewer)
+  }
+
+  reviewerNames(): string[] {
+    return this.members.filter(m => m.reviewer).map(m => m.name)
+  }
+
+  /** 验收状态：没有验收人 / 还没给过结论 / 最近一次的结论 */
+  reviewState(): TeamReviewState {
+    if (this.reviewerNames().length === 0) return 'none'
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const verdict = this.messages[i].verdict
+      if (verdict) return verdict
+    }
+    return 'pending'
+  }
+
   /** 不是团员、也不是组长和秘书的名字 */
   unknownNames(names: string[]): string[] {
     return names.filter(n => n !== TEAM_LEADER && n !== SECRETARY && !this.has(n))
@@ -138,9 +160,9 @@ export class ExpertTeam {
    * 每叫醒一位算一次；这一条让次数满了就从下一条起等组长，这一条照常叫醒。
    * asleep 里的人（被组长打断的）只记在群里，不叫醒、不计数、不排队。
    */
-  post(from: string, to: string[], text: string, asleep: ReadonlySet<string> = new Set()): TeamPostOutcome {
+  post(from: string, to: string[], text: string, asleep: ReadonlySet<string> = new Set(), verdict?: TeamVerdict): TeamPostOutcome {
     const targets = dedupe(to)
-    const message = this.record(from, targets, text)
+    const message = this.record(from, targets, text, verdict)
     const named = targets.filter(n => n !== from && this.has(n))
     const skipped = named.filter(n => asleep.has(n))
     const experts = named.filter(n => !asleep.has(n))
@@ -225,6 +247,7 @@ export class ExpertTeam {
       wakes: this.wakesThisStretch,
       wakeLimit: WAKES_PER_CHECKPOINT,
       waitingLeader: this.waitingLeader,
+      ...(this.reviewerNames().length ? { reviewers: this.reviewerNames(), review: this.reviewState() } : {}),
       ...(transcriptPath ? { transcriptPath } : {}),
       ...(chatFile ? { chatFile } : {}),
     }
@@ -236,8 +259,8 @@ export class ExpertTeam {
     return m ? `${m.role}·${m.name}` : name
   }
 
-  private record(from: string, to: string[], text: string): TeamMessage {
-    const message: TeamMessage = { seq: this.messages.length + 1, from, to, text, at: Date.now() }
+  private record(from: string, to: string[], text: string, verdict?: TeamVerdict): TeamMessage {
+    const message: TeamMessage = { seq: this.messages.length + 1, from, to, text, at: Date.now(), ...(verdict ? { verdict } : {}) }
     this.messages.push(message)
     return message
   }

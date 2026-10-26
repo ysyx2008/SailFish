@@ -40,11 +40,20 @@ export function renamedList(items: ReadonlyArray<{ name: string; askedName?: str
 }
 
 export function formatTeamMessage(team: ExpertTeam, m: TeamMessage, max?: number): string {
-  return t('expert.message_line', {
+  const line = t('expert.message_line', {
     from: team.label(m.from),
     to: m.to.length ? m.to.map(n => team.label(n)).join('、') : t('expert.to_nobody'),
     text: max ? clip(m.text, max) : m.text,
   })
+  return m.verdict ? `${line} ${t(m.verdict === 'pass' ? 'expert.verdict_mark_pass' : 'expert.verdict_mark_reject')}` : line
+}
+
+/** 团有验收人时，交给组长的话里附一行验收状态；没有验收人就不写这一行 */
+function reviewLine(team: ExpertTeam): string {
+  const state = team.reviewState()
+  if (state === 'none') return ''
+  const reviewers = team.reviewerNames().map(n => team.label(n)).join('、')
+  return `\n${t(`expert.review_${state}`, { reviewers })}`
 }
 
 /**
@@ -53,10 +62,10 @@ export function formatTeamMessage(team: ExpertTeam, m: TeamMessage, max?: number
  */
 export function expertOpening(child: ChildSnapshot, team?: ExpertTeam): string {
   if (!child.role) return child.prompt
-  const youAre = t('expert.you_are', { name: child.name, role: child.role })
+  const youAre = t('expert.you_are', { name: child.name, role: child.role }) + (child.reviewer ? `\n${t('expert.you_are_reviewer')}` : '')
   if (!team) return `${youAre}\n\n${child.prompt}`
   const roster = team.roster()
-    .map(m => t('expert.list_item', { name: m.name, role: m.role, description: m.description }))
+    .map(m => t('expert.list_item', { name: m.name, role: m.role, description: m.description }) + (m.reviewer ? t('expert.reviewer_mark') : ''))
     .join('\n')
   const renamed = renamedList(team.roster())
   const brief = t('expert.team_brief', { team: team.name, roster })
@@ -128,7 +137,7 @@ export function createTeamTexts(transcriptPath: (team: ExpertTeam) => string): T
         members: memberLines(team, members, false),
         recent: recentLines(team),
         path: transcriptPath(team),
-      })
+      }) + reviewLine(team)
     },
     stopped(team, members) {
       const text = t('expert.knock_stopped', {
@@ -136,7 +145,7 @@ export function createTeamTexts(transcriptPath: (team: ExpertTeam) => string): T
         members: memberLines(team, members, true),
         recent: recentLines(team),
         path: transcriptPath(team),
-      })
+      }) + reviewLine(team)
       const queued = team.queuedWakes()
       if (!queued.length) return text
       return `${text}\n${t('expert.knock_stopped_queued', { names: queued.map(n => team.label(n)).join('、') })}`
