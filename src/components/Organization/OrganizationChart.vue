@@ -91,6 +91,8 @@ const tree = computed(() => organization.value ? buildOrgTree(organization.value
   position: absolute;
   inset: 0;
   z-index: 29;
+  /* 盖在对话顶栏上：顶栏是拖窗口的区域，不声明的话点返回等于拖窗口 */
+  -webkit-app-region: no-drag;
 }
 
 .oc-header {
@@ -103,6 +105,10 @@ const tree = computed(() => organization.value ? buildOrgTree(organization.value
   padding: 0 10px;
   background: var(--bg-tertiary, var(--bg-secondary, #252525));
   border-bottom: 1px solid var(--border-color);
+  -webkit-app-region: drag;
+}
+.oc-header .oc-icon-btn {
+  -webkit-app-region: no-drag;
 }
 .oc-icon-btn {
   display: inline-flex;
