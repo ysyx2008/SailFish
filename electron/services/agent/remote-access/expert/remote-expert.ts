@@ -9,7 +9,7 @@ import { formatUserWords, type UserWord } from '../../auto-review/evidence'
 import type { AutoReviewChat } from '../../auto-review/reviewer'
 import { describeCommands, formatCommandFacts } from './facts'
 import { buildExpertPolicy } from './policy'
-import { parseExpertVerdict, type ExpertVerdict } from './verdict'
+import { parseExpertVerdict, readExpertPartial, type ExpertPartial, type ExpertVerdict } from './verdict'
 
 export interface RemoteExpertEnv {
   chat: AutoReviewChat
@@ -39,6 +39,8 @@ export interface ExpertInput {
   executionMode: 'strict' | 'relaxed' | 'free'
   /** 此刻有没有人能当场回答 */
   attended: boolean
+  /** 结论一出来就叫一次，说明变长再叫。用来让界面先显示结论、说明随后补上 */
+  onPartial?: (partial: ExpertPartial) => void
 }
 
 export type ExpertResult =
@@ -64,15 +66,29 @@ export class RemoteExpert {
 
     const timeout = AbortSignal.timeout(env.timeoutMs ?? DEFAULT_TIMEOUT_MS)
     const signal = env.signal ? AbortSignal.any([env.signal, timeout]) : timeout
+    let streamed = ''
+    let lastPartial = ''
     try {
       const result = await untilAborted(
         // 输出上限跟模型配置走。推理型模型的思考也算在里面，单独压小会把结论截掉，看起来像没给意见。
-        env.chat(messages, [], env.profileId, signal, { toolChoice: 'none' }),
+        // 正文按增量交出去：第一行是结论，后面的说明写到哪界面补到哪。思考过程不在这条增量里。
+        env.chat(messages, [], env.profileId, signal, {
+          toolChoice: 'none',
+          onContent: (delta) => {
+            streamed += delta
+            const partial = readExpertPartial(streamed)
+            if (!partial) return
+            const key = `${partial.outcome}\n${partial.text}`
+            if (key === lastPartial) return
+            lastPartial = key
+            input.onPartial?.(partial)
+          },
+        }),
         signal,
       )
       if (result.usage) env.onUsage?.(result.usage)
-      if (env.signal?.aborted) return { kind: 'cancelled' }
-      const verdict = parseExpertVerdict(result.content)
+      if (result.aborted || env.signal?.aborted) return { kind: 'cancelled' }
+      const verdict = parseExpertVerdict(result.content) ?? parseExpertVerdict(streamed)
       return verdict
         ? { kind: 'verdict', verdict }
         : { kind: 'unavailable', detail: 'unparseable' }

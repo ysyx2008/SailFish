@@ -6720,7 +6720,37 @@ export abstract class Agent {
     const aiService = this.services.aiService
     if (!aiService?.chatWithTools) return undefined
     return {
-      chat: (messages, tools, profileId, signal, options) => aiService.chatWithTools(messages, tools, profileId, signal, options),
+      chat: (messages, tools, profileId, signal, options) => {
+        // 要边收边显示时走流式，正文增量不含思考过程。没有流式就等整段回来。
+        if (!options?.onContent || !aiService.chatWithToolsStream) {
+          return aiService.chatWithTools(messages, tools, profileId, signal, options)
+        }
+        return new Promise((resolve, reject) => {
+          const requestId = `expert_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+          const stop = () => aiService.abort(requestId)
+          if (signal.aborted) {
+            reject(new Error('Aborted'))
+            return
+          }
+          signal.addEventListener('abort', stop, { once: true })
+          const finish = () => signal.removeEventListener('abort', stop)
+          void aiService.chatWithToolsStream(
+            messages,
+            tools,
+            () => {},
+            () => {},
+            (result) => { finish(); resolve(result) },
+            (error) => { finish(); reject(new Error(error)) },
+            profileId,
+            undefined,
+            requestId,
+            undefined,
+            undefined,
+            undefined,
+            { toolChoice: options.toolChoice, onContent: options.onContent },
+          )
+        })
+      },
       profileId: this.profileId || this.services.configService?.getActiveAiProfile() || undefined,
       locale: getLocale(),
       words: () => collectUserWords(run.steps, this.earlierStepsForAutoReview()),

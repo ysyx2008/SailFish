@@ -6,7 +6,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import type { ToolDefinition } from '../../ai.service'
-import type { AgentStep, SubAgentResult } from '@shared/types'
+import type { AgentStep, RemoteAccessRequest, SubAgentResult } from '@shared/types'
 import type { AgentContext } from '../types'
 import { getDefaultShell, getLocalOS } from '../../../utils/platform'
 import { getMetaByName } from '../tool-metadata'
@@ -28,8 +28,8 @@ import { inferConversationKind } from '@shared/types'
 import { conversationPolicy } from '../../conversation/policy'
 import { getConfigService } from '../../config.service'
 import { RemoteExecPool, resolveRemoteHost } from '../../remote-exec'
-import { RemoteExpert } from '../remote-access/expert'
-import { RemoteDispatchGate, type SavedSessionRef } from '../remote-access/remote-dispatch-gate'
+import { RemoteExpert, type ExpertPartial } from '../remote-access/expert'
+import { RemoteDispatchGate, type ExpertLiveUpdate, type SavedSessionRef } from '../remote-access/remote-dispatch-gate'
 import type { RemoteGrant } from '../remote-access/remote-grant'
 import { RemoteOpRecorder } from '../remote-access/remote-op-recorder'
 import { WorkerRemoteAccess } from '../remote-access/worker-remote-access'
@@ -256,6 +256,115 @@ function remoteAccessFor(roster: SubAgentRoster, name: string, grant: RemoteGran
   })
 }
 
+/**
+ * 专家看这一批时，界面上始终只有一行：先显示「在看」，结论一到就换成结论，说明写长了就改这一行。
+ * 静默放行（自由、替我审批）写完后收进过程；其余留在外面，和确认卡一起看得见。
+ */
+function expertLiveSteps(
+  config: AgentConfig | undefined,
+  executor: ToolExecutorConfig,
+  toolCallId: string | undefined,
+  toolName: string,
+) {
+  let stepId: string | undefined
+  let wrote = false
+  const executionMode = config?.executionMode ?? 'strict'
+  const silentAllow = executionMode === 'free' || executor.isAutoReview?.() === true
+
+  const actionOf = (request: RemoteAccessRequest) => t('remote.expert_action', { count: request.hosts.length })
+  const quote = (text: string) => text.trim().replace(/\n+/g, ' ')
+
+  const show = (
+    request: RemoteAccessRequest,
+    content: string,
+    streaming: boolean,
+    autoReview: NonNullable<AgentStep['autoReview']>,
+  ) => {
+    if (!stepId) {
+      stepId = executor.addStep({
+        type: 'auto_review',
+        content,
+        toolName,
+        toolCallId,
+        isStreaming: streaming,
+        autoReview,
+      }).id
+      return
+    }
+    executor.updateStep(stepId, { content, isStreaming: streaming, autoReview })
+  }
+
+  const titleFor = (partial: ExpertPartial, action: string) => {
+    if (partial.outcome === 'allow' && silentAllow) return t('autoReview.approved', { action })
+    if (partial.outcome === 'refuse') return t('remote.expert_live_refuse', { action })
+    if (partial.outcome === 'allow') return t('remote.expert_live_allow', { action })
+    return t('autoReview.handed_over', { action })
+  }
+
+  const paintPartial = (partial: ExpertPartial, request: RemoteAccessRequest, done: boolean) => {
+    wrote = true
+    const action = actionOf(request)
+    const silent = done && partial.outcome === 'allow' && silentAllow
+    const line = quote(partial.text)
+    const content = line ? `${titleFor(partial, action)}\n\n> ${line}` : titleFor(partial, action)
+    show(request, content, !done, silent
+      ? { outcome: 'approved', rationale: line || undefined }
+      : { outcome: 'handed_over', reason: 'not_approved', ...(line ? { rationale: line } : {}) })
+  }
+
+  return {
+    onExpertLive: (update: ExpertLiveUpdate, request: RemoteAccessRequest) => {
+      const action = actionOf(request)
+      if (update.kind === 'looking') {
+        show(request, t('remote.expert_reviewing', { action }), true, { outcome: 'handed_over' })
+        return
+      }
+      if (update.kind === 'writing') {
+        paintPartial(update.partial, request, false)
+        return
+      }
+      if (update.kind === 'settled') {
+        paintPartial(update.partial, request, true)
+        return
+      }
+      if (update.kind === 'failed') {
+        show(request, [t('autoReview.handed_over', { action }), t('autoReview.reason.failed')].join('\n\n'), false, {
+          outcome: 'handed_over',
+          reason: 'failed',
+        })
+        return
+      }
+      if (update.kind !== 'stop' || !stepId) return
+      if (update.why === 'cancelled') {
+        show(request, t('autoReview.cancelled', { action }), false, { outcome: 'handed_over', reason: 'failed' })
+        return
+      }
+      if (!wrote) {
+        // 自由模式下没评成，改按只读来看。这行收进过程，不挡在对话中间。
+        show(request, t('remote.expert_no_verdict', { action }), false, { outcome: 'approved' })
+        return
+      }
+      executor.updateStep(stepId, { isStreaming: false })
+    },
+    onExpertAllowed: (note: string, request: RemoteAccessRequest) => {
+      if (stepId) return
+      paintPartial({ outcome: 'allow', text: note }, request, true)
+    },
+    onExpertHandedOver: (note: string | undefined, request: RemoteAccessRequest) => {
+      if (note) {
+        if (stepId) return
+        paintPartial({ outcome: 'ask_user', text: note }, request, true)
+        return
+      }
+      const action = actionOf(request)
+      show(request, [t('autoReview.handed_over', { action }), t('autoReview.reason.failed')].join('\n\n'), false, {
+        outcome: 'handed_over',
+        reason: 'failed',
+      })
+    },
+  }
+}
+
 function remoteGateFor(config: AgentConfig | undefined, executor: ToolExecutorConfig, toolCallId: string | undefined, toolName: string): RemoteDispatchGate {
   const saved = getConfigService()
   const kind = inferConversationKind(executor.agentId)
@@ -275,30 +384,7 @@ function remoteGateFor(config: AgentConfig | undefined, executor: ToolExecutorCo
     ...(expertEnv ? {
       expert: new RemoteExpert(expertEnv),
       autoReview: executor.isAutoReview?.() === true,
-      onExpertAllowed: (note, request) => {
-        executor.addStep({
-          type: 'auto_review',
-          content: [t('autoReview.approved', { action: t('remote.expert_action', { count: request.hosts.length }) }), `> ${note.replace(/\n+/g, ' ')}`].join('\n\n'),
-          toolName,
-          toolCallId,
-          autoReview: { outcome: 'approved', rationale: note },
-        })
-      },
-      onExpertHandedOver: (note, request) => {
-        const action = t('remote.expert_action', { count: request.hosts.length })
-        executor.addStep({
-          type: 'auto_review',
-          content: [
-            t('autoReview.handed_over', { action }),
-            note ? `> ${note.replace(/\n+/g, ' ')}` : t('autoReview.reason.failed'),
-          ].join('\n\n'),
-          toolName,
-          toolCallId,
-          autoReview: note
-            ? { outcome: 'handed_over', reason: 'not_approved', rationale: note }
-            : { outcome: 'handed_over', reason: 'failed' },
-        })
-      },
+      ...expertLiveSteps(config, executor, toolCallId, toolName),
     } : {}),
   })
 }

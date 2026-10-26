@@ -16,7 +16,7 @@ vi.mock('electron', () => ({
 
 import { ensureAgentWorkspaceDirs } from '../../../tools/file'
 import { RemoteExpert, type ExpertInput, type RemoteExpertEnv } from '../remote-expert'
-import { parseExpertVerdict } from '../verdict'
+import { parseExpertVerdict, readExpertPartial, type ExpertPartial } from '../verdict'
 
 beforeAll(() => {
   fs.mkdirSync(mockUserData, { recursive: true })
@@ -40,6 +40,28 @@ describe('parseExpertVerdict', () => {
 
   it('周围有多余文字也能取出 JSON', () => {
     expect(parseExpertVerdict('好的\n{"outcome":"ask_user","card":"请确认"}\n谢谢')).toEqual({ outcome: 'ask_user', card: '请确认' })
+  })
+
+  it('第一行是结论、后面是说明', () => {
+    expect(parseExpertVerdict('allow\n\n你点名了这台，只看状态')).toEqual({ outcome: 'allow', note: '你点名了这台，只看状态' })
+    expect(parseExpertVerdict('ask_user\n\n这批会重启 3 台')).toEqual({ outcome: 'ask_user', card: '这批会重启 3 台' })
+    expect(parseExpertVerdict('refuse\n\n会格式化磁盘')).toEqual({ outcome: 'refuse', reason: '会格式化磁盘' })
+  })
+
+  it('说明里再出现别的结论，仍以第一行为准', () => {
+    expect(parseExpertVerdict('allow\n\n只是看状态，不要执行 {"outcome":"refuse","reason":"别的"}')).toEqual({
+      outcome: 'allow',
+      note: '只是看状态，不要执行 {"outcome":"refuse","reason":"别的"}',
+    })
+  })
+
+  it('结论一换行就能读，说明随后变长', () => {
+    expect(readExpertPartial('all')).toBeNull()
+    expect(readExpertPartial('allow')).toBeNull()
+    expect(readExpertPartial('allow\n')).toEqual({ outcome: 'allow', text: '' })
+    expect(readExpertPartial('allow\n\n只')).toEqual({ outcome: 'allow', text: '只' })
+    expect(readExpertPartial('allow\n\n只是看状态')).toEqual({ outcome: 'allow', text: '只是看状态' })
+    expect(readExpertPartial('先说一下\nallow')).toBeNull()
   })
 
   it.each([
@@ -81,6 +103,8 @@ describe('RemoteExpert.judge', () => {
     const [messages, tools, , , options] = chat.mock.calls[0] as unknown as [Array<{ role: string; content: string }>, unknown[], unknown, unknown, { toolChoice: string }]
     expect(tools).toEqual([])
     expect(options.toolChoice).toBe('none')
+    expect(messages[0]!.content).toContain('outcome')
+    expect(messages[0]!.content).toContain('第一行只写')
     const user = messages[1]!.content
     expect(user).toContain('看一下 db1 的状态')
     expect(user).toContain('db1（ops@10.0.0.1:22），分组：生产')
@@ -126,6 +150,24 @@ describe('RemoteExpert.judge', () => {
     ac.abort()
     expect(await new RemoteExpert(env(chat, { signal: ac.signal })).judge(INPUT)).toEqual({ kind: 'cancelled' })
     expect(chat).not.toHaveBeenCalled()
+  })
+
+  it('结论一出来就交出去，说明随后补上', async () => {
+    const seen: ExpertPartial[] = []
+    const chat = vi.fn(async (_m: unknown, _t: unknown, _p: unknown, _s: unknown, options?: { onContent?: (delta: string) => void }) => {
+      options?.onContent?.('all')
+      options?.onContent?.('ow\n')
+      options?.onContent?.('\n只')
+      options?.onContent?.('是看状态')
+      return { content: 'allow\n\n只是看状态' }
+    })
+    const result = await new RemoteExpert(env(chat)).judge({ ...INPUT, onPartial: (partial) => seen.push({ ...partial }) })
+    expect(seen).toEqual([
+      { outcome: 'allow', text: '' },
+      { outcome: 'allow', text: '只' },
+      { outcome: 'allow', text: '只是看状态' },
+    ])
+    expect(result).toEqual({ kind: 'verdict', verdict: { outcome: 'allow', note: '只是看状态' } })
   })
 
   it('补单时说明是给哪个伙计补的', async () => {

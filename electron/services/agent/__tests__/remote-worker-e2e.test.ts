@@ -67,7 +67,21 @@ function makeServices(responder: (args: {
         onChunk: (s: string) => void,
         _onToolCall: unknown,
         onDone: (r: unknown) => void,
+        _onError?: unknown,
+        _profileId?: unknown,
+        _onToolCallProgress?: unknown,
+        _requestId?: unknown,
+        _onRetry?: unknown,
+        _onToolCallReady?: unknown,
+        _onModelFailover?: unknown,
+        streamOptions?: { onContent?: (delta: string) => void },
       ) => {
+        // 运维专家不带工具，走这条旁路，不占用主人或伙计的回合
+        if (tools.length === 0) {
+          if (expertReply) streamOptions?.onContent?.(expertReply)
+          onDone({ content: expertReply, tool_calls: [] })
+          return
+        }
         const child = isChildCall(tools)
         const idx = child ? childIndex++ : parentIndex++
         llmCalls.push({ tools: toolNames(tools), messages: JSON.parse(JSON.stringify(messages)) })
@@ -293,8 +307,12 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     await result
     expect(confirmations).toHaveLength(0)
     expect(host.commands).toEqual(['echo ALLOWED'])
-    const trail = steps.find(s => s.type === 'auto_review' && s.autoReview?.outcome === 'approved')
+    const reviews = steps.filter(s => s.type === 'auto_review')
+    expect(new Set(reviews.map(s => s.id)).size).toBe(1)
+    const trail = reviews[reviews.length - 1]
+    expect(trail?.autoReview?.outcome).toBe('approved')
     expect(trail?.autoReview?.rationale).toContain('你点名了这台')
+    expect(reviews[0]?.content).toContain('专家在看')
   })
 
   it('替我审批：专家要问时，话在确认前面，卡上不写', async () => {
@@ -306,7 +324,10 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     await result
     expect(confirmations).toHaveLength(1)
     expect(confirmations[0]!.remoteAccess?.expert).toBeUndefined()
-    const trail = steps.find(s => s.type === 'auto_review' && s.autoReview?.outcome === 'handed_over')
+    const reviews = steps.filter(s => s.type === 'auto_review')
+    expect(new Set(reviews.map(s => s.id)).size).toBe(1)
+    const trail = reviews[reviews.length - 1]
+    expect(trail?.autoReview?.outcome).toBe('handed_over')
     expect(trail?.autoReview?.rationale).toContain('这批会重启 nginx')
     expect(host.connections).toBe(0)
   })
@@ -317,7 +338,9 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     await result
     expect(confirmations).toHaveLength(1)
     expect(confirmations[0]!.remoteAccess?.expert).toBeUndefined()
-    const trail = steps.find(s => s.type === 'auto_review' && s.autoReview?.outcome === 'handed_over')
+    const reviews = steps.filter(s => s.type === 'auto_review')
+    expect(new Set(reviews.map(s => s.id)).size).toBe(1)
+    const trail = reviews[reviews.length - 1]
     expect(trail?.autoReview?.reason).toBe('failed')
     expect(host.connections).toBe(0)
   })

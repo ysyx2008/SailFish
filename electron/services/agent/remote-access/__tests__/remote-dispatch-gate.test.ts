@@ -335,6 +335,24 @@ describe('运维专家的结论怎么落到审批方式', () => {
     expect(strict.onExpertAllowed).not.toHaveBeenCalled()
   })
 
+  it('专家一边写，界面先收到结论，写完再给一次完整的', async () => {
+    const live: string[] = []
+    const judge = vi.fn<Judge>(async (input) => {
+      input.onPartial?.({ outcome: 'allow', text: '' })
+      input.onPartial?.({ outcome: 'allow', text: '只是看' })
+      return allow
+    })
+    const { gate } = gateWith({
+      expert: { judge },
+      executionMode: 'relaxed',
+      autoReview: true,
+      onExpertLive: (update) => live.push(update.kind === 'writing' ? `writing:${update.partial.text}` : update.kind),
+    })
+    const r = await run(gate)
+    expect(r.ok).toBe(true)
+    expect(live).toEqual(['looking', 'writing:', 'writing:只是看', 'settled'])
+  })
+
   it('拒绝：理由原样退给秘书', async () => {
     const { gate } = expertGate(refuse)
     const r = await run(gate)

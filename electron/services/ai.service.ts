@@ -644,6 +644,8 @@ export interface ChatStreamOptions {
   toolChoice?: 'auto' | 'none' | 'required'
   /** 思考过程的增量。只给调用方看，不混进对用户的正文流 */
   onReasoning?: (delta: string) => void
+  /** 正文的增量。不含思考过程，调用方可以边收边显示 */
+  onContent?: (delta: string) => void
   /** 在模型请求缓冲池里排哪一档；不传按当面等的算，不排队 */
   bufferPriority?: ModelRequestPriority
   /** 在缓冲池里排队等名额：开始等 true，拿到或放弃 false */
@@ -2422,7 +2424,7 @@ export class AiService {
     messages: AiMessage[],
     tools: ToolDefinition[],
     profileId?: string,
-    opts?: { maxOutputTokens?: number; toolChoice?: 'auto' | 'none'; onReasoning?: (delta: string) => void }
+    opts?: { maxOutputTokens?: number; toolChoice?: 'auto' | 'none'; onReasoning?: (delta: string) => void; onContent?: (delta: string) => void }
   ): Promise<ChatWithToolsResult | null> {
     return new Promise((resolve) => {
       let settled = false
@@ -2448,6 +2450,7 @@ export class AiService {
           maxOutputTokens: opts?.maxOutputTokens,
           toolChoice: opts?.toolChoice,
           onReasoning: opts?.onReasoning,
+          onContent: opts?.onContent,
         }
       ).catch(() => finish(null))
     })
@@ -3021,6 +3024,7 @@ export class AiService {
                   onChunk('\n\n</blockquote>\n</details>\n\n')
                 }
                 content += delta.content
+                streamOptions?.onContent?.(delta.content)
                 onChunk(delta.content)
                 getAiDebugService().logResponseChunk(reqId, delta.content)
               }

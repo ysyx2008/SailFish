@@ -9,7 +9,7 @@
 import type { ExecutionMode, JumpHostGroupRef, RemoteAccessRequest } from '@shared/types'
 import { checkReadOnlyCommand } from '../command-audit'
 import { t } from '../i18n'
-import type { ExpertInput, ExpertResult } from './expert'
+import { partialFromVerdict, type ExpertInput, type ExpertPartial, type ExpertResult } from './expert'
 import { RemoteGrant, type GrantedHost } from './remote-grant'
 
 /** 一批最多这么多条命令、每条最多这么多字。只防写错量级，不管该几条 */
@@ -50,7 +50,20 @@ export interface RemoteDispatchContext {
    * note 是专家写的话；没有就是没给出结论。
    */
   onExpertHandedOver?: (note: string | undefined, request: RemoteAccessRequest) => void
+  /**
+   * 专家还在写的时候刷新界面上那一行。
+   * looking：刚开始看，结论还没到。writing：结论已到，说明可能还在长。
+   * settled：写完了。failed：没给出能用的结论。stop：这一轮停了，或自由模式下改走别的判定。
+   */
+  onExpertLive?: (update: ExpertLiveUpdate, request: RemoteAccessRequest) => void
 }
+
+export type ExpertLiveUpdate =
+  | { kind: 'looking' }
+  | { kind: 'writing'; partial: ExpertPartial }
+  | { kind: 'settled'; partial: ExpertPartial }
+  | { kind: 'failed' }
+  | { kind: 'stop'; why: 'cancelled' | 'fallback' }
 
 export type GateOutcome<T> = { ok: true; value: T } | { ok: false; error: string }
 
@@ -172,6 +185,7 @@ export class RemoteDispatchGate {
     const mode = this.ctx.executionMode
     if (mode !== 'free' && !this.ctx.attended) return t('remote.nobody_to_confirm')
 
+    this.ctx.onExpertLive?.({ kind: 'looking' }, request)
     const result = await expert.judge({
       hosts: request.hosts,
       commands: request.commands,
@@ -179,15 +193,24 @@ export class RemoteDispatchGate {
       ...(request.forWorker ? { forWorker: request.forWorker } : {}),
       executionMode: mode,
       attended: this.ctx.attended,
+      onPartial: (partial) => this.ctx.onExpertLive?.({ kind: 'writing', partial }, request),
     })
 
-    if (result.kind === 'cancelled') return t('remote.expert_cancelled')
+    if (result.kind === 'cancelled') {
+      this.ctx.onExpertLive?.({ kind: 'stop', why: 'cancelled' }, request)
+      return t('remote.expert_cancelled')
+    }
     if (result.kind === 'unavailable') {
-      if (mode !== 'free') return this.handToUser(request, undefined, title, rejectedText)
+      if (mode !== 'free') {
+        this.ctx.onExpertLive?.({ kind: 'failed' }, request)
+        return this.handToUser(request, undefined, title, rejectedText)
+      }
+      this.ctx.onExpertLive?.({ kind: 'stop', why: 'fallback' }, request)
       return this.checkReadOnly(request.commands)
     }
 
     const { verdict } = result
+    this.ctx.onExpertLive?.({ kind: 'settled', partial: partialFromVerdict(verdict) }, request)
     if (verdict.outcome === 'refuse') return t('remote.expert_refused', { reason: verdict.reason })
     if (verdict.outcome === 'ask_user') {
       if (mode === 'free') return t('remote.expert_cannot_ask', { card: verdict.card })

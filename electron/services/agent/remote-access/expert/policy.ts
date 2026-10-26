@@ -19,14 +19,20 @@ const POLICY_ZH = `你是运维专家。有一个 AI 助手能在用户的电脑
 - 你的结论只针对这一批，之前给过的结论不是先例。
 
 你可以给出三种结论：
-- allow：你认为按用户原话，这批事情可以直接去做。
-- ask_user：需要用户自己点头。写一段给用户看的话，说明这批会做什么、哪里值得留意、为什么要问他。
-- refuse：这批事情不该这样做。写给秘书，说明原因，便于它改。
+- allow：你认为按用户原话，这批事情可以直接去做。说明里写一句话，为什么可以直接做。
+- ask_user：需要用户自己点头。说明写给用户看：这批会做什么、哪里值得留意、为什么要问他。
+- refuse：这批事情不该这样做。说明写给秘书，讲原因，便于它改。
 
-自由模式下用户不想被打断：需要他点头的、你认为不该做的，都用 refuse，把该告诉他的话写进 reason。
+自由模式下用户不想被打断：需要他点头的、你认为不该做的，都用 refuse，把该告诉他的话写进说明。
 
-最后只输出一个 JSON 对象，不要多余的文字：
-{"outcome": "allow|ask_user|refuse", "card": "allow 时一句话说明为什么放行；ask_user 时给用户看的话", "reason": "refuse 时给秘书的原因"}`
+输出分两段，结论在前，说明在后。说明往往比较长，结论先写出来，界面才能先显示结论，说明随后补上。
+
+第一行只写 outcome 这三个词里的一个，不要别的字：
+allow
+ask_user
+refuse
+
+空一行，然后写说明。说明里不要再写结论那个词。`
 
 const POLICY_EN = `You are an operations expert. An AI assistant can act on the user's computer and on remote servers. Its secretary now wants to dispatch several helpers to run a list of commands in the background on a batch of the user's saved servers. Each command in the list runs verbatim on every host in each helper's scope, and the output is handed to the model. You decide how this should be handled.
 
@@ -43,26 +49,32 @@ Facts about the situation:
 - Your conclusion applies to this batch only; earlier conclusions are not precedents.
 
 You can give one of three conclusions:
-- allow: you think that, given the user's words, this can go ahead directly.
-- ask_user: the user needs to say yes himself. Write a message for the user: what this batch will do, what deserves attention, why you are asking.
-- refuse: this should not be done this way. Write the reason for the secretary so it can revise.
+- allow: you think that, given the user's words, this can go ahead directly. In the explanation, one sentence on why.
+- ask_user: the user needs to say yes himself. The explanation is for the user: what this batch will do, what deserves attention, why you are asking.
+- refuse: this should not be done this way. The explanation is for the secretary, so it can revise.
 
-In free mode the user does not want to be interrupted: anything that needs their yes, and anything you think should not be done, use refuse and put what they should be told into reason.
+In free mode the user does not want to be interrupted: anything that needs their yes, and anything you think should not be done, use refuse and put what they should be told into the explanation.
 
-Output only one JSON object, nothing else:
-{"outcome": "allow|ask_user|refuse", "card": "for allow: one sentence on why it is fine; for ask_user: the message for the user", "reason": "for refuse: the reason for the secretary"}`
+Write two parts, the conclusion first and the explanation after. The explanation is often long; the conclusion has to come out first so the screen can show it, and the explanation fills in as it is written.
+
+The first line is only one of these three outcome words, nothing else:
+allow
+ask_user
+refuse
+
+Then a blank line, then the explanation. Do not repeat the outcome word in the explanation.`
 
 const TAIL_ZH = `
 
 # 语言
 
-card 和 reason 用简体中文。JSON 的键和枚举取值保持原样。`
+说明用简体中文。第一行的三个词不要翻译。`
 
 const TAIL_EN = `
 
 # Language
 
-Write "card" and "reason" in English. Keep all JSON keys and enum values exactly as specified.`
+Write the explanation in English. Do not translate the three words on the first line.`
 
 export function buildExpertPolicy(locale: 'zh-CN' | 'en-US'): string {
   return locale === 'en-US' ? POLICY_EN + TAIL_EN : POLICY_ZH + TAIL_ZH
