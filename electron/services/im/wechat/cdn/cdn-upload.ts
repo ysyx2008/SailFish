@@ -25,9 +25,6 @@ function uploadAttemptTimeoutMs(ciphertextSize: number): number {
  * Upload one buffer to the Weixin CDN with AES-128-ECB encryption.
  * Returns the download encrypted_query_param from the CDN response.
  * Retries up to UPLOAD_MAX_RETRIES times on server errors; client errors (4xx) abort immediately.
- *
- * Uses a single Buffer body (not chunked streaming) — Weixin CDN rejects
- * chunked/duplex uploads with HTTP 500.
  */
 export async function uploadBufferToCdn(params: {
   buf: Buffer;
@@ -50,20 +47,18 @@ export async function uploadBufferToCdn(params: {
   } else {
     throw new Error(`${label}: CDN upload URL missing (need upload_full_url or upload_param)`);
   }
-  logger.debug(
-    `${label}: CDN POST url=${redactUrl(cdnUrl)} ciphertextSize=${ciphertext.length} useFullUrl=${Boolean(trimmedFull)}`,
-  );
+  logger.debug(`${label}: CDN POST url=${redactUrl(cdnUrl)} ciphertextSize=${ciphertext.length}`);
 
   let downloadParam: string | undefined;
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= UPLOAD_MAX_RETRIES; attempt++) {
-    const timeoutMs = uploadAttemptTimeoutMs(ciphertext.length);
     try {
+      const timeoutMs = uploadAttemptTimeoutMs(ciphertext.length);
       const res = await fetch(cdnUrl, {
         method: "POST",
         headers: { "Content-Type": "application/octet-stream" },
-        body: Uint8Array.from(ciphertext),
+        body: ciphertext,
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (res.status >= 400 && res.status < 500) {
@@ -85,9 +80,7 @@ export async function uploadBufferToCdn(params: {
       }
       downloadParam = res.headers.get("x-encrypted-param") ?? undefined;
       if (!downloadParam) {
-        logger.error(
-          `${label}: CDN response missing x-encrypted-param header attempt=${attempt}`,
-        );
+        logger.error(`${label}: CDN response missing x-encrypted-param header attempt=${attempt}`);
         throw new Error("CDN upload response missing x-encrypted-param header");
       }
       logger.debug(`${label}: CDN upload success attempt=${attempt}`);
@@ -96,15 +89,14 @@ export async function uploadBufferToCdn(params: {
       lastError = err;
       if (err instanceof Error && err.message.includes("client error")) throw err;
       const cause =
-        (err as { cause?: unknown; code?: string }).cause ?? (err as { code?: string }).code ?? "";
-      const timedOut = err instanceof Error && err.name === "TimeoutError";
+        (err as NodeJS.ErrnoException).cause ?? (err as NodeJS.ErrnoException).code ?? "";
       if (attempt < UPLOAD_MAX_RETRIES) {
         logger.error(
-          `${label}: attempt ${attempt} failed, retrying... url=${redactUrl(cdnUrl)} timeoutMs=${timeoutMs}${timedOut ? " (timeout)" : ""} error=${String(err)}${cause ? ` cause=${cause}` : ""}`,
+          `${label}: attempt ${attempt} failed, retrying... url=${redactUrl(cdnUrl)} error=${String(err)}${cause ? ` cause=${cause}` : ""}`,
         );
       } else {
         logger.error(
-          `${label}: all ${UPLOAD_MAX_RETRIES} attempts failed url=${redactUrl(cdnUrl)} timeoutMs=${timeoutMs}${timedOut ? " (timeout)" : ""} error=${String(err)}${cause ? ` cause=${cause}` : ""}`,
+          `${label}: all ${UPLOAD_MAX_RETRIES} attempts failed url=${redactUrl(cdnUrl)} error=${String(err)}${cause ? ` cause=${cause}` : ""}`,
         );
       }
     }
