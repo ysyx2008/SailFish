@@ -864,3 +864,24 @@ describe('Conversation 聚合根（领域模型）', () => {
     })
   })
 })
+
+describe('Conversation 从盘上读回：上个进程派出的伙计', () => {
+  it('停在「在干」的读回成已打断，下次落盘带着这个结论', () => {
+    const record = (id: string, status: 'running' | 'completed') => ({
+      id,
+      type: 'tool_call',
+      content: 'dispatch',
+      timestamp: 1,
+      subAgents: [{ id: 'w1', name: 'w1', description: 'd', status }],
+    })
+    const conv = Conversation.create({ agentKey: 'tab-1', terminalType: 'assistant' })
+    conv.setRestoredTranscript(undefined, [
+      { id: 'u', type: 'user_task', content: '开工', timestamp: 0 },
+      record('d1', 'running'),
+      record('d2', 'completed'),
+    ] as any)
+    const saved = conv.toRecord()!
+    const statuses = saved.steps.filter(s => s.subAgents).map(s => s.subAgents![0].status)
+    expect(statuses).toEqual(['interrupted', 'completed'])
+  })
+})

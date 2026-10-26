@@ -165,7 +165,8 @@ try {
   check('Esc 收起', await page.locator('.dock-panel').count() === 0)
   await page.locator('.dock-bar').first().click()
   await sleep(200)
-  await page.locator('.ai-messages:visible').first().click({ position: { x: 10, y: 200 }, force: true })
+  // 8 张卡的面板几乎盖满对话区，点面板之外：侧栏空白处
+  await page.mouse.click(100, 400)
   await sleep(200)
   check('点别处收起', await page.locator('.dock-panel').count() === 0)
 
@@ -266,6 +267,39 @@ try {
   await pushStep({ ...dispatchStep(Array(2).fill('completed'), false), id: 'dispatch-old' })
   await sleep(500)
   check('没亲眼看着干完的不挂', await dock().count() === 0, await dockText())
+
+  console.log('\n[8] 同时挂着好几批：展开哪一行都不盖住别的行')
+  for (const n of [1, 2, 3]) {
+    await pushStep({ ...dispatchStep(Array(n + 1).fill('running'), false), id: `dispatch-m${n}`, content: `第 ${n} 批` })
+  }
+  await sleep(500)
+  check('三批各挂一行', await page.locator('.sub-agent-dock .dock-bar').count() === 3, await page.locator('.sub-agent-dock .dock-bar').count())
+  for (const index of [0, 1, 2]) {
+    await page.locator('.dock-bar').nth(index).click()
+    await sleep(300)
+    const bars = await page.locator('.dock-bar').evaluateAll(els => els.map(el => el.getBoundingClientRect()))
+    const panel = await page.locator('.dock-panel').boundingBox()
+    const lastBottom = Math.max(...bars.map(b => b.bottom))
+    check(`展开第 ${index + 1} 行：面板在所有行下面，不遮挡`, panel && panel.y >= lastBottom, JSON.stringify({ panelTop: panel?.y, lastBottom }))
+    if (index === 0) await shot('8-multi-open')
+    await page.keyboard.press('Escape')
+    await sleep(200)
+  }
+
+  console.log('\n[9] 读回旧会话：上个进程留下的「在干」不挂，显示为已打断')
+  await page.evaluate(([id]) => {
+    const old = (n, status) => ({
+      id: `old-${n}`, type: 'tool_call', content: '派出', toolName: 'dispatch_agents', timestamp: 2, success: true,
+      subAgents: [{ id: `w${n}`, name: `伙计${n}`, description: '巡检', status }],
+    })
+    window.__e2eStore.restoreAgentHistory(id, {
+      id: 'restored-1', timestamp: 1, userTask: '巡检', status: 'completed', duration: 1,
+      steps: [{ id: 'ru', type: 'user_task', content: '巡检', timestamp: 1 }, old(1, 'running'), old(2, 'pending'), old(3, 'completed')],
+    })
+  }, [tabId])
+  await sleep(500)
+  check('没有伙计挂在顶上', await dock().count() === 0, await dockText())
+  await shot('9-restored')
 } catch (error) {
   failures.push(`脚本出错：${error instanceof Error ? error.message : error}`)
   console.error(error)
