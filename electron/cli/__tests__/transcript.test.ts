@@ -192,6 +192,25 @@ describe('confirmationLines', () => {
     expect(text).toContain('未分组')
     expect(text.indexOf('uptime')).toBeLessThan(text.indexOf('web-01'))
   })
+
+  it('伙计的命令清单不一样：按块分开，每块写自己的命令和主机', () => {
+    const web = { id: 'a1', name: 'web-01', address: 'deploy@10.0.0.11:22', group: '生产' }
+    const lab = { id: 'a2', name: 'lab', address: 'root@10.0.1.5:22' }
+    const text = describeRemoteAccess({
+      workerCount: 2,
+      commands: ['df -h', 'uptime'],
+      hosts: [web, lab],
+      assignments: [
+        { workerCount: 1, hosts: [web], commands: ['df -h'] },
+        { workerCount: 1, hosts: [lab], commands: ['uptime'] },
+      ],
+    }).join('\n')
+    expect(text).toContain('第 1 块：1 个伙计，连 1 台主机，1 条命令')
+    expect(text).toContain('第 2 块')
+    expect(text.indexOf('df -h')).toBeLessThan(text.indexOf('web-01'))
+    expect(text.indexOf('web-01')).toBeLessThan(text.indexOf('第 2 块'))
+    expect(text.indexOf('第 2 块')).toBeLessThan(text.indexOf('uptime'))
+  })
 })
 
 describe('CliTranscript 目标续跑', () => {

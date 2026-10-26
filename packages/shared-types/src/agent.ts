@@ -838,21 +838,36 @@ export interface PendingConfirmation {
   remoteAccess?: RemoteAccessRequest
 }
 
+export interface RemoteAccessHost {
+  /** 已存会话的 id */
+  id: string
+  name: string
+  /** user@host:port */
+  address: string
+  /** 所在分组名；没分组不写 */
+  group?: string
+}
+
+/** 清单相同的一组伙计：有几个、合起来连哪些主机、批准后原样能跑哪些命令 */
+export interface RemoteAccessAssignment {
+  workerCount: number
+  hosts: RemoteAccessHost[]
+  commands: string[]
+}
+
 /** 请用户批准的一次远程访问：哪些主机、哪些命令、给谁用 */
 export interface RemoteAccessRequest {
-  hosts: Array<{
-    /** 已存会话的 id */
-    id: string
-    name: string
-    /** user@host:port */
-    address: string
-    /** 所在分组名；没分组不写 */
-    group?: string
-  }>
-  /** 批准后伙计能原样跑的命令，一条一项 */
+  /** 涉及的全部主机 */
+  hosts: RemoteAccessHost[]
+  /** 涉及的全部命令，一条一项 */
   commands: string[]
   /** 这次派出的伙计数；补单时不写 */
   workerCount?: number
+  /**
+   * 伙计的命令清单不一样时的分块：清单相同的伙计归一块。
+   * 大家的清单一样（或补单）时不写，用上面的 hosts / commands 就是全部。
+   */
+  assignments?: RemoteAccessAssignment[]
   /** 补单给谁；派出时不写 */
   forWorker?: string
 }

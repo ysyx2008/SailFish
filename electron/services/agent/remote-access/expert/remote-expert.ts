@@ -34,6 +34,8 @@ export interface ExpertInput {
   commands: readonly string[]
   /** 这一批派几个伙计 */
   workerCount?: number
+  /** 伙计的命令清单不一样时的分块；一样就不写 */
+  assignments?: ReadonlyArray<{ workerCount: number; hosts: readonly ExpertHost[]; commands: readonly string[] }>
   /** 补单：给哪个已派出的伙计补命令 */
   forWorker?: string
   /** 用户为这场对话选的审批方式；严格、宽松每批都由用户看，不请专家 */
@@ -106,6 +108,16 @@ export class RemoteExpert {
       ? `给已经派出的伙计「${input.forWorker}」补几条命令，他连的主机不变。`
       : `这一批派 ${input.workerCount ?? '若干'} 个伙计，共涉及 ${input.hosts.length} 台主机。`
     const mode = input.approval === 'free' ? '自由' : '替我审批'
+    const split = input.assignments && !input.forWorker
+      ? [
+          '',
+          '【分工】伙计们的命令清单不一样，每个伙计只能在自己连的主机上跑自己那一块的命令：',
+          ...input.assignments.flatMap((block, i) => [
+            `第 ${i + 1} 块：${block.workerCount} 个伙计，主机：${block.hosts.map(h => h.name).join('、')}`,
+            ...block.commands.map((command, j) => `  ${j + 1}. ${command}`),
+          ]),
+        ]
+      : []
     return [
       '【用户原话】',
       words.length ? formatUserWords(words) : '（没有）',
@@ -116,6 +128,7 @@ export class RemoteExpert {
       '',
       '【命令】',
       commandFacts,
+      ...split,
       '',
       '【审批方式】',
       `${mode}；${input.attended ? '此刻有人在场' : '此刻没有人在场'}`,

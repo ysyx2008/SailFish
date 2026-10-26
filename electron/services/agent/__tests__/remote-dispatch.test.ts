@@ -165,6 +165,16 @@ describe('参数解析', () => {
     expect('tasks' in r && r.tasks[0]).toMatchObject({ hosts: ['a1'] })
   })
 
+  it('每个伙计和 batch 条目可以带自己的 remote_commands；写错类型整批退回', () => {
+    const ok = parseDispatchTasks({ tasks: [{ description: 'a', prompt: 'p', hosts: ['a1'], remote_commands: [' df -h ', 'df -h'] }] })
+    expect('tasks' in ok && ok.tasks[0]).toMatchObject({ remoteCommands: ['df -h'] })
+    const batch = parseDispatchTasks({ batch: { instruction: '看', items: [{ description: 'a', input: 'x', hosts: ['a1'], remote_commands: ['uptime'] }] } })
+    expect('tasks' in batch && batch.tasks[0]).toMatchObject({ remoteCommands: ['uptime'] })
+    const err = parseDispatchTasks({ tasks: [{ description: 'a', prompt: 'p', hosts: ['a1'], remote_commands: 'df -h' }] })
+    expect('error' in err && err.error).toContain('子任务 1')
+    expect('error' in parseDispatchTasks({ batch: { instruction: 'i', items: [{ description: 'a', input: 'x', remote_commands: [1] }] } })).toBe(true)
+  })
+
   it('remote_commands 去重去空白；类型不对退回', () => {
     expect(parseRemoteCommands({ remote_commands: [' df -h ', 'df -h', 'uptime'] })).toEqual({ commands: ['df -h', 'uptime'] })
     expect(parseRemoteCommands({})).toEqual({ commands: [] })
@@ -199,6 +209,34 @@ describe('派出', () => {
     expect(third!.prompts[0]).toBe('看本机')
     // 界面上显示的仍是原来的指令，不带处境说明
     expect(roster.list().find(c => c.description === '看 web-01')?.shownPrompt).toBe('看磁盘')
+  })
+
+  it('伙计各带自己的命令：卡上分块，每个伙计只拿到共有的加自己的', async () => {
+    const { executor, confirm, children } = executorFor(roster)
+    const result = await dispatchSubAgents(
+      {
+        tasks: [
+          { description: '看 web-01', prompt: '看磁盘', hosts: ['a1'], remote_commands: ['df -h'] },
+          { description: '看 web-02', prompt: '看负载', hosts: ['a2'], remote_commands: ['uptime'] },
+        ],
+        remote_commands: ['hostname'],
+      },
+      configOf('relaxed'),
+      executor,
+      'call-1',
+    )
+    expect(result.success).toBe(true)
+    expect(confirm).toHaveBeenCalledTimes(1)
+    const card = (confirm.mock.calls[0] as unknown[])[7] as { remoteAccess: { assignments: Array<{ commands: string[] }> } }
+    expect(card.remoteAccess.assignments.map(b => b.commands)).toEqual([['hostname', 'df -h'], ['hostname', 'uptime']])
+    await settle(roster)
+    const [first, second] = [...children.values()]
+    expect(first!.access?.grant.permitsCommand('df -h')).toBe(true)
+    expect(first!.access?.grant.permitsCommand('uptime')).toBe(false)
+    expect(second!.access?.grant.permitsCommand('uptime')).toBe(true)
+    expect(second!.access?.grant.permitsCommand('df -h')).toBe(false)
+    expect(first!.prompts[0]).toContain('`df -h`')
+    expect(first!.prompts[0]).not.toContain('`uptime`')
   })
 
   it('自由模式：不问，范围照样给', async () => {

@@ -7,6 +7,7 @@
  *
  * 1. 请求带着专家的话：卡上也没有这一栏，只有命令与主机
  * 2. 请求没带：同上
+ * 3. 伙计的命令清单不一样：按块分开
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -117,6 +118,25 @@ try {
   check('没有专家这一栏', !/运维专家/.test(plain), plain)
   check('命令与主机照常显示', /systemctl restart nginx/.test(plain) && /web-01/.test(plain), plain)
   await shot('2-without-expert')
+
+  console.log('\n[3] 伙计的命令清单不一样：按块分开，每块写自己的命令和主机')
+  const web = { id: 'a1', name: 'web-01', address: 'deploy@10.0.0.11:22', group: '生产' }
+  const lab = { id: 'a2', name: 'lab', address: 'root@10.0.1.5:22' }
+  const split = confirmation(undefined)
+  split.remoteAccess.assignments = [
+    { workerCount: 1, hosts: [web], commands: ['df -h'] },
+    { workerCount: 1, hosts: [lab], commands: ['uptime'] },
+  ]
+  await setConfirm(split)
+  await sleep(300)
+  const blocksText = await page.locator('.remote-access').first().innerText()
+  check('分成两块，各有标题', /第 1 块/.test(blocksText) && /第 2 块/.test(blocksText), blocksText)
+  check('第一块是 web-01 和 df，第二块是 lab 和 uptime',
+    blocksText.indexOf('df -h') < blocksText.indexOf('web-01') && blocksText.indexOf('web-01') < blocksText.indexOf('第 2 块') &&
+    blocksText.indexOf('第 2 块') < blocksText.indexOf('uptime') && blocksText.indexOf('uptime') < blocksText.indexOf('lab'), blocksText)
+  const blockBox = await page.locator('.remote-access').first().boundingBox()
+  check('分块的卡没有被撑出屏幕', blockBox && blockBox.width > 100 && blockBox.width < 1600, JSON.stringify(blockBox))
+  await shot('3-blocks')
 } catch (error) {
   failures.push(`脚本出错：${error instanceof Error ? error.message : error}`)
   console.error(error)

@@ -66,7 +66,7 @@ describe('派出：参数与处境', () => {
     const { gate, confirm } = gateWith()
     const r = await gate.authorizeDispatch([{ hosts: ['a1'] }], [])
     expect(r.ok).toBe(false)
-    expect(!r.ok && r.error).toContain('remote_commands 必须列出')
+    expect(!r.ok && r.error).toContain('第 1 位伙计写了 hosts')
     expect(confirm).not.toHaveBeenCalled()
   })
 
@@ -74,6 +74,19 @@ describe('派出：参数与处境', () => {
     const { gate } = gateWith()
     const r = await gate.authorizeDispatch([{}], ['df -h'])
     expect(!r.ok && r.error).toContain('没有伙计带 hosts')
+  })
+
+  it('伙计自己写了命令却没写主机：退回并点名第几位', async () => {
+    const { gate, confirm } = gateWith()
+    const r = await gate.authorizeDispatch([{ hosts: ['a1'], commands: ['df -h'] }, { commands: ['uptime'] }], [])
+    expect(!r.ok && r.error).toContain('第 2 位伙计写了 remote_commands，却没写 hosts')
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('有的伙计写了主机、共有和自己的命令都空：退回并点名', async () => {
+    const { gate } = gateWith()
+    const r = await gate.authorizeDispatch([{ hosts: ['a1'], commands: ['df -h'] }, { hosts: ['a2'] }], [])
+    expect(!r.ok && r.error).toContain('第 2 位伙计写了 hosts')
   })
 
   it('命令条数超过上限：退回', async () => {
@@ -400,5 +413,42 @@ describe('运维专家的结论怎么落到审批方式', () => {
     expect(input.hosts[0]!.group).toBe('生产')
     expect(input.commands).toEqual(['df -h', 'uptime'])
     expect(input.approval).toBe('autoReview')
+  })
+})
+
+describe('派出：每个伙计自己的命令清单', () => {
+  it('清单不一样：卡上按块分开，每个伙计只拿到共有的加自己的', async () => {
+    const { gate, confirm } = gateWith()
+    const r = await gate.authorizeDispatch(
+      [
+        { hosts: ['a1'], commands: ['df -h'] },
+        { hosts: ['a2'], commands: ['uptime'] },
+        { hosts: ['b1'], commands: ['df -h'] },
+      ],
+      ['hostname'],
+    )
+    expect(r.ok).toBe(true)
+    const asked = confirm.mock.calls[0]![0] as unknown as { assignments?: Array<{ workerCount: number; hosts: Array<{ name: string }>; commands: string[] }>; commands: string[]; workerCount: number }
+    expect(asked.workerCount).toBe(3)
+    expect(asked.commands).toEqual(['hostname', 'df -h', 'uptime'])
+    expect(asked.assignments).toHaveLength(2)
+    expect(asked.assignments![0]).toMatchObject({ workerCount: 2, commands: ['hostname', 'df -h'] })
+    expect(asked.assignments![0]!.hosts.map(h => h.name)).toEqual(['web-01', 'lab'])
+    expect(asked.assignments![1]).toMatchObject({ workerCount: 1, commands: ['hostname', 'uptime'] })
+
+    const [g1, g2] = r.ok ? r.value : []
+    expect(g1!.permitsCommand('df -h')).toBe(true)
+    expect(g1!.permitsCommand('uptime')).toBe(false)
+    expect(g2!.permitsCommand('uptime')).toBe(true)
+    expect(g2!.permitsCommand('df -h')).toBe(false)
+    expect(g2!.permitsCommand('hostname')).toBe(true)
+  })
+
+  it('清单都一样：还是一张不分块的卡', async () => {
+    const { gate, confirm } = gateWith()
+    await gate.authorizeDispatch([{ hosts: ['a1'], commands: ['df -h'] }, { hosts: ['a2'], commands: ['df -h'] }], [])
+    const asked = confirm.mock.calls[0]![0] as unknown as { assignments?: unknown; commands: string[] }
+    expect(asked.assignments).toBeUndefined()
+    expect(asked.commands).toEqual(['df -h'])
   })
 })

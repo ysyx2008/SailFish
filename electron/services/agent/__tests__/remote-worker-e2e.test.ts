@@ -223,6 +223,38 @@ describe('伙计在已存主机上后台跑命令（真实 SailFish.run）', () 
     expect(fs.readFileSync(entries[0].outputFile, 'utf-8')).toContain('HELLO_FROM_REMOTE')
   })
 
+  it('两个伙计各连各的主机、各跑各的命令：互相的命令不会越界，卡上按块分开', async () => {
+    const services = makeServices(({ isChild, parentIndex, messages }) => {
+      if (isChild) {
+        // 两个伙计的调用交错在一起，按各自已拿到几次工具结果来决定下一步
+        const childIndex = messages.filter(m => m.role === 'tool').length
+        const mine = lastUserText(messages).includes('看 web-01') ? { host: 'h1', own: 'echo ONLY_ON_H1', foreign: 'echo ONLY_ON_H2' } : { host: 'h2', own: 'echo ONLY_ON_H2', foreign: 'echo ONLY_ON_H1' }
+        if (childIndex === 0) return { tool_calls: [tc('remote_exec', { host: mine.host, command: mine.own }, 'own')] }
+        if (childIndex === 1) return { tool_calls: [tc('remote_exec', { host: mine.host, command: mine.foreign }, 'foreign')] }
+        return { content: '做完了' }
+      }
+      if (parentIndex === 0) {
+        return {
+          tool_calls: [tc('dispatch_agents', {
+            tasks: [
+              { name: 'w1', description: '看 web-01', prompt: '看 web-01', hosts: ['h1'], remote_commands: ['echo ONLY_ON_H1'] },
+              { name: 'w2', description: '看 web-02', prompt: '看 web-02', hosts: ['h2'], remote_commands: ['echo ONLY_ON_H2'] },
+            ],
+          })],
+        }
+      }
+      return { content: '汇总' }
+    })
+    const { result, confirmations } = runParent(services, 'relaxed', () => true)
+    await result
+    expect(confirmations).toHaveLength(1)
+    expect(confirmations[0]!.remoteAccess?.assignments).toHaveLength(2)
+    expect(host.commands).toEqual(['echo ONLY_ON_H1'])
+    expect(other.commands).toEqual(['echo ONLY_ON_H2'])
+    const seen = llmCalls.filter(c => isChildCallNames(c.tools)).map(toolOutputsOf).join('\n')
+    expect(seen).toContain('不在批准的清单里')
+  })
+
   it('用户拒绝：一个伙计都没派，没有连任何主机', async () => {
     const services = makeServices(({ isChild, parentIndex, messages }) => {
       if (isChild) return { content: '不该有伙计' }

@@ -177,4 +177,24 @@ describe('RemoteExpert.judge', () => {
     expect(user).toContain('补几条命令')
     expect(user).toContain('w1')
   })
+
+  it('伙计的命令清单不一样时，把分工一起交给模型', async () => {
+    const chat = vi.fn(async () => ({ content: '{"outcome":"allow","card":"ok"}' }))
+    const db = { name: 'db1', address: 'ops@10.0.0.1:22' }
+    const web = { name: 'web1', address: 'ops@10.0.0.2:22' }
+    await new RemoteExpert(env(chat)).judge({
+      ...INPUT,
+      hosts: [db, web],
+      commands: ['uptime', 'df -h'],
+      workerCount: 2,
+      assignments: [
+        { workerCount: 1, hosts: [db], commands: ['uptime'] },
+        { workerCount: 1, hosts: [web], commands: ['df -h'] },
+      ],
+    })
+    const user = (chat.mock.calls[0] as unknown as [Array<{ content: string }>])[0][1]!.content
+    expect(user).toContain('命令清单不一样')
+    expect(user).toContain('第 1 块：1 个伙计，主机：db1')
+    expect(user).toContain('第 2 块：1 个伙计，主机：web1')
+  })
 })

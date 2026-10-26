@@ -367,6 +367,7 @@ export default {
     mediumRisk: '中风险',
     lowRisk: '低风险',
     remoteAccess: {
+      block: '第 {index} 块：{workers} 个伙计，连 {hosts} 台主机，{commands} 条命令',
       ungrouped: '未分组',
       hostsTitle: '主机',
       commandsTitle: '批准后能原样跑的命令',

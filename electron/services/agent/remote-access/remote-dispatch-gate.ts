@@ -6,7 +6,7 @@
  * 严格、宽松直接问用户；替我审批、自由由运维专家判断。
  * 任何一步不过都整批退回，回执写明原因；通过之前不开工、不连任何主机。
  */
-import type { ExecutionMode, JumpHostGroupRef, RemoteAccessRequest } from '@shared/types'
+import type { ExecutionMode, JumpHostGroupRef, RemoteAccessAssignment, RemoteAccessRequest } from '@shared/types'
 import { checkReadOnlyCommand } from '../command-audit'
 import { t } from '../i18n'
 import { partialFromVerdict, type ExpertInput, type ExpertPartial, type ExpertResult } from './expert'
@@ -64,42 +64,62 @@ export type ExpertLiveUpdate =
 
 export type GateOutcome<T> = { ok: true; value: T } | { ok: false; error: string }
 
-/** 派出：每个伙计要连的主机 id 清单（没有就是不碰远程） */
+/** 派出：每个伙计要连的主机 id 清单，和他自己的命令（没有就是不碰远程） */
 export interface DispatchedWorkerHosts {
   hosts?: readonly string[]
+  /** 只属于这个伙计的命令；整批共有的另给 */
+  commands?: readonly string[]
 }
 
 export class RemoteDispatchGate {
   constructor(private readonly ctx: RemoteDispatchContext) {}
 
-  /** 返回与 workers 一一对应的范围；不碰远程的伙计对应 undefined */
+  /**
+   * 返回与 workers 一一对应的范围；不碰远程的伙计对应 undefined。
+   * 每个伙计的命令 = 整批共有的 + 他自己的，去重；他只能跑这一份。
+   */
   async authorizeDispatch(
     workers: readonly DispatchedWorkerHosts[],
-    commands: readonly string[],
+    sharedCommands: readonly string[],
   ): Promise<GateOutcome<Array<RemoteGrant | undefined>>> {
     const anyHosts = workers.some(w => (w.hosts?.length ?? 0) > 0)
-    if (!anyHosts && commands.length === 0) return { ok: true, value: workers.map(() => undefined) }
+    const anyCommands = sharedCommands.length > 0 || workers.some(w => (w.commands?.length ?? 0) > 0)
+    if (!anyHosts && !anyCommands) return { ok: true, value: workers.map(() => undefined) }
     if (!anyHosts) return { ok: false, error: t('remote.need_hosts') }
-    if (commands.length === 0) return { ok: false, error: t('remote.need_commands') }
 
-    const shape = this.checkShape(commands)
-    if (shape) return { ok: false, error: shape }
+    const commandsOf = workers.map(w => [...new Set([...sharedCommands, ...(w.commands ?? [])])])
+    for (let i = 0; i < workers.length; i++) {
+      const hasHosts = (workers[i]!.hosts?.length ?? 0) > 0
+      if (!hasHosts && (workers[i]!.commands?.length ?? 0) > 0) return { ok: false, error: t('remote.worker_commands_without_hosts', { index: i + 1 }) }
+      if (hasHosts && commandsOf[i]!.length === 0) return { ok: false, error: t('remote.need_commands', { index: i + 1 }) }
+    }
+
+    for (let i = 0; i < workers.length; i++) {
+      if ((workers[i]!.hosts?.length ?? 0) === 0) continue
+      const shape = this.checkShape(commandsOf[i]!)
+      if (shape) return { ok: false, error: shape }
+    }
     if (!this.ctx.conversationAllows) return { ok: false, error: t('remote.background_denied') }
 
     const resolved = this.resolveHosts(workers)
     if ('error' in resolved) return { ok: false, error: resolved.error }
 
+    const members = resolved.perWorker
+      .map((hosts, i) => ({ hosts, commands: commandsOf[i]! }))
+      .filter(m => m.hosts.length > 0)
+    const assignments = splitByCommands(members)
     const request: RemoteAccessRequest = {
-      hosts: uniqueHosts(resolved.perWorker.flat()),
-      commands: [...commands],
-      workerCount: resolved.perWorker.filter(h => h.length > 0).length,
+      hosts: uniqueHosts(members.flatMap(m => m.hosts)),
+      commands: [...new Set(members.flatMap(m => m.commands))],
+      workerCount: members.length,
+      ...(assignments.length > 1 ? { assignments } : {}),
     }
     const verdict = await this.vet(request, t('remote.confirm_title_dispatch', { count: request.workerCount ?? 0 }), t('remote.rejected'))
     if (verdict) return { ok: false, error: verdict }
 
     return {
       ok: true,
-      value: resolved.perWorker.map(hosts => (hosts.length > 0 ? new RemoteGrant(hosts, commands) : undefined)),
+      value: resolved.perWorker.map((hosts, i) => (hosts.length > 0 ? new RemoteGrant(hosts, commandsOf[i]!) : undefined)),
     }
   }
 
@@ -189,6 +209,7 @@ export class RemoteDispatchGate {
       hosts: request.hosts,
       commands: request.commands,
       ...(request.workerCount !== undefined ? { workerCount: request.workerCount } : {}),
+      ...(request.assignments ? { assignments: request.assignments } : {}),
       ...(request.forWorker ? { forWorker: request.forWorker } : {}),
       approval: mode === 'free' ? 'free' : 'autoReview',
       attended: this.ctx.attended,
@@ -246,12 +267,26 @@ export class RemoteDispatchGate {
     const toolArgs: Record<string, unknown> = {
       hosts: request.hosts.map(h => ({ name: h.name, address: h.address, ...(h.group ? { group: h.group } : {}) })),
       remote_commands: request.commands,
+      ...(request.assignments ? { assignments: request.assignments.map(b => ({ workers: b.workerCount, hosts: b.hosts.map(h => h.name), remote_commands: b.commands })) } : {}),
       ...(request.workerCount !== undefined ? { workers: request.workerCount } : {}),
       ...(request.forWorker ? { worker: request.forWorker } : {}),
     }
     const approved = await this.ctx.confirm(request, toolArgs, displayName, [t('remote.reason_scope'), t('remote.reason_output')])
     return approved ? null : rejectedText
   }
+}
+
+/** 命令清单相同（不看顺序）的伙计归一块，块按首次出现的顺序排 */
+function splitByCommands(members: ReadonlyArray<{ hosts: readonly GrantedHost[]; commands: readonly string[] }>): RemoteAccessAssignment[] {
+  const blocks = new Map<string, { workerCount: number; hosts: GrantedHost[]; commands: string[] }>()
+  for (const member of members) {
+    const key = JSON.stringify([...member.commands].sort())
+    const block = blocks.get(key) ?? { workerCount: 0, hosts: [], commands: [...member.commands] }
+    block.workerCount++
+    block.hosts.push(...member.hosts)
+    blocks.set(key, block)
+  }
+  return [...blocks.values()].map(b => ({ ...b, hosts: uniqueHosts(b.hosts) }))
 }
 
 function uniqueHosts(hosts: readonly GrantedHost[]): GrantedHost[] {

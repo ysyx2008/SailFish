@@ -33,6 +33,7 @@ import { REMOTE_OUTPUT_INLINE_CHARS, REMOTE_TIMEOUT_DEFAULT_SECONDS, REMOTE_TIME
 
 const SUB_AGENT_NAME_DESCRIPTION = '能反映出他在干什么的短名字，让用户一眼看懂（如「读 nginx 配置」）。不要用人名、编号或跟任务无关的代号。可选，不填则从任务简述生成'
 const HOSTS_DESCRIPTION = '这个伙计能连的已存主机（sessionId）。不写就碰不到远程。'
+const OWN_REMOTE_COMMANDS_DESCRIPTION = '只属于这个伙计的远程命令，每条一项，要同时写了 hosts。他能跑的是整批共有的 remote_commands 加这些，别的伙计碰不到这些。'
 const FORK_TURNS_DESCRIPTION = '带多少对话。默认 all。none=不带，all=全带，正整数字符串（如 1、3）=只带最近几轮。'
 
 /** @deprecated Use TerminalType from @shared/types */
@@ -1288,7 +1289,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
         name: 'dispatch_agents',
         description: `派出这场任务里的同事并行干活：不带 role 的是伙计，带 role 的是专家。派出的都立刻开工，立刻返回每个人的名字。两种写法：tasks 每人各写一份指令；batch 一份共同指令加一批条目，每个条目派一个人。同一次可以两种一起用。再带 team，这次 tasks 里的专家（${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位，每位都带 role，不和 batch 同用）组成专家团，在群里点名交接，你是组长，团里的规矩在派出后的回执里。同时向模型发几个请求由系统按接口的承受情况调节，暂时发不出去的排队，轮到了再发。每个伙计各自占用对话上下文和费用。一场任务里没做完的伙计最多 ${MAX_LIVE_CHILDREN} 个，这次要派的加上没做完的超过这个数时，整批不派。
 
-伙计也能在已存的 SSH 主机上后台跑命令：给伙计写 hosts（list_ssh_sessions 返回的 sessionId），并在 remote_commands 里列出这一批要在远程跑的命令。命令不限只读。严格和宽松下，派出前弹卡等用户点头；替我审批下，由运维专家看这一批主机和命令，认为可以做的直接做，该问用户的才弹卡，不该做的整批不派；自由模式不问人，专家认为不该直接做的整批不派。整批不派时，回执里写明原因。关切、唤醒里派不出去。伙计只能在自己的主机上原样跑单上的命令，不开终端窗。`,
+伙计也能在已存的 SSH 主机上后台跑命令：给伙计写 hosts（list_ssh_sessions 返回的 sessionId），并列出他要在远程跑的命令：大家共有的写在 remote_commands，只有这个伙计要跑的写在他自己的 remote_commands（不同的机器要跑不同命令时，各伙计各写各的）。命令不限只读。严格和宽松下，派出前弹卡等用户点头；替我审批下，由运维专家看这一批主机和命令，认为可以做的直接做，该问用户的才弹卡，不该做的整批不派；自由模式不问人，专家认为不该直接做的整批不派。整批不派时，回执里写明原因。关切、唤醒里派不出去。伙计只能在自己的主机上原样跑属于他的那份命令，不开终端窗。`,
         parameters: {
           type: 'object',
           properties: {
@@ -1302,7 +1303,8 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
                   description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
                   prompt: { type: 'string', description: '详细任务指令' },
                   fork_turns: { type: 'string', description: FORK_TURNS_DESCRIPTION },
-                  hosts: { type: 'array', items: { type: 'string' }, description: HOSTS_DESCRIPTION }
+                  hosts: { type: 'array', items: { type: 'string' }, description: HOSTS_DESCRIPTION },
+                  remote_commands: { type: 'array', items: { type: 'string' }, description: OWN_REMOTE_COMMANDS_DESCRIPTION }
                 },
                 required: ['description', 'prompt']
               },
@@ -1322,7 +1324,8 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
                       name: { type: 'string', description: SUB_AGENT_NAME_DESCRIPTION },
                       description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
                       input: { type: 'string', description: '这个伙计自己的那部分，接在共同指令后面' },
-                      hosts: { type: 'array', items: { type: 'string' }, description: HOSTS_DESCRIPTION }
+                      hosts: { type: 'array', items: { type: 'string' }, description: HOSTS_DESCRIPTION },
+                      remote_commands: { type: 'array', items: { type: 'string' }, description: OWN_REMOTE_COMMANDS_DESCRIPTION }
                     },
                     required: ['description', 'input']
                   }
@@ -1334,7 +1337,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
             remote_commands: {
               type: 'array',
               items: { type: 'string' },
-              description: '这一批要在远程跑的命令，每条一项。伙计只能原样跑这些。有伙计写了 hosts 就必填。'
+              description: '这一批所有写了 hosts 的伙计共有的远程命令，每条一项。伙计只能原样跑这些，再加上他自己的 remote_commands。每个写了 hosts 的伙计，共有的加自己的至少要有一条。'
             }
           },
           required: []

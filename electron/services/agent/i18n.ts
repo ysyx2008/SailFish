@@ -1770,7 +1770,8 @@ const translations = {
 
     // 伙计的远程范围（派出时的授权、伙计手里的 remote_exec）
     'remote.need_hosts': 'remote_commands 写了，但没有伙计带 hosts。整批没有派出。',
-    'remote.need_commands': '写了 hosts 的伙计要连远程主机，remote_commands 必须列出这一批要跑的命令。整批没有派出。',
+    'remote.need_commands': '第 {index} 位伙计写了 hosts，要连远程主机，但没有命令可跑：整批的 remote_commands 和他自己的 remote_commands 都是空的。整批没有派出。',
+    'remote.worker_commands_without_hosts': '第 {index} 位伙计写了 remote_commands，却没写 hosts。整批没有派出。',
     'remote.too_many_commands': 'remote_commands 最多 {max} 条，这次 {count} 条。整批没有派出。',
     'remote.command_too_long': 'remote_commands 第 {index} 条超过 {max} 字。整批没有派出。',
     'remote.unknown_hosts': '这些主机不是已存的会话：{ids}。list_ssh_sessions 返回的 sessionId 才能写进 hosts。整批没有派出。',
@@ -1795,6 +1796,7 @@ const translations = {
     'remote.card_summary_dispatch': '{workers} 个伙计，连 {hosts} 台主机，共 {commands} 条命令',
     'remote.card_summary_followup': '给伙计 {name} 补命令：他的 {hosts} 台主机，新增 {commands} 条命令',
     'remote.card_commands': '批准后能原样跑的命令：',
+    'remote.card_assignment': '第 {index} 块：{workers} 个伙计，连 {hosts} 台主机，{commands} 条命令',
     'remote.card_hosts': '主机：',
     'remote.card_ungrouped': '未分组',
     'remote.tool_host_out_of_scope': '主机 {host} 不在你的范围里。你能连的：\n{list}',
@@ -3832,7 +3834,8 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
 
     // Helper remote scope (dispatch-time authorization, remote_exec in helpers' hands)
     'remote.need_hosts': 'remote_commands was given, but no helper has hosts. Nothing was sent.',
-    'remote.need_commands': 'Helpers with hosts connect to remote hosts, so remote_commands must list the commands for this batch. Nothing was sent.',
+    'remote.need_commands': 'Helper {index} has hosts and will connect to remote hosts, but has no commands: both the batch remote_commands and the helper\'s own remote_commands are empty. Nothing was sent.',
+    'remote.worker_commands_without_hosts': 'Helper {index} has remote_commands but no hosts. Nothing was sent.',
     'remote.too_many_commands': 'remote_commands takes at most {max} entries; this call has {count}. Nothing was sent.',
     'remote.command_too_long': 'remote_commands entry {index} is longer than {max} characters. Nothing was sent.',
     'remote.unknown_hosts': 'These hosts are not saved sessions: {ids}. Only sessionIds returned by list_ssh_sessions can go into hosts. Nothing was sent.',
@@ -3857,6 +3860,7 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'remote.card_summary_dispatch': '{workers} helper(s), {hosts} host(s), {commands} command(s) in total',
     'remote.card_summary_followup': 'Adding commands for helper {name}: their {hosts} host(s), {commands} new command(s)',
     'remote.card_commands': 'Commands that may run as written once approved:',
+    'remote.card_assignment': 'Block {index}: {workers} helper(s), {hosts} host(s), {commands} command(s)',
     'remote.card_hosts': 'Hosts:',
     'remote.card_ungrouped': 'Ungrouped',
     'remote.tool_host_out_of_scope': 'Host {host} is not in your scope. Hosts you can reach:\n{list}',

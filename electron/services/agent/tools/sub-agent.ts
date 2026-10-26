@@ -622,7 +622,7 @@ export function spawnDeps(
   }
 }
 
-type ParsedSpawnTask = SpawnTask & { forkTurns: ForkTurns; hosts?: string[] }
+type ParsedSpawnTask = SpawnTask & { forkTurns: ForkTurns; hosts?: string[]; remoteCommands?: string[] }
 
 function optionalName(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined
@@ -643,14 +643,25 @@ function parseHosts(value: unknown, where: string): { hosts?: string[] } | { err
   return hosts.length > 0 ? { hosts } : {}
 }
 
-/** remote_commands：每条一项，去掉首尾空白；不写返回空数组 */
-export function parseRemoteCommands(args: Record<string, unknown>): { commands: string[] } | { error: string } {
-  const raw = args.remote_commands
+/** 命令清单：每条一项，去掉首尾空白、去重；不写返回空数组 */
+function parseCommandList(raw: unknown, where: string): { commands: string[] } | { error: string } {
   if (raw === undefined) return { commands: [] }
   if (!Array.isArray(raw) || raw.some(v => typeof v !== 'string' || v.trim() === '')) {
-    return { error: 'remote_commands 必须是字符串数组，每条是一条命令' }
+    return { error: `${where}remote_commands 必须是字符串数组，每条是一条命令` }
   }
   return { commands: [...new Set((raw as string[]).map(v => v.trim()))] }
+}
+
+/** 整批共有的 remote_commands */
+export function parseRemoteCommands(args: Record<string, unknown>): { commands: string[] } | { error: string } {
+  return parseCommandList(args.remote_commands, '')
+}
+
+/** 某个伙计自己的 remote_commands；不写就不带这个字段 */
+function parseOwnCommands(value: unknown, where: string): { remoteCommands?: string[] } | { error: string } {
+  const parsed = parseCommandList(value, `${where}：`)
+  if ('error' in parsed) return { error: parsed.error }
+  return parsed.commands.length > 0 ? { remoteCommands: parsed.commands } : {}
 }
 
 function isBatchArgs(value: unknown): value is { instruction: string } {
@@ -688,6 +699,8 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
       const description = oneLine(task.description)
       const hosts = parseHosts(task.hosts, `子任务 ${i + 1}`)
       if ('error' in hosts) return { error: hosts.error }
+      const own = parseOwnCommands(task.remote_commands, `子任务 ${i + 1}`)
+      if ('error' in own) return { error: own.error }
       tasks.push({
         name,
         description: description ?? (role ? name ?? role : 'task'),
@@ -695,6 +708,7 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
         forkTurns,
         ...(role ? { role } : {}),
         ...hosts,
+        ...own,
       })
     }
   }
@@ -719,6 +733,8 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
       const name = optionalName(item.name)
       const hosts = parseHosts(item.hosts, `batch 第 ${i + 1} 条`)
       if ('error' in hosts) return { error: hosts.error }
+      const own = parseOwnCommands(item.remote_commands, `batch 第 ${i + 1} 条`)
+      if ('error' in own) return { error: own.error }
       tasks.push({
         name,
         description: oneLine(item.description) ?? (name ?? `${i + 1}`),
@@ -726,6 +742,7 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
         shownPrompt: item.input,
         forkTurns,
         ...hosts,
+        ...own,
       })
     }
   }
@@ -764,18 +781,18 @@ async function authorizeRemoteScopes(
   const parsedCommands = parseRemoteCommands(args)
   if ('error' in parsedCommands) return { error: parsedCommands.error }
   const commands = parsedCommands.commands
-  if (commands.length === 0 && !tasks.some(task => task.hosts)) {
+  if (commands.length === 0 && !tasks.some(task => task.hosts || task.remoteCommands)) {
     return { tasks }
   }
 
   const gate = remoteGateFor(config, executor, toolCallId, 'dispatch_agents')
-  const outcome = await gate.authorizeDispatch(tasks, commands)
+  const outcome = await gate.authorizeDispatch(tasks.map(task => ({ hosts: task.hosts, commands: task.remoteCommands })), commands)
   if (!outcome.ok) return { error: outcome.error }
 
   return {
     tasks: tasks.map((task, i): SpawnTask => {
       const grant = outcome.value[i]
-      const { hosts: _hosts, ...rest } = task
+      const { hosts: _hosts, remoteCommands: _own, ...rest } = task
       if (!grant) return rest
       return {
         ...rest,
