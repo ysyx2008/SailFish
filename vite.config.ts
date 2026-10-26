@@ -9,6 +9,7 @@ import { BUNDLED_GRAMMARS, BUNDLED_WASM_DIR, grammarSourceDir } from './electron
 import { oemResolved } from './shared/oem-resolve'
 import { REVIEW_LANE_ENV } from './shared/review-lane'
 import { laneOf } from './scripts/review-lane.mjs'
+import { pageNoNodePlugin, pageOemRuntimeSource } from './scripts/page-no-node'
 
 /**
  * OEM 可选配置：有 shared/oem.config.ts 则打包进覆盖配置，没有则用 oem-defaults。
@@ -35,7 +36,6 @@ function oemAppLogoPlugin(): Plugin {
 
 function optionalOemConfig(): Plugin {
   const runtimeFile = resolve(__dirname, 'shared/oem-runtime.ts')
-  const overrideFile = resolve(__dirname, 'shared/oem.config.ts')
 
   return {
     name: 'optional-oem-config',
@@ -43,15 +43,11 @@ function optionalOemConfig(): Plugin {
     load(id) {
       const normalized = id.split('?')[0]
       if (resolve(normalized) !== runtimeFile) return null
-      const from = existsSync(overrideFile) ? './oem.config' : './oem-defaults'
-      if (existsSync(overrideFile)) {
+      const rendered = pageOemRuntimeSource(__dirname)
+      if (rendered.usingOverride) {
         console.log('[optional-oem-config] using shared/oem.config.ts')
       }
-      return `
-export type { OemConfig, OemFeatures, OemFeatureKey, OemBrand, OemSsoConfig, OemSsoGateMode, OemSsoVerifyIdToken } from './oem-types'
-export { OEM_FEATURE_DEFAULTS } from './oem-types'
-export { oemConfig } from '${from}'
-`
+      return rendered.source
     },
   }
 }
@@ -287,6 +283,7 @@ export default defineConfig({
     __STEAM_BUILD__: isSteamBuild
   },
   plugins: [
+    pageNoNodePlugin(),
     optionalOemConfig(),
     oemAppLogoPlugin(),
     vue({
