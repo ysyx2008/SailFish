@@ -170,10 +170,8 @@ const showArtifactFold = computed(() =>
 const showDeskChrome = computed(() =>
   showDeskList.value || (showArtifactFold.value && !docExpanded.value)
 )
-/** 组织图比团聊宽：打开时至少给它这么宽，关掉恢复原来的分栏比例 */
-const ORG_MIN_RATIO = 0.6
 const ratio = computed({
-  get: () => orgSeated.value ? Math.max(artifactStore.splitRatio, ORG_MIN_RATIO) : artifactStore.splitRatio,
+  get: () => artifactStore.splitRatio,
   set: (v: number) => { artifactStore.splitRatio = v },
 })
 
@@ -481,7 +479,6 @@ defineExpose({
         class="assistant-shell"
         :toggle-visible="(docExpanded && hasArtifacts) || teamSeated || orgSeated"
         v-model:toggle-ratio="ratio"
-        :min-ratio="orgSeated ? ORG_MIN_RATIO : 0.2"
         toggle-side="right"
       >
         <template #anchor>

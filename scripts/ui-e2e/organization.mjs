@@ -213,7 +213,7 @@ try {
   check('散人和团在同一行', layout?.sameRow === true, JSON.stringify(layout))
   check('两端不等宽时总线仍落在行中心', layout?.busCentered === true, JSON.stringify(layout))
   check('父节点压在两端中心连线的中点', layout?.parentCentered === true, JSON.stringify(layout))
-  // 组织图和团聊一样坐右侧面板；等抽屉动画走完再量宽度、截图
+  // 组织图和团聊一样坐右侧面板；等抽屉动画走完再截图
   await sleep(450)
   const seated = await page.evaluate(() => {
     const region = document.querySelector('.assistant-shell .workbench-region')
@@ -224,7 +224,6 @@ try {
     }
   })
   check('组织图在右侧面板里，不是盖在对话上', seated.inRegion === true, JSON.stringify(seated))
-  check('右侧面板给组织图留出足够宽度', seated.width >= 300, seated.width)
   await shot('3-chart')
 
   console.log('\n[4] 团的完整群聊')
