@@ -472,6 +472,11 @@ onMounted(() => { void openChat(true) })
   overflow-y: auto;
 }
 
+/* 右侧面板和对话之间画一道分界，和组织图面板一致 */
+.expert-team-chat.is-panel {
+  border-left: 1px solid var(--border-color);
+}
+
 .etc-members-title {
   margin: 0 6px 8px;
   font-size: 11px;

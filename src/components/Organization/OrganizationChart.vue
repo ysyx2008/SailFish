@@ -114,6 +114,10 @@ onMounted(() => {
   /* 盖在对话顶栏上：顶栏是拖窗口的区域，不声明的话点返回等于拖窗口 */
   -webkit-app-region: no-drag;
 }
+/* 右侧面板和对话之间画一道分界，和群聊面板一致 */
+.organization-chart.is-panel {
+  border-left: 1px solid var(--border-color);
+}
 
 .oc-header {
   flex-shrink: 0;
