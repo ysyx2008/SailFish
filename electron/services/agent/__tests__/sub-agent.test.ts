@@ -174,6 +174,51 @@ describe('dispatch_agents 异步派出', () => {
     expect(roster.list()).toHaveLength(0)
   })
 
+  it('秘书不能在一次派出里同时带团和指定组长', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, stubChild('ok'))
+    const result = await dispatchSubAgents({
+      team: '研发团',
+      tasks: [
+        { description: '定路线', prompt: '定路线', role: '技术负责人', lead: true },
+        { description: '对比', prompt: '对比', role: '选型' },
+        { description: '估算', prompt: '估算', role: '估算' },
+      ],
+    }, defaultConfig, executor)
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('只派组长')
+    expect(roster.list()).toHaveLength(0)
+  })
+
+  it('秘书不能把组长装进一个上级团，组长应该直管', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, stubChild('ok'))
+    const result = await dispatchSubAgents({
+      team: '项目组',
+      tasks: [
+        { description: '带研发组', prompt: '带研发组', role: '研发组长', lead: true },
+        { description: '带运营组', prompt: '带运营组', role: '运营组长', lead: true },
+      ],
+    }, defaultConfig, executor)
+    expect(result.success).toBe(false)
+    expect(roster.list()).toHaveLength(0)
+  })
+
+  it('秘书可以一次派两位组长，组长自己组人', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, stubChild('ok'))
+    const result = await dispatchSubAgents({
+      tasks: [
+        { description: '带研发组', prompt: '带研发组', role: '研发组长', lead: true },
+        { description: '带运营组', prompt: '带运营组', role: '运营组长', lead: true },
+      ],
+    }, defaultConfig, executor)
+    expect(result.success).toBe(true)
+    expect(roster.list()).toHaveLength(2)
+    expect(roster.list().every(c => c.lead)).toBe(true)
+    roster.abortAll()
+  })
+
   it('followup / interrupt 走花名册', async () => {
     const roster = new SubAgentRoster()
     const child = stubChild('v1')

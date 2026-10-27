@@ -213,6 +213,18 @@ try {
   check('散人和团在同一行', layout?.sameRow === true, JSON.stringify(layout))
   check('两端不等宽时总线仍落在行中心', layout?.busCentered === true, JSON.stringify(layout))
   check('父节点压在两端中心连线的中点', layout?.parentCentered === true, JSON.stringify(layout))
+  // 组织图和团聊一样坐右侧面板；等抽屉动画走完再量宽度、截图
+  await sleep(450)
+  const seated = await page.evaluate(() => {
+    const region = document.querySelector('.assistant-shell .workbench-region')
+    const chart = document.querySelector('.organization-chart')
+    return {
+      inRegion: !!(region && chart && region.contains(chart)),
+      width: region?.getBoundingClientRect().width ?? 0,
+    }
+  })
+  check('组织图在右侧面板里，不是盖在对话上', seated.inRegion === true, JSON.stringify(seated))
+  check('右侧面板给组织图留出足够宽度', seated.width >= 300, seated.width)
   await shot('3-chart')
 
   console.log('\n[4] 团的完整群聊')
@@ -243,6 +255,25 @@ try {
   const doneCard = await page.locator('.ai-messages:visible .organization-card').first().innerText().catch(() => '')
   check('卡片写着都干完了', /都干完了/.test(doneCard), doneCard)
   await shot('6-done')
+
+  console.log('\n[7] 同一份组织挂在两个派出步骤上')
+  // 第二批的快照故意停在「还有 1 人在干」：顶部要认最早那份新鲜快照，不能跟着旧快照转圈
+  const staleOrg = organization(true)
+  staleOrg.live = 1
+  staleOrg.members = staleOrg.members.map((m, i) => (i === 0 ? { ...m, status: 'running' } : m))
+  await pushStep({
+    ...dispatchStep(true),
+    id: 'org-2',
+    content: '又派出第二批',
+    subAgents: [{ id: '第二批收尾', name: '第二批收尾', description: '收尾', status: 'completed', steps: [] }],
+    organization: staleOrg,
+  })
+  await sleep(800)
+  check('同一份组织只挂一张卡片', await page.locator('.ai-messages:visible .organization-card').count() === 1)
+  check('顶部也只有一个组织入口', await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).count() === 1)
+  const dedupeDock = await text('.sub-agent-dock')
+  check('顶部按最早那份快照显示，不再转圈', /组织 7 人都干完了/.test(dedupeDock) && !/人在干/.test(dedupeDock), dedupeDock)
+  await shot('7-dedupe')
 } catch (error) {
   failures.push(`脚本出错：${error?.stack || error}`)
   console.error(`  FAIL 脚本出错：${error?.stack || error}`)

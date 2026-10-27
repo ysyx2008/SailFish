@@ -1744,6 +1744,7 @@ const translations = {
     'org.opening_note': '你在一个项目组织里。组织看板（系统维护，列出各层的人、团、结果文件和验收结论）：{board}。你的结果文件放在 {dir}。你向 {reportsTo} 汇报。',
     'org.opening_lead': '你是组长：你名下的人由你派、由你管，他们的结果文件放在 {dir}。上级把你交上去的东西当作你已核对过的。',
     'org.depth_limit': '没派：组织最多 {max} 层，你已经在最底下一层，名下的人里不能再指定组长。',
+    'org.lead_own_team': '没派：要搭组织时，秘书这一批只派组长（lead，不带 team，一次可以指定多位），组长自己用 team 组人。带 team 的这次派出由你当团长，组长会变成你团里的成员，而不是你直管的组长。',
     'dispatch.command_blocked': '高危命令被拦下了，原命令：{command}',
     'dispatch.confirm_by': '这是伙计「{name}」要做的',
 
@@ -3835,6 +3836,7 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'org.opening_note': 'You are in a project organization. Organization board (maintained by the system; lists people, teams, result files and review verdicts at every layer): {board}. Your result file goes in {dir}. You report to {reportsTo}.',
     'org.opening_lead': 'You are a lead: you appoint and manage the people under you, and their result files go in {dir}. Your superior treats what you hand up as checked by you.',
     'org.depth_limit': 'Not sent: the organization has at most {max} levels and you are already on the lowest one, so you cannot appoint leads among your people.',
+    'org.lead_own_team': 'Not sent: to build an organization, dispatch only the leads (lead, no team; several leads can go in one dispatch) and let each lead form their own team with team. A dispatch with team is led by you, so the lead would become a member of your team instead of reporting directly to you.',
     'dispatch.command_blocked': 'Dangerous command was blocked. Original command: {command}',
     'dispatch.confirm_by': 'Helper “{name}” wants to do this',
 

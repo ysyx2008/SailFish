@@ -103,6 +103,8 @@ const props = withDefaults(defineProps<{
   /** 外壳接手群聊时：此刻开着的是哪个专家团（没开就空），以及怎么关掉 */
   openedExpertTeamStepId?: string | null
   closeExpertTeam?: () => void
+  /** 外壳有地方放组织图时由它打开；不给就盖在对话栏上 */
+  openOrganizationSeat?: (stepId: string) => void
 }>(), {
   visible: true,
   tabActive: true,
@@ -562,9 +564,42 @@ const openExpertTeam = (stepId: string) => {
 const overlayOrgStepId = ref<string | null>(null)
 const overlayOrgTeam = ref<string | null>(null)
 const openOrganization = (stepId: string) => {
+  if (props.openOrganizationSeat) {
+    props.openOrganizationSeat(stepId)
+    return
+  }
   overlayOrgStepId.value = stepId
   overlayOrgTeam.value = null
 }
+/** 同一份组织可能挂在多个派出步骤上：每个任务只认第一份，对话里每个任务也只挂一张卡片 */
+const orgCardStepIds = computed(() => {
+  const steps = agentState.value?.steps ?? []
+  const ids = new Set<string>()
+  let seen = false
+  for (const step of steps) {
+    if (step.type === 'user_task' && !step.systemInjected) {
+      seen = false
+      continue
+    }
+    if (!seen && step.organization) {
+      ids.add(step.id)
+      seen = true
+    }
+  }
+  return ids
+})
+const organizationStep = computed(() => {
+  const steps = agentState.value?.steps ?? []
+  let start = 0
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const step = steps[i]
+    if (step.type === 'user_task' && !step.systemInjected) {
+      start = i
+      break
+    }
+  }
+  return steps.slice(start).find(step => step.organization)
+})
 watch(() => props.tabId, () => {
   overlayTeamStepId.value = null
   overlayOrgStepId.value = null
@@ -2691,6 +2726,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         :steps="pinnedDispatches"
         :attached="!!currentPlan"
         :open-team-step-id="openedTeamStepId"
+        :organization-step="organizationStep"
         @open-team="openExpertTeam"
         @toggle-team="toggleExpertTeam"
         @open-organization="openOrganization"
@@ -2930,7 +2966,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                       @open-team="openExpertTeam(item.step!.id)"
                     />
                     <OrganizationCard
-                      v-if="item.step!.organization"
+                      v-if="item.step!.organization && orgCardStepIds.has(item.step!.id)"
                       :organization="item.step!.organization"
                       @open="openOrganization(item.step!.id)"
                     />
@@ -3516,7 +3552,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
     </div>
 
     <OrganizationChart
-      v-if="overlayOrgStepId"
+      v-if="overlayOrgStepId && !openOrganizationSeat"
       class="organization-overlay"
       mode="overlay"
       :tab-id="tabId"
@@ -3525,7 +3561,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
       @open-team="overlayOrgTeam = $event"
     />
     <ExpertTeamChat
-      v-if="overlayOrgStepId && overlayOrgTeam"
+      v-if="overlayOrgStepId && overlayOrgTeam && !openOrganizationSeat"
       class="expert-team-overlay"
       mode="overlay"
       :tab-id="tabId"

@@ -15,6 +15,7 @@ import { AiPanel } from '@sailfish/workbench-sdk/ai-panel'
 import { WorkbenchShell } from '@sailfish/workbench-sdk/workbench-shell'
 import { TerminalPaneHost } from '@sailfish/workbench-sdk/terminal-pane-host'
 import { ExpertTeamChat } from '@sailfish/workbench-sdk/expert-team'
+import { OrganizationChart } from '@sailfish/workbench-sdk/organization'
 import type { ArtifactComposerQuote } from './artifact/composer-quote'
 import { consumeSelectionScope } from './artifact/selection-scope'
 import type { WorkbenchContext } from '@shared/types'
@@ -94,13 +95,19 @@ const stageResizing = ref(false)
 const stageRef = ref<HTMLElement | null>(null)
 const MIN_CHAT_WIDTH = 300
 
-type DeskSeat = 'none' | 'terminal' | 'artifact' | 'team'
+type DeskSeat = 'none' | 'terminal' | 'artifact' | 'team' | 'org'
 const seat = ref<DeskSeat>('none')
 /** 右侧在看哪个专家团的群聊（派出那一步的 id） */
 const teamStepId = ref<string | null>(null)
 /** 打开群聊前坐的是谁，关掉群聊回到它 */
 let seatBeforeTeam: DeskSeat = 'none'
 const teamSeated = computed(() => seat.value === 'team' && !!teamStepId.value)
+/** 右侧在看哪个项目组织（派出组织的那一步），以及从图里点开的团 */
+const orgStepId = ref<string | null>(null)
+const orgTeamName = ref<string | null>(null)
+/** 打开组织图前坐的是谁，关掉组织图回到它 */
+let seatBeforeOrg: DeskSeat = 'none'
+const orgSeated = computed(() => seat.value === 'org' && !!orgStepId.value)
 watch(seat, (now, before) => {
   if (before === 'team' && now !== 'team') teamStepId.value = null
 })
@@ -163,8 +170,10 @@ const showArtifactFold = computed(() =>
 const showDeskChrome = computed(() =>
   showDeskList.value || (showArtifactFold.value && !docExpanded.value)
 )
+/** 组织图比团聊宽：打开时至少给它这么宽，关掉恢复原来的分栏比例 */
+const ORG_MIN_RATIO = 0.6
 const ratio = computed({
-  get: () => artifactStore.splitRatio,
+  get: () => orgSeated.value ? Math.max(artifactStore.splitRatio, ORG_MIN_RATIO) : artifactStore.splitRatio,
   set: (v: number) => { artifactStore.splitRatio = v },
 })
 
@@ -229,6 +238,7 @@ watch(hasHostedTerminal, (hosted, wasHosted) => {
   }
   if (hosted && !wasHosted) {
     if (teamSeated.value) seatBeforeTeam = 'terminal'
+    else if (orgSeated.value) seatBeforeOrg = 'terminal'
     else seat.value = 'terminal'
     chatVisible.value = true
     listOpen.value = false
@@ -242,7 +252,7 @@ watch(hasHostedTerminal, (hosted, wasHosted) => {
 
 watch(() => artifactStore.isVisible(props.tab.id), (visible) => {
   if (visible) {
-    if (seat.value === 'terminal' || teamSeated.value) {
+    if (seat.value === 'terminal' || teamSeated.value || orgSeated.value) {
       const steal = artifactStore.lastCanvasOpen
       if (steal?.tabId === props.tab.id && steal.stealSeat) {
         artifactStore.lastCanvasOpen = null
@@ -363,7 +373,35 @@ function closeExpertTeam() {
   if (seat.value !== 'team') return
   if (seatBeforeTeam === 'terminal' && hasHostedTerminal.value) seat.value = 'terminal'
   else if (seatBeforeTeam === 'artifact' && artifactStore.isVisible(props.tab.id)) seat.value = 'artifact'
+  else if (seatBeforeTeam === 'org' && orgStepId.value) seat.value = 'org'
   else seat.value = 'none'
+}
+
+function openOrganization(stepId: string) {
+  if (seat.value !== 'org') seatBeforeOrg = seat.value
+  orgStepId.value = stepId
+  orgTeamName.value = null
+  seat.value = 'org'
+  listOpen.value = false
+  chatVisible.value = true
+}
+
+function closeOrganization() {
+  orgTeamName.value = null
+  orgStepId.value = null
+  if (seat.value !== 'org') return
+  if (seatBeforeOrg === 'terminal' && hasHostedTerminal.value) seat.value = 'terminal'
+  else if (seatBeforeOrg === 'artifact' && artifactStore.isVisible(props.tab.id)) seat.value = 'artifact'
+  else seat.value = 'none'
+}
+
+/** 组织图里点某个团：右侧面板换成那个团的群聊，关掉群聊回到图上 */
+function openOrgTeam(teamName: string) {
+  orgTeamName.value = teamName
+}
+
+function closeOrgTeam() {
+  orgTeamName.value = null
 }
 
 function togglePanel() {
@@ -441,8 +479,9 @@ defineExpose({
       />
       <WorkbenchShell
         class="assistant-shell"
-        :toggle-visible="(docExpanded && hasArtifacts) || teamSeated"
+        :toggle-visible="(docExpanded && hasArtifacts) || teamSeated || orgSeated"
         v-model:toggle-ratio="ratio"
+        :min-ratio="orgSeated ? ORG_MIN_RATIO : 0.2"
         toggle-side="right"
       >
         <template #anchor>
@@ -459,6 +498,7 @@ defineExpose({
                   :open-expert-team="openExpertTeam"
                   :opened-expert-team-step-id="teamSeated ? teamStepId : null"
                   :close-expert-team="closeExpertTeam"
+                  :open-organization-seat="openOrganization"
                 />
                 <div v-if="showDeskChrome && !focusActive" class="artifact-chrome artifact-chrome--cluster">
                   <div
@@ -519,8 +559,26 @@ defineExpose({
         </template>
         <template #toggle>
           <div class="assistant-teleport-slot">
+            <template v-if="orgSeated">
+              <ExpertTeamChat
+                v-if="orgTeamName"
+                mode="panel"
+                :tab-id="tab.id"
+                :step-id="orgStepId!"
+                :team-name="orgTeamName"
+                @close="closeOrgTeam"
+              />
+              <OrganizationChart
+                v-else
+                mode="panel"
+                :tab-id="tab.id"
+                :step-id="orgStepId!"
+                @close="closeOrganization"
+                @open-team="openOrgTeam"
+              />
+            </template>
             <ExpertTeamChat
-              v-if="teamSeated"
+              v-else-if="teamSeated"
               mode="panel"
               :tab-id="tab.id"
               :step-id="teamStepId!"
@@ -529,7 +587,7 @@ defineExpose({
             <Teleport :disabled="!focusActive" :to="artifactFocusEl || 'body'">
               <ArtifactPanel
                 v-if="hasArtifacts"
-                v-show="!teamSeated"
+                v-show="!teamSeated && !orgSeated"
                 ref="artifactPanelRef"
                 :tab-id="tab.id"
                 :focus-active="focusActive"

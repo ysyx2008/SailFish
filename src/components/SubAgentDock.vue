@@ -18,6 +18,8 @@ const props = defineProps<{
   attached?: boolean
   /** 此刻开着群聊的专家团（派出那一步的 id） */
   openTeamStepId?: string | null
+  /** 这场对话里第一份组织：同一份组织可能挂在多个派出步骤上，显示时只认这一份 */
+  organizationStep?: AgentStep
 }>()
 const emit = defineEmits<{ openTeam: [stepId: string]; toggleTeam: [stepId: string]; openOrganization: [stepId: string] }>()
 const { t } = useI18n()
@@ -25,13 +27,19 @@ const { t } = useI18n()
 const root = ref<HTMLElement | null>(null)
 const openStepId = ref<string | null>(null)
 
+/** 同一份组织只挂一个入口：放在最靠前的、带组织的那一批上；其余批次只留自己的群聊 */
+const organizationSource = computed(() => props.organizationStep?.organization)
+const organizationRowId = computed(() => props.steps.find(step => step.organization)?.id ?? null)
+const organizationStepId = computed(() => props.organizationStep?.id ?? organizationRowId.value)
+
 const items = computed(() => props.steps.map(step => {
   const team = step.expertTeam
+  const org = step.id === organizationRowId.value ? (organizationSource.value ?? step.organization) : undefined
   return {
     step,
     // 有组织的一批按全组织计数，不只数秘书直接派的那几位
-    ...(step.organization ? describeOrgDock(t, step.organization) : describeDock(t, step.subAgents ?? [])),
-    hasOrganization: !!step.organization,
+    ...(org ? describeOrgDock(t, org) : describeDock(t, step.subAgents ?? [])),
+    hasOrganization: !!org,
     teamCount: team ? team.messages.length + (team.earlierOmitted ?? 0) : 0,
     hasTeam: !!team,
   }
@@ -87,10 +95,10 @@ onBeforeUnmount(() => {
         </span>
         <span class="dock-headline">{{ item.headline }}</span>
         <button
-          v-if="item.hasOrganization"
+          v-if="item.hasOrganization && organizationStepId"
           type="button"
           class="dock-team"
-          @click.stop="emit('openOrganization', item.step.id)"
+          @click.stop="emit('openOrganization', organizationStepId)"
         >
           <Network :size="12" />
           <span>{{ t('ai.organization.openChart') }}</span>

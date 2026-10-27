@@ -21,7 +21,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import { SubAgentRoster, type ChildAgentHandle, type RosterSpawnDeps, type SpawnTask } from '../sub-agent-roster'
-import type { LeadSeat } from '../org-ledger'
+import { OrgLedger, type LeadSeat } from '../org-ledger'
 import { createTeamTexts } from '../tools/expert-team-text'
 import { dispatchStepView, refreshOrgBoard, workspaceOf } from '../tools/sub-agent'
 import type { AgentContext } from '../types'
@@ -166,5 +166,18 @@ describe('组织全貌（给界面看的那一份）', () => {
     expect(org.omitted).toBe(51)
     expect(org.members.some(m => m.lead)).toBe(true)
     root.abortAll()
+  })
+})
+
+describe('组织账本通知', () => {
+  it('订阅者回调里再通知不会递归', () => {
+    const ledger = new OrgLedger()
+    let calls = 0
+    ledger.subscribe(() => {
+      calls += 1
+      ledger.notify()
+    })
+    ledger.notify()
+    expect(calls).toBe(1)
   })
 })

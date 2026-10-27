@@ -25,6 +25,8 @@ interface Node {
 export class OrgLedger {
   private readonly nodes = new Map<SubAgentRoster, Node>()
   private readonly listeners = new Set<() => void>()
+  /** 订阅者回调里可能再通知（刷新步骤又触发进度），别递归转圈 */
+  private notifying = false
   /** 已经退出账本的花名册名下的名字：他们的对话还在盘上，名字仍然占着 */
   private readonly retiredNames = new Set<string>()
   /** 退出账本之后还要认得的秘书那份花名册（组长比秘书收工得晚时，看板的最后一笔要找到它） */
@@ -39,8 +41,14 @@ export class OrgLedger {
   }
 
   notify(): void {
-    for (const listener of [...this.listeners]) {
-      try { listener() } catch { /* 界面刷新失败不影响组织 */ }
+    if (this.notifying) return
+    this.notifying = true
+    try {
+      for (const listener of [...this.listeners]) {
+        try { listener() } catch { /* 界面刷新失败不影响组织 */ }
+      }
+    } finally {
+      this.notifying = false
     }
   }
 
