@@ -43,6 +43,7 @@ import { getDateString } from './date-util'
 import { AgentIndexLog } from './agent-index-log'
 import { ExpertTeamChatStore } from './expert-team-chat-store'
 import { SubAgentRecordStore } from './sub-agent-record-store'
+import { rebuildOrganization } from './organization-rebuild'
 import { throwIfAborted } from '../../utils/abort'
 import {
   isWatchAgentKey,
@@ -502,7 +503,33 @@ export class AgentRecordStore {
   ): AgentRecord {
     // 裁过字段的记录绝不能回写，否则会把产出物快照从磁盘抹掉
     if (options?.omitCanvasData) return found
-    return this.maybeExternalizeAndSaveRecord(found, dateStr)
+    return this.maybeExternalizeAndSaveRecord(this.augmentOrganization(found), dateStr)
+  }
+
+  /**
+   * 旧会话的派出步骤只存了最初的组织快照，组长后来派的人不在里面。
+   * 伙计记录都还在：用组长自己的派出步骤把团和成员补回快照（已有的不动）。
+   */
+  private augmentOrganization(found: AgentRecord): AgentRecord {
+    if (!found.steps?.some(step => step.organization)) return found
+    try {
+      const persisted = this.subAgents.list(found.id)
+      if (persisted.length === 0) return found
+      const leaderRecords = persisted
+        .filter(({ state }) => state.lead && !state.parent)
+        .map(child => ({ leader: child.state, record: this.subAgents.readRecord(child) }))
+      if (leaderRecords.length === 0) return found
+      const children = persisted.map(child => child.state)
+      return {
+        ...found,
+        steps: found.steps.map(step => step.organization
+          ? { ...step, organization: rebuildOrganization(step.organization, children, leaderRecords) }
+          : step),
+      }
+    } catch (err) {
+      log.warn(`Organization rebuild failed for ${found.id}:`, err)
+      return found
+    }
   }
 
   private maybeExternalizeAndSaveRecord(found: AgentRecord, _dateStr: string): AgentRecord {

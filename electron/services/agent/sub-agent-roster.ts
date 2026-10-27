@@ -60,7 +60,7 @@ export interface ChildAgentHandle {
 
 /** 这场会话里以前派出的、已经停下的伙计（存在盘上，还没被叫起来） */
 export type DormantChild = Pick<ChildState,
-  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'lead' | 'parent' | 'result' | 'error' | 'blockedReason' | 'interruptedCalls'>
+  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'lead' | 'parent' | 'team' | 'result' | 'error' | 'blockedReason' | 'interruptedCalls'>
   & {
     status: 'completed' | 'failed' | 'interrupted'
     /** 盘上记的还是「在干」：程序没来得及收尾就没了，最后一轮的内容不明 */
@@ -764,6 +764,7 @@ export class SubAgentRoster {
       role: sleeper.role,
       ...(sleeper.lead ? { lead: true } : {}),
       ...(this.ownerName ? { parent: this.ownerName } : {}),
+      ...(sleeper.team ? { team: sleeper.team } : {}),
       status: 'running',
       result: sleeper.result,
       steps: revived.steps,
@@ -999,6 +1000,7 @@ function persistSlot(slot: ChildSlot): void {
     role: slot.role,
     lead: slot.lead,
     parent: slot.parent,
+    team: slot.team,
     status: slot.status,
     result: slot.result,
     error: slot.error,

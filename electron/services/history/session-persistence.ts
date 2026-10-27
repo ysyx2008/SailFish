@@ -16,7 +16,7 @@
  */
 import * as fs from 'fs'
 import * as path from 'path'
-import type { AgentRecord, AgentStepRecord, ApprovalMode } from '@shared/types'
+import type { AgentRecord, AgentStepRecord, ApprovalMode, OrganizationView } from '@shared/types'
 import { isApprovalMode, isAssignedBy } from '@shared/types'
 import {
   forEachBoundedJsonlLineAsync,
@@ -71,6 +71,12 @@ export interface SessionMeta {
   stepCount: number
   /** 已持久化的 messages 条数 */
   messageCount: number
+  /**
+   * 步骤上最新的组织快照（按步骤 id）。
+   * steps.jsonl 是追加写，步骤创建后组织再长出来不会回头改那一行；快照放 meta 里，
+   * 每次存盘按 updatedAt 覆盖，重开时再用它盖回步骤。
+   */
+  organizations?: Record<string, OrganizationView>
 }
 
 function sessionDir(agentDir: string, dateStr: string, recordId: string): string {
@@ -94,6 +100,14 @@ function mergeTitleLock(meta: SessionMeta, existing: SessionMeta | null): Sessio
   if (existing?.titleLocked) meta.titleLocked = true
   if (!meta.approval && existing?.approval) meta.approval = existing.approval
   if (!meta.assignedBy && existing?.assignedBy) meta.assignedBy = existing.assignedBy
+  if (existing?.organizations) {
+    const merged: Record<string, OrganizationView> = { ...(meta.organizations ?? {}) }
+    for (const [stepId, old] of Object.entries(existing.organizations)) {
+      const current = merged[stepId]
+      if (!current || (current.updatedAt ?? 0) < (old.updatedAt ?? 0)) merged[stepId] = old
+    }
+    meta.organizations = merged
+  }
   return meta
 }
 
@@ -130,11 +144,16 @@ function recordToMeta(record: AgentRecord, stepCount: number, messageCount: numb
     meta.compressedArchives = record.compressedArchives.map(a => JSON.parse(JSON.stringify(a)))
   }
   if (record.lastPromptUsage) meta.lastPromptUsage = { ...record.lastPromptUsage }
+  const organizations: Record<string, OrganizationView> = {}
+  for (const step of record.steps ?? []) {
+    if (step.organization) organizations[step.id] = step.organization
+  }
+  if (Object.keys(organizations).length > 0) meta.organizations = organizations
   return meta
 }
 
 function metaToRecord(meta: SessionMeta, steps: AgentStepRecord[], messages: AgentRecord['messages']): AgentRecord {
-  return normalizeAgentRecord({
+  const record = normalizeAgentRecord({
     id: meta.id,
     timestamp: meta.timestamp,
     terminalId: meta.terminalId,
@@ -161,6 +180,13 @@ function metaToRecord(meta: SessionMeta, steps: AgentStepRecord[], messages: Age
     compressedArchives: meta.compressedArchives,
     ...(meta.lastPromptUsage ? { lastPromptUsage: meta.lastPromptUsage } : {}),
   })
+  if (meta.organizations && record.steps.length > 0) {
+    record.steps = record.steps.map(step => {
+      const organization = meta.organizations![step.id]
+      return organization ? { ...step, organization } : step
+    })
+  }
+  return record
 }
 
 function applyReadOptions<T>(value: T, options?: ReadSessionOptions): T {

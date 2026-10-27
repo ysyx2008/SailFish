@@ -201,6 +201,7 @@ export class SailFish extends Agent {
         role: state.role,
         lead: state.lead,
         parent: state.parent,
+        team: state.team,
         result: state.result,
         error: state.error,
         blockedReason: state.blockedReason,

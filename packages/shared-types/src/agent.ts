@@ -566,6 +566,8 @@ export interface OrganizationView {
   omitted?: number
   /** 系统维护的组织看板文件 */
   boardPath?: string
+  /** 这份快照是什么时候的样子：存盘时用新的覆盖旧的 */
+  updatedAt?: number
 }
 
 /** 从哪里接着读群聊全文：都不给读末尾一页；before 往前一页；after 往后补 */

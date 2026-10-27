@@ -121,6 +121,16 @@ scenario('秘书指定组长，组长在自己名下派人，做完一层层交�
 
     const { sessions, children } = readOrg(env.dataDir)
     check('伙计记录只有一场主会话，组长名下的人也记在它下面', sessions.length === 1, String(sessions.length))
+    // 组织快照随会话存进 meta：重开时界面不用只看到最初派出的组长
+    const orgSnapshots = []
+    for (const sessionDir of sessions) {
+      const id = path.basename(sessionDir)
+      const date = path.basename(path.dirname(sessionDir))
+      const meta = readJson(path.join(env.dataDir, 'history', 'agent', date, id, 'meta.json'))
+      if (meta?.organizations) orgSnapshots.push(...Object.values(meta.organizations))
+    }
+    const savedOrg = orgSnapshots.find(o => ['研发组长', '甲', '乙'].every(n => o.members?.some(m => m.name === n)))
+    check('组织快照存进了会话 meta，重开能看到组长派的人', savedOrg?.total === 3, JSON.stringify(savedOrg))
     check('组长、甲、乙都记下了', ['研发组长', '甲', '乙'].every((n) => children[n]), Object.keys(children).join())
     check('组长标着是组长，是秘书直接派的', children['研发组长']?.state.lead === true && !children['研发组长']?.state.parent, JSON.stringify(children['研发组长']?.state))
     check('甲、乙是组长派的', children['甲']?.state.parent === '研发组长' && children['乙']?.state.parent === '研发组长',

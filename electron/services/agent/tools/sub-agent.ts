@@ -201,6 +201,7 @@ export class SubAgentWorkspace {
       total: sections.reduce((n, s) => n + s.total, 0),
       ...(all.length > kept.length ? { omitted: all.length - kept.length } : {}),
       boardPath: this.boardPath,
+      updatedAt: Date.now(),
     }
   }
 

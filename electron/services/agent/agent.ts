@@ -231,6 +231,8 @@ export abstract class Agent {
 
   /** 这场已被删掉：不再落盘、不再写回知识库，跑完后从内存里摘掉 */
   private _sessionDiscarded = false
+  /** 组织快照检查点的节流定时器 */
+  private orgSaveTimer?: ReturnType<typeof setTimeout>
   private _whenDiscardedSettled?: () => void
 
   /** 调用方给下一轮指定的执行档（IM / 网页 / 关切 / 命令行等渠道自己的设定），开跑时用掉 */
@@ -1874,6 +1876,10 @@ export abstract class Agent {
    * 清理资源
    */
   cleanup(): void {
+    if (this.orgSaveTimer) {
+      clearTimeout(this.orgSaveTimer)
+      this.orgSaveTimer = undefined
+    }
     if (this.currentRun) {
       this.cleanupRun(this.currentRun)
       this.currentRun = undefined
@@ -2441,8 +2447,26 @@ export abstract class Agent {
    * 记录的构建（首个 user_task 标题、taskMemory 末态决定整体状态、steps/messages 序列化、kind/形态/token）
    * 全部由 Conversation.toRecord 负责；空会话（无 user_task）返回 null，与现状一致跳过。
    */
+  /** 组织快照变化时的检查点：进度 250ms 一次，别每次都写索引；最多落后一秒 */
+  private scheduleOrgCheckpoint(): void {
+    if (this.orgSaveTimer) return
+    this.orgSaveTimer = setTimeout(() => {
+      this.orgSaveTimer = undefined
+      if (this.currentRun && !this._sessionDiscarded) this.saveCheckpoint(this.currentRun)
+    }, 1000)
+  }
+
+  /** 收尾/完整保存前把攒着的组织快照立刻写一次 */
+  private flushOrgCheckpoint(): void {
+    if (!this.orgSaveTimer) return
+    clearTimeout(this.orgSaveTimer)
+    this.orgSaveTimer = undefined
+    if (this.currentRun && !this._sessionDiscarded) this.saveCheckpoint(this.currentRun)
+  }
+
   private saveSessionToHistory(): void {
     if (this._sessionDiscarded) return
+    this.flushOrgCheckpoint()
     const historyService = this.services.historyService
     if (!historyService || !this._conversation) return
 
@@ -3101,6 +3125,7 @@ export abstract class Agent {
    * 注意：技能会话在 Agent 实例级别维护，不在单次 Run 结束时清理
    */
   protected cleanupRun(run: AgentRun): void {
+    this.flushOrgCheckpoint()
     // 取消输出监听
     if (run.outputUnsubscribe) {
       run.outputUnsubscribe()
@@ -6367,7 +6392,11 @@ export abstract class Agent {
       Object.assign(step, updates)
       if (this.currentRun.savedStepIds?.has(stepId)) this.currentRun.stepsEditedAfterSave = true
     }
-    
+
+    // 组织快照变了：攒一下写检查点。steps.jsonl 只追加，步骤上后长出来的组织
+    // 不会回头改那一行；快照随 meta 存，重开时再盖回步骤。
+    if (updates.organization) this.scheduleOrgCheckpoint()
+
     this.callbacks?.onStep?.(this.currentRun.id, step)
   }
   
