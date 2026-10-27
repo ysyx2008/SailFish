@@ -88,6 +88,9 @@ onMounted(() => {
         <p v-if="organization.omitted" class="oc-omitted">
           {{ t('ai.organization.omitted', { count: organization.omitted, path: organization.boardPath ?? '' }) }}
         </p>
+        <p v-if="organization.omittedTeams" class="oc-omitted">
+          {{ t('ai.organization.omittedTeams', { count: organization.omittedTeams, path: organization.boardPath ?? '' }) }}
+        </p>
       </template>
     </div>
   </section>

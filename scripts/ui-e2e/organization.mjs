@@ -11,6 +11,7 @@
  * 2. 顶部挂着的一行按全组织计数，有「看组织图」的入口
  * 3. 组织图：秘书在最上面，组长名下按团分组，组长名下的组长再往下长一层；团是纵向列、散人和团平级；团头上有验收状态
  * 4. 点团的「群聊」打开那个团的完整群聊（从群聊文件读），成员栏是这个团的人，组长一栏写着是哪位组长，秘书的话显示为「秘书」
+ * 4b. 两个组长名下各有一个同名团：点开哪个看哪个的成员
  * 5. 返回后回到组织图，再返回回到对话
  * 6. 组织里的人都干完了：顶部写「都干完了」
  */
@@ -107,10 +108,14 @@ const organization = (done) => {
     member('文档', s('running'), { parent: '研发组' }),
     member('投放组', s('running'), { parent: '运营组', lead: true, role: '投放组长' }),
     member('小投', s('running'), { parent: '投放组' }),
+    member('小营', s('running'), { parent: '运营组', team: '项目团', role: '运营专家' }),
   ]
   return {
     members,
-    teams: [{ name: '项目团', owner: '研发组', review: done ? 'pass' : 'pending', reviewers: ['后端'], messageCount: chatLines.length, waitingLeader: false, wakeLimit: 30, chatFile: chatRel }],
+    teams: [
+      { name: '项目团', owner: '研发组', review: done ? 'pass' : 'pending', reviewers: ['后端'], messageCount: chatLines.length, waitingLeader: false, wakeLimit: 30, chatFile: chatRel },
+      { name: '项目团', owner: '运营组', review: 'none', messageCount: 0, waitingLeader: false, wakeLimit: 30 },
+    ],
     live: members.filter((m) => m.status !== 'completed').length,
     total: members.length,
     boardPath: '/tmp/org/board.md',
@@ -165,12 +170,12 @@ try {
   const card = page.locator('.ai-messages:visible .organization-card')
   check('对话里有组织小卡片', await card.count() === 1, await card.count())
   const cardText = await card.first().innerText().catch(() => '')
-  check('写着 7 人、1 个团、6 在干', /7 人/.test(cardText) && /1 个团/.test(cardText) && /6 在干/.test(cardText), cardText)
+  check('写着 8 人、2 个团、7 在干、1 干完', /8 人/.test(cardText) && /2 个团/.test(cardText) && /7 在干/.test(cardText) && /1 干完/.test(cardText), cardText)
   await shot('1-card')
 
   console.log('\n[2] 顶部一行按全组织计数')
   const dockText = await text('.sub-agent-dock')
-  check('顶部写着组织：6 人在干，共 7 人', /组织/.test(dockText) && /6 人在干/.test(dockText) && /共 7 人/.test(dockText), dockText)
+  check('顶部写着组织：7 人在干，共 8 人', /组织/.test(dockText) && /7 人在干/.test(dockText) && /共 8 人/.test(dockText), dockText)
   check('顶部有「看组织图」入口', await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).count() === 1)
 
   console.log('\n[3] 组织图')
@@ -181,17 +186,17 @@ try {
   const chart = await text('.organization-chart')
   check('秘书在最上面', chart.includes('秘书'), chart)
   check('两位组长都在', chart.includes('研发组') && chart.includes('运营组'), chart)
-  check('组长名下的人都在，组长的组长也在', ['前端', '后端', '文档', '投放组', '小投'].every((n) => chart.includes(n)), chart)
+  check('组长名下的人都在，组长的组长也在', ['前端', '后端', '文档', '投放组', '小投', '小营'].every((n) => chart.includes(n)), chart)
   check('团头：团名和验收状态', chart.includes('团「项目团」') && chart.includes('待验收'), chart)
   check('验收人有标记', await page.locator('.organization-chart .org-reviewer').count() === 1)
-  check('标题写着共 7 人、6 人没做完、1 个团', /共 7 人/.test(chart) && /6 人没做完/.test(chart) && /1 个团/.test(chart), chart)
+  check('标题写着共 8 人、7 人没做完、2 个团', /共 8 人/.test(chart) && /7 人没做完/.test(chart) && /2 个团/.test(chart), chart)
   const nested = await page.locator('.organization-chart .org-children[data-depth="2"]').count()
   check('组长名下的组长再往下长一层', nested >= 1, nested)
-  const teamMembers = await page.locator('.organization-chart .org-team .org-team-members > .org-member').count()
+  const teamMembers = await page.locator('.organization-chart .org-team').first().locator('.org-team-members > .org-member').count()
   check('团里的人纵向排在团卡片里', teamMembers === 2, teamMembers)
   const teamCells = await page.locator('.organization-chart .org-cell.is-team').count()
   const looseDoc = await page.locator('.organization-chart .org-cell:not(.is-team) > .org-branch > .org-node', { hasText: '文档' }).count()
-  check('散人和团是平级分支', teamCells === 1 && looseDoc === 1, `team=${teamCells} looseDoc=${looseDoc}`)
+  check('散人和团是平级分支', teamCells === 2 && looseDoc === 1, `team=${teamCells} looseDoc=${looseDoc}`)
   // 版式的几何断言：同一行、总线中点落在行中心、父节点压在总线中点
   const layout = await page.evaluate(() => {
     const row = document.querySelector('.organization-chart .org-children[data-depth="1"]')
@@ -227,7 +232,7 @@ try {
   await shot('3-chart')
 
   console.log('\n[4] 团的完整群聊')
-  await page.locator('.organization-chart .org-team-chat').click()
+  await page.locator('.organization-chart .org-team-chat').first().click()
   await page.locator('.expert-team-chat').waitFor({ state: 'visible', timeout: 10_000 })
   await page.locator('.expert-team-chat .etc-message').first().waitFor({ state: 'visible', timeout: 10_000 })
   const chatText = await text('.expert-team-chat')
@@ -237,6 +242,20 @@ try {
   check('秘书的话显示为「秘书」', chatText.includes('这一版只做账号密码登录') && /秘书/.test(chatText), chatText)
   check('不会混进别的团的人', !chatText.includes('小投') && !chatText.includes('文档'))
   await shot('4-team-chat')
+
+  console.log('\n[4b] 两个组长名下各有一个同名团')
+  await page.locator('.expert-team-chat .etc-icon-btn').first().click()
+  await sleep(300)
+  check('团框画出了两个', await page.locator('.organization-chart .org-team').count() === 2)
+  const opsTeam = page.locator('.organization-chart .org-team').filter({ hasText: '组长·运营组' })
+  check('团框里写着各自的组长', await opsTeam.count() === 1)
+  await opsTeam.click()
+  await page.locator('.expert-team-chat').waitFor({ state: 'visible', timeout: 10_000 })
+  const opsMembers = await page.locator('.expert-team-chat .etc-member').evaluateAll((items) => items.map((el) => el.getAttribute('aria-label') ?? ''))
+  check('点开的是运营组的项目团，成员不串',
+    opsMembers.some((label) => label.includes('小营')) && !opsMembers.some((label) => label.includes('前端')),
+    JSON.stringify(opsMembers))
+  await shot('4b-same-name-team')
 
   console.log('\n[5] 返回')
   await page.locator('.expert-team-chat .etc-icon-btn').first().click()
@@ -250,7 +269,7 @@ try {
   await updateStep(dispatchStep(true))
   await sleep(600)
   const doneDock = await text('.sub-agent-dock')
-  check('顶部写着组织 7 人都干完了', /组织 7 人都干完了/.test(doneDock), doneDock)
+  check('顶部写着组织 8 人都干完了', /组织 8 人都干完了/.test(doneDock), doneDock)
   const doneCard = await page.locator('.ai-messages:visible .organization-card').first().innerText().catch(() => '')
   check('卡片写着都干完了', /都干完了/.test(doneCard), doneCard)
   await shot('6-done')
@@ -271,7 +290,7 @@ try {
   check('同一份组织只挂一张卡片', await page.locator('.ai-messages:visible .organization-card').count() === 1)
   check('顶部也只有一个组织入口', await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).count() === 1)
   const dedupeDock = await text('.sub-agent-dock')
-  check('顶部按最早那份快照显示，不再转圈', /组织 7 人都干完了/.test(dedupeDock) && !/人在干/.test(dedupeDock), dedupeDock)
+  check('顶部按最早那份快照显示，不再转圈', /组织 8 人都干完了/.test(dedupeDock) && !/人在干/.test(dedupeDock), dedupeDock)
   await shot('7-dedupe')
 } catch (error) {
   failures.push(`脚本出错：${error?.stack || error}`)

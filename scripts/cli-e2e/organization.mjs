@@ -11,6 +11,7 @@
  * 4. 进程被 kill -9：新进程接着同一场会话，秘书再交代组长，组长再把他名下的人叫起来
  * 5. 团里有验收人：先打回、改完再通过，结论记进群聊，团停下时交给组长的话里带着最近一次结论
  * 6. 终端里按 Ctrl+C：整个组织一起停下，不留还在干的人，也不留还在跑的命令
+ * 7. 秘书用 wait_agents 点名等别枝的伙计：等到他们停下，组长自己的敲门不被领走
  */
 import { execSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -559,6 +560,61 @@ scenario('Ctrl+C：整个组织一起停下，不留还在干的人和还在跑�
     await term.close()
     killStrays('sleep 66')
   }
+})
+
+// ───────────────────────────────────────────────────────────── 7
+scenario('秘书点名等别枝的伙计：跨枝等到，不夺走组长的敲门', async () => {
+  const names = ['研发组', '小甲', '小乙']
+  const env = sandbox(0, 'sft-org-7', tempDirs)
+  const seen = { waited: '' }
+  const toolText = (last) => (typeof last?.content === 'string' ? last.content : JSON.stringify(last?.content ?? ''))
+  const llm = await startMockLlm({
+    onUser: (text, _n, entry) => {
+      const who = whoAsks(entry, names)
+      entry.who = who
+      if (who === 'main') {
+        if (text.includes('[专家') || text.includes('[伙计')) return say('秘书收到组长的交差')
+        return callTool('dispatch_agents', {
+          tasks: [{ name: '研发组', role: '研发组长', lead: true, description: '带研发组做事', prompt: '我是研发组，带小甲、小乙各写一份文件' }],
+        })
+      }
+      if (who === '研发组') {
+        if (!text.includes('我是研发组，')) return say('组长汇总：名下两位都做完了')
+        return callTool('dispatch_agents', {
+          tasks: [
+            { name: '小甲', description: '写甲文件', prompt: '我是小甲，写一份文件' },
+            { name: '小乙', description: '写乙文件', prompt: '我是小乙，写一份文件' },
+          ],
+        })
+      }
+      if (who === '小甲') return callTool('write_text_file', { path: path.join(env.cwd, 'jia.txt'), content: 'a', mode: 'create' })
+      if (who === '小乙') return callTool('write_text_file', { path: path.join(env.cwd, 'yi.txt'), content: 'b', mode: 'create' })
+      return say('好')
+    },
+    afterTool: (last, entry) => {
+      const who = whoAsks(entry, names)
+      entry.who = who
+      const text = toolText(last)
+      if (who === 'main') {
+        if (text.includes('要等的')) {
+          seen.waited = text
+          return say('秘书等到了小甲和小乙')
+        }
+        return callTool('wait_agents', { names: ['小甲', '小乙'], timeout: 20 })
+      }
+      if (who === '小甲' || who === '小乙') return say(`${who}：做完了`)
+      return say('组长汇总：名下两位都做完了')
+    },
+  })
+  env.env.SFT_API_URL = `http://127.0.0.1:${llm.port}/v1`
+  const result = await runPlain(['组织研发组做事', '--free'], env, 120_000)
+  check('正常退出', result.code === 0, `exit ${result.code} ${result.err.slice(0, 300)}`)
+  check('秘书的 wait_agents 等到了别枝的两位', seen.waited.includes('要等的 2 个里：做完 2'), seen.waited)
+  check('秘书最后作了回应', result.out.includes('秘书等到了小甲和小乙'), result.out.slice(-400))
+  const { children } = readOrg(env.dataDir)
+  check('两位伙计都记成做完', children['小甲']?.state.status === 'completed' && children['小乙']?.state.status === 'completed',
+    JSON.stringify([children['小甲']?.state.status, children['小乙']?.state.status]))
+  check('日志里没有相关警告', logWarnings(env.dataDir).length === 0, logWarnings(env.dataDir).join('\n').slice(0, 500))
 })
 
 // ─────────────────────────────────────────────────────────────

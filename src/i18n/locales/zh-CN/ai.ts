@@ -908,6 +908,7 @@ export default {
         reject: '验收打回',
       },
       omitted: '还有 {count} 人没放进来，完整名单在组织看板：{path}',
+      omittedTeams: '还有 {count} 个团没放进来，完整名单在组织看板：{path}',
     },
     subAgentCount: {
       completed: '{count} 做完',

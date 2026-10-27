@@ -56,6 +56,11 @@ function buildArtifactDir(): string {
   return path.join(getScratchPath(), 'sub-agents', `${stamp}-${nonce}`)
 }
 
+/** 会话 id 做目录名：不能进路径的字符换成 -，留一段就够保证不重 */
+function safeDirPart(value: string): string {
+  return value.replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'session'
+}
+
 function statusLabel(status: ChildSnapshot['status']): string {
   switch (status) {
     case 'completed': return t('dispatch.status_completed')
@@ -90,8 +95,11 @@ function formatCounts(children: ChildSnapshot[]): string {
 
 /** 这一轮伙计的落盘处：每人一份结果文件，再加一份总览，一人一行。 */
 export class SubAgentWorkspace {
-  private readonly dir: string
-  readonly overviewPath: string
+  private dir: string
+  overviewPath: string
+  /** 目录按会话定下来了（或者已经写过东西、不能换） */
+  private sessionBound = false
+  private wrote = false
   private readonly results = new Map<string, { chars: number; file?: string }>()
   /** 总览上次写进去的内容，没变就不重写 */
   private lastOverview?: string
@@ -107,6 +115,17 @@ export class SubAgentWorkspace {
   constructor(dir = buildArtifactDir()) {
     this.dir = dir
     this.overviewPath = path.join(dir, 'overview.md')
+  }
+
+  /**
+   * 落盘目录按会话定下来：同一条会话中途退出、再开一轮时，看板、总览和结果文件
+   * 还在原来的地方，之前给伙计的路径对得上。写过东西以后不再换。
+   */
+  bindSession(sessionId: string | undefined): void {
+    if (!sessionId || this.sessionBound || this.wrote) return
+    this.sessionBound = true
+    this.dir = path.join(getScratchPath(), 'sub-agents', `session-${safeDirPart(sessionId)}`)
+    this.overviewPath = path.join(this.dir, 'overview.md')
   }
 
   /** 有会话才存群聊全文；只认第一次挂上的 */
@@ -194,12 +213,15 @@ export class SubAgentWorkspace {
     const kept = all.length > ORG_VIEW_MEMBER_LIMIT
       ? all.map((m, i) => ({ m, i })).sort((a, b) => rank(a.m) - rank(b.m) || a.i - b.i).slice(0, ORG_VIEW_MEMBER_LIMIT).sort((a, b) => a.i - b.i).map(x => x.m)
       : all
+    const allTeams = sections.flatMap(s => s.teamViews)
+    const teams = allTeams.slice(0, ORG_VIEW_TEAM_LIMIT)
     return {
       members: kept,
-      teams: sections.flatMap(s => s.teamViews).slice(0, ORG_VIEW_TEAM_LIMIT),
+      teams,
       live: sections.reduce((n, s) => n + s.live, 0),
       total: sections.reduce((n, s) => n + s.total, 0),
       ...(all.length > kept.length ? { omitted: all.length - kept.length } : {}),
+      ...(allTeams.length > teams.length ? { omittedTeams: allTeams.length - teams.length } : {}),
       boardPath: this.boardPath,
       updatedAt: Date.now(),
     }
@@ -252,6 +274,7 @@ export class SubAgentWorkspace {
     try {
       fs.mkdirSync(path.dirname(filePath), { recursive: true })
       fs.writeFileSync(filePath, content, 'utf-8')
+      this.wrote = true
       return filePath
     } catch (err) {
       log.warn(`Sub-agent workspace write failed (${filePath}): ${err}`)
@@ -609,7 +632,11 @@ export function formatKnock(child: ChildSnapshot, reviewTeams: readonly LeadRevi
 }
 
 function formatExpertKnock(child: ChildSnapshot, role: string): string {
-  const base = { name: child.name, role, description: child.description }
+  const base = {
+    name: child.lead ? t('org.lead_label', { name: child.name }) : child.name,
+    role,
+    description: child.description,
+  }
   if (child.status === 'completed') return t('expert.knock_done', { ...base, result: child.result || '(no output)' })
   if (child.status === 'interrupted') return t('expert.knock_interrupted', base)
   return t('expert.knock_fail', { ...base, error: child.error || 'Unknown error' })
@@ -618,7 +645,7 @@ function formatExpertKnock(child: ChildSnapshot, role: string): string {
 function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubAgentRoster, team?: string): string {
   const list = snapshots
     .map(c => c.role
-      ? t('expert.list_item', { name: c.name, role: c.role, description: c.description })
+      ? t(c.lead ? 'expert.list_item_lead' : 'expert.list_item', { name: c.name, role: c.role, description: c.description })
       : `- ${c.name}：${c.description}`)
     .join('\n')
   const count = names.length
@@ -630,8 +657,9 @@ function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubA
   const renamed = renamedList(snapshots)
   return [
     head,
+    ...(snapshots.some(c => c.lead) ? [t('org.spawned_leads')] : []),
     ...(renamed ? [t('dispatch.renamed', { list: renamed })] : []),
-    t('dispatch.capacity', { live: roster.liveCount(), room: roster.room() }),
+    t('dispatch.capacity', { live: roster.orgLiveCount(), room: roster.room() }),
     t('dispatch.overview_at', { path: workspaceOf(roster).overviewPath }),
   ].join('\n')
 }
@@ -782,7 +810,10 @@ export function spawnDeps(
   const roster = executor.getSubAgentRoster?.()
   if (!roster) return { error: 'dispatch_agents 需要主人花名册（内部错误）' }
   const workspace = workspaceOf(roster)
-  workspace.attachChats(executor.getExpertTeamChats?.(), executor.getRootSessionId?.() ?? executor.getSessionId?.())
+  const sessionId = executor.getRootSessionId?.() ?? executor.getSessionId?.()
+  workspace.attachChats(executor.getExpertTeamChats?.(), sessionId)
+  // 秘书这一份按会话落盘：同一场会话再开一轮时，看板和结果文件还在原来的路径
+  if (roster.owner === undefined) workspace.bindSession(sessionId)
   const overviewProgress = new ProgressThrottle(() => {
     workspace.writeOverview(roster.list())
     refreshOrgBoard(roster)
@@ -1066,7 +1097,7 @@ export async function dispatchSubAgents(
       output: '',
       error: t('dispatch.over_fuse', {
         max: MAX_LIVE_CHILDREN,
-        live: roster.liveCount(),
+        live: roster.orgLiveCount(),
         room: roster.room(),
         count: parsedTasks.length,
       }),
@@ -1179,6 +1210,13 @@ export async function followupAgent(
     executor.updateStep(progressStep.id, { success: false, content: result.error })
     return { success: false, output: '', error: result.error }
   }
+  // 再交代一位组长：这一步也挂着组织全貌，之后哪一层有人变了都跟着刷新
+  if (roster.owner === undefined && roster.get(name)?.lead) {
+    refreshOrgBoard(roster)
+    const root = roster.orgRoot()
+    if (root) executor.updateStep(progressStep.id, { organization: workspaceOf(root).organizationView() })
+    roster.onOrgChange(() => deps.onProgress())
+  }
   return { success: true, output: t('dispatch.followup_ok', { name }) }
 }
 
@@ -1201,9 +1239,34 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
     ? setInterval(() => { if (spoke()) userSpoke.abort() }, USER_SPEECH_POLL_MS)
     : undefined
 
+  // 点名的人可能在别的组长名下：那份名册的敲门仍归它的主人，这里只等这些人停下
+  const waitGroups = new Map<SubAgentRoster, { names: string[]; consume: boolean }>()
+  if (names?.length) {
+    const rosters = [roster, ...roster.orgEntries().map(entry => entry.roster)]
+      .filter((r, i, all) => all.indexOf(r) === i)
+    for (const name of names) {
+      const holder = rosters.find(r => r.get(name))
+      if (!holder) continue
+      const group = waitGroups.get(holder) ?? { names: [], consume: holder === roster }
+      if (!group.names.includes(name)) group.names.push(name)
+      waitGroups.set(holder, group)
+    }
+  }
+  // 没有点名，或点的名字哪里都找不到：仍交给本名册，保持原来的「没有可等的」
+  if (waitGroups.size === 0) waitGroups.set(roster, { names: names ?? [], consume: true })
+
   let news: Awaited<ReturnType<SubAgentRoster['waitForNews']>>
   try {
-    news = await roster.waitForNews(names, signal)
+    const results = await Promise.all([...waitGroups].map(([r, group]) =>
+      r.waitForNews(group.names, signal, { consume: group.consume })))
+    const byName = new Map<string, ChildSnapshot>()
+    for (const result of results) for (const target of result.targets) byName.set(target.name, target)
+    const arrived = results.flatMap(result => result.arrived)
+      .filter((child, i, all) => all.findIndex(c => c.name === child.name) === i)
+    const targets = names?.length
+      ? names.map(name => byName.get(name)).filter((c): c is ChildSnapshot => !!c)
+      : results.flatMap(result => result.targets)
+    news = { arrived, targets }
   } finally {
     if (poll) clearInterval(poll)
   }

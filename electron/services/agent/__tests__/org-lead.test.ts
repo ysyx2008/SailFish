@@ -388,11 +388,12 @@ describe('点名秘书', () => {
     root2.abortAll()
   })
 
-  it('没有组织时专家可以叫「秘书」；有组织时这个名字留给最上面那位', () => {
+  it('「秘书」这个名字一直留给最上面那位，没有组织时也不让专家占用', () => {
     expect('error' in parseDispatchTasks({ tasks: [{ role: '专家', name: '秘书', description: 'x', prompt: 'y' }] })).toBe(false)
 
     const plain = new SubAgentRoster({ knockSettleMs: 0 })
-    expect(plain.spawn([{ description: 'x', prompt: 'p', role: '专家', name: '秘书' }], deps(() => worker()))).toEqual(['秘书'])
+    expect(plain.spawn([{ description: 'x', prompt: 'p', role: '专家', name: '秘书' }], deps(() => worker()))).toEqual(['秘书-2'])
+    expect(plain.spawn([{ description: 'y', prompt: 'p', name: '秘书' }], deps(() => worker()))).toEqual(['秘书-3'])
     plain.abortAll()
 
     const org = new SubAgentRoster({ knockSettleMs: 0 })
@@ -511,6 +512,7 @@ describe('组织看板与开场', () => {
     expect(member).toContain('/b/board.md')
     expect(member).toContain('/b/org/组长')
     expect(member).toContain('向 组长 汇报')
+    expect(member).toContain('以文件为准')
     expect(member).not.toContain('你是组长')
     const lead = orgOpeningNote({ boardPath: '/b/board.md', resultDir: '/b', leadDir: '/b/org/甲' })
     expect(lead).toContain('向 秘书 汇报')

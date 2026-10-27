@@ -25,8 +25,9 @@ const counts = computed(() => {
 })
 const detail = computed(() => {
   const { completed, problem } = counts.value
+  const teamCount = props.organization.teams.length + (props.organization.omittedTeams ?? 0)
   const parts = [
-    props.organization.teams.length > 0 ? t('ai.organization.cardTeams', { count: props.organization.teams.length }) : '',
+    teamCount > 0 ? t('ai.organization.cardTeams', { count: teamCount }) : '',
     props.organization.live > 0 ? t('ai.organization.cardLive', { live: props.organization.live }) : '',
     completed > 0 ? t('ai.organization.cardCompleted', { count: completed }) : '',
     problem > 0 ? t('ai.organization.cardProblem', { count: problem }) : '',

@@ -56,11 +56,14 @@ export interface OrgOpening {
 
 /** 组织里每个人开场多出的一段：工作区和看板在哪、向谁汇报；组长再多一句他名下的东西放在哪 */
 export function orgOpeningNote(info: OrgOpening): string {
-  const lines = [t('org.opening_note', {
-    board: info.boardPath,
-    dir: info.resultDir,
-    reportsTo: info.reportsTo ?? t('org.secretary'),
-  })]
+  const lines = [
+    t('org.opening_note', {
+      board: info.boardPath,
+      dir: info.resultDir,
+      reportsTo: info.reportsTo ?? t('org.secretary'),
+    }),
+    t('org.file_rule'),
+  ]
   if (info.leadDir) lines.push(t('org.opening_lead', { dir: info.leadDir }))
   return lines.join('\n')
 }

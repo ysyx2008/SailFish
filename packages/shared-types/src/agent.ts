@@ -564,6 +564,8 @@ export interface OrganizationView {
   total: number
   /** members 里没放进来的人数 */
   omitted?: number
+  /** teams 里没放进来的团数 */
+  omittedTeams?: number
   /** 系统维护的组织看板文件 */
   boardPath?: string
   /** 这份快照是什么时候的样子：存盘时用新的覆盖旧的 */

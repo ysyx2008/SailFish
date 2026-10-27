@@ -475,8 +475,10 @@ export class SubAgentRoster {
   /**
    * 等下一批还没领走的敲门，不是「只要有人已经做完」。
    * 第一声到了再稍等一会儿，然后把已经到的一次领走。
+   * consume=false：只等这些人停下，不领走敲门（别人名册上的消息仍归别人）。
    */
-  async waitForNews(names: string[] | undefined, signal: AbortSignal): Promise<WaitNews> {
+  async waitForNews(names: string[] | undefined, signal: AbortSignal, options: { consume?: boolean } = {}): Promise<WaitNews> {
+    const consume = options.consume !== false
     const targets = names?.length ? names : [...this.children.keys()]
     const stillWorking = () => targets.some(name => {
       const child = this.children.get(name)
@@ -484,7 +486,7 @@ export class SubAgentRoster {
     })
     await new Promise<void>((resolve) => {
       const check = () => {
-        if (signal.aborted || this.hasUnread(targets) || !stillWorking()) {
+        if (signal.aborted || (consume && this.hasUnread(targets)) || !stillWorking()) {
           signal.removeEventListener('abort', check)
           this.waiters = this.waiters.filter(w => w !== check)
           resolve()
@@ -495,10 +497,12 @@ export class SubAgentRoster {
       signal.addEventListener('abort', check)
       check()
     })
-    if (this.hasUnread(targets)) await this.settle(signal, stillWorking)
-    const arrived = this.takeAllUnread(targets)
-      .map(name => this.get(name))
-      .filter((c): c is ChildSnapshot => !!c)
+    if (consume && this.hasUnread(targets)) await this.settle(signal, stillWorking)
+    const arrived = consume
+      ? this.takeAllUnread(targets)
+        .map(name => this.get(name))
+        .filter((c): c is ChildSnapshot => !!c)
+      : []
     const snapshots = targets.map(name => this.get(name)).filter((c): c is ChildSnapshot => !!c)
     return { arrived, targets: snapshots }
   }
@@ -538,7 +542,7 @@ export class SubAgentRoster {
    */
   spawn(tasks: SpawnTask[], deps: RosterSpawnDeps, options?: { team?: string }): string[] {
     if (tasks.length > this.room()) {
-      throw new RangeError(`伙计超过上限：没做完的 ${this.liveCount()} 个，还能派 ${this.room()} 个，这次要 ${tasks.length} 个`)
+      throw new RangeError(`伙计超过上限：全组织没做完的 ${this.orgLiveCount()} 个，还能派 ${this.room()} 个，这次要 ${tasks.length} 个`)
     }
     const teamName = options?.team?.trim()
     if (teamName) {
@@ -561,11 +565,9 @@ export class SubAgentRoster {
     this.ensureDormant(deps)
     // 老伙计的名字也占着：同名会把他盘上的对话盖掉
     const used = this.takenNames()
-    if (tasks.some(t => t.role)) {
-      used.add(TEAM_LEADER)
-      // 「秘书」只在有组织的时候才是个有意义的名字
-      if (this.ledger) used.add(SECRETARY)
-    }
+    // 「秘书」留给顶层：现在没有组织，后面也可能指定组长，别把顶层的名字占了
+    used.add(SECRETARY)
+    if (tasks.some(t => t.role)) used.add(TEAM_LEADER)
     const names: string[] = []
 
     for (const task of tasks) {
