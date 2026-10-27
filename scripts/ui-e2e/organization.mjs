@@ -4,11 +4,12 @@
  *
  *   npx vite build && node scripts/ui-e2e/organization.mjs
  *   E2E_SHOT=/tmp/shots node scripts/ui-e2e/organization.mjs   # 顺便存几张截图
+ *   E2E_THEME=light …                                          # 换主题截图（dark/light/blue）
  *   E2E_KEEP=1 …                                               # 保留临时目录
  *
  * 1. 对话里那一步下面有组织小卡片：几个人、几个团、几个在干
  * 2. 顶部挂着的一行按全组织计数，有「看组织图」的入口
- * 3. 组织图：秘书在最上面，组长名下按团分组，组长名下的组长再缩进；团头上有验收状态
+ * 3. 组织图：秘书在最上面，组长名下按团分组，组长名下的组长再往下长一层；团是纵向列、散人和团平级；团头上有验收状态
  * 4. 点团的「群聊」打开那个团的完整群聊（从群聊文件读），成员栏是这个团的人，组长一栏写着是哪位组长，秘书的话显示为「秘书」
  * 5. 返回后回到组织图，再返回回到对话
  * 6. 组织里的人都干完了：顶部写「都干完了」
@@ -30,6 +31,7 @@ const check = (label, pass, detail) => {
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sft-organization-ui-'))
 const shotDir = process.env.E2E_SHOT
 if (shotDir) fs.mkdirSync(shotDir, { recursive: true })
+const uiTheme = process.env.E2E_THEME
 
 // 项目团的群聊全文：组长说一句、前端点名秘书、秘书回应
 const chatRel = '2026-10-26/sess-org/team-项目团.jsonl'
@@ -53,12 +55,16 @@ async function ready() {
   const deadline = Date.now() + 90_000
   while (Date.now() < deadline) {
     try {
-      await page.evaluate(async () => {
+      await page.evaluate(async ([theme]) => {
         if (!window.electronAPI?.config) throw new Error('接口还没出现')
         await window.electronAPI.config.setSetupCompleted(true)
         await window.electronAPI.config.setAiProfiles([{ id: 'e2e', name: 'e2e', apiUrl: 'http://127.0.0.1:1/v1', apiKey: 'x', model: 'e2e' }])
         await window.electronAPI.config.setActiveAiProfile?.('e2e')
-      })
+        if (theme) {
+          await window.electronAPI.config.setUiThemeMode?.('manual')
+          await window.electronAPI.config.setUiTheme?.(theme)
+        }
+      }, [uiTheme])
       await page.reload()
       return
     } catch {
@@ -179,8 +185,34 @@ try {
   check('团头：团名和验收状态', chart.includes('团「项目团」') && chart.includes('待验收'), chart)
   check('验收人有标记', await page.locator('.organization-chart .org-reviewer').count() === 1)
   check('标题写着共 7 人、6 人没做完、1 个团', /共 7 人/.test(chart) && /6 人没做完/.test(chart) && /1 个团/.test(chart), chart)
-  const nested = await page.locator('.organization-chart .org-sub .org-sub').count()
-  check('组长名下的组长再缩进一层', nested >= 1, nested)
+  const nested = await page.locator('.organization-chart .org-children[data-depth="2"]').count()
+  check('组长名下的组长再往下长一层', nested >= 1, nested)
+  const teamMembers = await page.locator('.organization-chart .org-team .org-team-members > .org-member').count()
+  check('团里的人纵向排在团卡片里', teamMembers === 2, teamMembers)
+  const teamCells = await page.locator('.organization-chart .org-cell.is-team').count()
+  const looseDoc = await page.locator('.organization-chart .org-cell:not(.is-team) > .org-branch > .org-node', { hasText: '文档' }).count()
+  check('散人和团是平级分支', teamCells === 1 && looseDoc === 1, `team=${teamCells} looseDoc=${looseDoc}`)
+  // 版式的几何断言：同一行、总线中点落在行中心、父节点压在总线中点
+  const layout = await page.evaluate(() => {
+    const row = document.querySelector('.organization-chart .org-children[data-depth="1"]')
+    if (!row) return null
+    const cells = Array.from(row.children)
+    const rowBox = row.getBoundingClientRect()
+    const first = cells[0].firstElementChild.getBoundingClientRect()
+    const last = cells[cells.length - 1].firstElementChild.getBoundingClientRect()
+    const busCenter = (first.left + first.width / 2 + last.left + last.width / 2) / 2
+    const parentEl = row.parentElement?.querySelector(':scope > .org-node')
+    if (!parentEl) return null
+    const parent = parentEl.getBoundingClientRect()
+    return {
+      sameRow: cells.some((cell) => cell.classList.contains('is-team')) && cells.some((cell) => cell.textContent?.includes('文档')),
+      busCentered: Math.abs(busCenter - (rowBox.left + rowBox.width / 2)) <= 1,
+      parentCentered: Math.abs((parent.left + parent.width / 2) - busCenter) <= 1,
+    }
+  })
+  check('散人和团在同一行', layout?.sameRow === true, JSON.stringify(layout))
+  check('两端不等宽时总线仍落在行中心', layout?.busCentered === true, JSON.stringify(layout))
+  check('父节点压在两端中心连线的中点', layout?.parentCentered === true, JSON.stringify(layout))
   await shot('3-chart')
 
   console.log('\n[4] 团的完整群聊')
