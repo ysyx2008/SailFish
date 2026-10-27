@@ -886,6 +886,8 @@ export default {
       cardHeadline: '组织 {total} 人',
       cardTeams: '{count} 个团',
       cardLive: '{live} 在干',
+      cardCompleted: '{count} 干完',
+      cardProblem: '{count} 出问题',
       cardAllDone: '都干完了',
       dockWorking: '组织：{live} 人在干，共 {total} 人',
       dockDone: '组织 {total} 人都干完了',
@@ -895,6 +897,8 @@ export default {
       close: '关闭组织图',
       empty: '组织还没有内容',
       teamTitle: '团「{team}」',
+      teamOwner: '组长·{name}',
+      teamMembers: '{count} 人',
       teamChat: '群聊 {count} 条',
       openTeamChat: '打开这个团的群聊',
       review: {

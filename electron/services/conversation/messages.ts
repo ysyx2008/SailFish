@@ -115,6 +115,7 @@ export function stepRecordToStep(s: AgentStepRecord): AgentStep {
     subAgents: s.subAgents,
     expertTeam: s.expertTeam,
     organization: s.organization,
+    snapshotAt: s.snapshotAt,
     canvasData: s.canvasData,
     hugeOutput: s.hugeOutput,
   }

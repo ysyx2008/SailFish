@@ -15,19 +15,54 @@ const props = withDefaults(defineProps<{
   /** 从秘书名下那一层算 0，每往下长一层加一，仅用于测试和排查 */
   depth?: number
 }>(), { depth: 0 })
-const emit = defineEmits<{ openTeam: [teamName: string] }>()
+const emit = defineEmits<{ openTeam: [team: { name: string; owner?: string }] }>()
 const { t } = useI18n()
 
+interface TeamSummary {
+  owner: string
+  members: string
+  running: string
+  completed: string
+  problem: string
+}
 interface NodeCell { kind: 'node'; key: string; node: OrgNode }
-interface TeamCell { kind: 'team'; key: string; team: OrganizationTeamView; nodes: OrgNode[] }
+interface TeamCell { kind: 'team'; key: string; team: OrganizationTeamView; nodes: OrgNode[]; summary: TeamSummary }
 type Cell = NodeCell | TeamCell
+
+/** 团头的副行：组长、人数，以及各状态各几人 */
+function summarize(team: OrganizationTeamView, nodes: OrgNode[]): TeamSummary {
+  let running = 0
+  let completed = 0
+  let problem = 0
+  for (const node of nodes) {
+    if (node.bucket === 'completed') completed++
+    else if (node.bucket === 'failed' || node.bucket === 'interrupted') problem++
+    else running++
+  }
+  return {
+    owner: t('ai.organization.teamOwner', { name: team.owner ?? t('ai.organization.secretary') }),
+    members: t('ai.organization.teamMembers', { count: nodes.length }),
+    running: running > 0 ? t('ai.organization.cardLive', { live: running }) : '',
+    completed: completed > 0 ? t('ai.organization.cardCompleted', { count: completed }) : '',
+    problem: problem > 0 ? t('ai.organization.cardProblem', { count: problem }) : '',
+  }
+}
+
+const openTeam = (team: OrganizationTeamView) => emit('openTeam', { name: team.name, owner: team.owner })
 
 /** 散人拆成平级的兄弟分支；团整体是一个纵向列 */
 const cells = computed<Cell[]>(() => {
   const out: Cell[] = []
   for (const group of props.groups) {
     if (group.team) {
-      out.push({ kind: 'team', key: `team-${group.team.name}`, team: group.team, nodes: group.nodes })
+      out.push({
+        kind: 'team',
+        // 不同组长手下可能有同名团，key 带上组长
+        key: `team-${group.team.owner ?? ''}-${group.team.name}`,
+        team: group.team,
+        nodes: group.nodes,
+        summary: summarize(group.team, group.nodes),
+      })
       continue
     }
     for (const node of group.nodes) {
@@ -90,7 +125,12 @@ watch(cells, async () => {
 <template>
   <div ref="rowRef" class="org-children" :data-depth="depth">
     <div v-for="cell in cells" :key="cell.key" class="org-cell" :class="{ 'is-team': cell.kind === 'team' }">
-      <div v-if="cell.kind === 'team'" class="org-team">
+      <div
+        v-if="cell.kind === 'team'"
+        class="org-team"
+        :title="t('ai.organization.openTeamChat')"
+        @click.stop="openTeam(cell.team)"
+      >
         <div class="org-team-head">
           <span class="org-team-name">{{ t('ai.organization.teamTitle', { team: cell.team.name }) }}</span>
           <span class="org-review" :class="`is-${cell.team.review}`">{{ t(`ai.organization.review.${cell.team.review}`) }}</span>
@@ -98,11 +138,18 @@ watch(cells, async () => {
             type="button"
             class="org-team-chat"
             :title="t('ai.organization.openTeamChat')"
-            @click="emit('openTeam', cell.team.name)"
+            @click.stop="openTeam(cell.team)"
           >
             <MessagesSquare :size="12" />
             <span>{{ t('ai.organization.teamChat', { count: cell.team.messageCount }) }}</span>
           </button>
+        </div>
+        <div class="org-team-sub">
+          <span class="org-team-owner">{{ cell.summary.owner }}</span>
+          <span>{{ cell.summary.members }}</span>
+          <span v-if="cell.summary.running">{{ cell.summary.running }}</span>
+          <span v-if="cell.summary.completed">{{ cell.summary.completed }}</span>
+          <span v-if="cell.summary.problem" class="is-problem">{{ cell.summary.problem }}</span>
         </div>
         <div class="org-team-members">
           <div v-for="node in cell.nodes" :key="node.member.id" class="org-member">
@@ -197,7 +244,7 @@ watch(cells, async () => {
   align-items: center;
 }
 
-/* 团：一个纵向列，团头在外，成员自上而下 */
+/* 团：一个纵向列，团头在外，成员自上而下；点框本身也打开群聊 */
 .org-team {
   box-sizing: border-box;
   display: flex;
@@ -208,7 +255,10 @@ watch(cells, async () => {
   border: 1px solid var(--border-color);
   border-radius: 12px;
   background: var(--bg-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
 }
+.org-team:hover { border-color: rgba(var(--accent-rgb, 137, 180, 250), 0.45); }
 
 .org-team-head {
   display: flex;
@@ -225,6 +275,19 @@ watch(cells, async () => {
   font-weight: 600;
   color: var(--text-primary);
 }
+.org-team-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  margin-top: -3px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--text-secondary);
+}
+.org-team-owner { color: var(--text-primary); }
+.org-team-sub .is-problem { color: var(--color-danger, #e06c75); }
+
 .org-review {
   flex-shrink: 0;
   padding: 1px 7px;

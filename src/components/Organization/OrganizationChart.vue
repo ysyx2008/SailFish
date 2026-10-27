@@ -17,7 +17,7 @@ const props = withDefaults(defineProps<{
   /** panel：右侧面板，右上角关掉；overlay：盖在对话栏上，左上角返回对话 */
   mode?: 'panel' | 'overlay'
 }>(), { mode: 'overlay' })
-const emit = defineEmits<{ close: []; openTeam: [teamName: string] }>()
+const emit = defineEmits<{ close: []; openTeam: [team: { name: string; owner?: string }] }>()
 
 const { t } = useI18n()
 const terminalStore = useTerminalStore()

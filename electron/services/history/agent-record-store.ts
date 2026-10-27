@@ -503,31 +503,71 @@ export class AgentRecordStore {
   ): AgentRecord {
     // 裁过字段的记录绝不能回写，否则会把产出物快照从磁盘抹掉
     if (options?.omitCanvasData) return found
-    return this.maybeExternalizeAndSaveRecord(this.augmentOrganization(found), dateStr)
+    return this.maybeExternalizeAndSaveRecord(this.augmentLiveSteps(found), dateStr)
   }
 
   /**
-   * 旧会话的派出步骤只存了最初的组织快照，组长后来派的人不在里面。
-   * 伙计记录都还在：用组长自己的派出步骤把团和成员补回快照（已有的不动）。
+   * 旧会话的派出步骤只存了最初的快照，之后的状态（组织长大、子 Agent 完成、团聊新增）不在里面。
+   * 伙计记录都还在：用它校正步骤上的 subAgents / expertTeam，并用组长自己的派出步骤补回组织。
+   * 已有能用的字段不动；找不到记录的保持原样。
    */
-  private augmentOrganization(found: AgentRecord): AgentRecord {
-    if (!found.steps?.some(step => step.organization)) return found
+  private augmentLiveSteps(found: AgentRecord): AgentRecord {
+    if (!found.steps?.some(step => step.organization || step.subAgents || step.expertTeam)) return found
     try {
       const persisted = this.subAgents.list(found.id)
       if (persisted.length === 0) return found
+      const children = persisted.map(child => child.state)
+      const byName = new Map(children.map(state => [state.name, state]))
       const leaderRecords = persisted
         .filter(({ state }) => state.lead && !state.parent)
         .map(child => ({ leader: child.state, record: this.subAgents.readRecord(child) }))
-      if (leaderRecords.length === 0) return found
-      const children = persisted.map(child => child.state)
-      return {
-        ...found,
-        steps: found.steps.map(step => step.organization
-          ? { ...step, organization: rebuildOrganization(step.organization, children, leaderRecords) }
-          : step),
-      }
+
+      const steps = found.steps.map(step => {
+        let next = step
+        if (step.organization) {
+          next = { ...next, organization: rebuildOrganization(step.organization, children, leaderRecords) }
+        }
+        if (step.subAgents?.length) {
+          let changed = false
+          const subAgents = step.subAgents.map(sa => {
+            const state = byName.get(sa.name ?? sa.id)
+            if (!state) return sa
+            const updated = {
+              ...sa,
+              status: state.status,
+              ...(state.result !== undefined ? { result: state.result } : {}),
+              ...(state.error ? { error: state.error } : {}),
+              ...(state.blockedReason ? { blockedReason: state.blockedReason } : {}),
+              ...(state.role ? { role: state.role } : {}),
+            }
+            if (updated.status !== sa.status || updated.result !== sa.result || updated.error !== sa.error) changed = true
+            return updated
+          })
+          if (changed) next = { ...next, subAgents }
+        }
+        if (step.expertTeam && next.organization) {
+          const team = next.organization.teams.find(t => t.name === step.expertTeam!.name)
+          if (team) {
+            next = {
+              ...next,
+              expertTeam: {
+                ...step.expertTeam,
+                review: team.review,
+                ...(team.reviewers ? { reviewers: [...team.reviewers] } : {}),
+                ...(team.chatFile ? { chatFile: team.chatFile } : {}),
+                ...(team.transcriptPath ? { transcriptPath: team.transcriptPath } : {}),
+                waitingLeader: team.waitingLeader,
+                wakeLimit: team.wakeLimit,
+                earlierOmitted: Math.max(0, team.messageCount - (step.expertTeam.messages?.length ?? 0)),
+              },
+            }
+          }
+        }
+        return next
+      })
+      return { ...found, steps }
     } catch (err) {
-      log.warn(`Organization rebuild failed for ${found.id}:`, err)
+      log.warn(`Live step rebuild failed for ${found.id}:`, err)
       return found
     }
   }

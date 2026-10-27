@@ -1479,6 +1479,7 @@ export class Conversation {
       subAgents: s.subAgents,
       expertTeam: s.expertTeam,
       organization: s.organization,
+      snapshotAt: s.snapshotAt,
       canvasData: s.canvasData,
       hugeOutput: s.hugeOutput,
     }

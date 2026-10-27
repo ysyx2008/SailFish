@@ -45,6 +45,8 @@ export interface ChildState {
   role?: string
   /** 是组长：在自己名下组人 */
   lead?: boolean
+  /** 是验收人；叫醒后重建团时恢复 */
+  reviewer?: boolean
   /** 派出他的组长的名字；秘书直接派的没有 */
   parent?: string
   /** 所在的专家团；重开时用来把团和组织拼回来 */
@@ -62,7 +64,7 @@ export interface ChildState {
 
 /** 名册交给存储的那部分（对话和开局由存储自己记） */
 export type ChildStateInput = Pick<ChildState,
-  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'lead' | 'parent' | 'team' | 'status' | 'result' | 'error' | 'blockedReason'>
+  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'lead' | 'reviewer' | 'parent' | 'team' | 'status' | 'result' | 'error' | 'blockedReason'>
 
 export interface PersistedChild {
   state: ChildState
@@ -166,6 +168,7 @@ export class ChildRecorder {
       ...(input.shownPrompt ? { shownPrompt: input.shownPrompt } : {}),
       ...(input.role ? { role: input.role } : {}),
       ...(input.lead ? { lead: true } : {}),
+      ...(input.reviewer ? { reviewer: true } : {}),
       ...(input.parent ? { parent: input.parent } : {}),
       ...(input.team ? { team: input.team } : {}),
       status: input.status,

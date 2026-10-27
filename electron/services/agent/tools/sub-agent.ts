@@ -26,7 +26,7 @@ import {
 import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
 import { createTeamTexts, expertOpening, formatTranscript, renamedList } from './expert-team-text'
 import { orgOpeningNote, renderBoard, type BoardSection } from './organization-text'
-import type { OrganizationMemberView, OrganizationTeamView, OrganizationView } from '@shared/types'
+import type { OrganizationMemberView, OrganizationTeamView, OrganizationView, TeamReviewState } from '@shared/types'
 import { inferConversationKind } from '@shared/types'
 import { conversationPolicy } from '../../conversation/policy'
 import { getConfigService } from '../../config.service'
@@ -535,26 +535,77 @@ export function toSubAgentContext(parent: AgentContext): AgentContext {
   }
 }
 
-function formatKnock(child: ChildSnapshot): string {
-  if (child.role) return formatExpertKnock(child, child.role)
-  if (child.status === 'completed') {
-    return t('dispatch.knock_done', {
-      name: child.name,
-      description: child.description,
-      result: child.result || '(no output)'
-    })
-  }
-  if (child.status === 'interrupted') {
-    return t('dispatch.knock_interrupted', {
-      name: child.name,
-      description: child.description
-    })
-  }
-  return t('dispatch.knock_fail', {
-    name: child.name,
-    description: child.description,
-    error: child.error || 'Unknown error'
-  })
+/** 一位组长名下某个团的验收情况；账本里的花名册和给界面看的组织全貌都能给出这几项 */
+export interface LeadReviewTeam {
+  name: string
+  /** 团所在的那位组长；秘书自己派的团没有 */
+  owner?: string
+  review: TeamReviewState
+  /** 验收人的名字；没有验收人时为空 */
+  reviewers?: readonly string[]
+}
+
+/**
+ * 组长交差时随敲门带上的验收结论：他名下每个团一行，别的组长的团不写。
+ * 顶层（没有组长名）没有这一项；没有可写的团时返回空数组。
+ */
+export function leadReviewLines(teams: readonly LeadReviewTeam[], leadName: string | undefined): string[] {
+  if (!leadName) return []
+  return teams
+    .filter(team => team.owner === leadName)
+    .map(team => t('org.board_team', {
+      team: team.name,
+      review: t(`org.board_review_${team.review}`, { reviewers: (team.reviewers ?? []).join('、') }),
+    }))
+}
+
+/**
+ * 组长收工时自己的名册可能刚退出账本：先用账本里仍登记的那份，退而用组织看板留下的最后一笔。
+ * 两者都拿不到时返回空数组，不报错、不编结论。
+ */
+function leadReviewTeamsFor(roster: SubAgentRoster, leadName: string): LeadReviewTeam[] {
+  const root = roster.orgRoot()
+  if (!root) return []
+  const registered = roster.orgEntries()
+    .filter(entry => entry.owner === leadName)
+    .flatMap(entry => entry.roster.listTeams().map(team => ({
+      name: team.name,
+      owner: leadName,
+      review: team.reviewState(),
+      reviewers: team.reviewerNames(),
+    })))
+  if (registered.length > 0) return registered
+  return workspaceOf(root).organizationView().teams
+}
+
+/** 只有组长名下才有团要交代；普通伙计、专家不查组织看板 */
+function knockTeamsFor(roster: SubAgentRoster, child: ChildSnapshot): LeadReviewTeam[] {
+  return child.lead ? leadReviewTeamsFor(roster, child.name) : []
+}
+
+export function formatKnock(child: ChildSnapshot, reviewTeams: readonly LeadReviewTeam[] = []): string {
+  const text = child.role
+    ? formatExpertKnock(child, child.role)
+    : child.status === 'completed'
+      ? t('dispatch.knock_done', {
+        name: child.name,
+        description: child.description,
+        result: child.result || '(no output)'
+      })
+      : child.status === 'interrupted'
+        ? t('dispatch.knock_interrupted', {
+          name: child.name,
+          description: child.description
+        })
+        : t('dispatch.knock_fail', {
+          name: child.name,
+          description: child.description,
+          error: child.error || 'Unknown error'
+        })
+  const reviews = leadReviewLines(reviewTeams, child.name)
+  return reviews.length > 0
+    ? `${text}\n\n${t('dispatch.knock_review', { lines: reviews.join('\n') })}`
+    : text
 }
 
 function formatExpertKnock(child: ChildSnapshot, role: string): string {
@@ -775,7 +826,7 @@ export function spawnDeps(
     ownedNames,
     isParentAborted: () => executor.isAborted(),
     sanitize: sanitizeParentMessages,
-    formatKnock,
+    formatKnock: (child) => formatKnock(child, knockTeamsFor(roster, child)),
     archiveResult: (name, text) => workspace.keepResult(name, text, roster.list().length),
     remoteAccessFor: (name, grant) => remoteAccessFor(roster, name, grant),
   }
@@ -1191,7 +1242,7 @@ export async function interruptAgent(args: Record<string, unknown>, executor: To
   if (result.finalized) {
     const snap = roster.get(name)
     workspaceOf(roster).writeOverview(roster.list())
-    if (snap) executor.knockParent?.(formatKnock(snap))
+    if (snap) executor.knockParent?.(formatKnock(snap, knockTeamsFor(roster, snap)))
   }
   return { success: true, output: t('dispatch.interrupt_ok', { name }) }
 }

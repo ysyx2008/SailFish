@@ -16,7 +16,7 @@
  */
 import * as fs from 'fs'
 import * as path from 'path'
-import type { AgentRecord, AgentStepRecord, ApprovalMode, OrganizationView } from '@shared/types'
+import type { AgentRecord, AgentStepRecord, ApprovalMode, ExpertTeamView, OrganizationView, SubAgentResult } from '@shared/types'
 import { isApprovalMode, isAssignedBy } from '@shared/types'
 import {
   forEachBoundedJsonlLineAsync,
@@ -77,6 +77,14 @@ export interface SessionMeta {
    * 每次存盘按 updatedAt 覆盖，重开时再用它盖回步骤。
    */
   organizations?: Record<string, OrganizationView>
+  /** 步骤上的子 Agent / 团聊实时快照；和 organizations 同一类问题、同一种存法 */
+  liveSteps?: Record<string, StepSnapshot>
+}
+
+export interface StepSnapshot {
+  at: number
+  subAgents?: SubAgentResult[]
+  expertTeam?: ExpertTeamView
 }
 
 function sessionDir(agentDir: string, dateStr: string, recordId: string): string {
@@ -107,6 +115,14 @@ function mergeTitleLock(meta: SessionMeta, existing: SessionMeta | null): Sessio
       if (!current || (current.updatedAt ?? 0) < (old.updatedAt ?? 0)) merged[stepId] = old
     }
     meta.organizations = merged
+  }
+  if (existing?.liveSteps) {
+    const merged: Record<string, StepSnapshot> = { ...(meta.liveSteps ?? {}) }
+    for (const [stepId, old] of Object.entries(existing.liveSteps)) {
+      const current = merged[stepId]
+      if (!current || current.at < old.at) merged[stepId] = old
+    }
+    meta.liveSteps = merged
   }
   return meta
 }
@@ -145,10 +161,19 @@ function recordToMeta(record: AgentRecord, stepCount: number, messageCount: numb
   }
   if (record.lastPromptUsage) meta.lastPromptUsage = { ...record.lastPromptUsage }
   const organizations: Record<string, OrganizationView> = {}
+  const liveSteps: Record<string, StepSnapshot> = {}
   for (const step of record.steps ?? []) {
     if (step.organization) organizations[step.id] = step.organization
+    if (step.subAgents || step.expertTeam) {
+      liveSteps[step.id] = {
+        at: step.snapshotAt ?? 0,
+        ...(step.subAgents ? { subAgents: step.subAgents } : {}),
+        ...(step.expertTeam ? { expertTeam: step.expertTeam } : {}),
+      }
+    }
   }
   if (Object.keys(organizations).length > 0) meta.organizations = organizations
+  if (Object.keys(liveSteps).length > 0) meta.liveSteps = liveSteps
   return meta
 }
 
@@ -180,10 +205,18 @@ function metaToRecord(meta: SessionMeta, steps: AgentStepRecord[], messages: Age
     compressedArchives: meta.compressedArchives,
     ...(meta.lastPromptUsage ? { lastPromptUsage: meta.lastPromptUsage } : {}),
   })
-  if (meta.organizations && record.steps.length > 0) {
+  if ((meta.organizations || meta.liveSteps) && record.steps.length > 0) {
     record.steps = record.steps.map(step => {
-      const organization = meta.organizations![step.id]
-      return organization ? { ...step, organization } : step
+      const organization = meta.organizations?.[step.id]
+      const snapshot = meta.liveSteps?.[step.id]
+      if (!organization && !snapshot) return step
+      return {
+        ...step,
+        ...(organization ? { organization } : {}),
+        ...(snapshot?.subAgents ? { subAgents: snapshot.subAgents } : {}),
+        ...(snapshot?.expertTeam ? { expertTeam: snapshot.expertTeam } : {}),
+        ...(snapshot ? { snapshotAt: Math.max(step.snapshotAt ?? 0, snapshot.at) } : {}),
+      }
     })
   }
   return record

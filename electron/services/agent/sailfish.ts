@@ -200,6 +200,7 @@ export class SailFish extends Agent {
         shownPrompt: state.shownPrompt,
         role: state.role,
         lead: state.lead,
+        reviewer: state.reviewer,
         parent: state.parent,
         team: state.team,
         result: state.result,

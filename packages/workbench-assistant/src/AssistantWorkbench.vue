@@ -104,7 +104,7 @@ let seatBeforeTeam: DeskSeat = 'none'
 const teamSeated = computed(() => seat.value === 'team' && !!teamStepId.value)
 /** 右侧在看哪个项目组织（派出组织的那一步），以及从图里点开的团 */
 const orgStepId = ref<string | null>(null)
-const orgTeamName = ref<string | null>(null)
+const orgTeamName = ref<{ name: string; owner?: string } | null>(null)
 /** 打开组织图前坐的是谁，关掉组织图回到它 */
 let seatBeforeOrg: DeskSeat = 'none'
 const orgSeated = computed(() => seat.value === 'org' && !!orgStepId.value)
@@ -394,8 +394,8 @@ function closeOrganization() {
 }
 
 /** 组织图里点某个团：右侧面板换成那个团的群聊，关掉群聊回到图上 */
-function openOrgTeam(teamName: string) {
-  orgTeamName.value = teamName
+function openOrgTeam(team: { name: string; owner?: string }) {
+  orgTeamName.value = team
 }
 
 function closeOrgTeam() {
@@ -562,7 +562,8 @@ defineExpose({
                 mode="panel"
                 :tab-id="tab.id"
                 :step-id="orgStepId!"
-                :team-name="orgTeamName"
+                :team-name="orgTeamName.name"
+                :team-owner="orgTeamName.owner"
                 @close="closeOrgTeam"
               />
               <OrganizationChart

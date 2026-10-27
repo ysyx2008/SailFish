@@ -2447,7 +2447,7 @@ export abstract class Agent {
    * 记录的构建（首个 user_task 标题、taskMemory 末态决定整体状态、steps/messages 序列化、kind/形态/token）
    * 全部由 Conversation.toRecord 负责；空会话（无 user_task）返回 null，与现状一致跳过。
    */
-  /** 组织快照变化时的检查点：进度 250ms 一次，别每次都写索引；最多落后一秒 */
+  /** 实时快照变化时的检查点：攒一秒写一次，别每次变化都写盘；收尾前 flush */
   private scheduleOrgCheckpoint(): void {
     if (this.orgSaveTimer) return
     this.orgSaveTimer = setTimeout(() => {
@@ -6393,9 +6393,12 @@ export abstract class Agent {
       if (this.currentRun.savedStepIds?.has(stepId)) this.currentRun.stepsEditedAfterSave = true
     }
 
-    // 组织快照变了：攒一下写检查点。steps.jsonl 只追加，步骤上后长出来的组织
-    // 不会回头改那一行；快照随 meta 存，重开时再盖回步骤。
-    if (updates.organization) this.scheduleOrgCheckpoint()
+    // 步骤上的实时快照（子 Agent / 团聊 / 组织）变了：记时间并攒一下写检查点。
+    // steps.jsonl 只追加，后长出来的状态不会回头改那一行；快照随 meta 存，重开时再盖回步骤。
+    if (updates.organization !== undefined || updates.subAgents !== undefined || updates.expertTeam !== undefined) {
+      step.snapshotAt = Date.now()
+      this.scheduleOrgCheckpoint()
+    }
 
     this.callbacks?.onStep?.(this.currentRun.id, step)
   }

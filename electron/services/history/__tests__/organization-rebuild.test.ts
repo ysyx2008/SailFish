@@ -161,5 +161,39 @@ describe('从伙计记录重建组织', () => {
       ])
       expect(org?.teams.map(t => t.name)).toEqual(['项目组', '研发团', '运营团'])
     })
+
+    it('步骤上残留的子 Agent 状态按伙计记录校正', () => {
+      const history = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-subagent-rebuild-'))
+      tmpDirs.push(history)
+      const timestamp = Date.UTC(2026, 6, 13, 10)
+      const dateStr = '2026-07-13'
+      const root = {
+        id: 'sess-2',
+        timestamp,
+        duration: 1,
+        userTask: '组个团队',
+        terminalId: 'pty',
+        terminalType: 'local',
+        steps: [{
+          id: 'd1',
+          type: 'tool_call',
+          timestamp,
+          content: '派出组长',
+          subAgents: [{ id: '研发组长', name: '研发组长', description: '带研发组', status: 'interrupted' }],
+        } as unknown as AgentStepRecord],
+        messages: [],
+        status: 'completed',
+      } as unknown as AgentRecord
+      saveSessionRecord(path.join(history, 'agent'), root)
+
+      const leaderState = child('研发组长', { status: 'completed', lead: true })
+      const dir = path.join(history, 'sub-agents', dateStr, 'sess-2', childDirName(leaderState.name))
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify(leaderState))
+
+      const store = new AgentRecordStore(history)
+      const loaded = store.getAgentRecordById('sess-2')
+      expect(loaded?.steps[0].subAgents?.[0].status).toBe('completed')
+    })
   })
 })

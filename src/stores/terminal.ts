@@ -3395,6 +3395,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       subAgents?: import('@shared/types').SubAgentResult[]
       expertTeam?: import('@shared/types').ExpertTeamView
       organization?: import('@shared/types').OrganizationView
+      snapshotAt?: number
       canvasData?: import('@shared/types').CanvasData
     }>
     finalResult?: string
@@ -3431,6 +3432,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       subAgents: s.subAgents,
       expertTeam: s.expertTeam,
       organization: s.organization,
+      snapshotAt: s.snapshotAt,
       canvasData: s.canvasData
     })))
     

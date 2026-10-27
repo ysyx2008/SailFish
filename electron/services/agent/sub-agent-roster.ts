@@ -60,7 +60,7 @@ export interface ChildAgentHandle {
 
 /** 这场会话里以前派出的、已经停下的伙计（存在盘上，还没被叫起来） */
 export type DormantChild = Pick<ChildState,
-  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'lead' | 'parent' | 'team' | 'result' | 'error' | 'blockedReason' | 'interruptedCalls'>
+  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'lead' | 'reviewer' | 'parent' | 'team' | 'result' | 'error' | 'blockedReason' | 'interruptedCalls'>
   & {
     status: 'completed' | 'failed' | 'interrupted'
     /** 盘上记的还是「在干」：程序没来得及收尾就没了，最后一轮的内容不明 */
@@ -763,6 +763,7 @@ export class SubAgentRoster {
       shownPrompt: sleeper.shownPrompt,
       role: sleeper.role,
       ...(sleeper.lead ? { lead: true } : {}),
+      ...(sleeper.reviewer ? { reviewer: true } : {}),
       ...(this.ownerName ? { parent: this.ownerName } : {}),
       ...(sleeper.team ? { team: sleeper.team } : {}),
       status: 'running',
@@ -773,12 +774,33 @@ export class SubAgentRoster {
       segment: 0,
     }
     this.children.set(name, slot)
+    if (sleeper.team) this.ensureTeamAfterWake(sleeper.team, deps)
     if (slot.lead) revived.handle.becomeLead?.({ ledger: this.ensureLedger(), name, depth: this.depth + 1 })
     persistSlot(slot)
     deps.onProgress()
     const notice = deps.resumeNotice?.(sleeper)
     slot.runPromise = this.runExisting(slot, notice ? `${notice}\n\n${message}` : message, deps)
     return { ok: true }
+  }
+
+  /**
+   * 以前团里的人被叫醒时把团补回来：成员从现名册和还没叫醒的休眠记录里找。
+   * 团里的旧消息还在群聊文件里；这里恢复的是团本身，让 teamSay / 团聊能接着用。
+   */
+  private ensureTeamAfterWake(teamName: string, deps: RunDeps): void {
+    if (this.teams.has(teamName)) return
+    const members = [...this.children.values(), ...this.dormant.values()]
+      .filter(m => m.team === teamName)
+      .map(m => ({
+        name: m.name,
+        ...(m.askedName ? { askedName: m.askedName } : {}),
+        role: m.role ?? '',
+        description: m.description,
+        ...(m.reviewer ? { reviewer: true } : {}),
+      }))
+    if (members.length === 0) return
+    const team = new ExpertTeam(teamName, members)
+    this.teams.set(teamName, { team, deps })
   }
 
   /** 组长对专家再交代：进群里，重新数叫醒次数，并叫醒等组长期间被点到的人（期间被打断的不叫） */
@@ -999,6 +1021,7 @@ function persistSlot(slot: ChildSlot): void {
     shownPrompt: slot.shownPrompt,
     role: slot.role,
     lead: slot.lead,
+    reviewer: slot.reviewer,
     parent: slot.parent,
     team: slot.team,
     status: slot.status,

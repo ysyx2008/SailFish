@@ -13,10 +13,30 @@ const emit = defineEmits<{ open: [] }>()
 const { t } = useI18n()
 
 const headline = computed(() => t('ai.organization.cardHeadline', { total: props.organization.total }))
-const detail = computed(() => [
-  props.organization.teams.length > 0 ? t('ai.organization.cardTeams', { count: props.organization.teams.length }) : '',
-  props.organization.live > 0 ? t('ai.organization.cardLive', { live: props.organization.live }) : t('ai.organization.cardAllDone'),
-].filter(Boolean).join(' · '))
+/** members 只放得下前面一部分；live / total 是真实合计，干完和出问题按看得到的成员数 */
+const counts = computed(() => {
+  let completed = 0
+  let problem = 0
+  for (const member of props.organization.members) {
+    if (member.status === 'completed') completed++
+    else if (member.status === 'failed' || member.status === 'interrupted') problem++
+  }
+  return { completed, problem }
+})
+const detail = computed(() => {
+  const { completed, problem } = counts.value
+  const parts = [
+    props.organization.teams.length > 0 ? t('ai.organization.cardTeams', { count: props.organization.teams.length }) : '',
+    props.organization.live > 0 ? t('ai.organization.cardLive', { live: props.organization.live }) : '',
+    completed > 0 ? t('ai.organization.cardCompleted', { count: completed }) : '',
+    problem > 0 ? t('ai.organization.cardProblem', { count: problem }) : '',
+  ].filter(Boolean)
+  // 都干完了才写「都干完了」；有人失败或被打断时仍显示计数，成员没放全时也不下这个结论
+  if (props.organization.live === 0 && problem === 0 && !props.organization.omitted) {
+    parts.push(t('ai.organization.cardAllDone'))
+  }
+  return parts.join(' · ')
+})
 </script>
 
 <template>

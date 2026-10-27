@@ -562,7 +562,7 @@ const openExpertTeam = (stepId: string) => {
 }
 /** 盖在对话栏上的项目组织图，和从图里点开的某个团的群聊（再盖在组织图上） */
 const overlayOrgStepId = ref<string | null>(null)
-const overlayOrgTeam = ref<string | null>(null)
+const overlayOrgTeam = ref<{ name: string; owner?: string } | null>(null)
 const openOrganization = (stepId: string) => {
   if (props.openOrganizationSeat) {
     props.openOrganizationSeat(stepId)
@@ -3566,7 +3566,8 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
       mode="overlay"
       :tab-id="tabId"
       :step-id="overlayOrgStepId"
-      :team-name="overlayOrgTeam"
+      :team-name="overlayOrgTeam.name"
+      :team-owner="overlayOrgTeam.owner"
       @close="overlayOrgTeam = null"
     />
     <ExpertTeamChat

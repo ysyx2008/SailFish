@@ -25,6 +25,8 @@ const props = withDefaults(defineProps<{
   mode?: 'panel' | 'overlay'
   /** 项目组织里某个团的群聊：团名；不写就是这一步自己派出的专家团 */
   teamName?: string
+  /** 团所在组长的名字；不同组长手下可能有同名团，顶层团不写 */
+  teamOwner?: string
 }>(), { mode: 'panel' })
 const emit = defineEmits<{ close: [] }>()
 
@@ -43,10 +45,14 @@ const EARLIER_SLACK_PX = 80
 const step = computed(() => terminalStore.tabs
   .find(tab => tab.id === props.tabId)?.agentState?.steps
   .find(s => s.id === props.stepId))
-/** 项目组织里指定的那个团（派出组长那一步带着全貌） */
-const orgTeam = computed(() => props.teamName
-  ? step.value?.organization?.teams.find(team => team.name === props.teamName)
-  : undefined)
+/** 项目组织里指定的那个团（派出组长那一步带着全貌）；有组长时团名加组长一起认 */
+const orgTeam = computed(() => {
+  if (!props.teamName) return undefined
+  const teams = step.value?.organization?.teams ?? []
+  return props.teamOwner
+    ? teams.find(team => team.name === props.teamName && team.owner === props.teamOwner)
+    : teams.find(team => team.name === props.teamName)
+})
 const team = computed<ExpertTeamView | undefined>(() => {
   if (!props.teamName) return step.value?.expertTeam
   const o = orgTeam.value
@@ -64,7 +70,7 @@ const team = computed<ExpertTeamView | undefined>(() => {
 const agents = computed<SubAgentResult[]>(() => {
   if (!props.teamName) return step.value?.subAgents ?? []
   return (step.value?.organization?.members ?? [])
-    .filter(m => m.team === props.teamName)
+    .filter(m => m.team === props.teamName && (!props.teamOwner || m.parent === props.teamOwner))
     .map(m => ({
       id: m.id,
       name: m.name,
@@ -197,7 +203,7 @@ watch(viewLastSeq, (seq) => {
 })
 
 /** 换了一个团就从头打开；这个团的全文文件刚有时换成看全文 */
-watch(() => [props.stepId, props.teamName], () => { void openChat(true) })
+watch(() => [props.stepId, props.teamName, props.teamOwner], () => { void openChat(true) })
 watch(() => team.value?.chatFile, () => { void openChat() })
 
 watch(() => !!team.value, (has, had) => { if (had && !has) emit('close') })

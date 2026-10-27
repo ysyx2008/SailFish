@@ -885,6 +885,8 @@ export default {
       cardHeadline: 'Organization · {total} people',
       cardTeams: '{count} teams',
       cardLive: '{live} working',
+      cardCompleted: '{count} done',
+      cardProblem: '{count} problems',
       cardAllDone: 'all done',
       dockWorking: 'Organization: {live} working, {total} in all',
       dockDone: 'Organization: all {total} done',
@@ -894,6 +896,8 @@ export default {
       close: 'Close organization chart',
       empty: 'The organization has nothing yet',
       teamTitle: 'Team “{team}”',
+      teamOwner: 'Lead · {name}',
+      teamMembers: '{count} people',
       teamChat: 'Chat · {count}',
       openTeamChat: 'Open this team’s chat',
       review: {

@@ -678,6 +678,8 @@ export interface AgentStep {
   expertTeam?: ExpertTeamView
   /** 项目组织全貌（dispatch_agents 指定了组长时，实时更新） */
   organization?: OrganizationView
+  /** 这些实时快照（subAgents/expertTeam/organization）最后一次变化的时间；存盘合并用 */
+  snapshotAt?: number
   /** Web 搜索结果（web_search 工具专用，供 UI 可展开渲染） */
   webSearchResults?: WebSearchResultItem[]
   /**

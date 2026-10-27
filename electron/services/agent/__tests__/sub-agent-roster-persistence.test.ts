@@ -203,6 +203,24 @@ describe('花名册里的休眠伙计', () => {
     expect(roster.get('alice')).toMatchObject({ status: 'completed', result: '接着做完了' })
   })
 
+  it('叫醒以前团里的人时把团补回来，团聊和 teamSay 还能接着用', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const d = deps(() => child({}))
+    d.restoreDormant = () => [
+      sleeper('alice', { team: '研发团' }),
+      sleeper('bob', { team: '研发团' }),
+      sleeper('carol'),
+    ]
+    expect(roster.getTeam('研发团')).toBeUndefined()
+
+    expect(roster.followup('alice', '接着做', d)).toEqual({ ok: true })
+    const team = roster.getTeam('研发团')
+    expect(team?.memberNames()).toEqual(['alice', 'bob'])
+    // 不在团里的老伙计照旧自己干
+    expect(roster.getTeam('carol')).toBeUndefined()
+    await settle()
+  })
+
   it('做完的休眠伙计被再交代，不带「上次的情形」', async () => {
     const sent: string[] = []
     const handle = child({ result: '好' })
