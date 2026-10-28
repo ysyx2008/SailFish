@@ -149,12 +149,23 @@ export interface RosterSpawnDeps {
   restoreDormant?: () => DormantChild[]
   /** 叫醒休眠的伙计时，开口前先告诉他上次的情形；没什么要说的返回空 */
   resumeNotice?: (child: DormantChild) => string
-  /** 以前团里的最后一次验收结论：叫醒后重建的团据此接着显示 */
-  teamReviewFor?: (teamName: string) => TeamReviewState | undefined
+  /** 以前那个团的样子：重建时接上群聊文件、条数和最后一次验收结论 */
+  teamHistoryFor?: (teamName: string) => TeamHistory | undefined
+  /** 重建的团接上以前的群聊文件 */
+  adoptTeamHistory?: (teamName: string, history: TeamHistory) => void
+}
+
+/** 以前那个团留下来的东西：叫醒团里的人时用来接着显示和写盘 */
+export interface TeamHistory {
+  messageCount: number
+  chatFile?: string
+  transcriptPath?: string
+  review: TeamReviewState
+  reviewers: string[]
 }
 
 type RunDeps = Pick<RosterSpawnDeps,
-  'getParentContext' | 'onProgress' | 'knock' | 'formatKnock' | 'archiveResult' | 'isParentAborted' | 'teamTexts' | 'restoreDormant' | 'resumeNotice' | 'teamReviewFor'>
+  'getParentContext' | 'onProgress' | 'knock' | 'formatKnock' | 'archiveResult' | 'isParentAborted' | 'teamTexts' | 'restoreDormant' | 'resumeNotice' | 'teamHistoryFor' | 'adoptTeamHistory'>
 
 interface ChildSlot extends ChildSnapshot {
   handle?: ChildAgentHandle
@@ -793,6 +804,8 @@ export class SubAgentRoster {
    */
   private ensureTeamAfterWake(teamName: string, deps: RunDeps): void {
     if (this.teams.has(teamName)) return
+    const history = deps.teamHistoryFor?.(teamName)
+    const reviewers = new Set(history?.reviewers ?? [])
     const members = [...this.children.values(), ...this.dormant.values()]
       .filter(m => m.team === teamName)
       .map(m => ({
@@ -800,11 +813,15 @@ export class SubAgentRoster {
         ...(m.askedName ? { askedName: m.askedName } : {}),
         role: m.role ?? '',
         description: m.description,
-        ...(m.reviewer ? { reviewer: true } : {}),
+        ...(m.reviewer || reviewers.has(m.name) ? { reviewer: true } : {}),
       }))
     if (members.length === 0) return
     const team = new ExpertTeam(teamName, members)
-    team.seedReview(deps.teamReviewFor?.(teamName))
+    if (history) {
+      team.seedHistory(history.messageCount)
+      team.seedReview(history.review)
+      deps.adoptTeamHistory?.(teamName, history)
+    }
     this.teams.set(teamName, { team, deps })
   }
 

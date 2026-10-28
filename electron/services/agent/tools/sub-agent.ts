@@ -24,7 +24,7 @@ import {
   teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT, type ExpertTeam
 } from '../expert-team'
 import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
-import { createTeamTexts, expertOpening, formatTranscript, renamedList } from './expert-team-text'
+import { createTeamTexts, expertOpening, formatTranscript, formatTranscriptLines, renamedList } from './expert-team-text'
 import { orgOpeningNote, renderBoard, type BoardSection } from './organization-text'
 import type { OrganizationMemberView, OrganizationTeamView, OrganizationView, TeamReviewState } from '@shared/types'
 import { inferConversationKind } from '@shared/types'
@@ -110,6 +110,10 @@ export class SubAgentWorkspace {
   private readonly transcriptFiles = new Map<string, string>()
   /** 随会话保存的群聊全文：团名对应的文件和写到第几条 */
   private readonly chatFiles = new Map<string, { file: string; written: number }>()
+  /** 从盘上叫醒的团：旧的 transcript 文件还在，只能往后追加，不能拿新消息整份覆盖 */
+  private readonly adoptedTranscripts = new Set<string>()
+  /** 同一场会话换了目录策略也不撞群聊文件名：每次运行给新团一个短标记 */
+  private readonly chatToken = Math.random().toString(36).slice(2, 8)
   private chats?: { store: ExpertTeamChatStore; sessionId: string }
 
   constructor(dir = buildArtifactDir()) {
@@ -139,7 +143,7 @@ export class SubAgentWorkspace {
     if (!this.chats) return
     let chat = this.chatFiles.get(team.name)
     if (!chat) {
-      const stem = `${path.basename(this.dir)}-${this.teamTranscriptFile(team).replace(/\.md$/, '')}`
+      const stem = `${path.basename(this.dir)}-${this.chatToken}-${this.teamTranscriptFile(team).replace(/\.md$/, '')}`
       const file = this.chats.store.create(this.chats.sessionId, stem)
       if (!file) return
       chat = { file, written: 0 }
@@ -153,6 +157,17 @@ export class SubAgentWorkspace {
   teamChatFile(team: ExpertTeam): string | undefined {
     const chat = this.chatFiles.get(team.name)
     return chat && chat.written > 0 ? chat.file : undefined
+  }
+
+  /** 重建的团接上以前的群聊文件：新消息继续往后追加，界面也能接着翻旧消息 */
+  adoptTeamChat(teamName: string, file: string | undefined, written: number): void {
+    if (!file || written <= 0 || this.chatFiles.has(teamName)) return
+    this.chatFiles.set(teamName, { file, written })
+  }
+
+  /** 重建的团接上以前的 transcript：之后只能往后追加，别把旧对话整份盖掉 */
+  adoptTeamTranscript(teamName: string): void {
+    this.adoptedTranscripts.add(teamName)
   }
 
   /** 这一轮的落盘目录 */
@@ -203,6 +218,11 @@ export class SubAgentWorkspace {
 
   rememberBoardSection(section: RememberedSection): void {
     this.boardSections.set(section.owner ?? '', section)
+  }
+
+  /** 看板上已经有内容了（重开时先铺一次，之后按账本刷新） */
+  hasBoard(): boolean {
+    return this.boardSections.size > 0
   }
 
   /** 全组织的团（不截断）：交给组长看自己的验收结论时用 */
@@ -259,10 +279,28 @@ export class SubAgentWorkspace {
     return path.join(this.dir, this.teamTranscriptFile(team))
   }
 
-  /** 群里有新消息才重写 */
+  /** 群里有新消息才重写；从盘上接回来的团只往后追加 */
   writeTeamTranscript(team: ExpertTeam): void {
     const count = team.messageCount()
     if (this.transcriptCounts.get(team.name) === count) return
+    if (this.adoptedTranscripts.has(team.name)) {
+      const file = this.teamTranscriptPath(team)
+      if (!team.hasNewMessages()) {
+        // 还没有新消息：旧的 transcript 原样留着
+        this.transcriptCounts.set(team.name, count)
+        return
+      }
+      try {
+        if (fs.existsSync(file)) {
+          fs.appendFileSync(file, formatTranscriptLines(team).join('\n') + '\n', 'utf-8')
+          this.transcriptCounts.set(team.name, count)
+          return
+        }
+      } catch (err) {
+        log.warn(`Sub-agent transcript append failed (${file}): ${err}`)
+      }
+      this.adoptedTranscripts.delete(team.name)
+    }
     if (this.write(this.teamTranscriptFile(team), formatTranscript(team))) this.transcriptCounts.set(team.name, count)
   }
 
@@ -322,6 +360,52 @@ export function workspaceOf(roster: SubAgentRoster): SubAgentWorkspace {
     workspaces.set(roster, workspace)
   }
   return workspace
+}
+
+/**
+ * 重开一场会话、还没按账本刷新时，先用保存下来的组织全貌把看板铺出来：
+ * 之前给伙计的看板路径马上有内容，叫醒团里以前的人时也能拿到上一次的验收结论。
+ * 已有看板内容时不动（之后由 refreshOrgBoard 按账本刷新）。
+ */
+export function seedOrganizationBoard(workspace: SubAgentWorkspace, view: OrganizationView): void {
+  if (workspace.hasBoard()) return
+  // 快照本来就截断过：铺出来会把「看得到的这些人」当成全组织，宁可不铺
+  if (view.omitted || view.omittedTeams) return
+  const depthOf = (name: string, seen = new Set<string>()): number => {
+    const member = view.members.find(m => m.name === name)
+    if (!member?.parent || seen.has(name)) return 1
+    seen.add(name)
+    return depthOf(member.parent, seen) + 1
+  }
+  const asChild = (member: OrganizationMemberView): ChildSnapshot => ({
+    name: member.name,
+    description: member.description,
+    prompt: '',
+    status: member.status,
+    steps: [],
+    ...(member.role ? { role: member.role } : {}),
+    ...(member.team ? { team: member.team } : {}),
+    ...(member.lead ? { lead: true } : {}),
+    ...(member.reviewer ? { reviewer: true } : {}),
+  })
+  const owners = [undefined, ...view.members.filter(m => m.lead).map(m => m.name)]
+  for (const owner of owners) {
+    const members = view.members.filter(m => (owner ? m.parent === owner : !m.parent))
+    const teamViews = view.teams.filter(t => t.owner === owner)
+    if (!owner && members.length === 0 && teamViews.length === 0) continue
+    workspace.rememberBoardSection({
+      owner,
+      depth: owner ? depthOf(owner) : 0,
+      reportsTo: owner ? view.members.find(m => m.name === owner)?.parent : undefined,
+      rows: workspace.rowsOf(members.map(asChild)),
+      teams: teamViews.map(team => ({ name: team.name, review: team.review, reviewers: team.reviewers ?? [] })),
+      live: members.filter(m => m.status === 'running' || m.status === 'pending').length,
+      total: members.length,
+      members,
+      teamViews,
+    })
+  }
+  workspace.writeBoardFromMemory()
 }
 
 /**
@@ -822,7 +906,11 @@ export function spawnDeps(
   const sessionId = executor.getRootSessionId?.() ?? executor.getSessionId?.()
   workspace.attachChats(executor.getExpertTeamChats?.(), sessionId)
   // 秘书这一份按会话落盘：同一场会话再开一轮时，看板和结果文件还在原来的路径
-  if (roster.owner === undefined) workspace.bindSession(sessionId)
+  if (roster.owner === undefined) {
+    workspace.bindSession(sessionId)
+    const restored = executor.getCurrentOrganization?.()
+    if (restored) seedOrganizationBoard(workspace, restored)
+  }
   const overviewProgress = new ProgressThrottle(() => {
     workspace.writeOverview(roster.list())
     refreshOrgBoard(roster)
@@ -856,11 +944,23 @@ export function spawnDeps(
     restoreDormant: executor.restoreDormantChildren,
     resumeNotice: resumeNoticeFor,
     teamTexts: createTeamTexts(team => workspace.teamTranscriptPath(team)),
-    teamReviewFor: (teamName) => {
+    teamHistoryFor: (teamName) => {
       const root = roster.orgRoot()
       if (!root) return undefined
-      return workspaceOf(root).organizationTeams()
-        .find(team => team.name === teamName && team.owner === roster.owner)?.review
+      const team = workspaceOf(root).organizationTeams()
+        .find(t => t.name === teamName && t.owner === roster.owner)
+      if (!team) return undefined
+      return {
+        messageCount: team.messageCount,
+        ...(team.chatFile ? { chatFile: team.chatFile } : {}),
+        ...(team.transcriptPath ? { transcriptPath: team.transcriptPath } : {}),
+        review: team.review,
+        reviewers: team.reviewers ?? [],
+      }
+    },
+    adoptTeamHistory: (teamName, history) => {
+      workspace.adoptTeamChat(teamName, history.chatFile, history.messageCount)
+      workspace.adoptTeamTranscript(teamName)
     },
     onProgress: () => {
       progress.schedule()

@@ -154,10 +154,14 @@ export function createTeamTexts(transcriptPath: (team: ExpertTeam) => string): T
 }
 
 /** 落盘的群聊全文 */
-export function formatTranscript(team: ExpertTeam): string {
-  const lines = team.transcript().map(m => {
+/** 群聊全文里一条一行（续写老文件时只拼这些行，不再重复标题） */
+export function formatTranscriptLines(team: ExpertTeam, messages: TeamMessage[] = team.transcript()): string[] {
+  return messages.map(m => {
     const time = new Date(m.at).toISOString().slice(11, 19)
     return `${time} ${formatTeamMessage(team, m)}`
   })
-  return [t('expert.transcript_title', { team: team.name }), '', ...lines].join('\n') + '\n'
+}
+
+export function formatTranscript(team: ExpertTeam): string {
+  return [t('expert.transcript_title', { team: team.name }), '', ...formatTranscriptLines(team)].join('\n') + '\n'
 }

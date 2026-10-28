@@ -769,6 +769,18 @@ describe('专家团', () => {
 })
 
 describe('专家团：边角', () => {
+  it('从盘上叫醒的团：旧消息还在文件里，新消息序号和条数接着排', () => {
+    const team = new ExpertTeam('t', [
+      { name: '甲', role: '专家', description: '' },
+      { name: '乙', role: '专家', description: '' },
+    ])
+    team.seedHistory(5)
+    const out = team.post('甲', ['乙'], '接着做')
+    expect(out.message.seq).toBe(6)
+    expect(team.messageCount()).toBe(6)
+    expect(team.takeUnread('乙').map(m => m.seq)).toEqual([6])
+  })
+
   it('上一段刚跑完还没记账时又被点名：新一段照常跑，旧的不把他记成做完、不敲门', async () => {
     const { roster, child, knocks, executor } = setup()
     await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)

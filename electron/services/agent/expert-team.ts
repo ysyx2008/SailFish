@@ -98,6 +98,8 @@ export class ExpertTeam {
   private readonly pendingWakes: string[] = []
   /** 从盘上叫醒重建时，群里旧消息没带进来；最后一次验收结论先记在这里 */
   private seededReview?: TeamReviewState
+  /** 重建时群聊文件里已有的条数：新消息的序号接着往后排，计数也把它算上 */
+  private historyCount = 0
 
   constructor(name: string, members: TeamMember[]) {
     this.name = name
@@ -133,6 +135,13 @@ export class ExpertTeam {
   /** 从盘上叫醒重建时先把最后一次验收结论接回来；之后群里有新结论会覆盖它 */
   seedReview(state: TeamReviewState | undefined): void {
     if (state === 'pass' || state === 'reject') this.seededReview = state
+  }
+
+  /** 以前的群聊还在文件里：新消息序号接着排，成员默认只重新看新消息 */
+  seedHistory(count: number): void {
+    if (!Number.isFinite(count) || count <= 0) return
+    this.historyCount = Math.max(this.historyCount, Math.floor(count))
+    for (const name of this.readUpTo.keys()) this.readUpTo.set(name, this.historyCount)
   }
 
   /** 验收状态：没有验收人 / 还没给过结论 / 最近一次的结论 */
@@ -218,7 +227,12 @@ export class ExpertTeam {
   }
 
   messageCount(): number {
-    return this.messages.length
+    return this.historyCount + this.messages.length
+  }
+
+  /** 重建的团里，本次有没有新说的话（旧消息只在文件里） */
+  hasNewMessages(): boolean {
+    return this.messages.length > 0
   }
 
   transcript(): TeamMessage[] {
@@ -246,7 +260,7 @@ export class ExpertTeam {
       kept.unshift(text.length < m.text.length ? { ...copyMessage(m), text, omitted: m.text.length - text.length } : copyMessage(m))
       budget -= text.length
     }
-    const earlier = this.messages.length - kept.length
+    const earlier = this.historyCount + this.messages.length - kept.length
     return {
       name: this.name,
       messages: kept,
@@ -267,7 +281,7 @@ export class ExpertTeam {
   }
 
   private record(from: string, to: string[], text: string, verdict?: TeamVerdict): TeamMessage {
-    const message: TeamMessage = { seq: this.messages.length + 1, from, to, text, at: Date.now(), ...(verdict ? { verdict } : {}) }
+    const message: TeamMessage = { seq: this.historyCount + this.messages.length + 1, from, to, text, at: Date.now(), ...(verdict ? { verdict } : {}) }
     this.messages.push(message)
     return message
   }

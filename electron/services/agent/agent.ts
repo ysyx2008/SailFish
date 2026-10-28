@@ -6183,6 +6183,20 @@ export abstract class Agent {
       inReceiptTurn: run.internalNotice && run.noticeKind === 'task_receipt',
       getSessionId: () => this.getSessionId(),
       getRootSessionId: () => this.rootSessionId(),
+      getCurrentOrganization: () => {
+        const steps = this._conversation?.steps ?? []
+        let start = 0
+        for (let i = steps.length - 1; i >= 0; i--) {
+          if (steps[i].type === 'user_task' && !steps[i].systemInjected) {
+            start = i
+            break
+          }
+        }
+        for (let i = steps.length - 1; i >= start; i--) {
+          if (steps[i].organization) return steps[i].organization
+        }
+        return undefined
+      },
       getRecallingConversation: () => this.recallingConversation(),
       getDocumentConversationId: () => this.documentConversationId(),
       getExpertTeamChats: () => this.services.historyService?.getAgentRecordStore().expertTeamChats,

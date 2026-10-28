@@ -211,15 +211,21 @@ describe('花名册里的休眠伙计', () => {
       sleeper('bob', { team: '研发团' }),
       sleeper('carol'),
     ]
-    d.teamReviewFor = (name) => (name === '研发团' ? 'pass' : undefined)
+    d.teamHistoryFor = (name) => (name === '研发团'
+      ? { messageCount: 5, chatFile: '2026-10-28/sess/team.jsonl', review: 'pass', reviewers: ['alice'] }
+      : undefined)
+    let adopted: unknown
+    d.adoptTeamHistory = (_name, history) => { adopted = history }
     expect(roster.getTeam('研发团')).toBeUndefined()
 
     expect(roster.followup('alice', '接着做', d)).toEqual({ ok: true })
     const team = roster.getTeam('研发团')
     expect(team?.memberNames()).toEqual(['alice', 'bob'])
-    // 以前的验收结论也接回来
+    // 以前的验收结论和群聊条数也接回来
     expect(team?.reviewerNames()).toEqual(['alice'])
     expect(team?.reviewState()).toBe('pass')
+    expect(team?.messageCount()).toBe(5)
+    expect(adopted).toMatchObject({ chatFile: '2026-10-28/sess/team.jsonl', messageCount: 5 })
     // 不在团里的老伙计照旧自己干
     expect(roster.getTeam('carol')).toBeUndefined()
     await settle()

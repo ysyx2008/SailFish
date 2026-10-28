@@ -206,6 +206,8 @@ export interface ToolExecutorConfig {
   leadSeat?: import('../org-ledger').LeadSeat
   /** 盘上的主会话号：伙计和组长名下的人都记在它下面 */
   getRootSessionId?: () => string | undefined
+  /** 当前这件事最近的组织全貌：重开时用它把看板接着铺出来 */
+  getCurrentOrganization?: () => import('@shared/types').OrganizationView | undefined
   /** 未按听众过滤的工具目录，供硬拦 */
   getToolCatalog?: () => import('../../ai.service').ToolDefinition[]
   /** 创建不进会话表的伙计实例 */

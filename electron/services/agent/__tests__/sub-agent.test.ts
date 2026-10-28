@@ -45,13 +45,13 @@ vi.mock('../../web-search/index', () => ({
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, parseDispatchTasks, SubAgentWorkspace, viewStepsPerAgent } from '../tools/sub-agent'
+import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, parseDispatchTasks, seedOrganizationBoard, SubAgentWorkspace, viewStepsPerAgent } from '../tools/sub-agent'
 import { getAgentTools } from '../tools'
 import { MAX_LIVE_CHILDREN, SubAgentRoster, type ChildAgentHandle } from '../sub-agent-roster'
 import { OrgLedger } from '../org-ledger'
 import type { ToolExecutorConfig, AgentConfig } from '../tools/types'
 import type { AgentContext } from '../types'
-import type { AgentStep } from '@shared/types'
+import type { AgentStep, OrganizationView } from '@shared/types'
 
 const DEFAULT_CONTEXT: AgentContext = {
   terminalOutput: [],
@@ -637,6 +637,28 @@ describe('结果落文件与总览', () => {
     const view = ws.organizationView()
     expect(view.teams).toHaveLength(100)
     expect(view.omittedTeams).toBe(1)
+  })
+
+  it('重开时先用保存的组织全貌把看板铺出来', () => {
+    const ws = new SubAgentWorkspace('/tmp/org-seed-board')
+    const view: OrganizationView = {
+      members: [
+        { id: '研发组', name: '研发组', description: '带研发组', status: 'running', lead: true, role: '研发组长' },
+        { id: '小甲', name: '小甲', description: '写甲', status: 'completed', parent: '研发组', team: '项目团' },
+      ],
+      teams: [{ name: '项目团', owner: '研发组', review: 'pass', reviewers: ['小甲'], messageCount: 3, waitingLeader: false, wakeLimit: 30 }],
+      live: 1,
+      total: 2,
+    }
+    seedOrganizationBoard(ws, view)
+    const seeded = ws.organizationView()
+    expect(seeded.members.map(m => m.name)).toEqual(['研发组', '小甲'])
+    expect(seeded.teams[0]).toMatchObject({ name: '项目团', owner: '研发组', review: 'pass' })
+    expect(seeded.live).toBe(1)
+    // 截断过的快照不铺：铺出来会把看得到的部分当成全组织
+    const truncated = new SubAgentWorkspace('/tmp/org-seed-truncated')
+    seedOrganizationBoard(truncated, { ...view, omitted: 5 })
+    expect(truncated.hasBoard()).toBe(false)
   })
 
   it('成员太多没放全时，失败 / 打断的人数仍按全组织给出', () => {
