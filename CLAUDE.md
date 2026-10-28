@@ -1,16 +1,5 @@
 # SailFish 项目
 
-本文件由 Cursor 规则自动生成，与 Cursor 共享同一套规则源文件。
+与 Codex、Cursor 共用同一套规则源。每次新对话先读取 `AGENTS.md`，并按其中的「每次新对话必读」「按任务必读」加载文件；不要仅依赖引用语法自动展开。
 
-## 项目规则
-
-@.cursor/rules/collaboration.mdc
-@.cursor/rules/project-architecture.mdc
-@.cursor/rules/spec-driven.mdc
-@.cursor/rules/agent-oop-boundary.mdc
-@.cursor/rules/agent-prompt-principles.mdc
-
-## 补充规则
-
-- 请始终用中文回答。
-- 每次会话开始时读取 CLAUDE.md 和上述引用的规则文件。
+@AGENTS.md

@@ -1,6 +1,6 @@
 ---
 description: 用真实窗口看界面时，默认不抢前台
-alwaysApply: true
+alwaysApply: false
 ---
 
 # 界面测试不抢前台

@@ -1,6 +1,6 @@
 ---
 description: 对话里冒出的产品点子一律记入 docs/ideas.md，并用提交对照是否落地
-alwaysApply: true
+alwaysApply: false
 ---
 
 # 想法本

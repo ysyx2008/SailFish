@@ -1,6 +1,6 @@
 ---
 description: Agent 提示词编写原则——客观中性描述，不过度指导
-alwaysApply: true
+alwaysApply: false
 ---
 
 # Agent 提示词：应遵循客观中性描述原则
