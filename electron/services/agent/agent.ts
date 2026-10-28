@@ -1876,13 +1876,14 @@ export abstract class Agent {
    * 清理资源
    */
   cleanup(): void {
-    if (this.orgSaveTimer) {
-      clearTimeout(this.orgSaveTimer)
-      this.orgSaveTimer = undefined
-    }
+    // 先收尾：攒着没写的快照在 cleanupRun 里 flush；先清定时器会让最后一次快照丢掉
     if (this.currentRun) {
       this.cleanupRun(this.currentRun)
       this.currentRun = undefined
+    }
+    if (this.orgSaveTimer) {
+      clearTimeout(this.orgSaveTimer)
+      this.orgSaveTimer = undefined
     }
     void this.flushMemory()
     this._memoryRefresher?.dispose()

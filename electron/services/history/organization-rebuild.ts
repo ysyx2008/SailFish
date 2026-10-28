@@ -23,8 +23,10 @@ export function rebuildOrganization(
   const byName = new Map(members.map(member => [member.name, member]))
   const teams: OrganizationTeamView[] = org.teams.map(team => ({ ...team }))
   const baseLiveFromMembers = members.filter(m => m.status === 'running' || m.status === 'pending').length
-  // 快照里没放进来的那部分人的 live 只能从 org.live 里扣出来
+  // 快照里没放进来的那部分人的 live / 出问题人数只能从合计里扣出来
   const omittedLive = Math.max(0, org.live - baseLiveFromMembers)
+  const baseProblems = org.problems ?? members.filter(m => m.status === 'failed' || m.status === 'interrupted').length
+  const omittedProblems = Math.max(0, baseProblems - members.filter(m => m.status === 'failed' || m.status === 'interrupted').length)
   let latest = org.updatedAt ?? 0
 
   const addMember = (state: ChildState, teamName?: string, reviewer?: boolean): void => {
@@ -43,6 +45,20 @@ export function rebuildOrganization(
     }
     members.push(member)
     byName.set(state.name, member)
+  }
+
+  /** 已有的成员不重复加，但快照里缺的归属、组长、验收人身份补上 */
+  const fillMember = (state: ChildState, teamName?: string, reviewer?: boolean): void => {
+    const existing = byName.get(state.name)
+    if (!existing) {
+      addMember(state, teamName, reviewer)
+      return
+    }
+    if (!existing.parent && state.parent) existing.parent = state.parent
+    const team = state.team ?? teamName
+    if (!existing.team && team) existing.team = team
+    if (state.lead) existing.lead = true
+    if (reviewer) existing.reviewer = true
   }
 
   // 组长本人先补齐（旧快照里通常已经有）；快照里的状态可能比伙计记录旧，按记录更新
@@ -81,7 +97,7 @@ export function rebuildOrganization(
       for (const child of children) {
         if (child.parent !== leader.name) continue
         if (child.team && child.team !== team.name) continue
-        addMember(child, team.name, reviewers.has(child.name))
+        fillMember(child, team.name, reviewers.has(child.name))
       }
     }
   }
@@ -89,16 +105,18 @@ export function rebuildOrganization(
   // 没有团可归的组员：按 parent 挂回去（比如组长的派出步骤没存到）
   for (const child of children) {
     if (!child.parent) continue
-    addMember(child)
+    fillMember(child)
   }
 
   const keptLive = members.filter(m => m.status === 'running' || m.status === 'pending').length
+  const problems = members.filter(m => m.status === 'failed' || m.status === 'interrupted').length + omittedProblems
   return {
     ...org,
     members,
     teams,
     total: Math.max(org.total, members.length + (org.omitted ?? 0)),
     live: keptLive + omittedLive,
+    problems,
     ...(latest > 0 ? { updatedAt: latest } : {}),
   }
 }

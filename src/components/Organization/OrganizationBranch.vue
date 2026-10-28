@@ -40,7 +40,10 @@ function summarize(team: OrganizationTeamView, nodes: OrgNode[]): TeamSummary {
     else running++
   }
   return {
-    owner: t('ai.organization.teamOwner', { name: team.owner ?? t('ai.organization.secretary') }),
+    // 秘书自己的团没有组长，写「秘书」而不是「组长·秘书」
+    owner: team.owner
+      ? t('ai.organization.teamOwner', { name: team.owner })
+      : t('ai.organization.secretary'),
     members: t('ai.organization.teamMembers', { count: nodes.length }),
     running: running > 0 ? t('ai.organization.cardLive', { live: running }) : '',
     completed: completed > 0 ? t('ai.organization.cardCompleted', { count: completed }) : '',

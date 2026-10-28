@@ -518,8 +518,9 @@ export class AgentRecordStore {
       if (persisted.length === 0) return found
       const children = persisted.map(child => child.state)
       const byName = new Map(children.map(state => [state.name, state]))
+      // 每一层组长自己的记录都要用：只取最上层的话，组长名下再设的组长那个团就补不回来
       const leaderRecords = persisted
-        .filter(({ state }) => state.lead && !state.parent)
+        .filter(({ state }) => state.lead)
         .map(child => ({ leader: child.state, record: this.subAgents.readRecord(child) }))
 
       const steps = found.steps.map(step => {
@@ -540,13 +541,18 @@ export class AgentRecordStore {
               ...(state.blockedReason ? { blockedReason: state.blockedReason } : {}),
               ...(state.role ? { role: state.role } : {}),
             }
-            if (updated.status !== sa.status || updated.result !== sa.result || updated.error !== sa.error) changed = true
+            if (updated.status !== sa.status || updated.result !== sa.result || updated.error !== sa.error
+              || updated.blockedReason !== sa.blockedReason || updated.role !== sa.role) changed = true
             return updated
           })
           if (changed) next = { ...next, subAgents }
         }
         if (step.expertTeam && next.organization) {
-          const team = next.organization.teams.find(t => t.name === step.expertTeam!.name)
+          // 不同组长手下可能有同名团：先用群聊文件认，认不出再按名字取第一个
+          const sameName = next.organization.teams.filter(t => t.name === step.expertTeam!.name)
+          const team = sameName.find(t => !!step.expertTeam!.chatFile && t.chatFile === step.expertTeam!.chatFile)
+            ?? sameName.find(t => !!step.expertTeam!.transcriptPath && t.transcriptPath === step.expertTeam!.transcriptPath)
+            ?? sameName[0]
           if (team) {
             next = {
               ...next,

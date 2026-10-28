@@ -5,7 +5,7 @@
  * 点名再交代时从盘上叫醒，接着干。
  */
 import type { AiMessage } from '../ai.service'
-import type { SubAgentResult, SubAgentToolStep, TeamVerdict, TokenUsage } from '@shared/types'
+import type { SubAgentResult, SubAgentToolStep, TeamReviewState, TeamVerdict, TokenUsage } from '@shared/types'
 import type { ChildRecorder, ChildState, ChildStateInput } from '../history/sub-agent-record-store'
 import type { AgentContext, AgentStep, RunOptions } from './types'
 import { applyForkTurns, type ForkTurns } from './sanitize-parent-messages'
@@ -149,10 +149,12 @@ export interface RosterSpawnDeps {
   restoreDormant?: () => DormantChild[]
   /** 叫醒休眠的伙计时，开口前先告诉他上次的情形；没什么要说的返回空 */
   resumeNotice?: (child: DormantChild) => string
+  /** 以前团里的最后一次验收结论：叫醒后重建的团据此接着显示 */
+  teamReviewFor?: (teamName: string) => TeamReviewState | undefined
 }
 
 type RunDeps = Pick<RosterSpawnDeps,
-  'getParentContext' | 'onProgress' | 'knock' | 'formatKnock' | 'archiveResult' | 'isParentAborted' | 'teamTexts' | 'restoreDormant' | 'resumeNotice'>
+  'getParentContext' | 'onProgress' | 'knock' | 'formatKnock' | 'archiveResult' | 'isParentAborted' | 'teamTexts' | 'restoreDormant' | 'resumeNotice' | 'teamReviewFor'>
 
 interface ChildSlot extends ChildSnapshot {
   handle?: ChildAgentHandle
@@ -732,7 +734,7 @@ export class SubAgentRoster {
     }
 
     if (!LIVE.has(slot.status) && this.room() <= 0) {
-      return { ok: false, error: `没做完的伙计已有 ${MAX_LIVE_CHILDREN} 个，等有人做完再追问 ${name}` }
+      return { ok: false, error: `全组织没做完的伙计已有 ${this.orgLiveCount()} 个，等有人做完再追问 ${name}` }
     }
     this.beginSegment(slot)
     deps.onProgress()
@@ -748,7 +750,7 @@ export class SubAgentRoster {
     const { name } = sleeper
     if (deps.isParentAborted()) return { ok: false, error: '已中止' }
     if (this.room() <= 0) {
-      return { ok: false, error: `没做完的伙计已有 ${MAX_LIVE_CHILDREN} 个，等有人做完再追问 ${name}` }
+      return { ok: false, error: `全组织没做完的伙计已有 ${this.orgLiveCount()} 个，等有人做完再追问 ${name}` }
     }
     let revived: ReturnType<DormantChild['revive']>
     try {
@@ -802,13 +804,14 @@ export class SubAgentRoster {
       }))
     if (members.length === 0) return
     const team = new ExpertTeam(teamName, members)
+    team.seedReview(deps.teamReviewFor?.(teamName))
     this.teams.set(teamName, { team, deps })
   }
 
   /** 组长对专家再交代：进群里，重新数叫醒次数，并叫醒等组长期间被点到的人（期间被打断的不叫） */
   private leaderFollowup(slot: ChildSlot, entry: TeamEntry, message: string, from?: string): { ok: boolean; error?: string } {
     if (!LIVE.has(slot.status) && this.room() <= 0) {
-      return { ok: false, error: `没做完的伙计已有 ${MAX_LIVE_CHILDREN} 个，等有人做完再追问 ${slot.name}` }
+      return { ok: false, error: `全组织没做完的伙计已有 ${this.orgLiveCount()} 个，等有人做完再追问 ${slot.name}` }
     }
     const { team, deps } = entry
     if (from) {

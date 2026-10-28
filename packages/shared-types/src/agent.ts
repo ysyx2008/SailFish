@@ -562,6 +562,8 @@ export interface OrganizationView {
   /** 没做完的人数 / 全部人数（全组织） */
   live: number
   total: number
+  /** 失败或被打断的人数（全组织；成员太多没放全时也准） */
+  problems?: number
   /** members 里没放进来的人数 */
   omitted?: number
   /** teams 里没放进来的团数 */

@@ -50,5 +50,24 @@ describe('组织图', () => {
     expect(describeOrgDock(t, done).kind).toBe('done')
     const bad: OrganizationView = { ...done, members: done.members.map((x, i) => (i === 0 ? { ...x, status: 'failed' as const } : x)) }
     expect(describeOrgDock(t, bad).kind).toBe('problem')
+    // 出问题的人没放进 members（人数太多被截断）时，也要按全组织的数报问题
+    expect(describeOrgDock(t, { ...done, problems: 1 }).kind).toBe('problem')
+  })
+
+  it('不同组长手下的同名团各归各的组', () => {
+    const sameName: OrganizationView = {
+      ...view,
+      members: [...view.members, m('小丁', { parent: '乙组', team: '项目团' })],
+      teams: [
+        view.teams[0],
+        { name: '项目团', owner: '乙组', review: 'none', messageCount: 0, waitingLeader: false, wakeLimit: 30 },
+      ],
+    }
+    const root = buildOrgTree(sameName)
+    const teamOf = (name: string) => root[0].nodes.find(n => n.member.name === name)!.groups.find(g => g.team)!
+    expect(teamOf('甲组').team?.owner).toBe('甲组')
+    expect(teamOf('甲组').nodes.map(n => n.member.name)).toEqual(['前端', '后端'])
+    expect(teamOf('乙组').team?.owner).toBe('乙组')
+    expect(teamOf('乙组').nodes.map(n => n.member.name)).toEqual(['小丁'])
   })
 })

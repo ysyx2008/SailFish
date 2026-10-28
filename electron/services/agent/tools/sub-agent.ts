@@ -20,7 +20,7 @@ import { getScratchPath } from './file'
 import { createLogger } from '../../../utils/logger'
 import { t } from '../i18n'
 import {
-  labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, SECRETARY, TEAM_LEADER,
+  labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER,
   teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT, type ExpertTeam
 } from '../expert-team'
 import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
@@ -181,7 +181,7 @@ export class SubAgentWorkspace {
   rowsOf(children: ChildSnapshot[]): string[] {
     return children.map(c => {
       const kept = this.results.get(c.name)
-      const who = [c.role, c.team && `「${c.team}」`].filter(Boolean).join(' ')
+      const who = [c.lead ? t('org.lead_mark') : '', c.role, c.team && `「${c.team}」`].filter(Boolean).join(' ')
       const task = who ? `[${who}] ${c.description}` : c.description
       return [c.name, statusCell(c), kept ? String(kept.chars) : '-', kept?.file ?? '-', task].join(' | ')
     })
@@ -205,6 +205,13 @@ export class SubAgentWorkspace {
     this.boardSections.set(section.owner ?? '', section)
   }
 
+  /** 全组织的团（不截断）：交给组长看自己的验收结论时用 */
+  organizationTeams(): OrganizationTeamView[] {
+    return [...this.boardSections.values()]
+      .sort((a, b) => a.depth - b.depth)
+      .flatMap(s => s.teamViews)
+  }
+
   /** 组织全貌给界面看：人数多时只放前面一部分（组长优先、没做完的优先），合计是真实的 */
   organizationView(): OrganizationView {
     const sections = [...this.boardSections.values()].sort((a, b) => a.depth - b.depth)
@@ -215,11 +222,13 @@ export class SubAgentWorkspace {
       : all
     const allTeams = sections.flatMap(s => s.teamViews)
     const teams = allTeams.slice(0, ORG_VIEW_TEAM_LIMIT)
+    const problems = all.filter(m => m.status === 'failed' || m.status === 'interrupted').length
     return {
       members: kept,
       teams,
       live: sections.reduce((n, s) => n + s.live, 0),
       total: sections.reduce((n, s) => n + s.total, 0),
+      ...(problems > 0 ? { problems } : {}),
       ...(all.length > kept.length ? { omitted: all.length - kept.length } : {}),
       ...(allTeams.length > teams.length ? { omittedTeams: allTeams.length - teams.length } : {}),
       boardPath: this.boardPath,
@@ -598,7 +607,7 @@ function leadReviewTeamsFor(roster: SubAgentRoster, leadName: string): LeadRevie
       reviewers: team.reviewerNames(),
     })))
   if (registered.length > 0) return registered
-  return workspaceOf(root).organizationView().teams
+  return workspaceOf(root).organizationTeams()
 }
 
 /** 只有组长名下才有团要交代；普通伙计、专家不查组织看板 */
@@ -847,6 +856,12 @@ export function spawnDeps(
     restoreDormant: executor.restoreDormantChildren,
     resumeNotice: resumeNoticeFor,
     teamTexts: createTeamTexts(team => workspace.teamTranscriptPath(team)),
+    teamReviewFor: (teamName) => {
+      const root = roster.orgRoot()
+      if (!root) return undefined
+      return workspaceOf(root).organizationTeams()
+        .find(team => team.name === teamName && team.owner === roster.owner)?.review
+    },
     onProgress: () => {
       progress.schedule()
       overviewProgress.schedule()
@@ -1242,8 +1257,10 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
   // 点名的人可能在别的组长名下：那份名册的敲门仍归它的主人，这里只等这些人停下
   const waitGroups = new Map<SubAgentRoster, { names: string[]; consume: boolean }>()
   if (names?.length) {
-    const rosters = [roster, ...roster.orgEntries().map(entry => entry.roster)]
-      .filter((r, i, all) => all.indexOf(r) === i)
+    // 跨枝只有秘书能等：组长只管自己这一枝，别枝的人对它等于不存在
+    const rosters = roster.owner === undefined
+      ? [roster, ...roster.orgEntries().map(entry => entry.roster)].filter((r, i, all) => all.indexOf(r) === i)
+      : [roster]
     for (const name of names) {
       const holder = rosters.find(r => r.get(name))
       if (!holder) continue
@@ -1257,8 +1274,16 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
 
   let news: Awaited<ReturnType<SubAgentRoster['waitForNews']>>
   try {
-    const results = await Promise.all([...waitGroups].map(([r, group]) =>
-      r.waitForNews(group.names, signal, { consume: group.consume })))
+    // 哪一份名册先有消息 / 先都停下就按那次返回：别的名册不再继续等（它们的敲门也不会被领走）
+    const groups = [...waitGroups]
+    const cancels = groups.map(() => new AbortController())
+    const results = await Promise.all(groups.map(([r, group], i) => {
+      const scoped = AbortSignal.any([signal, cancels[i].signal])
+      return r.waitForNews(group.names, scoped, { consume: group.consume }).then((result) => {
+        for (const [j, cancel] of cancels.entries()) if (j !== i) cancel.abort()
+        return result
+      })
+    }))
     const byName = new Map<string, ChildSnapshot>()
     for (const result of results) for (const target of result.targets) byName.set(target.name, target)
     const arrived = results.flatMap(result => result.arrived)

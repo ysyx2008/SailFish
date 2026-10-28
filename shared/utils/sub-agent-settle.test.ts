@@ -45,6 +45,7 @@ describe('读回旧会话时收拾残留的伙计', () => {
     expect(out.organization!.members.map(m => m.status)).toEqual(['interrupted', 'completed', 'interrupted'])
     expect(out.organization!.members[2].waitingForModel).toBeUndefined()
     expect(out.organization!.live).toBe(0)
+    expect(out.organization!.problems).toBe(2)
     expect(running.status).toBe('running')
   })
 

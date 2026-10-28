@@ -46,10 +46,10 @@ export function buildOrgTree(view: OrganizationView): OrgGroup[] {
 /** 顶部那一行：有人在干就写在干几人、共几人；都做完写「都干完了」 */
 export function describeOrgDock(t: Translate, org: OrganizationView): { kind: DockKind; headline: string } {
   if (org.live > 0) return { kind: 'working', headline: t('ai.organization.dockWorking', { live: org.live, total: org.total }) }
-  const problem = org.members.some(m => m.status === 'failed' || m.status === 'interrupted')
+  const problem = (org.problems ?? 0) > 0 || org.members.some(m => m.status === 'failed' || m.status === 'interrupted')
   if (problem) return { kind: 'problem', headline: t('ai.organization.dockProblem', { total: org.total }) }
   return { kind: 'done', headline: t('ai.organization.dockDone', { total: org.total }) }
 }
 
 /** 组织里的团数 */
-export const orgTeamCount = (org: OrganizationView): number => org.teams.length
+export const orgTeamCount = (org: OrganizationView): number => org.teams.length + (org.omittedTeams ?? 0)

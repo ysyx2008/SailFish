@@ -333,6 +333,32 @@ describe('dispatch_agents 异步派出', () => {
     expect(leaderNews.arrived.map(c => c.name)).toEqual(['小甲'])
   })
 
+  it('跨枝一起等时，本枝先回来就先返回，不被别枝的慢活拖住', async () => {
+    const ledger = new OrgLedger()
+    const root = new SubAgentRoster({ knockSettleMs: 0 })
+    root.attachLedger(ledger, undefined, 0)
+    const lead = new SubAgentRoster({ knockSettleMs: 0 })
+    lead.attachLedger(ledger, '研发组长', 1)
+    const rootExecutor = createExecutor(root, stubChild('本地做完了', 20))
+    const leadExecutor = createExecutor(lead, stubChild('远处还在干', 5000))
+    await dispatchSubAgents({
+      tasks: [{ name: '本地', description: '本地活', prompt: '本地活' }]
+    }, defaultConfig, rootExecutor)
+    await dispatchSubAgents({
+      tasks: [{ name: '远处', description: '远处的活', prompt: '远处的活' }]
+    }, defaultConfig, leadExecutor)
+
+    const started = Date.now()
+    const waited = await waitAgents({ names: ['本地', '远处'], timeout: 10 }, rootExecutor)
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect(waited.output).toContain('新到：本地')
+    // 组长不能等别枝的人
+    const fromLead = await waitAgents({ names: ['本地'], timeout: 1 }, leadExecutor)
+    expect(fromLead.output).toContain('没有要等的伙计')
+    root.abortAll()
+    lead.abortAll()
+  })
+
   it('派人的回执按全组织算没做完的人', async () => {
     const ledger = new OrgLedger()
     const root = new SubAgentRoster()
@@ -611,6 +637,20 @@ describe('结果落文件与总览', () => {
     const view = ws.organizationView()
     expect(view.teams).toHaveLength(100)
     expect(view.omittedTeams).toBe(1)
+  })
+
+  it('成员太多没放全时，失败 / 打断的人数仍按全组织给出', () => {
+    const ws = new SubAgentWorkspace('/tmp/org-member-limit')
+    const member = (name: string, status: string) => ({ id: name, name, description: '', status })
+    const members = Array.from({ length: 200 }, (_, i) => member(`m${i}`, 'completed'))
+    members.push(member('bad', 'failed'))
+    ;(ws as unknown as { boardSections: Map<string, unknown> }).boardSections.set('', {
+      owner: undefined, depth: 0, rows: [], teams: [], live: 0, total: 201, members, teamViews: [],
+    })
+    const view = ws.organizationView()
+    expect(view.members).toHaveLength(200)
+    expect(view.omitted).toBe(1)
+    expect(view.problems).toBe(1)
   })
 
   it('直接带回的字数随这一轮派的人数收紧，夹在 1000 到 8000 之间', () => {

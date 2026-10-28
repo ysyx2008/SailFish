@@ -80,6 +80,33 @@ describe('从伙计记录重建组织', () => {
     expect(org.teams.find(t => t.name === '研发团')?.chatFile).toBe('team-研发团.jsonl')
   })
 
+  it('组长名下再设组长时，那一层的团和验收人也从记录补回来', () => {
+    const nested = [
+      child('研发组长', { lead: true, role: '研发组长', status: 'running', team: '项目组' }),
+      child('子组长', { lead: true, role: '子组长', parent: '研发组长', status: 'running' }),
+      child('子员', { parent: '子组长', team: '子团' }),
+      child('子验收', { parent: '子组长', team: '子团' }),
+    ]
+    const record = leaderRecord('子组长', '子团', ['子员', '子验收'])
+    record.steps[0].expertTeam!.reviewers = ['子验收']
+    record.steps[0].expertTeam!.review = 'pass'
+
+    const org = rebuildOrganization(base, nested, [{ leader: nested[1], record }])
+    expect(org.teams.map(t => [t.name, t.owner])).toContainEqual(['子团', '子组长'])
+    expect(org.members.find(m => m.name === '子员')?.team).toBe('子团')
+    expect(org.members.find(m => m.name === '子验收')?.reviewer).toBe(true)
+    expect(org.teams.find(t => t.name === '子团')?.review).toBe('pass')
+
+    // 快照里已经有人、但缺验收人标记和团归属时，照样补上
+    const withMember: OrganizationView = {
+      ...base,
+      members: [...base.members, { id: '子验收', name: '子验收', description: '', status: 'completed', parent: '子组长' }],
+    }
+    const filled = rebuildOrganization(withMember, nested, [{ leader: nested[1], record }])
+    expect(filled.members.find(m => m.name === '子验收')?.reviewer).toBe(true)
+    expect(filled.members.find(m => m.name === '子验收')?.team).toBe('子团')
+  })
+
   it('再跑一遍结果不变', () => {
     const once = rebuildOrganization(base, children, leaders)
     const twice = rebuildOrganization(once, children, leaders)

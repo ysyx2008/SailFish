@@ -24,12 +24,15 @@ const counts = computed(() => {
   return { completed, problem }
 })
 const detail = computed(() => {
-  const { completed, problem } = counts.value
+  const { completed } = counts.value
+  // 失败 / 打断用全组织的数：成员太多没放全时，没放进来的人出问题也要算
+  const problem = Math.max(counts.value.problem, props.organization.problems ?? 0)
   const teamCount = props.organization.teams.length + (props.organization.omittedTeams ?? 0)
   const parts = [
     teamCount > 0 ? t('ai.organization.cardTeams', { count: teamCount }) : '',
     props.organization.live > 0 ? t('ai.organization.cardLive', { live: props.organization.live }) : '',
-    completed > 0 ? t('ai.organization.cardCompleted', { count: completed }) : '',
+    // 成员没放全时干完的数只是看得到的那些，不写出来免得当成全组织
+    completed > 0 && !props.organization.omitted ? t('ai.organization.cardCompleted', { count: completed }) : '',
     problem > 0 ? t('ai.organization.cardProblem', { count: problem }) : '',
   ].filter(Boolean)
   // 都干完了才写「都干完了」；有人失败或被打断时仍显示计数，成员没放全时也不下这个结论

@@ -60,7 +60,7 @@ onMounted(() => {
       <div class="oc-title">
         <span class="oc-title-name">{{ t('ai.organization.title') }}</span>
         <span v-if="organization" class="oc-title-meta">
-          {{ t('ai.organization.meta', { total: organization.total, live: organization.live, teams: organization.teams.length }) }}
+          {{ t('ai.organization.meta', { total: organization.total, live: organization.live, teams: organization.teams.length + (organization.omittedTeams ?? 0) }) }}
         </span>
       </div>
       <button

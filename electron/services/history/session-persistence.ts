@@ -209,13 +209,16 @@ function metaToRecord(meta: SessionMeta, steps: AgentStepRecord[], messages: Age
     record.steps = record.steps.map(step => {
       const organization = meta.organizations?.[step.id]
       const snapshot = meta.liveSteps?.[step.id]
-      if (!organization && !snapshot) return step
+      // 步骤自己要是比 meta 里的快照还新（例如整份重写过），别用旧快照盖回去
+      const useSnapshot = !!snapshot && (step.snapshotAt ?? 0) <= snapshot.at
+      const useOrganization = !!organization && (step.organization?.updatedAt ?? 0) <= (organization.updatedAt ?? 0)
+      if (!useOrganization && !useSnapshot) return step
       return {
         ...step,
-        ...(organization ? { organization } : {}),
-        ...(snapshot?.subAgents ? { subAgents: snapshot.subAgents } : {}),
-        ...(snapshot?.expertTeam ? { expertTeam: snapshot.expertTeam } : {}),
-        ...(snapshot ? { snapshotAt: Math.max(step.snapshotAt ?? 0, snapshot.at) } : {}),
+        ...(useOrganization ? { organization } : {}),
+        ...(useSnapshot && snapshot?.subAgents ? { subAgents: snapshot.subAgents } : {}),
+        ...(useSnapshot && snapshot?.expertTeam ? { expertTeam: snapshot.expertTeam } : {}),
+        ...(useSnapshot && snapshot ? { snapshotAt: Math.max(step.snapshotAt ?? 0, snapshot.at) } : {}),
       }
     })
   }

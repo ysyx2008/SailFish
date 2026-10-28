@@ -207,15 +207,19 @@ describe('花名册里的休眠伙计', () => {
     const roster = new SubAgentRoster({ knockSettleMs: 0 })
     const d = deps(() => child({}))
     d.restoreDormant = () => [
-      sleeper('alice', { team: '研发团' }),
+      sleeper('alice', { team: '研发团', reviewer: true }),
       sleeper('bob', { team: '研发团' }),
       sleeper('carol'),
     ]
+    d.teamReviewFor = (name) => (name === '研发团' ? 'pass' : undefined)
     expect(roster.getTeam('研发团')).toBeUndefined()
 
     expect(roster.followup('alice', '接着做', d)).toEqual({ ok: true })
     const team = roster.getTeam('研发团')
     expect(team?.memberNames()).toEqual(['alice', 'bob'])
+    // 以前的验收结论也接回来
+    expect(team?.reviewerNames()).toEqual(['alice'])
+    expect(team?.reviewState()).toBe('pass')
     // 不在团里的老伙计照旧自己干
     expect(roster.getTeam('carol')).toBeUndefined()
     await settle()

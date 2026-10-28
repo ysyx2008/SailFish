@@ -96,6 +96,8 @@ export class ExpertTeam {
   private waitingLeader = false
   /** 等组长期间被点到、还没叫醒的人，按被点到的先后 */
   private readonly pendingWakes: string[] = []
+  /** 从盘上叫醒重建时，群里旧消息没带进来；最后一次验收结论先记在这里 */
+  private seededReview?: TeamReviewState
 
   constructor(name: string, members: TeamMember[]) {
     this.name = name
@@ -128,6 +130,11 @@ export class ExpertTeam {
     return this.members.filter(m => m.reviewer).map(m => m.name)
   }
 
+  /** 从盘上叫醒重建时先把最后一次验收结论接回来；之后群里有新结论会覆盖它 */
+  seedReview(state: TeamReviewState | undefined): void {
+    if (state === 'pass' || state === 'reject') this.seededReview = state
+  }
+
   /** 验收状态：没有验收人 / 还没给过结论 / 最近一次的结论 */
   reviewState(): TeamReviewState {
     if (this.reviewerNames().length === 0) return 'none'
@@ -135,7 +142,7 @@ export class ExpertTeam {
       const verdict = this.messages[i].verdict
       if (verdict) return verdict
     }
-    return 'pending'
+    return this.seededReview ?? 'pending'
   }
 
   /** 不是团员、也不是组长和秘书的名字 */

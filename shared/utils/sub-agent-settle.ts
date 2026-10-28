@@ -36,7 +36,13 @@ export function settleOrphanedSubAgents<T extends { subAgents?: SubAgentResult[]
         }),
       } : {}),
       ...(unsettledMembers && org && members ? {
-        organization: { ...org, members, live: Math.max(0, org.live - settledLive) },
+        organization: {
+          ...org,
+          members,
+          live: Math.max(0, org.live - settledLive),
+          // 这些人从「在干」变成「被打断」，全组织的出问题人数要跟着加
+          problems: (org.problems ?? 0) + settledLive,
+        },
       } : {}),
     }
   })
