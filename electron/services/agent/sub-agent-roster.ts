@@ -612,7 +612,7 @@ export class SubAgentRoster {
       team = new ExpertTeam(finalName, names.map(n => {
         const slot = this.children.get(n)!
         return { name: n, askedName: slot.askedName, role: slot.role!, description: slot.description, ...(slot.reviewer ? { reviewer: true } : {}) }
-      }))
+      }), this.ownerName)
       this.teams.set(finalName, { team, deps })
       for (const n of names) this.children.get(n)!.team = finalName
     }
@@ -662,11 +662,12 @@ export class SubAgentRoster {
     const entry = this.entryOf(from)
     if (!entry) return { ok: false, error: `${from} 不在专家团里` }
     const { team, deps } = entry
+    to = team.resolveRecipients(to)
     // 没有组织、或者这份花名册就是秘书的：群里没有「秘书」这个人
     const unknown = team.unknownNames(to).concat(this.depth === 0 ? to.filter(n => n === SECRETARY) : [])
     if (unknown.length > 0) {
       const reachable = this.depth > 0 ? [TEAM_LEADER, SECRETARY] : [TEAM_LEADER]
-      return { ok: false, error: `群里没有 ${unknown.join('、')}`, members: [...reachable, ...team.memberNames()] }
+      return { ok: false, error: `群里没有 ${unknown.join('、')}`, members: [...reachable, ...(team.leaderName ? [team.leaderName] : []), ...team.memberNames()] }
     }
     if (verdict && !team.isReviewer(from)) return { ok: false, error: '只有验收人能给验收结论' }
     if (deps.isParentAborted()) return { ok: false, error: '已中止' }
@@ -789,7 +790,11 @@ export class SubAgentRoster {
       segment: 0,
     }
     this.children.set(name, slot)
-    if (sleeper.team) this.ensureTeamAfterWake(sleeper.team, deps)
+    if (sleeper.team) {
+      this.ensureTeamAfterWake(sleeper.team, deps)
+      const team = this.getTeam(sleeper.team)
+      if (team) this.bindTeamSeat(slot, team)
+    }
     if (slot.lead) revived.handle.becomeLead?.({ ledger: this.ensureLedger(), name, depth: this.depth + 1 })
     persistSlot(slot)
     deps.onProgress()
@@ -816,7 +821,7 @@ export class SubAgentRoster {
         ...(m.reviewer || reviewers.has(m.name) ? { reviewer: true } : {}),
       }))
     if (members.length === 0) return
-    const team = new ExpertTeam(teamName, members)
+    const team = new ExpertTeam(teamName, members, this.ownerName)
     if (history) {
       team.seedHistory(history.messageCount)
       team.seedReview(history.review)
@@ -953,13 +958,7 @@ export class SubAgentRoster {
     if (slot.lead) handle.becomeLead?.({ ledger: this.ensureLedger(), name, depth: this.depth + 1 })
     if (slot.remoteGrant && deps.remoteAccessFor) handle.setRemoteAccess?.(deps.remoteAccessFor(name, slot.remoteGrant))
     slot.status = 'running'
-    if (team) {
-      handle.joinTeam?.({
-        team: team.name,
-        name,
-        say: (to, text, verdict) => this.teamSay(name, to, text, verdict),
-      })
-    }
+    if (team) this.bindTeamSeat(slot, team)
     const seed = applyForkTurns(deps.sanitize(deps.getParentMessages()), slot.forkTurns)
     handle.seedOpeningMessages?.(seed)
     handle.childRecorder?.noteOpening(seed)
@@ -967,6 +966,16 @@ export class SubAgentRoster {
     deps.onProgress()
     const opening = deps.openingFor ? deps.openingFor(snapshotOf(slot), team) : slot.prompt
     slot.runPromise = this.runExisting(slot, opening, deps)
+  }
+
+  /** 首次派出和恢复都从实际名册绑定身份，成员不能自己选择发件人。 */
+  private bindTeamSeat(slot: ChildSlot, team: ExpertTeam): void {
+    const name = slot.name
+    slot.handle?.joinTeam?.({
+      team: team.name,
+      name,
+      say: (to, text, verdict) => this.teamSay(name, to, text, verdict),
+    })
   }
 
   private async runExisting(

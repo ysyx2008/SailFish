@@ -101,7 +101,7 @@ export class ExpertTeam {
   /** 重建时群聊文件里已有的条数：新消息的序号接着往后排，计数也把它算上 */
   private historyCount = 0
 
-  constructor(name: string, members: TeamMember[]) {
+  constructor(name: string, members: TeamMember[], readonly leaderName?: string) {
     this.name = name
     this.members = members.map(m => ({ ...m }))
     for (const m of members) this.readUpTo.set(m.name, 0)
@@ -156,7 +156,12 @@ export class ExpertTeam {
 
   /** 不是团员、也不是组长和秘书的名字 */
   unknownNames(names: string[]): string[] {
-    return names.filter(n => n !== TEAM_LEADER && n !== SECRETARY && !this.has(n))
+    return this.resolveRecipients(names).filter(n => n !== TEAM_LEADER && n !== SECRETARY && !this.has(n))
+  }
+
+  /** 真名只映射到本团已经绑定的组长，不能寻址其他枝的负责人。 */
+  resolveRecipients(names: string[]): string[] {
+    return dedupe(names.map(name => this.leaderName && name.trim() === this.leaderName ? TEAM_LEADER : name))
   }
 
   isWaitingLeader(): boolean {
@@ -177,7 +182,9 @@ export class ExpertTeam {
    * asleep 里的人（被组长打断的）只记在群里，不叫醒、不计数、不排队。
    */
   post(from: string, to: string[], text: string, asleep: ReadonlySet<string> = new Set(), verdict?: TeamVerdict): TeamPostOutcome {
-    const targets = dedupe(to)
+    if (!this.has(from)) throw new Error(`Not a team member: ${from}`)
+    if (verdict && !this.isReviewer(from)) throw new Error('Only the designated reviewer can give a verdict')
+    const targets = this.resolveRecipients(to)
     const message = this.record(from, targets, text, verdict)
     const named = targets.filter(n => n !== from && this.has(n))
     const skipped = named.filter(n => asleep.has(n))
@@ -276,6 +283,7 @@ export class ExpertTeam {
 
   /** 名字前带上角色，给人和模型看 */
   label(name: string): string {
+    if (name === TEAM_LEADER && this.leaderName) return `${TEAM_LEADER}·${this.leaderName}`
     const m = this.members.find(x => x.name === name)
     return m ? `${m.role}·${m.name}` : name
   }

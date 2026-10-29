@@ -2,7 +2,7 @@
  * 专家和专家团交给模型的话：开工第一条、被叫醒时、敲组长的门。
  */
 import type { ChildSnapshot, TeamTexts } from '../sub-agent-roster'
-import { WAKES_PER_CHECKPOINT, type ExpertTeam, type TeamMessage } from '../expert-team'
+import { TEAM_LEADER, WAKES_PER_CHECKPOINT, type ExpertTeam, type TeamMessage } from '../expert-team'
 import { t } from '../i18n'
 
 /** 敲门里带群里最后几条 */
@@ -13,6 +13,22 @@ const KNOCK_LINE_MAX = 600
 const WAKE_UNREAD_BUDGET = 20000
 const WAKE_LINE_MAX = 8000
 const ERROR_MAX = 2000
+
+/** 模型可见正文明确作为数据引用；群聊原始消息仍按原样落盘。 */
+export function quoteMemberText(text: string, max?: number): string {
+  const encode = (value: string) => JSON.stringify(value).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
+  const quoted = encode(text)
+  if (max === undefined || quoted.length <= max) return quoted
+  // 预算按转义后的长度算，避免很多换行或控制字符把一条未读膨胀数倍。
+  let low = 0
+  let high = Math.min(text.length, max)
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2)
+    if (encode(`${text.slice(0, middle)}…`).length <= max) low = middle
+    else high = middle - 1
+  }
+  return encode(`${text.slice(0, low)}…`)
+}
 
 function statusLabel(status: ChildSnapshot['status']): string {
   switch (status) {
@@ -43,7 +59,7 @@ export function formatTeamMessage(team: ExpertTeam, m: TeamMessage, max?: number
   const line = t('expert.message_line', {
     from: team.label(m.from),
     to: m.to.length ? m.to.map(n => team.label(n)).join('、') : t('expert.to_nobody'),
-    text: max ? clip(m.text, max) : m.text,
+    text: quoteMemberText(m.text, max),
   })
   return m.verdict ? `${line} ${t(m.verdict === 'pass' ? 'expert.verdict_mark_pass' : 'expert.verdict_mark_reject')}` : line
 }
@@ -69,6 +85,7 @@ export function expertOpening(child: ChildSnapshot, team?: ExpertTeam): string {
     .join('\n')
   const renamed = renamedList(team.roster())
   const brief = t('expert.team_brief', { team: team.name, roster })
+    + `\n${t('expert.team_identity', { leader: team.label(TEAM_LEADER) })}`
     + (renamed ? `\n${t('expert.team_renamed', { list: renamed })}` : '')
   return `${brief}\n\n${youAre}\n\n${child.prompt}`
 }
@@ -80,7 +97,7 @@ function memberLines(team: ExpertTeam, members: ChildSnapshot[], withDeliverable
     const status = statusLabel(c.status)
     if (!withDeliverables) return t('expert.member_status_line', { label, status })
     const detail = c.status === 'completed' ? (c.result || '(no output)') : clip(c.error || '-', ERROR_MAX)
-    return t('expert.member_line', { label, status, detail })
+    return t('expert.member_line', { label, status, detail: quoteMemberText(detail) })
   }).join('\n')
 }
 
@@ -115,18 +132,18 @@ export function createTeamTexts(transcriptPath: (team: ExpertTeam) => string): T
         parts.push(t('expert.wake_unread', { lines: earlier + lines.join('\n') }))
       }
       parts.push(trigger
-        ? t('expert.wake_trigger', { from: team.label(trigger.from), text: trigger.text })
+        ? t('expert.wake_trigger', { from: team.label(trigger.from), text: quoteMemberText(trigger.text) })
         : t('expert.wake_released'))
       return parts.join('\n\n')
     },
     leaderMention(team, message) {
-      return t('expert.knock_leader', { team: team.name, from: team.label(message.from), text: message.text })
+      return t('expert.knock_leader', { team: team.name, from: team.label(message.from), text: quoteMemberText(message.text) })
     },
     secretaryMention(team, message) {
       return t('expert.knock_secretary', {
         team: team.name,
         from: team.label(message.from),
-        text: message.text,
+        text: quoteMemberText(message.text),
         path: transcriptPath(team),
       })
     },

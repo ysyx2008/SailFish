@@ -24,7 +24,7 @@ import {
   teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT, type ExpertTeam
 } from '../expert-team'
 import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
-import { createTeamTexts, expertOpening, formatTranscript, formatTranscriptLines, renamedList } from './expert-team-text'
+import { createTeamTexts, expertOpening, formatTranscript, formatTranscriptLines, quoteMemberText, renamedList } from './expert-team-text'
 import { orgOpeningNote, renderBoard, type BoardSection } from './organization-text'
 import type { OrganizationMemberView, OrganizationTeamView, OrganizationView, TeamReviewState } from '@shared/types'
 import { inferConversationKind } from '@shared/types'
@@ -444,6 +444,8 @@ function orgNoteFor(roster: SubAgentRoster, child: ChildSnapshot): string {
   const root = roster.orgRoot()
   if (!root) return ''
   const note = orgOpeningNote({
+    name: child.name,
+    role: child.role,
     boardPath: workspaceOf(root).boardPath,
     resultDir: workspaceOf(roster).directory,
     reportsTo: roster.owner,
@@ -700,13 +702,15 @@ function knockTeamsFor(roster: SubAgentRoster, child: ChildSnapshot): LeadReview
 }
 
 export function formatKnock(child: ChildSnapshot, reviewTeams: readonly LeadReviewTeam[] = []): string {
+  // 交差归属来自花名册；正文按数据引用，不能靠模拟消息头换成别人的回执。
+  const quoted = { ...child, result: child.result ? quoteMemberText(child.result) : child.result }
   const text = child.role
-    ? formatExpertKnock(child, child.role)
+    ? formatExpertKnock(quoted, child.role)
     : child.status === 'completed'
       ? t('dispatch.knock_done', {
         name: child.name,
         description: child.description,
-        result: child.result || '(no output)'
+        result: quoted.result || '(no output)'
       })
       : child.status === 'interrupted'
         ? t('dispatch.knock_interrupted', {
