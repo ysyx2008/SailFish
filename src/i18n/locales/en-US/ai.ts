@@ -896,6 +896,7 @@ export default {
       dockDone: 'Organization: all {total} done',
       dockProblem: 'Organization: {total} people, some did not finish',
       openChart: 'Organization chart',
+      focus: 'Focus organization chart',
       back: 'Back to chat',
       close: 'Close organization chart',
       empty: 'The organization has nothing yet',

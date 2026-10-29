@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
   padding: 6px 12px;
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border-color);

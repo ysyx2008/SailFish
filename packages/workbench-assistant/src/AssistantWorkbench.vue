@@ -118,7 +118,7 @@ const terminalSeated = computed(() => hasHostedTerminal.value && seat.value === 
 const artifactSeated = computed(() =>
   seat.value === 'artifact' && artifactStore.isVisible(props.tab.id)
 )
-const focusActive = computed(() => focusMode.value && artifactSeated.value)
+const focusActive = computed(() => focusMode.value && (artifactSeated.value || orgSeated.value))
 
 const chatFocusEl = ref<HTMLElement | null>(null)
 const artifactFocusEl = ref<HTMLElement | null>(null)
@@ -149,12 +149,12 @@ watch(focusActive, async (active) => {
   syncOverlaySpace()
 }, { flush: 'post', immediate: true })
 
-watch(artifactSeated, (seated) => {
-  if (!seated) focusMode.value = false
+watch(seat, () => {
+  focusMode.value = false
 })
 
 function toggleFocus() {
-  if (!artifactSeated.value) return
+  if (!artifactSeated.value && !orgSeated.value) return
   focusMode.value = !focusMode.value
 }
 const docExpanded = computed(() => artifactSeated.value)
@@ -556,6 +556,7 @@ defineExpose({
         </template>
         <template #toggle>
           <div class="assistant-teleport-slot">
+            <Teleport :disabled="!focusActive || !orgSeated" :to="artifactFocusEl || 'body'">
             <template v-if="orgSeated">
               <ExpertTeamChat
                 v-if="orgTeamName"
@@ -564,6 +565,8 @@ defineExpose({
                 :step-id="orgStepId!"
                 :team-name="orgTeamName.name"
                 :team-owner="orgTeamName.owner"
+                :focus-active="focusActive"
+                @toggle-focus="toggleFocus"
                 @close="closeOrgTeam"
               />
               <OrganizationChart
@@ -571,12 +574,15 @@ defineExpose({
                 mode="panel"
                 :tab-id="tab.id"
                 :step-id="orgStepId!"
+                :focus-active="focusActive"
+                @toggle-focus="toggleFocus"
                 @close="closeOrganization"
                 @open-team="openOrgTeam"
               />
             </template>
+            </Teleport>
             <ExpertTeamChat
-              v-else-if="teamSeated"
+              v-if="teamSeated"
               mode="panel"
               :tab-id="tab.id"
               :step-id="teamStepId!"

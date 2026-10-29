@@ -9,7 +9,7 @@
  */
 import { computed, nextTick, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, X, ArrowDown, Crown, MessagesSquare } from 'lucide-vue-next'
+import { ArrowLeft, X, ArrowDown, Crown, MessagesSquare, Maximize2, Minimize2 } from 'lucide-vue-next'
 import { EXPERT_TEAM_LEADER, SECRETARY_NAME, type ExpertTeamChatCursor, type ExpertTeamMessageView, type ExpertTeamView, type SubAgentResult } from '@shared/types'
 import { useTerminalStore } from '../../stores/terminal'
 import { useMarkdown } from '../../composables/useMarkdown'
@@ -27,8 +27,10 @@ const props = withDefaults(defineProps<{
   teamName?: string
   /** 团所在组长的名字；不同组长手下可能有同名团，顶层团不写 */
   teamOwner?: string
-}>(), { mode: 'panel' })
-const emit = defineEmits<{ close: [] }>()
+  /** 组织图宿主提供时，团聊也能沿用同一铺满状态。 */
+  focusActive?: boolean
+}>(), { mode: 'panel', focusActive: undefined })
+const emit = defineEmits<{ close: []; toggleFocus: [] }>()
 
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
@@ -212,7 +214,7 @@ onMounted(() => { void openChat(true) })
 </script>
 
 <template>
-  <section class="expert-team-chat" :class="`is-${mode}`">
+  <section class="expert-team-chat" :class="[`is-${mode}`, { 'is-focus': focusActive, 'has-focus-controls': focusActive !== undefined }]">
     <header class="etc-header">
       <button
         v-if="mode === 'overlay'"
@@ -240,6 +242,10 @@ onMounted(() => { void openChat(true) })
         @click="emit('close')"
       >
         <X :size="15" />
+      </button>
+      <button v-if="focusActive !== undefined" type="button" class="etc-icon-btn etc-focus-btn" :aria-pressed="focusActive" :title="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" :aria-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @click="emit('toggleFocus')">
+        <Minimize2 v-if="focusActive" :size="14" />
+        <Maximize2 v-else :size="14" />
       </button>
     </header>
 
@@ -362,6 +368,10 @@ onMounted(() => { void openChat(true) })
   inset: 0;
   z-index: 30;
 }
+.expert-team-chat.has-focus-controls .etc-header { padding-right: calc(max(8px, var(--shell-inset-right, 0px)) + 30px); }
+.expert-team-chat.is-focus .etc-header { padding-left: max(12px, var(--shell-inset-left, 0px)); }
+.expert-team-chat.is-focus .etc-list { padding-bottom: calc(var(--assistant-focus-overlay, 160px) + 20px); }
+.expert-team-chat.is-focus .etc-jump { bottom: calc(var(--assistant-focus-overlay, 160px) + 14px); }
 
 /* 头部 */
 .etc-header {

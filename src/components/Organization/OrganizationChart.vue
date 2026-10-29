@@ -3,9 +3,9 @@
  * 项目组织图：秘书在最上面，名下按团分组，组长名下再分组，一层层缩进。
  * 点某个团的「群聊」打开那个团的完整群聊。内容随派出组长的那一步实时更新。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, X, Network, UserRound } from 'lucide-vue-next'
+import { Maximize2, Minimize2, X, Network, UserRound } from 'lucide-vue-next'
 import { useTerminalStore } from '../../stores/terminal'
 import { buildOrgTree } from '../../utils/organization-view'
 import OrganizationBranch from './OrganizationBranch.vue'
@@ -15,10 +15,11 @@ const props = withDefaults(defineProps<{
   tabId: string
   /** 派出组长的那一步 */
   stepId: string
-  /** panel：右侧面板，右上角关掉；overlay：盖在对话栏上，左上角返回对话 */
+  /** panel：右侧面板；overlay：覆盖对话。两种模式共用标题旁关闭和铺满入口。 */
   mode?: 'panel' | 'overlay'
-}>(), { mode: 'overlay' })
-const emit = defineEmits<{ close: []; openTeam: [team: { name: string; owner?: string }] }>()
+  focusActive?: boolean
+}>(), { mode: 'overlay', focusActive: undefined })
+const emit = defineEmits<{ close: []; toggleFocus: []; openTeam: [team: { name: string; owner?: string }] }>()
 
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
@@ -43,6 +44,35 @@ const stats = computed(() => {
 })
 
 const bodyRef = ref<HTMLElement | null>(null)
+const rootRef = ref<HTMLElement | null>(null)
+const localFocus = ref(false)
+const focusTarget = ref<HTMLElement | null>(null)
+const focusBounds = ref<Record<string, string>>({})
+const focused = computed(() => props.focusActive ?? localFocus.value)
+let focusObserver: ResizeObserver | undefined
+const syncFocusBounds = () => {
+  const box = focusTarget.value?.getBoundingClientRect()
+  if (box) focusBounds.value = { position: 'fixed', inset: 'auto', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` }
+}
+const toggleFocus = () => {
+  if (props.focusActive !== undefined) { emit('toggleFocus'); return }
+  if (!localFocus.value) {
+    focusTarget.value = rootRef.value?.closest<HTMLElement>('.tab-view') ?? rootRef.value?.parentElement ?? null
+    if (!focusTarget.value) return
+    syncFocusBounds()
+    focusObserver = new ResizeObserver(syncFocusBounds)
+    focusObserver.observe(focusTarget.value)
+    window.addEventListener('resize', syncFocusBounds)
+  } else {
+    focusObserver?.disconnect()
+    window.removeEventListener('resize', syncFocusBounds)
+  }
+  localFocus.value = !localFocus.value
+}
+onBeforeUnmount(() => {
+  focusObserver?.disconnect()
+  window.removeEventListener('resize', syncFocusBounds)
+})
 
 /** 树比面板宽时，把初始横向滚动放到中间，根节点不会一打开就在视口外 */
 const centerTree = () => {
@@ -51,6 +81,10 @@ const centerTree = () => {
   const overflow = body.scrollWidth - body.clientWidth
   body.scrollLeft = overflow > 0 ? overflow / 2 : 0
 }
+watch(focused, async () => {
+  await nextTick()
+  centerTree()
+})
 
 onMounted(() => {
   // 各层分支在自己 mounted 里已经自底向上量完并撑好；这里量的是最终宽度
@@ -59,34 +93,29 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="organization-chart" :class="`is-${mode}`">
+  <Teleport :disabled="!localFocus" :to="focusTarget || 'body'">
+  <section ref="rootRef" class="organization-chart" :class="[`is-${mode}`, { 'is-focus': focused }]" :style="localFocus ? focusBounds : undefined">
     <header class="oc-header">
-      <button
-        v-if="mode === 'overlay'"
-        type="button"
-        class="oc-icon-btn"
-        :title="t('ai.organization.back')"
-        :aria-label="t('ai.organization.back')"
-        @click="emit('close')"
-      >
-        <ArrowLeft :size="15" />
-      </button>
+      <div class="oc-tab">
       <span class="oc-title-icon" aria-hidden="true"><Network :size="14" /></span>
       <div class="oc-title">
         <span class="oc-title-name">{{ t('ai.organization.title') }}</span>
-        <span v-if="organization" class="oc-title-meta">
-          {{ t('ai.organization.metaSimple', { total: organization.total, teams: organization.teams.length + (organization.omittedTeams ?? 0) }) }}
-        </span>
       </div>
       <button
-        v-if="mode === 'panel'"
         type="button"
-        class="oc-icon-btn"
+        class="oc-icon-btn oc-close-btn"
         :title="t('ai.organization.close')"
         :aria-label="t('ai.organization.close')"
         @click="emit('close')"
       >
-        <X :size="15" />
+        <X :size="12" />
+      </button>
+      </div>
+      <span v-if="organization" class="oc-title-meta">{{ t('ai.organization.metaSimple', { total: organization.total, teams: organization.teams.length + (organization.omittedTeams ?? 0) }) }}</span>
+      <div class="oc-header-fill" />
+      <button type="button" class="oc-icon-btn oc-focus-btn" :aria-pressed="focused" :title="focused ? t('canvas.splitDocument') : t('ai.organization.focus')" :aria-label="focused ? t('canvas.splitDocument') : t('ai.organization.focus')" @click="toggleFocus">
+        <Minimize2 v-if="focused" :size="14" />
+        <Maximize2 v-else :size="14" />
       </button>
     </header>
 
@@ -130,6 +159,7 @@ onMounted(() => {
       </template>
     </div>
   </section>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -157,6 +187,9 @@ onMounted(() => {
 .organization-chart.is-panel {
   border-left: 1px solid var(--border-color);
 }
+.organization-chart.is-focus { border-left: none; }
+.organization-chart.is-focus .oc-header { padding-left: max(12px, var(--shell-inset-left, 0px)); padding-right: calc(max(8px, var(--shell-inset-right, 0px)) + 36px); }
+.organization-chart.is-focus .oc-body { padding-bottom: var(--assistant-focus-overlay, 22px); }
 
 .oc-header {
   flex-shrink: 0;
@@ -165,7 +198,7 @@ onMounted(() => {
   gap: 8px;
   box-sizing: border-box;
   height: var(--workbench-panel-header-height, 38px);
-  padding: 0 10px;
+  padding: 0 calc(max(8px, var(--shell-inset-right, 0px)) + 30px) 0 12px;
   background: var(--bg-tertiary, var(--bg-secondary, #252525));
   border-bottom: 1px solid var(--border-color);
   -webkit-app-region: drag;
@@ -186,9 +219,13 @@ onMounted(() => {
   cursor: pointer;
 }
 .oc-icon-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.oc-tab { display: flex; align-items: center; gap: 7px; min-width: 0; height: 28px; padding: 0 5px 0 9px; border-radius: 8px; background: var(--bg-secondary); -webkit-app-region: no-drag; }
+.oc-tab .oc-close-btn { width: 18px; height: 18px; flex-shrink: 0; }
+.oc-header-fill { flex: 1; align-self: stretch; }
+.oc-focus-btn { width: 22px; height: 22px; flex-shrink: 0; border: 1px solid var(--border-color); border-radius: 5px; }
 .oc-title-icon { display: inline-flex; color: var(--accent-primary); }
 .oc-title { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
-.oc-title-name { font-size: 13px; font-weight: 600; }
+.oc-title-name { font-size: 12px; font-weight: 500; white-space: nowrap; }
 .oc-title-meta { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .oc-summary {

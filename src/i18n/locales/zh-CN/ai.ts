@@ -897,6 +897,7 @@ export default {
       dockDone: '组织 {total} 人都干完了',
       dockProblem: '组织 {total} 人，有人没做成',
       openChart: '看组织图',
+      focus: '铺满组织图',
       back: '返回对话',
       close: '关闭组织图',
       empty: '组织还没有内容',

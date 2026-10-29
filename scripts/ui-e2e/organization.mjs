@@ -264,6 +264,47 @@ try {
   await shot('3-chart')
   await shotChart('3-chart-full')
 
+  console.log('\n[3b] 与产出物一致的铺满与标题栏')
+  const splitWidth = await page.locator('.organization-chart').evaluate(el => el.getBoundingClientRect().width)
+  check('关闭按钮紧邻标题', await page.locator('.oc-tab .oc-close-btn').count() === 1)
+  await page.locator('.oc-focus-btn').click()
+  await sleep(350)
+  check('组织图使用现有铺满工作区', await page.locator('.assistant-focus-doc .organization-chart.is-focus').isVisible())
+  const focusWidth = await page.locator('.organization-chart').evaluate(el => el.getBoundingClientRect().width)
+  check('铺满比右侧分栏宽', focusWidth > splitWidth + 100, `${splitWidth} -> ${focusWidth}`)
+  check('铺满后保留浮动输入', await page.locator('.assistant-focus-chat .assistant-chat').isVisible())
+  const focusInput = page.locator('.assistant-focus-chat [contenteditable="true"]').first()
+  await focusInput.fill('检查铺满输入')
+  check('浮动输入可编辑', await focusInput.innerText() === '检查铺满输入')
+  await focusInput.fill('')
+  const insets = await page.locator('.organization-chart').evaluate(el => {
+    el.style.setProperty('--shell-inset-left', '140px')
+    el.style.setProperty('--shell-inset-right', '180px')
+    const header = getComputedStyle(el.querySelector('.oc-header'))
+    const result = { left: parseFloat(header.paddingLeft), right: parseFloat(header.paddingRight) }
+    el.style.removeProperty('--shell-inset-left')
+    el.style.removeProperty('--shell-inset-right')
+    return result
+  })
+  check('标题栏为窗口控件预留左右安全距离', insets.left >= 140 && insets.right >= 210, JSON.stringify(insets))
+  await shot('3b-focus')
+  await page.locator('.organization-chart .org-team-chat').first().click()
+  await page.locator('.assistant-focus-doc .expert-team-chat').waitFor({ state: 'visible' })
+  check('铺满群聊保留退出铺满按钮', await page.locator('.expert-team-chat .etc-focus-btn').isVisible())
+  check('铺满群聊底部为浮动输入留出空间', await page.locator('.expert-team-chat .etc-list').evaluate(el => parseFloat(getComputedStyle(el).paddingBottom)) >= 140)
+  await page.locator('.expert-team-chat .etc-icon-btn').first().click()
+  await page.locator('.assistant-focus-doc .organization-chart.is-focus').waitFor({ state: 'visible' })
+  check('群聊返回仍在铺满组织图', await page.locator('.assistant-focus-doc .organization-chart.is-focus').isVisible())
+  await page.locator('.oc-focus-btn').click()
+  await sleep(350)
+  const restoredWidth = await page.locator('.organization-chart').evaluate(el => el.getBoundingClientRect().width)
+  check('退出铺满恢复原分栏宽度', Math.abs(restoredWidth - splitWidth) < 2, `${splitWidth} -> ${restoredWidth}`)
+  await page.locator('.oc-focus-btn').click()
+  await page.locator('.oc-close-btn').click()
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.organization-chart').waitFor({ state: 'visible' })
+  check('关闭再打开回到分栏', await page.locator('.organization-chart.is-focus').count() === 0)
+
   console.log('\n[4] 团的完整群聊')
   await page.locator('.organization-chart .org-team-chat').first().click()
   await page.locator('.expert-team-chat').waitFor({ state: 'visible', timeout: 10_000 })
@@ -362,6 +403,67 @@ try {
   check('减少动态效果时执行状态点静止', await page.locator('.org-node.is-running .org-status-dot').first().evaluate(el => getComputedStyle(el).animationName) === 'none')
   await shot('8-mixed-status')
   await shotChart('8-mixed-status-full')
+  await page.locator('.oc-close-btn').click()
+  await pushStep({ id: 'plan-spacing', type: 'plan_created', timestamp: Date.now(), content: '验证顶部间距', plan: {
+    id: 'plan-spacing', title: '组织架构派工测试', createdAt: Date.now(), updatedAt: Date.now(),
+    steps: [{ id: 'p1', title: '检查组织进展', status: 'in_progress' }],
+  } })
+  await pushStep({ id: 'loose-spacing', type: 'tool_call', toolName: 'dispatch_agents', timestamp: Date.now(), content: '派出独立伙计', success: true,
+    subAgents: [{ id: '独立伙计', name: '独立伙计', description: '检查文档', status: 'running', steps: [] }],
+  })
+  await page.locator('.sub-agent-dock .dock-row').nth(1).waitFor({ state: 'visible' })
+  await page.evaluate(() => {
+    const tab = window.__e2eStore.tabs.find(t => t.id === window.__e2eTab)
+    tab.agentState.steps.find(s => s.id === 'loose-spacing').subAgents[0].status = 'completed'
+  })
+  await page.locator('.sub-agent-dock .dock-row').nth(1).filter({ hasText: '都干完了' }).waitFor({ state: 'visible' })
+  const spacing = await page.evaluate(() => {
+    const dock = [...document.querySelectorAll('.sub-agent-dock')].find(el => el.getBoundingClientRect().height > 0)
+    const rows = dock.querySelectorAll('.dock-row')
+    const first = rows[0].getBoundingClientRect()
+    const second = rows[1].getBoundingClientRect()
+    const plan = dock.previousElementSibling?.querySelector('.agent-plan')
+    return { rows: second.top - first.bottom, above: plan ? first.top - plan.getBoundingClientRect().bottom : null }
+  })
+  check('组织与伙计行距是 8px', Math.abs(spacing.rows - 8) < 1, JSON.stringify(spacing))
+  check('行距与上方计划卡片一致', spacing.above !== null && Math.abs(spacing.rows - spacing.above) < 1, JSON.stringify(spacing))
+  await shot('9-spacing')
+
+  console.log('\n[10] 没有助手面板宿主的对话覆盖层')
+  // 隔离夹具撤掉助手专属宿主回调，走 AiPanel 为终端/联络保留的真实覆盖层入口。
+  await page.evaluate(() => {
+    const seen = new Set()
+    const findPanel = vnode => {
+      if (!vnode || typeof vnode !== 'object' || seen.has(vnode)) return null
+      seen.add(vnode)
+      const component = vnode.component
+      if (component?.props?.tabId === window.__e2eTab && Object.hasOwn(component.props, 'openOrganizationSeat')) return component
+      const nested = component && findPanel(component.subTree)
+      if (nested) return nested
+      for (const child of Array.isArray(vnode.children) ? vnode.children : []) {
+        const match = findPanel(child)
+        if (match) return match
+      }
+      return null
+    }
+    const vm = findPanel(document.querySelector('#app')._vnode)
+    if (!vm) throw new Error('覆盖层测试找不到当前对话组件')
+    window.__e2eOrgHost = { vm, open: vm.props.openOrganizationSeat }
+    vm.props.openOrganizationSeat = undefined
+  })
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.organization-chart.is-overlay').waitFor({ state: 'visible' })
+  await page.locator('.oc-focus-btn').click()
+  const overlayBounds = await page.locator('.organization-chart').evaluate(el => {
+    const chart = el.getBoundingClientRect()
+    const tab = el.closest('.tab-view').getBoundingClientRect()
+    return { position: getComputedStyle(el).position, width: chart.width - tab.width, left: chart.left - tab.left }
+  })
+  check('覆盖层铺满本工作台而不覆盖侧栏', overlayBounds.position === 'fixed' && Math.abs(overlayBounds.width) < 2 && Math.abs(overlayBounds.left) < 2, JSON.stringify(overlayBounds))
+  await page.locator('.oc-focus-btn').click()
+  check('覆盖层退出铺满恢复原位置', await page.locator('.organization-chart').evaluate(el => getComputedStyle(el).position) === 'absolute')
+  await page.locator('.oc-close-btn').click()
+  await page.evaluate(() => { window.__e2eOrgHost.vm.props.openOrganizationSeat = window.__e2eOrgHost.open })
 } catch (error) {
   failures.push(`脚本出错：${error?.stack || error}`)
   console.error(`  FAIL 脚本出错：${error?.stack || error}`)
