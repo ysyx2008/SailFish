@@ -5,7 +5,7 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessagesSquare } from 'lucide-vue-next'
+import { MessagesSquare, Files } from 'lucide-vue-next'
 import type { OrganizationTeamView } from '@shared/types'
 import type { OrgGroup, OrgNode, OrgStatusBucket } from '../../utils/organization-view'
 import OrganizationNode from './OrganizationNode.vue'
@@ -16,7 +16,7 @@ const props = withDefaults(defineProps<{
   /** 从秘书名下那一层算 0，每往下长一层加一，仅用于测试和排查 */
   depth?: number
 }>(), { depth: 0 })
-const emit = defineEmits<{ openTeam: [team: { name: string; owner?: string }] }>()
+const emit = defineEmits<{ openTeam: [team: { name: string; owner?: string }]; openArtifacts: [team: { name: string; owner?: string }] }>()
 const { t } = useI18n()
 
 interface MeterPart { kind: 'completed' | 'running' | 'waiting' | 'failed' | 'interrupted'; count: number }
@@ -174,6 +174,9 @@ watch(cells, async () => {
         <div class="org-team-head">
           <span class="org-team-name">{{ t('ai.organization.teamTitle', { team: cell.team.name }) }}</span>
           <span class="org-review" :class="`is-${cell.team.review}`">{{ t(`ai.organization.review.${cell.team.review}`) }}</span>
+          <button type="button" class="org-team-artifacts" :title="t('ai.organization.openTeamArtifacts')" @click.stop="emit('openArtifacts', { name: cell.team.name, owner: cell.team.owner })">
+            <Files :size="12" /><span>{{ t('ai.organization.teamArtifacts') }}</span>
+          </button>
           <button
             type="button"
             class="org-team-chat"
@@ -215,6 +218,7 @@ watch(cells, async () => {
               :groups="node.groups"
               :depth="depth + 1"
               @open-team="emit('openTeam', $event)"
+              @open-artifacts="emit('openArtifacts', $event)"
             />
           </div>
         </div>
@@ -226,6 +230,7 @@ watch(cells, async () => {
           :groups="cell.node.groups"
           :depth="depth + 1"
           @open-team="emit('openTeam', $event)"
+              @open-artifacts="emit('openArtifacts', $event)"
         />
       </div>
     </div>
@@ -396,8 +401,8 @@ watch(cells, async () => {
   background: color-mix(in srgb, var(--color-warning, #e5c07b) 10%, transparent);
 }
 
-.org-team-chat {
-  margin-left: auto;
+.org-team-artifacts { margin-left: auto; }
+.org-team-artifacts, .org-team-chat {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -410,7 +415,7 @@ watch(cells, async () => {
   font-size: 11px;
   cursor: pointer;
 }
-.org-team-chat:hover { color: var(--text-primary); border-color: rgba(var(--accent-rgb, 137, 180, 250), 0.45); }
+.org-team-artifacts:hover, .org-team-chat:hover { color: var(--text-primary); border-color: rgba(var(--accent-rgb, 137, 180, 250), 0.45); }
 
 .org-team-members {
   display: flex;

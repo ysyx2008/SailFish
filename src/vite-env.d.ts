@@ -982,6 +982,7 @@ interface Window {
       } | undefined>
       getRecentByAgentKey: (agentKey: string, limit?: number) => Promise<Array<import('@shared/types').AgentRecord>>
       getCompanionMergedView: () => Promise<import('@shared/types').AgentRecord | undefined>
+      readTeamArtifacts: (sessionId: string, team: { name: string; owner?: string }) => Promise<import('@shared/types').OrganizationArtifactView[]>
       readExpertTeamChat: (
         file: string,
         cursor?: import('@shared/types').ExpertTeamChatCursor,

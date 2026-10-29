@@ -622,6 +622,8 @@ describe('结果落文件与总览', () => {
     first.bindSession('sess-1')
     const second = new SubAgentWorkspace('/tmp/next-run')
     second.bindSession('sess-1')
+    expect(first.organizationView().sessionId).toBe('sess-1')
+    expect(second.organizationView().sessionId).toBe('sess-1')
     expect(first.overviewPath).toContain('session-sess-1')
     expect(second.overviewPath).toBe(first.overviewPath)
   })

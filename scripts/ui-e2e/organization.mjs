@@ -48,6 +48,22 @@ const chatAbs = path.join(dataDir, 'history', 'expert-teams', chatRel)
 fs.mkdirSync(path.dirname(chatAbs), { recursive: true })
 fs.writeFileSync(chatAbs, chatLines.map((m) => JSON.stringify(m)).join('\n') + '\n')
 
+// 团队成果来自隔离的真实成员落盘记录，经主进程 IPC 读取，不 mock 查询接口。
+const artifactSession = 'sess-org-artifacts'
+const artifactPath = path.join(dataDir, '研发交付.md')
+fs.writeFileSync(artifactPath, '# 研发交付\n\n团队成果正文：账号密码登录已经完成。\n')
+function saveArtifactMember(name, owner, file, result) {
+  const dir = path.join(dataDir, 'history', 'sub-agents', '2026-10-29', artifactSession, `fixture-${name}`)
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({ name, parent: owner, team: '项目团', description: 'fixture', prompt: 'fixture', status: 'completed', result, updatedAt: now }))
+  fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ id: name, timestamp: now, status: 'completed', duration: 1 }))
+  fs.writeFileSync(path.join(dir, 'steps.jsonl'), JSON.stringify({ id: `artifact-${name}`, type: 'tool_result', timestamp: now, canvasData: { action: 'open', renderer: 'markdown', title: `${owner}交付`, filePath: file, contentFromFile: true } }) + '\n')
+}
+saveArtifactMember('前端', '研发组', artifactPath, '成员交回的核对结果。')
+const opsPath = path.join(dataDir, '运营交付.md')
+fs.writeFileSync(opsPath, '# 运营交付\n运营团队的独立文件。\n')
+saveArtifactMember('小营', '运营组', opsPath)
+
 const app = await launchApp(dataDir)
 const page = await app.firstWindow()
 const shot = async (name) => { if (shotDir) await page.screenshot({ path: path.join(shotDir, `${name}.png`) }) }
@@ -109,6 +125,7 @@ async function openAssistant() {
         const store = pinia?._s.get('terminal')
         if (!store) throw new Error('store 还没出现')
         const id = store.createAssistantTab({ title: '测试对话' })
+        store.markAssistantSkipOnboarding(id)
         store.focusHubConversation(id)
         window.__e2eStore = store
         window.__e2eTab = id
@@ -305,6 +322,74 @@ try {
   await page.locator('.organization-chart').waitFor({ state: 'visible' })
   check('关闭再打开回到分栏', await page.locator('.organization-chart.is-focus').count() === 0)
 
+  console.log('\n[3b] 团队产出物：真实历史读取、隔离、预览、铺满与返回')
+  await page.evaluate(session => {
+    window.__e2eStore.setAgentSession(window.__e2eTab, 'sess-current-other', Date.now())
+    window.__e2eStore.tabs.find(tab => tab.id === window.__e2eTab).agentState.steps.find(step => step.id === 'org-1').organization.sessionId = session
+  }, artifactSession)
+  await page.evaluate(() => {
+    const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia
+    window.__e2eArtifactStore = pinia._s.get('assistantArtifact')
+    window.__e2eArtifactStore.open(window.__e2eTab, { renderer: 'markdown', artifactId: 'unrelated-artifact', title: '其他任务稿', content: '用户原有草稿', activate: true })
+  })
+  check('隔离夹具已打开另一份产出物页签', await page.evaluate(() => window.__e2eArtifactStore.getOpenArtifacts(window.__e2eTab).some(a => a.id === 'unrelated-artifact')))
+  const devTeam = page.locator('.organization-chart .org-team').filter({ has: page.locator('.org-team-owner', { hasText: '研发组' }) })
+  await devTeam.locator('.org-team-artifacts').click()
+  await page.locator('.oa-item').first().waitFor({ state: 'visible' })
+  check('研发团列出文件和工作结果，注明真实成员', await page.locator('.oa-item').count() === 2 && (await text('.oa-list')).includes('来自 前端'))
+  check('合并历史中按组织原会话读取成果', await page.evaluate(() => window.__e2eStore.tabs.find(tab => tab.id === window.__e2eTab).agentState.sessionId === 'sess-current-other'))
+  check('同名运营团的成果没有混入', !(await text('.oa-list')).includes('运营交付'))
+  await shot('organization-artifacts')
+  await page.locator('.oa-item').filter({ hasText: '研发组交付' }).click()
+  await page.waitForFunction(() => document.querySelector('.org-artifacts .canvas-panel')?.innerText.includes('团队成果正文'), { timeout: 15_000 })
+  check('文件在现有产出物面板中预览，只有本团文件页签', await page.locator('.org-artifacts .artifact-tab').count() === 1)
+  await page.evaluate(() => {
+    const tab = window.__e2eStore.tabs.find(tab => tab.id === window.__e2eTab)
+    tab.agentState = { ...tab.agentState, steps: [...tab.agentState.steps] }
+  })
+  await sleep(150)
+  check('普通进度刷新不关闭成果预览', await page.locator('.org-artifacts .canvas-panel').isVisible())
+  const teamEditor = page.locator('.org-artifacts .canvas-panel [contenteditable="true"]').first()
+  await sleep(500) // 等 Crepe 的异步挂载完成，再模拟实际编辑。
+  await teamEditor.fill('团队文件的用户未保存修改')
+  await page.locator('.org-artifacts .md-dirty-hint').waitFor({ state: 'visible' })
+  await page.locator('.org-artifacts .canvas-panel button[title="铺满文档"]').click()
+  check('团队文件能铺满工作区', await page.locator('.assistant-focus-doc .org-artifacts').isVisible())
+  await page.locator('.oa-header .oa-icon').first().click()
+  check('从文件返回团队清单，保持铺满', await page.locator('.oa-item').count() === 2 && await page.locator('.assistant-focus-doc .org-artifacts').isVisible())
+  await page.locator('.oa-item').filter({ hasText: '研发组交付' }).click()
+  await sleep(300)
+  await page.waitForFunction(() => document.querySelector('.org-artifacts .canvas-panel')?.innerText.includes('用户未保存修改'))
+  check('返回并重开团队文件保留用户未保存修改', (await text('.org-artifacts .canvas-panel')).includes('用户未保存修改'))
+  await shot('organization-artifact-preview')
+  await page.locator('.org-artifacts .artifact-tab').first().click({ button: 'right' })
+  await page.locator('.canvas-ctx-menu button', { hasText: '关闭全部页签' }).click()
+  await page.locator('.oa-list').waitFor({ state: 'visible' })
+  check('关闭团队页签不关闭其他产出物', await page.evaluate(() => window.__e2eArtifactStore.getOpenArtifacts(window.__e2eTab).some(a => a.id === 'unrelated-artifact')))
+
+  await page.locator('.oa-header .oa-icon').first().click()
+  check('从清单返回组织图', await page.locator('.organization-chart .org-team').count() === 2)
+  const opsArtifactTeam = page.locator('.organization-chart .org-team').filter({ has: page.locator('.org-team-owner', { hasText: '运营组' }) })
+  await opsArtifactTeam.locator('.org-team-artifacts').click()
+  await page.locator('.oa-item').first().waitFor({ state: 'visible' })
+  check('另一个同名团只显示自己的文件', await page.locator('.oa-item').count() === 1 && (await text('.oa-list')).includes('运营组交付') && !(await text('.oa-list')).includes('研发组交付'))
+  fs.unlinkSync(opsPath)
+  await page.locator('.oa-item').first().click()
+  await page.locator('.oa-error').waitFor({ state: 'visible' })
+  check('成果文件丢失时明确提示', (await text('.oa-error')).includes('文件不在原位置'))
+  await page.locator('.oa-header .oa-icon').first().click()
+  // 一个没有落盘成果的会话，明确显示空状态。
+  await page.evaluate(() => {
+    delete window.__e2eStore.tabs.find(tab => tab.id === window.__e2eTab).agentState.steps.find(step => step.id === 'org-1').organization.sessionId
+    window.__e2eStore.setAgentSession(window.__e2eTab, 'sess-no-artifacts', Date.now())
+  })
+  await page.locator('.org-team-artifacts').first().click()
+  await page.locator('.oa-empty', { hasText: '暂无产出物' }).waitFor({ state: 'visible' })
+  check('没有成果时显示明确空状态', (await text('.oa-list')).includes('暂无产出物'))
+  await page.locator('.oa-header .oa-icon').first().click()
+  await page.locator('.oc-focus-btn').click()
+  check('团队成果返回后仍可退出铺满', await page.locator('.organization-chart.is-focus').count() === 0)
+
   console.log('\n[4] 团的完整群聊')
   await page.locator('.organization-chart .org-team-chat').first().click()
   await page.locator('.expert-team-chat').waitFor({ state: 'visible', timeout: 10_000 })
@@ -462,6 +547,11 @@ try {
   check('覆盖层铺满本工作台而不覆盖侧栏', overlayBounds.position === 'fixed' && Math.abs(overlayBounds.width) < 2 && Math.abs(overlayBounds.left) < 2, JSON.stringify(overlayBounds))
   await page.locator('.oc-focus-btn').click()
   check('覆盖层退出铺满恢复原位置', await page.locator('.organization-chart').evaluate(el => getComputedStyle(el).position) === 'absolute')
+  await page.evaluate(session => window.__e2eStore.setAgentSession(window.__e2eTab, session, Date.now()), artifactSession)
+  await page.locator('.org-team-artifacts').first().click()
+  await page.locator('.oa-item').first().waitFor({ state: 'visible' })
+  check('对话覆盖层也能查看团队成果', (await text('.oa-list')).includes('研发组交付'))
+  await page.locator('.oa-header .oa-icon').first().click()
   await page.locator('.oc-close-btn').click()
   await page.evaluate(() => { window.__e2eOrgHost.vm.props.openOrganizationSeat = window.__e2eOrgHost.open })
 } catch (error) {
@@ -469,7 +559,9 @@ try {
   console.error(`  FAIL 脚本出错：${error?.stack || error}`)
   await shot('error')
 } finally {
-  await app.close().catch(() => undefined)
+  // 应用可能因隔离夹具中的运行状态/未保存草稿拦关闭；仅清理 launchApp 返回的测试进程。
+  const closeTimeout = setTimeout(() => app.process()?.kill('SIGKILL'), 5000)
+  try { await app.close().catch(() => undefined) } finally { clearTimeout(closeTimeout) }
   if (!process.env.E2E_KEEP) fs.rmSync(dataDir, { recursive: true, force: true })
 }
 

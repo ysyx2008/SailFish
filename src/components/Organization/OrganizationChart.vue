@@ -8,7 +8,9 @@ import { useI18n } from 'vue-i18n'
 import { Maximize2, Minimize2, X, Network, UserRound } from 'lucide-vue-next'
 import { useTerminalStore } from '../../stores/terminal'
 import { buildOrgTree } from '../../utils/organization-view'
+import type { ArtifactPanelBindings } from '@sailfish/workbench-assistant/artifact/composer-quote'
 import OrganizationBranch from './OrganizationBranch.vue'
+import OrganizationTeamArtifacts from './OrganizationTeamArtifacts.vue'
 import OrganizationStatusBadge from './OrganizationStatusBadge.vue'
 
 const props = withDefaults(defineProps<{
@@ -18,6 +20,7 @@ const props = withDefaults(defineProps<{
   /** panel：右侧面板；overlay：覆盖对话。两种模式共用标题旁关闭和铺满入口。 */
   mode?: 'panel' | 'overlay'
   focusActive?: boolean
+  artifactBindings?: ArtifactPanelBindings
 }>(), { mode: 'overlay', focusActive: undefined })
 const emit = defineEmits<{ close: []; toggleFocus: []; openTeam: [team: { name: string; owner?: string }] }>()
 
@@ -43,6 +46,7 @@ const stats = computed(() => {
   }
 })
 
+const artifactTeam = ref<{ name: string; owner?: string } | null>(null)
 const bodyRef = ref<HTMLElement | null>(null)
 const rootRef = ref<HTMLElement | null>(null)
 const localFocus = ref(false)
@@ -95,6 +99,8 @@ onMounted(() => {
 <template>
   <Teleport :disabled="!localFocus" :to="focusTarget || 'body'">
   <section ref="rootRef" class="organization-chart" :class="[`is-${mode}`, { 'is-focus': focused }]" :style="localFocus ? focusBounds : undefined">
+    <OrganizationTeamArtifacts v-if="artifactTeam" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" :team="artifactTeam" :focus-active="focused" @close="artifactTeam = null" @toggle-focus="toggleFocus" />
+    <template v-else>
     <header class="oc-header">
       <div class="oc-tab">
       <span class="oc-title-icon" aria-hidden="true"><Network :size="14" /></span>
@@ -148,7 +154,7 @@ onMounted(() => {
             <span class="oc-secretary-avatar" aria-hidden="true"><UserRound :size="15" /></span>
             <span class="oc-secretary-name">{{ t('ai.organization.secretary') }}</span>
           </div>
-          <OrganizationBranch :groups="tree" @open-team="emit('openTeam', $event)" />
+          <OrganizationBranch :groups="tree" @open-team="emit('openTeam', $event)" @open-artifacts="artifactTeam = $event" />
         </div>
         <p v-if="organization.omitted" class="oc-omitted">
           {{ t('ai.organization.omitted', { count: organization.omitted, path: organization.boardPath ?? '' }) }}
@@ -158,6 +164,7 @@ onMounted(() => {
         </p>
       </template>
     </div>
+    </template>
   </section>
   </Teleport>
 </template>

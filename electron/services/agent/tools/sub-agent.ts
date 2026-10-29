@@ -98,6 +98,7 @@ export class SubAgentWorkspace {
   private dir: string
   overviewPath: string
   /** 目录按会话定下来了（或者已经写过东西、不能换） */
+  private sessionId?: string
   private sessionBound = false
   private wrote = false
   private readonly results = new Map<string, { chars: number; file?: string }>()
@@ -126,6 +127,7 @@ export class SubAgentWorkspace {
    * 还在原来的地方，之前给伙计的路径对得上。写过东西以后不再换。
    */
   bindSession(sessionId: string | undefined): void {
+    this.sessionId ??= sessionId
     if (!sessionId || this.sessionBound || this.wrote) return
     this.sessionBound = true
     this.dir = path.join(getScratchPath(), 'sub-agents', `session-${safeDirPart(sessionId)}`)
@@ -244,6 +246,7 @@ export class SubAgentWorkspace {
     const teams = allTeams.slice(0, ORG_VIEW_TEAM_LIMIT)
     const problems = all.filter(m => m.status === 'failed' || m.status === 'interrupted').length
     return {
+      ...(this.sessionId ? { sessionId: this.sessionId } : {}),
       members: kept,
       teams,
       live: sections.reduce((n, s) => n + s.live, 0),

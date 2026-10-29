@@ -52,23 +52,13 @@ import {
   ADD_COMPOSER_QUOTE_KEY,
   SET_COMPOSER_DRAFT_KEY,
   SUBMIT_COMPOSER_MESSAGE_KEY,
-  type AddComposerQuoteFn,
-  type SubmitComposerMessageFn
+  type ArtifactPanelBindings
 } from '../composer-quote'
 
-const props = defineProps<{
+const props = defineProps<ArtifactPanelBindings & {
   tabId: string
-  /** 岗壳注入：滚到对话流指定 step（AiPanel.scrollToAgentStep） */
-  scrollToAgentStep?: (stepId: string) => void | Promise<void>
-  /** 岗壳注入：引用摘录到 Composer（AiPanel.addComposerQuote） */
-  addComposerQuote?: AddComposerQuoteFn
-  /** 岗壳注入：图片加入 Composer 待发送区（AiPanel.addComposerImage） */
-  addComposerImage?: (image: { dataUrl: string; name: string; width?: number; height?: number; filePath?: string }) => void
-  /** 岗壳注入：设置 Composer 草稿文本（AiPanel.setComposerDraft） */
-  setComposerDraft?: (text: string) => void
-  /** 岗壳注入：当场发出一条消息（右键快捷指令） */
-  submitComposerMessage?: SubmitComposerMessageFn
-  /** 文件在座时是否铺满（文档为主） */
+  /** 团队入口仅展示本次成果集合；省略时显示这场对话全部产出物。 */
+  artifactIds?: readonly string[]
   focusActive?: boolean
 }>()
 
@@ -97,8 +87,9 @@ const { hoverTip, hideTip } = useHoverTip({
   delayMs: BUTTON_HOVER_TIP_DELAY_MS
 })
 
-const artifacts = computed(() => artifactStore.getArtifacts(props.tabId))
-const openTabs = computed(() => artifactStore.getOpenArtifacts(props.tabId))
+const inCollection = (id: string) => !props.artifactIds || props.artifactIds.includes(id)
+const artifacts = computed(() => artifactStore.getArtifacts(props.tabId).filter(a => inCollection(a.id)))
+const openTabs = computed(() => artifactStore.getOpenArtifacts(props.tabId).filter(a => inCollection(a.id)))
 const panelRoot = ref<HTMLElement | null>(null)
 const panelHasFocus = ref(false)
 const tabsEl = ref<HTMLElement | null>(null)
@@ -108,7 +99,10 @@ const tabPickerMenuRef = ref<HTMLElement | null>(null)
 const showTabPicker = ref(false)
 const tabPickerPos = ref({ top: 0, left: 0, maxWidth: 280, maxHeight: 360 })
 let tabsResizeObserver: ResizeObserver | null = null
-const activeArtifact = computed(() => artifactStore.getActiveArtifact(props.tabId))
+const activeArtifact = computed(() => {
+  const active = artifactStore.getActiveArtifact(props.tabId)
+  return active && inCollection(active.id) ? active : openTabs.value[0] ?? null
+})
 const activeArtifactId = computed(() => activeArtifact.value?.id ?? null)
 const renderer = computed(() => activeArtifact.value?.renderer ?? null)
 const filePath = computed(() => activeArtifact.value?.filePath ?? null)
@@ -426,12 +420,16 @@ function setPanelFocusedFromEvent(target: EventTarget | null) {
 
 function closeOthers(keepId: string) {
   flushActiveDraft()
-  artifactStore.closeOthers(props.tabId, keepId)
+  if (props.artifactIds) {
+    for (const artifact of openTabs.value) if (artifact.id !== keepId) artifactStore.closeTab(props.tabId, artifact.id)
+  } else artifactStore.closeOthers(props.tabId, keepId)
 }
 
 function closeAllArtifacts() {
   flushActiveDraft()
-  artifactStore.closeAll(props.tabId)
+  if (props.artifactIds) {
+    for (const artifact of openTabs.value) artifactStore.closeTab(props.tabId, artifact.id)
+  } else artifactStore.closeAll(props.tabId)
 }
 
 function selectTab(id: string) {
@@ -919,7 +917,7 @@ onUnmounted(() => {
   offImConnectionChange?.()
 })
 
-defineExpose({ minimizePanel })
+defineExpose({ minimizePanel, flushDraft: flushActiveDraft })
 </script>
 
 <template>

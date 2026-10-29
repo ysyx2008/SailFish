@@ -1605,6 +1605,9 @@ const electronAPI = {
       ipcRenderer.invoke('history:getCompanionMergedView') as Promise<import('@shared/types').AgentRecord | undefined>,
 
     // 专家团群聊全文翻一页（file 是群聊视图里的 chatFile）
+    readTeamArtifacts: (sessionId: string, team: { name: string; owner?: string }) =>
+      ipcRenderer.invoke('history:readTeamArtifacts', sessionId, team) as Promise<import('@shared/types').OrganizationArtifactView[]>,
+
     readExpertTeamChat: (file: string, cursor?: import('@shared/types').ExpertTeamChatCursor) =>
       ipcRenderer.invoke('history:readExpertTeamChat', file, cursor) as Promise<import('@shared/types').ExpertTeamChatPage | null>,
 

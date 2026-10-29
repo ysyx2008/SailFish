@@ -257,7 +257,7 @@ watch(() => artifactStore.isVisible(props.tab.id), (visible) => {
         seat.value = 'artifact'
         return
       }
-      artifactStore.minimizePanel(props.tab.id)
+      if (!orgSeated.value) artifactStore.minimizePanel(props.tab.id)
       return
     }
     seat.value = 'artifact'
@@ -571,6 +571,7 @@ defineExpose({
               />
               <OrganizationChart
                 v-else
+                :artifact-bindings="{ scrollToAgentStep, addComposerQuote, addComposerImage, setComposerDraft, submitComposerMessage }"
                 mode="panel"
                 :tab-id="tab.id"
                 :step-id="orgStepId!"
@@ -590,8 +591,8 @@ defineExpose({
             />
             <Teleport :disabled="!focusActive" :to="artifactFocusEl || 'body'">
               <ArtifactPanel
-                v-if="hasArtifacts"
-                v-show="!teamSeated && !orgSeated"
+                v-if="hasArtifacts && !orgSeated"
+                v-show="!teamSeated"
                 ref="artifactPanelRef"
                 :tab-id="tab.id"
                 :focus-active="focusActive"

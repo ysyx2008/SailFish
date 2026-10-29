@@ -18,6 +18,8 @@
 
 **命名说明**：Agent 协议层仍称 `CanvasData`（`shared/types/canvas.ts`）；前端 UI 域统一称 **artifact**，模块位于 `packages/workbench-assistant/src/artifact/`（`@sailfish/workbench-assistant/artifact`）。
 
+**组织团队成果入口（2026-10-29）**：从组织图查看团队成果时，文件使用现有产出物面板，保持预览、保存、铺满和用户草稿保护行为。团队清单按系统成员归属过滤，显示来源；文件打开后可返回该团队清单。
+
 ## 设计目标
 
 **人机双写（Markdown 产出物，2026-08-04 确认）**：Markdown 产出物是用户和助手**共用的一块画布**——用户选中一段就能让助手只改这段（选区即作用域），助手改完会简述改了哪里方便核对。行为承诺：

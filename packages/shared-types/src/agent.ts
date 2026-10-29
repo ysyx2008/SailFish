@@ -555,8 +555,19 @@ export interface OrganizationTeamView {
   transcriptPath?: string
 }
 
+/** 从成员记录登记的团队成果；身份来自系统成员表，不取正文署名。 */
+export interface OrganizationArtifactView {
+  member: string
+  kind: 'file' | 'result'
+  /** 负责人本人的成果在其主持的团之间共享，清单单列。 */
+  producerRole?: 'lead'
+  data: import('./canvas').CanvasData
+}
+
 /** 项目组织的全貌（派出组长的那一步上实时更新）。人数很多时只放前面一部分，live / total 是真实合计 */
 export interface OrganizationView {
+  /** 所属主会话；联络合并历史时仍从原会话读取团队成果。 */
+  sessionId?: string
   members: OrganizationMemberView[]
   teams: OrganizationTeamView[]
   /** 没做完的人数 / 全部人数（全组织） */

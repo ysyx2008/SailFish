@@ -3552,6 +3552,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
     </div>
 
     <OrganizationChart
+      :artifact-bindings="{ scrollToAgentStep, addComposerQuote, addComposerImage, setComposerDraft, submitComposerMessage }"
       v-if="overlayOrgStepId && !openOrganizationSeat"
       class="organization-overlay"
       mode="overlay"

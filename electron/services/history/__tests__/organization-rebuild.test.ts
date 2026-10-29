@@ -63,7 +63,8 @@ describe('从伙计记录重建组织', () => {
   ]
 
   it('补齐组长自己派的人、团和验收人，已有的不动', () => {
-    const org = rebuildOrganization(base, children, leaders)
+    const org = rebuildOrganization({ ...base, sessionId: 'original-session' }, children, leaders)
+    expect(org.sessionId).toBe('original-session')
     expect(org.teams.map(t => [t.name, t.owner])).toEqual([
       ['项目组', undefined],
       ['研发团', '研发组长'],
