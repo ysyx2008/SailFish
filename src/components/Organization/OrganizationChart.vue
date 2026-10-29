@@ -47,6 +47,7 @@ const stats = computed(() => {
 })
 
 const artifactTeam = ref<{ name: string; owner?: string } | null>(null)
+watch([() => props.tabId, () => props.stepId], () => { artifactTeam.value = null })
 const bodyRef = ref<HTMLElement | null>(null)
 const rootRef = ref<HTMLElement | null>(null)
 const localFocus = ref(false)

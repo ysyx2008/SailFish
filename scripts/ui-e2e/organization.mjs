@@ -378,6 +378,21 @@ try {
   await page.locator('.oa-error').waitFor({ state: 'visible' })
   check('成果文件丢失时明确提示', (await text('.oa-error')).includes('文件不在原位置'))
   await page.locator('.oa-header .oa-icon').first().click()
+  // 从主文档进入组织、看团队文件后，回到原先的主文档；文件仍留在本场目录。
+  await page.locator('.oc-close-btn').click()
+  await page.locator('.artifact-list-slot:visible .artifact-chrome-btn').first().hover()
+  await page.locator('.artifact-list-pop-item', { hasText: '其他任务稿' }).click()
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.org-team-artifacts').first().click()
+  await page.locator('.oa-item').filter({ hasText: '研发组交付' }).click()
+  await page.locator('.org-artifacts .canvas-panel').waitFor({ state: 'visible' })
+  await page.locator('.oa-header .oa-icon').first().click()
+  await page.locator('.oa-header .oa-icon').first().click()
+  await page.locator('.oc-close-btn').click()
+  check('关闭组织图恢复进入前的主文档', await page.evaluate(() => window.__e2eArtifactStore.getActiveArtifact(window.__e2eTab)?.id === 'unrelated-artifact'))
+  check('团队打开的成果仍保留在本场清单', await page.evaluate(() => window.__e2eArtifactStore.getArtifacts(window.__e2eTab).some(a => a.title === '研发组交付')))
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.oc-focus-btn').click()
   // 一个没有落盘成果的会话，明确显示空状态。
   await page.evaluate(() => {
     delete window.__e2eStore.tabs.find(tab => tab.id === window.__e2eTab).agentState.steps.find(step => step.id === 'org-1').organization.sessionId

@@ -107,6 +107,7 @@ const orgStepId = ref<string | null>(null)
 const orgTeamName = ref<{ name: string; owner?: string } | null>(null)
 /** 打开组织图前坐的是谁，关掉组织图回到它 */
 let seatBeforeOrg: DeskSeat = 'none'
+let artifactBeforeOrg: string | null = null
 const orgSeated = computed(() => seat.value === 'org' && !!orgStepId.value)
 watch(seat, (now, before) => {
   if (before === 'team' && now !== 'team') teamStepId.value = null
@@ -376,7 +377,10 @@ function closeExpertTeam() {
 }
 
 function openOrganization(stepId: string) {
-  if (seat.value !== 'org') seatBeforeOrg = seat.value
+  if (seat.value !== 'org') {
+    seatBeforeOrg = seat.value
+    artifactBeforeOrg = seat.value === 'artifact' ? artifactStore.getActiveArtifact(props.tab.id)?.id ?? null : null
+  }
   orgStepId.value = stepId
   orgTeamName.value = null
   seat.value = 'org'
@@ -389,7 +393,10 @@ function closeOrganization() {
   orgStepId.value = null
   if (seat.value !== 'org') return
   if (seatBeforeOrg === 'terminal' && hasHostedTerminal.value) seat.value = 'terminal'
-  else if (seatBeforeOrg === 'artifact' && artifactStore.isVisible(props.tab.id)) seat.value = 'artifact'
+  else if (seatBeforeOrg === 'artifact' && artifactStore.isVisible(props.tab.id)) {
+    if (artifactBeforeOrg && artifactStore.getArtifactById(props.tab.id, artifactBeforeOrg)) artifactStore.setActiveArtifact(props.tab.id, artifactBeforeOrg)
+    seat.value = 'artifact'
+  }
   else seat.value = 'none'
 }
 

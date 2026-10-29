@@ -17,7 +17,7 @@ import { writeFileAtomic } from '../../utils/atomic-write'
 import { createLogger } from '../../utils/logger'
 import { getDateString } from './date-util'
 import { SessionDateTree, isSafePathSegment } from './session-date-tree'
-import { readSessionDir, saveSessionRecordToDir } from './session-persistence'
+import { readSessionDir, readSessionDirAsync, saveSessionRecordToDir } from './session-persistence'
 
 const log = createLogger('SubAgentRecords')
 
@@ -237,6 +237,11 @@ export class SubAgentRecordStore {
   /** 这位的对话记录；没存过对话返回 null */
   readRecord(child: PersistedChild): AgentRecord | null {
     return readSessionDir(child.dir)
+  }
+
+  /** 成果索引只需要步骤：异步读取，并跳过模型对话全文。 */
+  async readSteps(child: PersistedChild): Promise<AgentRecord['steps']> {
+    return (await readSessionDirAsync(child.dir, undefined, { omitMessages: true }))?.steps ?? []
   }
 
   /** 开局带的主人对话；指纹对应的文件不在就读不到 */

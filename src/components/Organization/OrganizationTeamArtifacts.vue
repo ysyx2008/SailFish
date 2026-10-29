@@ -30,11 +30,12 @@ const groups = computed(() => [
 ].filter(group => group.items.length))
 const ids = computed(() => items.value.map(item => resolveCanvasArtifactId(item.data)))
 let request = 0
-async function refresh() {
+async function refresh(clearOpenError = false) {
   const current = ++request
   const session = sessionId.value
   loading.value = true
   failed.value = false
+  if (clearOpenError) openError.value = ''
   try {
     const result = session ? await window.electronAPI.history.readTeamArtifacts(session, { name: props.team.name, owner: props.team.owner }) : []
     if (current === request) items.value = result
@@ -44,17 +45,26 @@ async function refresh() {
     if (current === request) loading.value = false
   }
 }
-watch([sessionId, () => props.team.name, () => props.team.owner], () => {
+watch([sessionId, () => props.stepId, () => props.team.name, () => props.team.owner], () => {
+  openRequest++
+  panel.value?.flushDraft()
   preview.value = false
+  openError.value = ''
   items.value = []
   void refresh()
 }, { immediate: true })
+const working = computed(() => state.value?.steps.find(step => step.id === props.stepId)?.organization?.members.some(member =>
+  (member.name === props.team.owner || (member.parent === props.team.owner && member.team === props.team.name))
+  && (member.status === 'running' || member.status === 'pending')) ?? false)
+watch(working, (now, before) => {
+  // 最后一个人收工后不再轮询，退出前仍须读到这次交回的成果。
+  if (before && !now && !preview.value) void refresh()
+})
+watch(preview, (now, before) => {
+  if (before && !now && items.value.length) void refresh()
+})
 const poll = setInterval(() => {
-  const org = state.value?.steps.find(step => step.id === props.stepId)?.organization
-  const working = org?.members.some(member =>
-    (member.name === props.team.owner || (member.parent === props.team.owner && member.team === props.team.name))
-    && (member.status === 'running' || member.status === 'pending'))
-  if (working && !loading.value && !preview.value) void refresh()
+  if (working.value && !loading.value && !preview.value) void refresh()
 }, 3000)
 onBeforeUnmount(() => { panel.value?.flushDraft(); request++; openRequest++; clearInterval(poll) })
 function back() {
@@ -115,13 +125,13 @@ const titleOf = (item: OrganizationArtifactView) => item.kind === 'result'
       <span class="oa-title">{{ team.name }} · {{ t('ai.organization.teamArtifacts') }}</span>
       <button type="button" class="oa-icon" :title="t('ai.organization.closeArtifacts')" @click="close"><X :size="15" /></button>
       <span class="oa-owner">{{ team.owner || t('ai.organization.secretary') }}</span>
-      <button v-if="!preview" type="button" class="oa-icon oa-refresh" :disabled="loading" :title="t('ai.organization.refreshArtifacts')" @click="refresh"><RefreshCw :size="14" /></button>
+      <button v-if="!preview" type="button" class="oa-icon oa-refresh" :disabled="loading" :title="t('ai.organization.refreshArtifacts')" @click="refresh(true)"><RefreshCw :size="14" /></button>
       <button v-if="!preview" type="button" class="oa-icon" :aria-pressed="focusActive" :title="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @click="toggleFocus"><Minimize2 v-if="focusActive" :size="14" /><Maximize2 v-else :size="14" /></button>
     </header>
     <ArtifactPanel v-if="preview" ref="panel" v-bind="artifactBindings" :tab-id="tabId" :artifact-ids="ids" :focus-active="focusActive" @toggle-focus="toggleFocus" />
     <div v-else class="oa-list">
       <p v-if="openError" class="oa-error" role="alert">{{ openError }}</p>
-      <p v-if="failed" class="oa-empty">{{ t('ai.organization.artifactsLoadFailed') }} <button type="button" @click="refresh">{{ t('ai.organization.refreshArtifacts') }}</button></p>
+      <p v-if="failed" class="oa-empty">{{ t('ai.organization.artifactsLoadFailed') }} <button type="button" @click="refresh(true)">{{ t('ai.organization.refreshArtifacts') }}</button></p>
       <p v-else-if="loading && !items.length" class="oa-empty">{{ t('common.loading') }}</p>
       <div v-else-if="!items.length" class="oa-empty"><FolderOpen :size="26" /><p>{{ t('ai.organization.noArtifacts') }}</p></div>
       <section v-for="group in groups" :key="group.key" class="oa-group">

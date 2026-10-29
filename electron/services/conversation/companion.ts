@@ -180,7 +180,9 @@ export class Companion {
     const ordered = [...records].sort((a, b) => a.timestamp - b.timestamp)
     const seen = new Set<string>()
     const mergedSteps = ordered
-      .flatMap(r => (r.steps ?? []))
+      .flatMap(r => (r.steps ?? []).map(step => step.organization && !step.organization.sessionId
+        ? { ...step, organization: { ...step.organization, sessionId: r.id } }
+        : step))
       .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
       .filter(s => (s.id && !seen.has(s.id) ? (seen.add(s.id), true) : !s.id))
     const realRecords = ordered.filter(r => !Companion.isProactiveRecord(r))

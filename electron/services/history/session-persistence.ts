@@ -41,6 +41,8 @@ const log = createLogger('SessionPersistence')
 /** 读会话时的场景选择。默认完整读回；检索时丢掉产出物快照，避免把整篇文档拉进内存。 */
 export interface ReadSessionOptions {
   omitCanvasData?: boolean
+  /** 只读步骤的调用方不解析完整模型对话。 */
+  omitMessages?: boolean
 }
 
 export interface SessionMeta {
@@ -352,7 +354,7 @@ export function readSessionDir(
     const meta = readMeta(dir)
     if (!meta) return null
     const steps = readJsonl<AgentStepRecord>(stepsPath(dir), options)
-    const messages = readJsonl<NonNullable<AgentRecord['messages']>[number]>(messagesPath(dir), options)
+    const messages = options?.omitMessages ? [] : readJsonl<NonNullable<AgentRecord['messages']>[number]>(messagesPath(dir), options)
     return metaToRecord(meta, steps, messages)
   } catch (e) {
     onCorrupt?.(dir, e)
@@ -360,7 +362,7 @@ export function readSessionDir(
   }
 }
 
-async function readSessionDirAsync(
+export async function readSessionDirAsync(
   dir: string,
   onCorrupt?: (corruptPath: string | null, error: unknown) => void,
   options?: ReadSessionOptions
@@ -370,7 +372,7 @@ async function readSessionDirAsync(
     if (!meta) return null
     const [steps, messages] = await Promise.all([
       readJsonlAsync<AgentStepRecord>(stepsPath(dir), options),
-      readJsonlAsync<NonNullable<AgentRecord['messages']>[number]>(messagesPath(dir), options),
+      options?.omitMessages ? [] : readJsonlAsync<NonNullable<AgentRecord['messages']>[number]>(messagesPath(dir), options),
     ])
     return metaToRecord(meta, steps, messages)
   } catch (e) {
