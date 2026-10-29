@@ -221,6 +221,9 @@ export function useAgentMode(
   
   // 是否有新消息（用户不在底部时显示提示）
   const hasNewMessage = ref(false)
+  // 新一轮保留一屏空间；输出填满后列表自然超过该最小高度，继续原有跟底。
+  const turnMinHeight = ref(0)
+  watch(currentTabId, () => { turnMinHeight.value = 0 })
   
   // 标志：是否跳过 scroll 事件的状态更新（用于避免强制滚动时被 scroll 事件覆盖）
   let skipScrollUpdate = false
@@ -803,6 +806,31 @@ export function useAgentMode(
 
     guardAfterAutoScroll()
     requestAnimationFrame(() => saveScrollTop())
+  }
+
+  const scrollNewTurnToTop = async (tabId: string) => {
+    guardAfterAutoScroll()
+    cancelFollowScrollAnimation()
+    await nextTick()
+    if (currentTabId.value !== tabId) return
+    const el = messagesRef.value
+    const scroller = scrollerRef?.value
+    if (!el || !scroller) return
+    let index = flattenedItems.value.length - 1
+    while (index >= 0 && flattenedItems.value[index].type !== 'user_task') index--
+    if (index < 0) return
+    // 先挂载新提问，让 virtua 测量它前面的项，再确定这一屏的起点。
+    scroller.scrollToIndex(index, { align: 'start' })
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    if (currentTabId.value !== tabId || messagesRef.value !== el) return
+    const padding = getComputedStyle(el)
+    turnMinHeight.value = scroller.getItemOffset(index) + el.clientHeight
+      - parseFloat(padding.paddingTop) - parseFloat(padding.paddingBottom)
+    await nextTick()
+    if (currentTabId.value !== tabId) return
+    pinFollowBottom()
+    guardAfterAutoScroll()
+    saveScrollTop()
   }
 
   // 实际执行滚动：跟底意图交给 sticky；平滑追底由 followResizeObserver 单点完成。
@@ -1571,8 +1599,7 @@ export function useAgentMode(
       attachments: attachments.length > 0 ? attachments : undefined,
       timestamp: startTime,
     })
-    guardAfterAutoScroll()
-    void scrollToBottom()
+    void scrollNewTurnToTop(tabId)
 
     // 异步上下文在 UI 反馈之后并行获取，不阻塞首屏。
     // 放进同一段收尾里：这里失败也要把「正在跑」清掉，否则排队会一直等下去。
@@ -3128,6 +3155,7 @@ export function useAgentMode(
     lastError,
     // 滚动相关
     hasNewMessage,
+    turnMinHeight,
     isUserNearBottom,
     isHistoryScrollPending,
     updateScrollPosition,
