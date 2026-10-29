@@ -526,6 +526,8 @@ export interface ExpertTeamView {
 
 /** 项目组织里的一个人（卡片和组织图用） */
 export interface OrganizationMemberView {
+  /** 当前或最近一次工具活动；职责仍由 description 表达。 */
+  activity?: Pick<SubAgentToolStep, 'tool' | 'args' | 'status'>
   id: string
   name: string
   description: string
@@ -554,6 +556,9 @@ export interface OrganizationTeamView {
   chatFile?: string
   transcriptPath?: string
 }
+
+/** 小组或单个成员的真实成果来源。 */
+export type TeamArtifactSource = { name: string; owner?: string } | { member: string }
 
 /** 从成员记录登记的团队成果；身份来自系统成员表，不取正文署名。 */
 export interface OrganizationArtifactView {
@@ -693,6 +698,8 @@ export interface AgentStep {
   expertTeam?: ExpertTeamView
   /** 项目组织全貌（dispatch_agents 指定了组长时，实时更新） */
   organization?: OrganizationView
+  /** 合并历史中的原会话，用于团队详情和成果定位。 */
+  sourceSessionId?: string
   /** 这些实时快照（subAgents/expertTeam/organization）最后一次变化的时间；存盘合并用 */
   snapshotAt?: number
   /** Web 搜索结果（web_search 工具专用，供 UI 可展开渲染） */

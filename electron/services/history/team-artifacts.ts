@@ -1,19 +1,20 @@
 /** 只按系统归属读取本团成果，不把文本路径或共享目录扫描结果当作登记。 */
-import { resolveCanvasArtifactId, type CanvasData, type OrganizationArtifactView } from '@shared/types'
+import { resolveCanvasArtifactId, type CanvasData, type OrganizationArtifactView, type TeamArtifactSource } from '@shared/types'
 import type { SubAgentRecordStore } from './sub-agent-record-store'
 
 export async function readTeamArtifacts(
   store: SubAgentRecordStore,
   sessionId: string,
-  team: { name: string; owner?: string },
+  team: TeamArtifactSource,
 ): Promise<OrganizationArtifactView[]> {
   const artifacts = new Map<string, OrganizationArtifactView>()
   const aliases = new Map<string, string>()
   const latestByRenderer = new Map<string, string>()
-  const all = store.list(sessionId)
-  const members = all.filter(({ state }) => state.parent === team.owner && state.team === team.name)
+  const selected = 'member' in team ? await store.find(sessionId, team.member) : undefined
+  const all = 'member' in team ? selected ? [selected] : [] : store.list(sessionId)
+  const members = all.filter(({ state }) => 'member' in team ? state.name === team.member : state.parent === team.owner && state.team === team.name)
   // 负责人自己的汇总没有某个自团的成员身份，明确作为负责人共享成果单列。
-  const leader = team.owner && members.length ? all.find(({ state }) => state.name === team.owner && state.lead) : undefined
+  const leader = 'name' in team && team.owner && members.length ? all.find(({ state }) => state.name === team.owner && state.lead) : undefined
   const producers = leader ? [...members, leader] : members
   const roleOf = (name: string) => name === leader?.state.name ? { producerRole: 'lead' as const } : {}
   const events = (await Promise.all(producers.map(async child => (await store.readSteps(child)).map(step => ({ member: child.state.name, step }))))).flat()

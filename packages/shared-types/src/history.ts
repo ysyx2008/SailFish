@@ -45,6 +45,8 @@ export interface AgentStepRecord {
   expertTeam?: import('./agent').ExpertTeamView
   /** 项目组织全貌（dispatch_agents 指定了组长时） */
   organization?: import('./agent').OrganizationView
+  /** 合并展示时保留团队记录的原会话。 */
+  sourceSessionId?: string
   /** subAgents/expertTeam/organization 最后一次变化的时间；读回时按它取较新的快照 */
   snapshotAt?: number
   /** Canvas 预览数据（仅 UI / Artifact 面板消费，不发给 AI；历史重开时重放） */

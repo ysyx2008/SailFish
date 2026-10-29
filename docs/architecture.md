@@ -67,6 +67,7 @@ SailFish/
 │       ├── history/             # 会话存储底层
 │       │   ├── agent-record-store.ts # AgentRecordStore——会话记录存储聚合（agent/watch 两棵历史树+索引+图片外化），ConversationStore 的真相源
 │       │   ├── agent-storage.ts      # 会话记录文件 IO 纯函数
+│       │   ├── team-member.ts / team-artifacts.ts # 按真实成员/小组只读加载过程与成果；成员详情异步定点读取，合并历史保留原会话（2026-10-30）
 │       │   ├── sub-agent-record-store.ts # 伙计/专家的状态与对话（history/sub-agents/<日期>/<主会话>/<伙计>/，不进索引，跟主会话删/过期；2026-10-23）
 │       │   ├── session-date-tree.ts  # 「日期/会话」目录树的删除与过期（专家团群聊、伙计记录共用）
 │       │   └── date-util.ts          # 历史日期工具纯函数

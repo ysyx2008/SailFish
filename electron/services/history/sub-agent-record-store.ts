@@ -234,6 +234,18 @@ export class SubAgentRecordStore {
     return found.sort((a, b) => a.state.updatedAt - b.state.updatedAt)
   }
 
+  /** 按真实成员名定位，详情轮询不扫描整场任务的所有成员。 */
+  async find(sessionId: string, name: string): Promise<PersistedChild | undefined> {
+    for (const sessionDir of this.tree.findSessionDirs(sessionId)) {
+      const dir = path.join(sessionDir, childDirName(name))
+      try {
+        const state = decodeState(await fs.promises.readFile(path.join(dir, STATE_FILE), 'utf8'))
+        if (state?.name === name) return { state, dir }
+      } catch { /* 该日期下没有这位成员，继续查 */ }
+    }
+    return undefined
+  }
+
   /** 这位的对话记录；没存过对话返回 null */
   readRecord(child: PersistedChild): AgentRecord | null {
     return readSessionDir(child.dir)
@@ -323,13 +335,17 @@ export function childDirName(name: string): string {
 
 function readState(dir: string): ChildState | undefined {
   try {
-    const parsed = JSON.parse(fs.readFileSync(path.join(dir, STATE_FILE), 'utf-8')) as Partial<ChildState>
-    if (typeof parsed?.name !== 'string' || typeof parsed.description !== 'string' || typeof parsed.prompt !== 'string') return undefined
-    if (!isChildStatus(parsed.status)) return undefined
-    return { ...parsed, updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0 } as ChildState
+    return decodeState(fs.readFileSync(path.join(dir, STATE_FILE), 'utf-8'))
   } catch {
     return undefined
   }
+}
+
+function decodeState(text: string): ChildState | undefined {
+  const parsed = JSON.parse(text) as Partial<ChildState>
+  if (typeof parsed?.name !== 'string' || typeof parsed.description !== 'string' || typeof parsed.prompt !== 'string') return undefined
+  if (!isChildStatus(parsed.status)) return undefined
+  return { ...parsed, updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0 } as ChildState
 }
 
 function isChildStatus(value: unknown): value is ChildStatus {

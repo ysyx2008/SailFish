@@ -524,7 +524,7 @@ export class AgentRecordStore {
         .map(child => ({ leader: child.state, record: this.subAgents.readRecord(child) }))
 
       const steps = found.steps.map(step => {
-        let next = step
+        let next = step.subAgents || step.organization ? { ...step, sourceSessionId: step.sourceSessionId ?? found.id } : step
         if (step.organization) {
           next = { ...next, organization: rebuildOrganization({ ...step.organization, sessionId: step.organization.sessionId ?? found.id }, children, leaderRecords, found) }
         }

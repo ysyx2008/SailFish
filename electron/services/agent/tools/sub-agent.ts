@@ -797,7 +797,9 @@ export function toSubAgentView(c: ChildSnapshot, stepLimit: number = VIEW_STEPS_
 }
 
 function toOrganizationMember(c: ChildSnapshot, parent: string | undefined): OrganizationMemberView {
+  const activity = c.steps.at(-1)
   return {
+    ...(activity ? { activity: { tool: activity.tool, args: activity.args, status: activity.status } } : {}),
     id: c.name,
     name: c.name,
     description: c.description,

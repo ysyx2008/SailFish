@@ -982,7 +982,8 @@ interface Window {
       } | undefined>
       getRecentByAgentKey: (agentKey: string, limit?: number) => Promise<Array<import('@shared/types').AgentRecord>>
       getCompanionMergedView: () => Promise<import('@shared/types').AgentRecord | undefined>
-      readTeamArtifacts: (sessionId: string, team: { name: string; owner?: string }) => Promise<import('@shared/types').OrganizationArtifactView[]>
+      readTeamMember: (sessionId: string, name: string) => Promise<import('@shared/types').SubAgentResult | undefined>
+      readTeamArtifacts: (sessionId: string, team: import('@shared/types').TeamArtifactSource) => Promise<import('@shared/types').OrganizationArtifactView[]>
       readExpertTeamChat: (
         file: string,
         cursor?: import('@shared/types').ExpertTeamChatCursor,
