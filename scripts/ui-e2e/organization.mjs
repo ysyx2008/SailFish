@@ -51,6 +51,30 @@ fs.writeFileSync(chatAbs, chatLines.map((m) => JSON.stringify(m)).join('\n') + '
 const app = await launchApp(dataDir)
 const page = await app.firstWindow()
 const shot = async (name) => { if (shotDir) await page.screenshot({ path: path.join(shotDir, `${name}.png`) }) }
+// 额外保存完整组织面板，方便对比节点视觉；仅克隆测试 DOM，不改变应用的布局或状态。
+async function shotChart(name) {
+  if (!shotDir) return
+  const viewport = page.viewportSize()
+  try {
+    const size = await page.evaluate(() => {
+      const chart = document.querySelector('.organization-chart')
+      const tree = chart.querySelector('.oc-tree')
+      const width = Math.ceil(tree.getBoundingClientRect().width) + 48
+      const height = Math.ceil(tree.getBoundingClientRect().height) + 150
+      const clone = chart.cloneNode(true)
+      clone.id = 'org-visual-preview'
+      Object.assign(clone.style, { position: 'fixed', inset: '0 auto auto 0', width: `${width}px`, height: `${height}px`, zIndex: '9999' })
+      document.body.append(clone)
+      clone.querySelector('.oc-body').scrollLeft = 0
+      return { width, height }
+    })
+    await page.setViewportSize(size)
+    await page.locator('#org-visual-preview').screenshot({ path: path.join(shotDir, `${name}.png`), animations: 'disabled' })
+  } finally {
+    await page.evaluate(() => document.querySelector('#org-visual-preview')?.remove())
+    if (viewport) await page.setViewportSize(viewport)
+  }
+}
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 async function ready() {
@@ -194,7 +218,7 @@ try {
   check('顶部概览写着 7 人在干、1 人做完', /7 人在干/.test(chart) && /1 人做完/.test(chart), chart)
   check('在干的人都有醒目的状态标签', await page.locator('.organization-chart .org-node.is-running').count() === 7)
   check('做完的人也有醒目的状态标签', await page.locator('.organization-chart .org-node.is-completed').count() === 1)
-  check('还在干的两个团框都按状态着色', await page.locator('.organization-chart .org-team.is-running').count() === 2)
+  check('两个团框都标记了执行状态', await page.locator('.organization-chart .org-team.is-running').count() === 2)
   check('团框里写着还有人在干', chart.includes('1 人在干'), chart)
   check('团框有做完与在干两段进度', await page.locator('.organization-chart .org-meter-part.is-completed').count() === 1
     && await page.locator('.organization-chart .org-meter-part.is-running').count() === 2)
@@ -238,6 +262,7 @@ try {
   })
   check('组织图在右侧面板里，不是盖在对话上', seated.inRegion === true, JSON.stringify(seated))
   await shot('3-chart')
+  await shotChart('3-chart-full')
 
   console.log('\n[4] 团的完整群聊')
   await page.locator('.organization-chart .org-team-chat').first().click()
@@ -290,6 +315,7 @@ try {
   check('所有人都是做完状态', await page.locator('.organization-chart .org-node.is-completed').count() === 8)
   check('两个团框都变成全组做完', await page.locator('.organization-chart .org-team.is-completed').count() === 2 && doneChart.includes('全组做完'), doneChart)
   await shot('6b-done-chart')
+  await shotChart('6b-done-chart-full')
   await page.locator('.organization-chart .oc-icon-btn').first().click()
   await sleep(300)
 
@@ -311,6 +337,31 @@ try {
   const dedupeDock = await text('.sub-agent-dock')
   check('顶部按最早那份快照显示，不再转圈', /组织 8 人都干完了/.test(dedupeDock) && !/人在干/.test(dedupeDock), dedupeDock)
   await shot('7-dedupe')
+
+  console.log('\n[8] 五种节点状态与独立的验收结论')
+  const mixed = dispatchStep(false)
+  const statuses = ['running', 'completed', 'running', 'completed', 'pending', 'failed', 'interrupted', 'completed']
+  mixed.organization.members.forEach((m, i) => { m.status = statuses[i] })
+  mixed.organization.live = 3
+  mixed.organization.problems = 2
+  mixed.organization.teams[0].review = 'reject'
+  await updateStep(mixed)
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.organization-chart').waitFor({ state: 'visible' })
+  for (const status of ['running', 'waiting', 'completed', 'failed', 'interrupted']) {
+    check(`展示 ${status} 节点`, await page.locator(`.organization-chart .org-node.is-${status}`).count() > 0)
+  }
+  check('组长有固定身份栏，完成后身份仍在', await page.locator('.org-node.is-lead.is-completed .org-node-rank').count() === 1)
+  check('执行完成时仍能看见验收打回', await page.locator('.org-review.is-reject').innerText() === '验收打回')
+  check('打断节点使用虚线边框', await page.locator('.org-node.is-interrupted').evaluate(el => getComputedStyle(el).borderTopStyle) === 'dashed')
+  const colors = await page.locator('.organization-chart .org-node').evaluateAll(nodes => nodes.map(el => getComputedStyle(el).borderTopColor))
+  check('五种状态的边框颜色不同', new Set(colors).size === 5, colors.join(', '))
+  check('仅执行状态点有呼吸动画', await page.locator('.org-node.is-running .org-status-dot').first().evaluate(el => getComputedStyle(el).animationName) !== 'none')
+  check('执行卡片本身不闪烁', await page.locator('.org-node.is-running').first().evaluate(el => getComputedStyle(el).animationName) === 'none')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  check('减少动态效果时执行状态点静止', await page.locator('.org-node.is-running .org-status-dot').first().evaluate(el => getComputedStyle(el).animationName) === 'none')
+  await shot('8-mixed-status')
+  await shotChart('8-mixed-status-full')
 } catch (error) {
   failures.push(`脚本出错：${error?.stack || error}`)
   console.error(`  FAIL 脚本出错：${error?.stack || error}`)

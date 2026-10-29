@@ -222,10 +222,11 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px 6px 6px;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+  padding: 10px 24px 10px 12px;
+  border-radius: 14px 4px;
+  border: 2px solid color-mix(in srgb, var(--accent-primary) 65%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-primary) 9%, var(--bg-primary));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-primary) 8%, transparent);
   font-size: 13px;
   font-weight: 600;
 }
@@ -233,11 +234,11 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  color: #fff;
-  background: var(--accent-primary);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px 2px;
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
 }
 .oc-omitted { margin-top: 14px; font-size: 11px; color: var(--text-secondary); word-break: break-all; text-align: center; }
 </style>

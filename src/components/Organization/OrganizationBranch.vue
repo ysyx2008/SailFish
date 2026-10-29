@@ -235,8 +235,8 @@ watch(cells, async () => {
 <style scoped>
 /* 一层分支：横着排；每个分支自己带「总线—短竖线—子节点」的连线 */
 .org-children {
-  --org-gap: 12px;
-  --org-stem: 16px;
+  --org-gap: 20px;
+  --org-stem: 22px;
   position: relative;
   display: flex;
   justify-content: center;
@@ -300,17 +300,17 @@ watch(cells, async () => {
   align-items: center;
 }
 
-/* 团：一个纵向列，团头在外，成员自上而下；整框按团的状态着色 */
+/* 团是中性的队伍底板，状态色留给成员；验收结论独立强调。 */
 .org-team {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-width: 220px;
-  padding: 9px;
+  gap: 10px;
+  min-width: 240px;
+  padding: 12px;
   border: 1px solid var(--border-color);
-  border-radius: 10px;
-  background: var(--bg-secondary);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-secondary) 45%, var(--bg-primary));
   cursor: pointer;
   transition: border-color 0.15s ease;
 }
@@ -322,6 +322,8 @@ watch(cells, async () => {
   gap: 6px;
   min-width: 0;
   font-size: 12px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--border-color);
 }
 .org-team-name {
   min-width: 0;
@@ -376,10 +378,23 @@ watch(cells, async () => {
   flex-shrink: 0;
   font-size: 10.5px;
   color: var(--text-secondary);
+  padding: 3px 6px;
+  border-radius: 4px;
 }
-.org-review.is-pass { color: var(--color-success, #98c379); }
-.org-review.is-reject { color: var(--color-danger, #e06c75); }
-.org-review.is-pending { color: var(--color-warning, #e5c07b); }
+.org-review.is-pass {
+  color: var(--color-success, #98c379);
+  background: color-mix(in srgb, var(--color-success, #98c379) 12%, transparent);
+}
+.org-review.is-reject {
+  color: var(--color-danger, #e06c75);
+  background: color-mix(in srgb, var(--color-danger, #e06c75) 14%, var(--bg-primary));
+  border: 1px solid color-mix(in srgb, var(--color-danger, #e06c75) 60%, var(--border-color));
+  font-weight: 600;
+}
+.org-review.is-pending {
+  color: var(--color-warning, #e5c07b);
+  background: color-mix(in srgb, var(--color-warning, #e5c07b) 10%, transparent);
+}
 
 .org-team-chat {
   margin-left: auto;
@@ -401,7 +416,7 @@ watch(cells, async () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 .org-team-members > .org-member {
   display: flex;
@@ -412,6 +427,6 @@ watch(cells, async () => {
 /* 只把本团成员卡片拉满列宽，团成员自己带的下级分支不受影响 */
 .org-team-members > .org-member > .org-node {
   width: 100%;
-  max-width: 224px;
+  max-width: 260px;
 }
 </style>
