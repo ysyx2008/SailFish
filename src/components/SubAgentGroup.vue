@@ -28,12 +28,13 @@ const props = defineProps<{
   /** 不画外框和卡片框，一人一行、行间一条细线（放在已经有框的容器里时用） */
   plain?: boolean
   /** 不显示专家团那张小卡片（外面已经有群聊入口时） */
+  expandDetails?: boolean
   hideTeamCard?: boolean
 }>()
 const emit = defineEmits<{ openTeam: [] }>()
 const { t } = useI18n()
 
-const isSubAgentExpanded = (key: string): boolean => subAgentExpandState.get(key) === true
+const isSubAgentExpanded = (key: string): boolean => subAgentExpandState.get(key) ?? props.expandDetails === true
 const toggleSubAgentExpand = (key: string) => {
   subAgentExpandState.set(key, !isSubAgentExpanded(key))
 }

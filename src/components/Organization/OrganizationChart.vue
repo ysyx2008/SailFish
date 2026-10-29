@@ -7,10 +7,13 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Maximize2, Minimize2, X, Network, UserRound } from 'lucide-vue-next'
 import { useTerminalStore } from '../../stores/terminal'
+import { teamViewForStep, teamMemberSnapshot, teamSources } from '../../utils/team-view'
 import { buildOrgTree, organizationAttention } from '../../utils/organization-view'
 import type { ArtifactPanelBindings } from '@sailfish/workbench-assistant/artifact/composer-quote'
 import OrganizationBranch from './OrganizationBranch.vue'
 import OrganizationTeamArtifacts from './OrganizationTeamArtifacts.vue'
+import type { TeamArtifactSource } from '@shared/types'
+import OrganizationMemberDetail from './OrganizationMemberDetail.vue'
 import OrganizationStatusBadge from './OrganizationStatusBadge.vue'
 
 const props = withDefaults(defineProps<{
@@ -27,9 +30,17 @@ const emit = defineEmits<{ close: []; toggleFocus: []; openTeam: [team: { name: 
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
 
-const organization = computed(() => terminalStore.tabs
-  .find(tab => tab.id === props.tabId)?.agentState?.steps
-  .find(s => s.id === props.stepId)?.organization)
+const state = computed(() => terminalStore.tabs.find(tab => tab.id === props.tabId)?.agentState)
+const organization = computed(() => teamViewForStep(state.value?.steps ?? [], props.stepId, state.value?.sessionId))
+const plan = computed(() => {
+  let latest
+  for (const step of teamSources(state.value?.steps ?? [], props.stepId)) {
+    if (step.type === 'plan_archived') latest = undefined
+    else if (step.plan) latest = step.plan
+  }
+  return latest
+})
+const currentPlanStep = computed(() => plan.value?.steps.find(step => step.status === 'in_progress'))
 const tree = computed(() => organization.value ? buildOrgTree(organization.value) : [])
 /** 全组织的概览：在干几人、做完几人、几人出问题 */
 const attention = computed(() => organization.value ? organizationAttention(organization.value) : null)
@@ -47,8 +58,11 @@ const stats = computed(() => {
   }
 })
 
-const artifactTeam = ref<{ name: string; owner?: string } | null>(null)
-watch([() => props.tabId, () => props.stepId], () => { artifactTeam.value = null })
+const artifactTeam = ref<TeamArtifactSource | null>(null)
+const memberName = ref<string | null>(null)
+const member = computed(() => organization.value?.members.find(member => member.name === memberName.value))
+const memberSnapshot = computed(() => memberName.value ? teamMemberSnapshot(state.value?.steps ?? [], props.stepId, memberName.value) : undefined)
+watch([() => props.tabId, () => props.stepId], () => { artifactTeam.value = null; memberName.value = null })
 const bodyRef = ref<HTMLElement | null>(null)
 const rootRef = ref<HTMLElement | null>(null)
 const localFocus = ref(false)
@@ -102,6 +116,7 @@ onMounted(() => {
   <Teleport :disabled="!localFocus" :to="focusTarget || 'body'">
   <section ref="rootRef" class="organization-chart" :class="[`is-${mode}`, { 'is-focus': focused }]" :style="localFocus ? focusBounds : undefined">
     <OrganizationTeamArtifacts v-if="artifactTeam" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" :team="artifactTeam" :focus-active="focused" @close="artifactTeam = null" @toggle-focus="toggleFocus" />
+    <OrganizationMemberDetail v-else-if="member" :session-id="organization?.sessionId" :member="member" :snapshot="memberSnapshot" :focus-active="focused" @close="memberName = null" @artifacts="artifactTeam = { member: member.name }" @toggle-focus="toggleFocus" />
     <template v-else>
     <header class="oc-header">
       <div class="oc-tab">
@@ -127,6 +142,7 @@ onMounted(() => {
       </button>
     </header>
 
+    <div v-if="plan" class="oc-progress"><strong>{{ plan.title }}</strong><span v-if="currentPlanStep">{{ currentPlanStep.title }}</span></div>
     <div v-if="organization && stats && (stats.live > 0 || stats.done > 0 || stats.problems > 0)" class="oc-summary">
       <OrganizationStatusBadge
         v-if="stats.live > 0"
@@ -159,7 +175,7 @@ onMounted(() => {
             <span class="oc-secretary-avatar" aria-hidden="true"><UserRound :size="15" /></span>
             <span class="oc-secretary-name">{{ t('ai.organization.secretary') }}</span>
           </div>
-          <OrganizationBranch :groups="tree" @open-team="emit('openTeam', $event)" @open-artifacts="artifactTeam = $event" />
+          <OrganizationBranch :groups="tree" @open-team="emit('openTeam', $event)" @open-artifacts="artifactTeam = $event" @open-member="memberName = $event" />
         </div>
         <p v-if="organization.omitted" class="oc-omitted">
           {{ t('ai.organization.omitted', { count: organization.omitted, path: organization.boardPath ?? '' }) }}
@@ -240,6 +256,8 @@ onMounted(() => {
 .oc-title-name { font-size: 12px; font-weight: 500; white-space: nowrap; }
 .oc-title-meta { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+.oc-progress { flex-shrink: 0; padding: 10px 14px; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.oc-progress span { color: var(--text-secondary); }
 .oc-summary {
   flex-shrink: 0;
   display: flex;

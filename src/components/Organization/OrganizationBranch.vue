@@ -16,7 +16,7 @@ const props = withDefaults(defineProps<{
   /** 从秘书名下那一层算 0，每往下长一层加一，仅用于测试和排查 */
   depth?: number
 }>(), { depth: 0 })
-const emit = defineEmits<{ openTeam: [team: { name: string; owner?: string }]; openArtifacts: [team: { name: string; owner?: string }] }>()
+const emit = defineEmits<{ openMember: [name: string]; openTeam: [team: { name: string; owner?: string }]; openArtifacts: [team: { name: string; owner?: string }] }>()
 const { t } = useI18n()
 
 interface MeterPart { kind: 'completed' | 'running' | 'waiting' | 'failed' | 'interrupted'; count: number }
@@ -213,11 +213,12 @@ watch(cells, async () => {
         </div>
         <div class="org-team-members">
           <div v-for="node in cell.nodes" :key="node.member.id" class="org-member">
-            <OrganizationNode :node="node" />
+            <OrganizationNode :node="node" @open="emit('openMember', node.member.name)" />
             <OrganizationBranch
               v-if="node.groups.length"
               :groups="node.groups"
               :depth="depth + 1"
+              @open-member="emit('openMember', $event)"
               @open-team="emit('openTeam', $event)"
               @open-artifacts="emit('openArtifacts', $event)"
             />
@@ -225,12 +226,13 @@ watch(cells, async () => {
         </div>
       </div>
       <div v-else class="org-branch">
-        <OrganizationNode :node="cell.node" />
+        <OrganizationNode :node="cell.node" @open="emit('openMember', cell.node.member.name)" />
         <OrganizationBranch
           v-if="cell.node.groups.length"
           :groups="cell.node.groups"
           :depth="depth + 1"
-          @open-team="emit('openTeam', $event)"
+          @open-member="emit('openMember', $event)"
+              @open-team="emit('openTeam', $event)"
               @open-artifacts="emit('openArtifacts', $event)"
         />
       </div>

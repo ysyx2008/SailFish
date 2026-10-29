@@ -15,6 +15,7 @@ import { useTerminalStore } from '../../stores/terminal'
 import { useMarkdown } from '../../composables/useMarkdown'
 import { avatarHue, avatarInitial, continuesPrevious, memberLabel } from '../../utils/expert-team-view'
 import { countSubAgents, subAgentBucket, type SubAgentBucket } from '../../utils/sub-agent-summary'
+import { teamViewForStep, teamSources } from '../../utils/team-view'
 import { ExpertTeamChatPages } from '../../utils/expert-team-chat-pages'
 
 const props = withDefaults(defineProps<{
@@ -50,10 +51,9 @@ const step = computed(() => terminalStore.tabs
 /** 项目组织里指定的那个团（派出组长那一步带着全貌）；有组长时团名加组长一起认 */
 const orgTeam = computed(() => {
   if (!props.teamName) return undefined
-  const teams = step.value?.organization?.teams ?? []
-  return props.teamOwner
-    ? teams.find(team => team.name === props.teamName && team.owner === props.teamOwner)
-    : teams.find(team => team.name === props.teamName)
+  const state = terminalStore.tabs.find(tab => tab.id === props.tabId)?.agentState
+  const teams = teamViewForStep(state?.steps ?? [], props.stepId, state?.sessionId)?.teams ?? []
+  return teams.find(team => team.name === props.teamName && team.owner === props.teamOwner)
 })
 const team = computed<ExpertTeamView | undefined>(() => {
   if (!props.teamName) return step.value?.expertTeam
@@ -61,7 +61,9 @@ const team = computed<ExpertTeamView | undefined>(() => {
   // 组织里的团不带群消息，全文从群聊文件里读
   return o ? {
     name: o.name,
-    messages: [],
+    messages: props.teamOwner ? [] : teamSources(terminalStore.tabs.find(tab => tab.id === props.tabId)?.agentState?.steps ?? [], props.stepId).find(s => s.expertTeam?.name === props.teamName)?.expertTeam?.messages ?? [],
+    review: o.review,
+    reviewers: o.reviewers,
     wakes: 0,
     wakeLimit: o.wakeLimit,
     waitingLeader: o.waitingLeader,
@@ -71,8 +73,9 @@ const team = computed<ExpertTeamView | undefined>(() => {
 })
 const agents = computed<SubAgentResult[]>(() => {
   if (!props.teamName) return step.value?.subAgents ?? []
-  return (step.value?.organization?.members ?? [])
-    .filter(m => m.team === props.teamName && (!props.teamOwner || m.parent === props.teamOwner))
+  const state = terminalStore.tabs.find(tab => tab.id === props.tabId)?.agentState
+  return (teamViewForStep(state?.steps ?? [], props.stepId, state?.sessionId)?.members ?? [])
+    .filter(m => m.team === props.teamName && m.parent === props.teamOwner)
     .map(m => ({
       id: m.id,
       name: m.name,

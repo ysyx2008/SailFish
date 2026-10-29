@@ -33,10 +33,10 @@ import { describeLiveProcess, type ProcessFoldView } from '../utils/process-fold
 import { chatTimeParts } from '../utils/chat-time-marker'
 import { formatProcessFoldCaption, type ProcessFoldSay } from '../utils/process-fold-label'
 import ToolCallContent from './ToolCallContent.vue'
-import SubAgentGroup from './SubAgentGroup.vue'
 import SubAgentDock from './SubAgentDock.vue'
 import { toolDisplayName } from '../utils/tool-display'
 import ExpertTeamChat from './ExpertTeam/ExpertTeamChat.vue'
+import { teamCards } from '../utils/team-view'
 import OrganizationCard from './Organization/OrganizationCard.vue'
 import OrganizationChart from './Organization/OrganizationChart.vue'
 import ImageContextMenu from './ImageContextMenu.vue'
@@ -572,33 +572,12 @@ const openOrganization = (stepId: string) => {
   overlayOrgTeam.value = null
 }
 /** 同一份组织可能挂在多个派出步骤上：每个任务只认第一份，对话里每个任务也只挂一张卡片 */
-const orgCardStepIds = computed(() => {
-  const steps = agentState.value?.steps ?? []
-  const ids = new Set<string>()
-  let seen = false
-  for (const step of steps) {
-    if (step.type === 'user_task' && !step.systemInjected) {
-      seen = false
-      continue
-    }
-    if (!seen && step.organization) {
-      ids.add(step.id)
-      seen = true
-    }
-  }
-  return ids
-})
+const teamCardViews = computed(() => teamCards(agentState.value?.steps ?? [], agentState.value?.sessionId))
 const organizationStep = computed(() => {
   const steps = agentState.value?.steps ?? []
-  let start = 0
-  for (let i = steps.length - 1; i >= 0; i--) {
-    const step = steps[i]
-    if (step.type === 'user_task' && !step.systemInjected) {
-      start = i
-      break
-    }
-  }
-  return steps.slice(start).find(step => step.organization)
+  const entries = [...teamCardViews.value]
+  const latest = entries[entries.length - 1]
+  return latest ? { ...steps.find(step => step.id === latest[0])!, organization: latest[1] } : undefined
 })
 watch(() => props.tabId, () => {
   overlayTeamStepId.value = null
@@ -2724,6 +2703,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
       <SubAgentDock
         v-if="pinnedDispatches.length > 0 && !peek"
         :steps="pinnedDispatches"
+        :team-steps="agentState?.steps ?? []"
         :attached="!!currentPlan"
         :open-team-step-id="openedTeamStepId"
         :organization-step="organizationStep"
@@ -2957,17 +2937,9 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                     </div>
                     <div v-else class="step-text markdown-content" v-html="renderMarkdown(item.step!.content)"></div>
                     <!-- 并行子 Agent 卡片组 -->
-                    <SubAgentGroup
-                      v-if="item.step!.subAgents && item.step!.subAgents.length > 0"
-                      class="sub-agent-group-in-chat"
-                      :step-id="item.step!.id"
-                      :sub-agents="item.step!.subAgents"
-                      :expert-team="item.step!.expertTeam"
-                      @open-team="openExpertTeam(item.step!.id)"
-                    />
                     <OrganizationCard
-                      v-if="item.step!.organization && orgCardStepIds.has(item.step!.id)"
-                      :organization="item.step!.organization"
+                      v-if="teamCardViews.has(item.step!.id)"
+                      :organization="teamCardViews.get(item.step!.id)!"
                       @open="openOrganization(item.step!.id)"
                     />
                     <div v-if="item.step!.type === 'user_supplement' && splitSentMessage(item.step!.content, item.step!.attachments).rest.length > 0" class="message-attachments">

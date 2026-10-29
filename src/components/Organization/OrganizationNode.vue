@@ -7,11 +7,17 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Crown, ShieldCheck } from 'lucide-vue-next'
 import type { OrgNode } from '../../utils/organization-view'
+import { toolDisplayName } from '../../utils/tool-display'
 import { avatarInitial } from '../../utils/expert-team-view'
 import OrganizationStatusBadge from './OrganizationStatusBadge.vue'
 
 const props = defineProps<{ node: OrgNode }>()
+const emit = defineEmits<{ open: [] }>()
 const { t } = useI18n()
+const activity = computed(() => {
+  const step = props.node.member.activity
+  return step ? [toolDisplayName(t, step.tool), step.args].filter(Boolean).join(' ') : ''
+})
 
 const statusLabel = computed(() => t(`ai.expertTeam.status.${props.node.bucket}`))
 const tip = computed(() => [
@@ -31,6 +37,11 @@ const tip = computed(() => [
     :data-status="node.bucket"
     :title="tip"
     :aria-label="tip"
+    role="button"
+    tabindex="0"
+    @click.stop="emit('open')"
+    @keydown.enter.stop.prevent="emit('open')"
+    @keydown.space.stop.prevent="emit('open')"
   >
     <span v-if="node.member.lead" class="org-node-rank">
       <Crown :size="11" aria-hidden="true" />
@@ -44,9 +55,9 @@ const tip = computed(() => [
         <span class="org-node-name-text">{{ node.member.name }}</span>
         <ShieldCheck v-if="node.member.reviewer" :size="12" class="org-reviewer" :aria-label="t('ai.organization.reviewer')" />
       </span>
-      <span v-if="node.member.role || node.member.description" class="org-node-sub">
-        {{ node.member.role || node.member.description }}
-      </span>
+      <span v-if="node.member.role" class="org-node-sub">{{ node.member.role }}</span>
+      <span v-if="node.member.description" class="org-node-duty" :title="node.member.description">{{ node.member.description }}</span>
+      <span v-if="activity" class="org-node-activity" :title="activity">{{ activity }}</span>
     </span>
     <OrganizationStatusBadge :bucket="node.bucket" :label="statusLabel" compact />
   </div>
@@ -55,6 +66,7 @@ const tip = computed(() => [
 <style scoped>
 .org-node {
   --node-tone: var(--text-secondary);
+  cursor: pointer;
   position: relative;
   box-sizing: border-box;
   display: inline-flex;
@@ -73,6 +85,8 @@ const tip = computed(() => [
   text-align: left;
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
+.org-node:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; }
+.org-node:hover { filter: brightness(1.08); }
 .org-node.is-running { --node-tone: var(--accent-primary); }
 .org-node.is-waiting { --node-tone: var(--color-warning, #e5c07b); }
 .org-node.is-completed { --node-tone: var(--color-success, #98c379); }
@@ -152,6 +166,9 @@ const tip = computed(() => [
   font-size: 10.5px;
   color: var(--text-secondary);
 }
+.org-node-duty, .org-node-activity { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; margin-top: 4px; }
+.org-node-duty { color: var(--text-primary); }
+.org-node-activity { color: var(--text-muted); }
 /* 只让执行节点里的状态点呼吸，整张卡片和汇总行保持静止。 */
 .org-node.is-running :deep(.org-status-dot) {
   animation: org-node-working 2.4s ease-in-out infinite;

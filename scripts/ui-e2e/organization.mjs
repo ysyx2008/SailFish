@@ -8,7 +8,7 @@
  *   E2E_KEEP=1 …                                               # 保留临时目录
  *
  * 1. 对话里那一步下面有组织小卡片：几个人、几个团、几个在干
- * 2. 顶部挂着的一行按全组织计数，有「看组织图」的入口
+ * 2. 顶部挂着的一行按全组织计数，有「查看团队」的入口
  * 3. 组织图：秘书在最上面，组长名下按团分组，组长名下的组长再往下长一层；团是纵向列、散人和团平级；团头上有验收状态
  * 4. 点团的「群聊」打开那个团的完整群聊（从群聊文件读），成员栏是这个团的人，组长一栏写着是哪位组长，秘书的话显示为「秘书」
  * 4b. 两个组长名下各有一个同名团：点开哪个看哪个的成员
@@ -17,6 +17,7 @@
  * 6b. 都做完后的组织图：顶部概览、每个人和每个团都变成做完的样子
  */
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { launchApp } from './launch.mjs'
@@ -53,7 +54,7 @@ const artifactSession = 'sess-org-artifacts'
 const artifactPath = path.join(dataDir, '研发交付.md')
 fs.writeFileSync(artifactPath, '# 研发交付\n\n团队成果正文：账号密码登录已经完成。\n')
 function saveArtifactMember(name, owner, file, result) {
-  const dir = path.join(dataDir, 'history', 'sub-agents', '2026-10-29', artifactSession, `fixture-${name}`)
+  const dir = path.join(dataDir, 'history', 'sub-agents', '2026-10-29', artifactSession, `${name}-${createHash('sha1').update(name).digest('hex').slice(0, 8)}`)
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({ name, parent: owner, team: '项目团', description: 'fixture', prompt: 'fixture', status: 'completed', result, updatedAt: now }))
   fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ id: name, timestamp: now, status: 'completed', duration: 1 }))
@@ -212,26 +213,26 @@ try {
   const card = page.locator('.ai-messages:visible .organization-card')
   check('对话里有组织小卡片', await card.count() === 1, await card.count())
   const cardText = await card.first().innerText().catch(() => '')
-  check('写着 8 人、2 个团、7 在干、1 干完', /8 人/.test(cardText) && /2 个团/.test(cardText) && /7 在干/.test(cardText) && /1 干完/.test(cardText), cardText)
+  check('写着 8 人、2 个团、7 在干、1 干完', /8 人/.test(cardText) && /2 个小组/.test(cardText) && /7 在干/.test(cardText) && /1 干完/.test(cardText), cardText)
   await shot('1-card')
 
   console.log('\n[2] 顶部一行按全组织计数')
   const dockText = await text('.sub-agent-dock')
-  check('顶部写着组织：7 人在干，共 8 人', /组织/.test(dockText) && /7 人在干/.test(dockText) && /共 8 人/.test(dockText), dockText)
-  check('顶部有「看组织图」入口', await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).count() === 1)
+  check('顶部写着组织：7 人在干，共 8 人', /团队/.test(dockText) && /7 人在干/.test(dockText) && /共 8 人/.test(dockText), dockText)
+  check('顶部有「查看团队」入口', await page.locator('.sub-agent-dock .dock-team', { hasText: '查看团队' }).count() === 1)
 
   console.log('\n[3] 组织图')
   await sleep(1500)
   await dismissDialogs()
-  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '查看团队' }).click()
   await page.locator('.organization-chart').waitFor({ state: 'visible', timeout: 10_000 })
   const chart = await text('.organization-chart')
   check('秘书在最上面', chart.includes('秘书'), chart)
   check('两位组长都在', chart.includes('研发组') && chart.includes('运营组'), chart)
   check('组长名下的人都在，组长的组长也在', ['前端', '后端', '文档', '投放组', '小投', '小营'].every((n) => chart.includes(n)), chart)
-  check('团头：团名和验收状态', chart.includes('团「项目团」') && chart.includes('待验收'), chart)
+  check('团头：团名和验收状态', chart.includes('小组「项目团」') && chart.includes('待验收'), chart)
   check('验收人有标记', await page.locator('.organization-chart .org-reviewer').count() === 1)
-  check('标题写着共 8 人 · 2 个团', /共 8 人/.test(chart) && /2 个团/.test(chart), chart)
+  check('标题写着共 8 人 · 2 个团', /共 8 人/.test(chart) && /2 个小组/.test(chart), chart)
   check('顶部概览写着 7 人在干、1 人做完', /7 人在干/.test(chart) && /1 人做完/.test(chart), chart)
   check('在干的人都有醒目的状态标签', await page.locator('.organization-chart .org-node.is-running').count() === 7)
   check('做完的人也有醒目的状态标签', await page.locator('.organization-chart .org-node.is-completed').count() === 1)
@@ -318,7 +319,7 @@ try {
   check('退出铺满恢复原分栏宽度', Math.abs(restoredWidth - splitWidth) < 2, `${splitWidth} -> ${restoredWidth}`)
   await page.locator('.oc-focus-btn').click()
   await page.locator('.oc-close-btn').click()
-  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '查看团队' }).click()
   await page.locator('.organization-chart').waitFor({ state: 'visible' })
   check('关闭再打开回到分栏', await page.locator('.organization-chart.is-focus').count() === 0)
 
@@ -382,7 +383,7 @@ try {
   await page.locator('.oc-close-btn').click()
   await page.locator('.artifact-list-slot:visible .artifact-chrome-btn').first().hover()
   await page.locator('.artifact-list-pop-item', { hasText: '其他任务稿' }).click()
-  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '查看团队' }).click()
   await page.locator('.org-team-artifacts').first().click()
   await page.locator('.oa-item').filter({ hasText: '研发组交付' }).click()
   await page.locator('.org-artifacts .canvas-panel').waitFor({ state: 'visible' })
@@ -391,7 +392,7 @@ try {
   await page.locator('.oc-close-btn').click()
   check('关闭组织图恢复进入前的主文档', await page.evaluate(() => window.__e2eArtifactStore.getActiveArtifact(window.__e2eTab)?.id === 'unrelated-artifact'))
   check('团队打开的成果仍保留在本场清单', await page.evaluate(() => window.__e2eArtifactStore.getArtifacts(window.__e2eTab).some(a => a.title === '研发组交付')))
-  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '查看团队' }).click()
   await page.locator('.oc-focus-btn').click()
   // 一个没有落盘成果的会话，明确显示空状态。
   await page.evaluate(() => {
@@ -410,9 +411,9 @@ try {
   await page.locator('.expert-team-chat').waitFor({ state: 'visible', timeout: 10_000 })
   await page.locator('.expert-team-chat .etc-message').first().waitFor({ state: 'visible', timeout: 10_000 })
   const chatText = await text('.expert-team-chat')
-  check('标题是专家团「项目团」', chatText.includes('专家团「项目团」'), chatText)
+  check('标题是专家团「项目团」', chatText.includes('小组「项目团」'), chatText)
   check('群聊全文是从文件里读来的 4 条', await page.locator('.expert-team-chat .etc-message').count() === 4, await page.locator('.expert-team-chat .etc-message').count())
-  check('成员栏是这个团的两位，组长一栏写着是研发组的', chatText.includes('前端') && chatText.includes('后端') && chatText.includes('组长·研发组'), chatText)
+  check('成员栏是这个团的两位，组长一栏写着是研发组的', chatText.includes('前端') && chatText.includes('后端') && chatText.includes('负责人·研发组'), chatText)
   check('秘书的话显示为「秘书」', chatText.includes('这一版只做账号密码登录') && /秘书/.test(chatText), chatText)
   check('不会混进别的团的人', !chatText.includes('小投') && !chatText.includes('文档'))
   await shot('4-team-chat')
@@ -421,9 +422,9 @@ try {
   await page.locator('.expert-team-chat .etc-icon-btn').first().click()
   await sleep(300)
   check('团框画出了两个', await page.locator('.organization-chart .org-team').count() === 2)
-  const opsTeam = page.locator('.organization-chart .org-team').filter({ hasText: '组长·运营组' })
+  const opsTeam = page.locator('.organization-chart .org-team').filter({ hasText: '负责人·运营组' })
   check('团框里写着各自的组长', await opsTeam.count() === 1)
-  await opsTeam.click()
+  await opsTeam.locator('.org-team-chat').click()
   await page.locator('.expert-team-chat').waitFor({ state: 'visible', timeout: 10_000 })
   const opsMembers = await page.locator('.expert-team-chat .etc-member').evaluateAll((items) => items.map((el) => el.getAttribute('aria-label') ?? ''))
   check('点开的是运营组的项目团，成员不串',
@@ -443,13 +444,13 @@ try {
   await updateStep(dispatchStep(true))
   await sleep(600)
   const doneDock = await text('.sub-agent-dock')
-  check('顶部写着组织 8 人都干完了', /组织 8 人都干完了/.test(doneDock), doneDock)
+  check('顶部写着组织 8 人都干完了', /团队 8 人已收工/.test(doneDock), doneDock)
   const doneCard = await page.locator('.ai-messages:visible .organization-card').first().innerText().catch(() => '')
-  check('卡片写着都干完了', /都干完了/.test(doneCard), doneCard)
+  check('卡片写着都干完了', /成员已收工/.test(doneCard), doneCard)
   await shot('6-done')
 
   console.log('\n[6b] 都做完后的组织图')
-  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '查看团队' }).click()
   await page.locator('.organization-chart').waitFor({ state: 'visible', timeout: 10_000 })
   const doneChart = await text('.organization-chart')
   check('顶部概览写着 8 人做完', /8 人做完/.test(doneChart) && !/人在干/.test(doneChart), doneChart)
@@ -474,9 +475,9 @@ try {
   })
   await sleep(800)
   check('同一份组织只挂一张卡片', await page.locator('.ai-messages:visible .organization-card').count() === 1)
-  check('顶部也只有一个组织入口', await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).count() === 1)
+  check('顶部也只有一个组织入口', await page.locator('.sub-agent-dock .dock-team', { hasText: '查看团队' }).count() === 1)
   const dedupeDock = await text('.sub-agent-dock')
-  check('顶部按最早那份快照显示，不再转圈', /组织 8 人都干完了/.test(dedupeDock) && !/人在干/.test(dedupeDock), dedupeDock)
+  check('顶部按最早那份快照显示，不再转圈', /团队 8 人已收工/.test(dedupeDock) && !/人在干/.test(dedupeDock), dedupeDock)
   await shot('7-dedupe')
 
   console.log('\n[8] 五种节点状态与独立的验收结论')
@@ -487,7 +488,7 @@ try {
   mixed.organization.problems = 2
   mixed.organization.teams[0].review = 'reject'
   await updateStep(mixed)
-  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '查看团队' }).click()
   await page.locator('.organization-chart').waitFor({ state: 'visible' })
   for (const status of ['running', 'waiting', 'completed', 'failed', 'interrupted']) {
     check(`展示 ${status} 节点`, await page.locator(`.organization-chart .org-node.is-${status}`).count() > 0)
@@ -511,26 +512,17 @@ try {
   await pushStep({ id: 'loose-spacing', type: 'tool_call', toolName: 'dispatch_agents', timestamp: Date.now(), content: '派出独立伙计', success: true,
     subAgents: [{ id: '独立伙计', name: '独立伙计', description: '检查文档', status: 'running', steps: [] }],
   })
-  await page.locator('.sub-agent-dock .dock-row').nth(1).waitFor({ state: 'visible' })
-  await page.evaluate(() => {
-    const tab = window.__e2eStore.tabs.find(t => t.id === window.__e2eTab)
-    tab.agentState.steps.find(s => s.id === 'loose-spacing').subAgents[0].status = 'completed'
-  })
-  await page.locator('.sub-agent-dock .dock-row').nth(1).filter({ hasText: '都干完了' }).waitFor({ state: 'visible' })
-  const spacing = await page.evaluate(() => {
-    const dock = [...document.querySelectorAll('.sub-agent-dock')].find(el => el.getBoundingClientRect().height > 0)
-    const rows = dock.querySelectorAll('.dock-row')
-    const first = rows[0].getBoundingClientRect()
-    const second = rows[1].getBoundingClientRect()
+  check('分层团队与独立成员仍只有一个团队入口', await page.locator('.sub-agent-dock .dock-row').count() === 1)
+  const gap = await page.evaluate(() => {
+    const dock = document.querySelector('.sub-agent-dock')
     const plan = dock.previousElementSibling?.querySelector('.agent-plan')
-    return { rows: second.top - first.bottom, above: plan ? first.top - plan.getBoundingClientRect().bottom : null }
+    return plan ? dock.getBoundingClientRect().top - plan.getBoundingClientRect().bottom : null
   })
-  check('组织与伙计行距是 8px', Math.abs(spacing.rows - 8) < 1, JSON.stringify(spacing))
-  check('行距与上方计划卡片一致', spacing.above !== null && Math.abs(spacing.rows - spacing.above) < 1, JSON.stringify(spacing))
+  check('团队入口沿用与计划之间的间距', gap !== null && Math.abs(gap) < 16, String(gap))
   await shot('9-spacing')
 
   console.log('\n[9b] 完整展示 1000 人、101 团与异常汇总')
-  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '查看团队' }).click()
   await page.locator('.organization-chart').waitFor({ state: 'visible' })
   const large = dispatchStep(true)
   large.organization.members = Array.from({ length: 1000 }, (_, i) => member(`大组织成员${i}`, i === 0 ? 'failed' : 'completed', i === 0 ? { lead: true, role: '负责人' } : { parent: '大组织成员0', team: `大团${i % 101}` }))
@@ -547,7 +539,7 @@ try {
   check('1000 人全部展开在图上', await page.locator('.organization-chart .org-node').count() === 1000)
   check('101 个团队全部展示', await page.locator('.organization-chart .org-team').count() === 101)
   const summary = await text('.oc-summary')
-  check('汇总同时列出执行异常、打回、待验收、等负责人', /1 人出问题/.test(summary) && /1 团验收打回/.test(summary) && /1 团待验收/.test(summary) && /1 团等负责人/.test(summary), summary)
+  check('汇总同时列出执行异常、打回、待验收、等负责人', /1 人出问题/.test(summary) && /1 个小组验收打回/.test(summary) && /1 个小组待验收/.test(summary) && /1 个小组等负责人/.test(summary), summary)
   const scroll = await page.locator('.oc-body').evaluate(el => ({ width: el.scrollWidth, clientWidth: el.clientWidth, height: el.scrollHeight, clientHeight: el.clientHeight }))
   check('大组织保留双向滚动空间', scroll.width > scroll.clientWidth && scroll.height > scroll.clientHeight, JSON.stringify(scroll))
   await page.locator('.oc-close-btn').click()
@@ -575,7 +567,7 @@ try {
     window.__e2eOrgHost = { vm, open: vm.props.openOrganizationSeat }
     vm.props.openOrganizationSeat = undefined
   })
-  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '查看团队' }).click()
   await page.locator('.organization-chart.is-overlay').waitFor({ state: 'visible' })
   await page.locator('.oc-focus-btn').click()
   const overlayBounds = await page.locator('.organization-chart').evaluate(el => {

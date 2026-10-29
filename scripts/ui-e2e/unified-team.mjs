@@ -1,0 +1,91 @@
+/** 三种协作结构共用团队入口；隔离历史、真实 IPC、真实成员文件，不抢前台。 */
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { createHash } from 'node:crypto'
+import { launchApp } from './launch.mjs'
+const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sft-unified-team-'))
+const failures = []
+const check = (name, pass, detail = '') => { console.log(`${pass ? 'OK' : 'FAIL'} ${name} ${detail}`); if (!pass) failures.push(name) }
+const stamp = Date.now()
+function save(session, name, team) {
+  const dir = path.join(directory, 'history/sub-agents/2026-10-30', session, `${name}-${createHash('sha1').update(name).digest('hex').slice(0, 8)}`)
+  fs.mkdirSync(dir, { recursive: true })
+  const file = path.join(directory, `${session}-${name}.md`)
+  fs.writeFileSync(file, `# ${session} ${name}\n真实成果正文\n`)
+  fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({ name, team, description: `${name}的具体职责`, prompt: '核对文件', status: 'completed', result: `${session}-${name}已核对`, updatedAt: stamp }))
+  fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ id: name, timestamp: stamp, status: 'completed', duration: 1 }))
+  fs.writeFileSync(path.join(dir, 'steps.jsonl'), [
+    { id: 'read', type: 'tool_call', timestamp: stamp, toolName: 'read_file', toolArgs: { path: file }, success: true },
+    { id: 'artifact', type: 'tool_result', timestamp: stamp + 1, canvasData: { action: 'open', renderer: 'markdown', title: `${session}-${name}成果`, filePath: file, contentFromFile: true } },
+  ].map(x => JSON.stringify(x)).join('\n'))
+  return file
+}
+const firstFile = save('flat-session', '成员甲')
+save('flat-session', '成员乙')
+save('group-session', '开发', '研发小组'); save('group-session', '测试', '研发小组')
+const app = await launchApp(directory)
+const page = await app.firstWindow()
+page.setDefaultTimeout(15000)
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
+try {
+  await page.waitForFunction(() => window.electronAPI?.config)
+  await page.evaluate(async () => { await window.electronAPI.config.setSetupCompleted(true); await window.electronAPI.config.setAiProfiles([{ id: 'fixture', name: 'fixture', apiUrl: 'http://127.0.0.1:1/v1', apiKey: 'x', model: 'fixture' }]); await window.electronAPI.config.setActiveAiProfile('fixture') })
+  await page.reload()
+  await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$pinia?._s.get('terminal'))
+  await page.evaluate(() => { const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('terminal'); const id = store.createAssistantTab({ title: '统一团队验证' }); store.markAssistantSkipOnboarding(id); store.focusHubConversation(id); window.__teamFixture = { store, id } })
+  await pause(700)
+  const add = step => page.evaluate(s => window.__teamFixture.store.addAgentStep(window.__teamFixture.id, s), { type: 'tool_call', content: '派人协作', timestamp: stamp, ...step })
+  await add({ id: 'u1', type: 'user_task', content: '分头核对两份文件' })
+  await add({ id: 'flat1', sourceSessionId: 'flat-session', subAgents: [{ id: '成员甲', name: '成员甲', role: '校对', description: '成员甲的具体职责', status: 'running', steps: [{ tool: 'read_file', args: firstFile, status: 'running' }] }] })
+  await add({ id: 'flat2', sourceSessionId: 'flat-session', subAgents: [{ id: '成员乙', name: '成员乙', description: '成员乙的具体职责', status: 'running', steps: [] }] })
+  await pause(1200)
+  for (let i = 0; i < 4; i++) {
+    const dialog = page.locator('.confirm-overlay button:visible').last()
+    if (await dialog.count()) await dialog.click({ force: true })
+    await pause(200)
+  }
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '查看团队' }).waitFor()
+  check('分头工作只有一个团队入口', await page.locator('.sub-agent-dock .dock-row').count() === 1)
+  check('对话里只有一张团队卡片', await page.locator('.ai-messages:visible .organization-card').count() === 1)
+  await page.locator('.sub-agent-dock .dock-team').click()
+  await page.locator('.organization-chart .org-node').nth(1).waitFor()
+  check('独立成员完整展示，不伪造小组', await page.locator('.organization-chart .org-node').count() === 2 && await page.locator('.organization-chart .org-team').count() === 0)
+  if (process.env.E2E_SHOT) { fs.mkdirSync(process.env.E2E_SHOT, { recursive: true }); await page.locator('.oc-focus-btn').click(); await page.screenshot({ path: path.join(process.env.E2E_SHOT, 'unified-team-overview.png') }); await page.locator('.oc-focus-btn').click() }
+  const node = page.locator('.org-node').filter({ hasText: '成员甲' })
+  check('角色、职责和当前活动同时展示', (await node.innerText()).includes('校对') && (await node.innerText()).includes('成员甲的具体职责') && (await node.innerText()).includes(firstFile))
+  await node.click()
+  await page.locator('.org-member-detail').getByText('flat-session-成员甲已核对', { exact: false }).waitFor()
+  check('成员过程和结果从原会话真实读取', (await page.locator('.org-member-detail').innerText()).includes('read_file') || await page.locator('.sa-step').count() > 0)
+  await page.locator('.om-artifacts').click()
+  await page.locator('.oa-item').first().waitFor()
+  check('个人成果抬头不误写秘书', await page.locator('.oa-owner').count() === 0)
+  const personal = await page.locator('.oa-list').innerText()
+  check('独立成员产出物按真实成员隔离', personal.includes('flat-session-成员甲成果') && !personal.includes('成员乙成果'))
+  await page.locator('.oa-item').filter({ hasText: 'flat-session-成员甲成果' }).click()
+  await page.locator('.org-artifacts .canvas-panel').getByText('真实成果正文', { exact: false }).waitFor()
+  await page.locator('.oa-header .oa-icon').first().click()
+  await page.locator('.oa-header .oa-icon').first().click()
+  await page.locator('.org-member-detail').waitFor()
+  await page.locator('.om-header button').first().click()
+  await page.locator('.oc-close-btn').click()
+  await page.evaluate(() => { const {store,id} = window.__teamFixture; for (const step of store.tabs.find(t => t.id === id).agentState.steps) for (const member of step.subAgents ?? []) member.status = 'completed' })
+  await pause(100)
+  await add({ id: 'u2', type: 'user_task', content: '开发和测试交接' })
+  await add({ id: 'group', sourceSessionId: 'group-session', subAgents: ['开发','测试'].map(name => ({ id: name, name, role: `${name}专家`, description: `${name}的具体职责`, status: 'running', steps: [] })), expertTeam: { name: '研发小组', messages: [{ seq: 1, from: '开发', to: ['测试'], text: '请核对这一版', at: stamp }], reviewers: ['测试'], review: 'pending', wakes: 0, wakeLimit: 30, waitingLeader: false } })
+  await page.locator('.sub-agent-dock .dock-team').click()
+  await page.locator('.organization-chart .org-team').waitFor()
+  check('协作小组沿用同一个团队视图', await page.locator('.organization-chart .org-node').count() === 2 && await page.locator('.org-review.is-pending').count() === 1)
+  await page.locator('.org-team-chat').click()
+  await page.getByText('请核对这一版', { exact: false }).last().waitFor()
+  check('小组群聊保留真实成员和交接', (await page.locator('.expert-team-chat').innerText()).includes('测试'))
+  await page.locator('.expert-team-chat .etc-icon-btn').first().click()
+  await page.locator('.org-team-artifacts').click()
+  await page.locator('.oa-item').first().waitFor()
+  const groupText = await page.locator('.oa-list').innerText()
+  check('小组成果按原会话读取，不混入上一任务', groupText.includes('group-session-开发成果') && !groupText.includes('flat-session'))
+  if (process.env.E2E_SHOT) { fs.mkdirSync(process.env.E2E_SHOT, { recursive: true }); await page.screenshot({ path: path.join(process.env.E2E_SHOT, 'unified-team.png') }) }
+} catch (error) { failures.push(String(error)); console.error(error) }
+finally { const timeout = setTimeout(() => app.process()?.kill('SIGKILL'), 5000); try { await app.close().catch(() => {}) } finally { clearTimeout(timeout) }; fs.rmSync(directory, { recursive: true, force: true }) }
+console.log(failures.length ? `RESULT FAIL ${failures.join('\n')}` : 'RESULT PASS')
+process.exit(failures.length ? 1 : 0)

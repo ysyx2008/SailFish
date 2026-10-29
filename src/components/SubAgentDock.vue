@@ -1,132 +1,30 @@
 <script setup lang="ts">
-/**
- * 对话顶部挂着的「派出去的人」：每一批一行，不随对话滚走。
- * 点一行展开成对话里那一处同样的内容（盖在对话上面，不把对话往下挤），点别处或再点一下收起。
- */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronDown, MessagesSquare, Check, TriangleAlert, Network } from 'lucide-vue-next'
+import { Check, TriangleAlert, Network } from 'lucide-vue-next'
 import type { AgentStep } from '@shared/types'
-import { describeDock } from '../utils/sub-agent-summary'
 import { describeOrgDock } from '../utils/organization-view'
-import SubAgentGroup from './SubAgentGroup.vue'
+import { teamCards, teamSources } from '../utils/team-view'
 
-const props = defineProps<{
-  /** 该挂着的几批人（派出那几步），由外面按「还没干完 / 你还没再说话」挑好 */
-  steps: readonly AgentStep[]
-  /** 上面紧挨着计划卡：合成一块，不再各画各的框 */
-  attached?: boolean
-  /** 此刻开着群聊的专家团（派出那一步的 id） */
-  openTeamStepId?: string | null
-  /** 这场对话里第一份组织：同一份组织可能挂在多个派出步骤上，显示时只认这一份 */
-  organizationStep?: AgentStep
-}>()
+const props = defineProps<{ steps: readonly AgentStep[]; teamSteps?: readonly AgentStep[]; attached?: boolean; openTeamStepId?: string | null; organizationStep?: AgentStep }>()
 const emit = defineEmits<{ openTeam: [stepId: string]; toggleTeam: [stepId: string]; openOrganization: [stepId: string] }>()
 const { t } = useI18n()
-
-const root = ref<HTMLElement | null>(null)
-const openStepId = ref<string | null>(null)
-
-/** 同一份组织只挂一个入口：放在最靠前的、带组织的那一批上；其余批次只留自己的群聊 */
-const organizationSource = computed(() => props.organizationStep?.organization)
-const organizationRowId = computed(() => props.steps.find(step => step.organization)?.id ?? null)
-const organizationStepId = computed(() => props.organizationStep?.id ?? organizationRowId.value)
-
-const items = computed(() => props.steps.map(step => {
-  const team = step.expertTeam
-  const org = step.id === organizationRowId.value ? (organizationSource.value ?? step.organization) : undefined
-  return {
-    step,
-    // 有组织的一批按全组织计数，不只数秘书直接派的那几位
-    ...(org ? describeOrgDock(t, org) : describeDock(t, step.subAgents ?? [])),
-    hasOrganization: !!org,
-    teamCount: team ? team.messages.length + (team.earlierOmitted ?? 0) : 0,
-    hasTeam: !!team,
-  }
-}))
-
-const openItem = computed(() => items.value.find(item => item.step.id === openStepId.value))
-
-const toggle = (stepId: string) => {
-  openStepId.value = openStepId.value === stepId ? null : stepId
-}
-
-// 展开着的那一批不再挂了（你说话了、被收起），面板跟着收
-watch(() => props.steps.map(s => s.id), ids => {
-  if (openStepId.value && !ids.includes(openStepId.value)) openStepId.value = null
-})
-
-const onPointerDown = (event: PointerEvent) => {
-  if (!openStepId.value) return
-  if (root.value && event.target instanceof Node && root.value.contains(event.target)) return
-  openStepId.value = null
-}
-const onKeyDown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape') openStepId.value = null
-}
-onMounted(() => {
-  document.addEventListener('pointerdown', onPointerDown, true)
-  document.addEventListener('keydown', onKeyDown)
-})
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onPointerDown, true)
-  document.removeEventListener('keydown', onKeyDown)
+const items = computed(() => {
+  const sources = props.teamSteps ?? props.steps
+  return [...teamCards(sources)]
+    .filter(([id]) => teamSources(sources, id).some(source => props.steps.some(step => step.id === source.id)))
+    .map(([id, org]) => ({ id, ...describeOrgDock(t, org) }))
 })
 </script>
 
 <template>
-  <div v-if="items.length > 0" ref="root" class="sub-agent-dock" :class="{ attached }">
-    <div v-for="item in items" :key="item.step.id" class="dock-row">
-      <div
-        class="dock-bar"
-        :class="[item.kind, { open: openStepId === item.step.id }]"
-        role="button"
-        tabindex="0"
-        :aria-expanded="openStepId === item.step.id"
-        :title="openStepId === item.step.id ? t('ai.subAgentDock.collapse') : t('ai.subAgentDock.expand')"
-        @click="toggle(item.step.id)"
-        @keydown.enter.self.prevent="toggle(item.step.id)"
-        @keydown.space.self.prevent="toggle(item.step.id)"
-      >
-        <span class="dock-icon">
-          <span v-if="item.kind === 'working'" class="dock-spinner" />
-          <Check v-else-if="item.kind === 'done'" :size="13" />
-          <TriangleAlert v-else :size="13" />
-        </span>
+  <div v-if="items.length" class="sub-agent-dock" :class="{ attached }">
+    <div v-for="item in items" :key="item.id" class="dock-row">
+      <button type="button" class="dock-bar" :class="item.kind" @click="emit('openOrganization', item.id)">
+        <span class="dock-icon"><span v-if="item.kind === 'working'" class="dock-spinner" /><Check v-else-if="item.kind === 'done'" :size="13" /><TriangleAlert v-else :size="13" /></span>
         <span class="dock-headline">{{ item.headline }}</span>
-        <button
-          v-if="item.hasOrganization && organizationStepId"
-          type="button"
-          class="dock-team"
-          @click.stop="emit('openOrganization', organizationStepId)"
-        >
-          <Network :size="12" />
-          <span>{{ t('ai.organization.openChart') }}</span>
-        </button>
-        <button
-          v-if="item.hasTeam"
-          type="button"
-          class="dock-team"
-          :class="{ active: openTeamStepId === item.step.id }"
-          :aria-pressed="openTeamStepId === item.step.id"
-          @click.stop="emit('toggleTeam', item.step.id)"
-        >
-          <MessagesSquare :size="12" />
-          <span>{{ item.teamCount > 0 ? t('ai.expertTeam.cardCount', { count: item.teamCount }) : t('ai.subAgentDock.teamChat') }}</span>
-        </button>
-        <ChevronDown :size="13" class="dock-chevron" :class="{ open: openStepId === item.step.id }" />
-      </div>
-    </div>
-    <!-- 面板挂在整个栏下面（不是点开那一行下面），下面几行不被盖住 -->
-    <div v-if="openItem" class="dock-panel">
-      <SubAgentGroup
-        :step-id="openItem.step.id"
-        :sub-agents="openItem.step.subAgents ?? []"
-        :expert-team="openItem.step.expertTeam"
-        always-open
-        plain
-        hide-team-card
-      />
+        <span class="dock-team"><Network :size="12" /><span>{{ t('ai.organization.openChart') }}</span></span>
+      </button>
     </div>
   </div>
 </template>
@@ -155,6 +53,11 @@ onBeforeUnmount(() => {
 }
 
 .dock-bar {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
   display: flex;
   align-items: center;
   gap: 8px;

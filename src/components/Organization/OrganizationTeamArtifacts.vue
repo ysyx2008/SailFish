@@ -3,14 +3,15 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft, FileText, FolderOpen, RefreshCw, X, Maximize2, Minimize2 } from 'lucide-vue-next'
-import { resolveCanvasArtifactId, type OrganizationArtifactView } from '@shared/types'
+import { resolveCanvasArtifactId, type OrganizationArtifactView, type TeamArtifactSource } from '@shared/types'
 import { checkFilePathExists, requireArtifactDesktopHost, useAssistantArtifactStore } from '@sailfish/workbench-assistant/artifact'
 import type { ArtifactPanelBindings } from '@sailfish/workbench-assistant/artifact/composer-quote'
 import { loadArtifactContentFromDisk } from '@sailfish/workbench-assistant/artifact/domain/artifact-content-loader'
 import ArtifactPanel from '@sailfish/workbench-assistant/artifact/components/ArtifactPanel.vue'
+import { teamViewForStep } from '../../utils/team-view'
 import { useTerminalStore } from '../../stores/terminal'
 
-const props = defineProps<{ tabId: string; stepId: string; team: { name: string; owner?: string }; focusActive: boolean; artifactBindings?: ArtifactPanelBindings }>()
+const props = defineProps<{ tabId: string; stepId: string; team: TeamArtifactSource; focusActive: boolean; artifactBindings?: ArtifactPanelBindings }>()
 const emit = defineEmits<{ close: []; toggleFocus: [] }>()
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
@@ -23,7 +24,10 @@ let openRequest = 0
 const preview = ref(false)
 const panel = ref<{ flushDraft: () => void } | null>(null)
 const state = computed(() => terminalStore.tabs.find(tab => tab.id === props.tabId)?.agentState)
-const sessionId = computed(() => state.value?.steps.find(step => step.id === props.stepId)?.organization?.sessionId ?? state.value?.sessionId)
+const view = computed(() => teamViewForStep(state.value?.steps ?? [], props.stepId, state.value?.sessionId))
+const sessionId = computed(() => view.value?.sessionId)
+const sourceName = computed(() => 'member' in props.team ? props.team.member : props.team.name)
+const sourceOwner = computed(() => 'name' in props.team ? props.team.owner : undefined)
 const groups = computed(() => [
   { key: 'members', label: t('ai.organization.teamArtifacts'), items: items.value.filter(item => !item.producerRole) },
   { key: 'lead', label: t('ai.organization.leadArtifacts'), items: items.value.filter(item => item.producerRole === 'lead') },
@@ -37,7 +41,7 @@ async function refresh(clearOpenError = false) {
   failed.value = false
   if (clearOpenError) openError.value = ''
   try {
-    const result = session ? await window.electronAPI.history.readTeamArtifacts(session, { name: props.team.name, owner: props.team.owner }) : []
+    const result = session ? await window.electronAPI.history.readTeamArtifacts(session, { ...props.team }) : []
     if (current === request) items.value = result
   } catch {
     if (current === request) failed.value = true
@@ -45,7 +49,7 @@ async function refresh(clearOpenError = false) {
     if (current === request) loading.value = false
   }
 }
-watch([sessionId, () => props.stepId, () => props.team.name, () => props.team.owner], () => {
+watch([sessionId, () => props.stepId, sourceName, sourceOwner], () => {
   openRequest++
   panel.value?.flushDraft()
   preview.value = false
@@ -53,8 +57,8 @@ watch([sessionId, () => props.stepId, () => props.team.name, () => props.team.ow
   items.value = []
   void refresh()
 }, { immediate: true })
-const working = computed(() => state.value?.steps.find(step => step.id === props.stepId)?.organization?.members.some(member =>
-  (member.name === props.team.owner || (member.parent === props.team.owner && member.team === props.team.name))
+const working = computed(() => view.value?.members.some(member =>
+  ('member' in props.team ? member.name === props.team.member : member.name === props.team.owner || (member.parent === props.team.owner && member.team === props.team.name))
   && (member.status === 'running' || member.status === 'pending')) ?? false)
 watch(working, (now, before) => {
   // 最后一个人收工后不再轮询，退出前仍须读到这次交回的成果。
@@ -122,9 +126,9 @@ const titleOf = (item: OrganizationArtifactView) => item.kind === 'result'
   <section class="org-artifacts" :class="{ 'is-focus': focusActive }">
     <header class="oa-header">
       <button type="button" class="oa-icon" :title="t(preview ? 'ai.organization.backToArtifacts' : 'ai.organization.backToChart')" @click="back"><ArrowLeft :size="15" /></button>
-      <span class="oa-title">{{ team.name }} · {{ t('ai.organization.teamArtifacts') }}</span>
+      <span class="oa-title">{{ sourceName }} · {{ t('ai.organization.teamArtifacts') }}</span>
       <button type="button" class="oa-icon" :title="t('ai.organization.closeArtifacts')" @click="close"><X :size="15" /></button>
-      <span class="oa-owner">{{ team.owner || t('ai.organization.secretary') }}</span>
+      <span v-if="'name' in team" class="oa-owner">{{ sourceOwner || t('ai.organization.secretary') }}</span>
       <button v-if="!preview" type="button" class="oa-icon oa-refresh" :disabled="loading" :title="t('ai.organization.refreshArtifacts')" @click="refresh(true)"><RefreshCw :size="14" /></button>
       <button v-if="!preview" type="button" class="oa-icon" :aria-pressed="focusActive" :title="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @click="toggleFocus"><Minimize2 v-if="focusActive" :size="14" /><Maximize2 v-else :size="14" /></button>
     </header>
