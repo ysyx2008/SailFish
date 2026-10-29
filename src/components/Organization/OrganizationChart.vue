@@ -9,6 +9,7 @@ import { ArrowLeft, X, Network, UserRound } from 'lucide-vue-next'
 import { useTerminalStore } from '../../stores/terminal'
 import { buildOrgTree } from '../../utils/organization-view'
 import OrganizationBranch from './OrganizationBranch.vue'
+import OrganizationStatusBadge from './OrganizationStatusBadge.vue'
 
 const props = withDefaults(defineProps<{
   tabId: string
@@ -26,6 +27,20 @@ const organization = computed(() => terminalStore.tabs
   .find(tab => tab.id === props.tabId)?.agentState?.steps
   .find(s => s.id === props.stepId)?.organization)
 const tree = computed(() => organization.value ? buildOrgTree(organization.value) : [])
+/** 全组织的概览：在干几人、做完几人、几人出问题 */
+const stats = computed(() => {
+  const org = organization.value
+  if (!org) return null
+  const problems = Math.max(
+    org.problems ?? 0,
+    org.members.filter(m => m.status === 'failed' || m.status === 'interrupted').length,
+  )
+  return {
+    live: org.live,
+    problems,
+    done: Math.max(0, org.total - org.live - problems),
+  }
+})
 
 const bodyRef = ref<HTMLElement | null>(null)
 
@@ -34,7 +49,7 @@ const centerTree = () => {
   const body = bodyRef.value
   if (!body) return
   const overflow = body.scrollWidth - body.clientWidth
-  if (overflow > 0) body.scrollLeft = overflow / 2
+  body.scrollLeft = overflow > 0 ? overflow / 2 : 0
 }
 
 onMounted(() => {
@@ -60,7 +75,7 @@ onMounted(() => {
       <div class="oc-title">
         <span class="oc-title-name">{{ t('ai.organization.title') }}</span>
         <span v-if="organization" class="oc-title-meta">
-          {{ t('ai.organization.meta', { total: organization.total, live: organization.live, teams: organization.teams.length + (organization.omittedTeams ?? 0) }) }}
+          {{ t('ai.organization.metaSimple', { total: organization.total, teams: organization.teams.length + (organization.omittedTeams ?? 0) }) }}
         </span>
       </div>
       <button
@@ -74,6 +89,27 @@ onMounted(() => {
         <X :size="15" />
       </button>
     </header>
+
+    <div v-if="organization && stats && (stats.live > 0 || stats.done > 0 || stats.problems > 0)" class="oc-summary">
+      <OrganizationStatusBadge
+        v-if="stats.live > 0"
+        bucket="running"
+        :label="t('ai.organization.summaryLive', { live: stats.live })"
+        compact
+      />
+      <OrganizationStatusBadge
+        v-if="stats.done > 0"
+        bucket="completed"
+        :label="t('ai.organization.summaryDone', { count: stats.done })"
+        compact
+      />
+      <OrganizationStatusBadge
+        v-if="stats.problems > 0"
+        bucket="problem"
+        :label="t('ai.organization.summaryProblem', { count: stats.problems })"
+        compact
+      />
+    </div>
 
     <div ref="bodyRef" class="oc-body">
       <div v-if="!organization" class="oc-empty">{{ t('ai.organization.empty') }}</div>
@@ -155,11 +191,21 @@ onMounted(() => {
 .oc-title-name { font-size: 13px; font-weight: 600; }
 .oc-title-meta { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+.oc-summary {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border-color);
+}
+
 .oc-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 16px 16px 24px;
+  padding: 14px 12px 22px;
 }
 .oc-empty { padding: 24px 0; text-align: center; color: var(--text-secondary); font-size: 12px; }
 
@@ -177,9 +223,9 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 6px 14px 6px 6px;
-  border-radius: 12px;
-  border: 1px solid rgba(var(--accent-rgb, 137, 180, 250), 0.55);
-  background: rgba(var(--accent-rgb, 137, 180, 250), 0.1);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
   font-size: 13px;
   font-weight: 600;
 }

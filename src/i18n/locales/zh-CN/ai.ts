@@ -880,6 +880,10 @@ export default {
     organization: {
       title: '项目组织',
       meta: '共 {total} 人，{live} 人没做完，{teams} 个团',
+      metaSimple: '共 {total} 人 · {teams} 个团',
+      summaryLive: '{live} 人在干',
+      summaryDone: '{count} 人做完',
+      summaryProblem: '{count} 人出问题',
       secretary: '秘书',
       lead: '组长',
       reviewer: '验收人',
@@ -901,6 +905,12 @@ export default {
       teamMembers: '{count} 人',
       teamChat: '群聊 {count} 条',
       openTeamChat: '打开这个团的群聊',
+      teamRunning: '{count} 人在干',
+      teamWaiting: '{count} 人等模型',
+      teamDone: '全组做完',
+      teamProblem: '{count} 人出问题',
+      teamEmpty: '还没有成员',
+      teamProgress: '本团进度：做完 {completed}，在干 {running}，出问题 {problem}',
       review: {
         none: '无验收人',
         pending: '待验收',

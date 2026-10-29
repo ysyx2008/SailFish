@@ -7,8 +7,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessagesSquare } from 'lucide-vue-next'
 import type { OrganizationTeamView } from '@shared/types'
-import type { OrgGroup, OrgNode } from '../../utils/organization-view'
+import type { OrgGroup, OrgNode, OrgStatusBucket } from '../../utils/organization-view'
 import OrganizationNode from './OrganizationNode.vue'
+import OrganizationStatusBadge from './OrganizationStatusBadge.vue'
 
 const props = withDefaults(defineProps<{
   groups: readonly OrgGroup[]
@@ -18,36 +19,71 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ openTeam: [team: { name: string; owner?: string }] }>()
 const { t } = useI18n()
 
+interface MeterPart { kind: 'completed' | 'running' | 'waiting' | 'failed' | 'interrupted'; count: number }
 interface TeamSummary {
   owner: string
   members: string
-  running: string
-  completed: string
-  problem: string
+  bucket: OrgStatusBucket
+  label: string
+  meterLabel: string
+  parts: MeterPart[]
+  total: number
 }
 interface NodeCell { kind: 'node'; key: string; node: OrgNode }
 interface TeamCell { kind: 'team'; key: string; team: OrganizationTeamView; nodes: OrgNode[]; summary: TeamSummary }
 type Cell = NodeCell | TeamCell
 
-/** 团头的副行：组长、人数，以及各状态各几人 */
+/** 团头的汇总：先看有没有人出问题，再看还有多少人在干，最后才是全组做完 */
 function summarize(team: OrganizationTeamView, nodes: OrgNode[]): TeamSummary {
   let running = 0
+  let waiting = 0
   let completed = 0
-  let problem = 0
+  let failed = 0
+  let interrupted = 0
   for (const node of nodes) {
     if (node.bucket === 'completed') completed++
-    else if (node.bucket === 'failed' || node.bucket === 'interrupted') problem++
+    else if (node.bucket === 'failed') failed++
+    else if (node.bucket === 'interrupted') interrupted++
+    else if (node.bucket === 'waiting') waiting++
     else running++
   }
+  const problem = failed + interrupted
+  const bucket: OrgStatusBucket = problem > 0
+    ? 'problem'
+    : running > 0
+      ? 'running'
+      : waiting > 0
+        ? 'waiting'
+        : completed > 0
+          ? 'completed'
+          : 'empty'
+  const label = problem > 0
+    ? t('ai.organization.teamProblem', { count: problem })
+    : running > 0
+      ? t('ai.organization.teamRunning', { count: running })
+      : waiting > 0
+        ? t('ai.organization.teamWaiting', { count: waiting })
+        : completed > 0
+          ? t('ai.organization.teamDone')
+          : t('ai.organization.teamEmpty')
+  const parts = ([
+    { kind: 'completed', count: completed },
+    { kind: 'running', count: running },
+    { kind: 'waiting', count: waiting },
+    { kind: 'failed', count: failed },
+    { kind: 'interrupted', count: interrupted },
+  ] as MeterPart[]).filter(part => part.count > 0)
   return {
     // 秘书自己的团没有组长，写「秘书」而不是「组长·秘书」
     owner: team.owner
       ? t('ai.organization.teamOwner', { name: team.owner })
       : t('ai.organization.secretary'),
     members: t('ai.organization.teamMembers', { count: nodes.length }),
-    running: running > 0 ? t('ai.organization.cardLive', { live: running }) : '',
-    completed: completed > 0 ? t('ai.organization.cardCompleted', { count: completed }) : '',
-    problem: problem > 0 ? t('ai.organization.cardProblem', { count: problem }) : '',
+    bucket,
+    label,
+    meterLabel: t('ai.organization.teamProgress', { completed, running: running + waiting, problem }),
+    parts,
+    total: nodes.length,
   }
 }
 
@@ -131,6 +167,7 @@ watch(cells, async () => {
       <div
         v-if="cell.kind === 'team'"
         class="org-team"
+        :class="`is-${cell.summary.bucket}`"
         :title="t('ai.organization.openTeamChat')"
         @click.stop="openTeam(cell.team)"
       >
@@ -147,12 +184,28 @@ watch(cells, async () => {
             <span>{{ t('ai.organization.teamChat', { count: cell.team.messageCount }) }}</span>
           </button>
         </div>
-        <div class="org-team-sub">
+        <div class="org-team-meta">
           <span class="org-team-owner">{{ cell.summary.owner }}</span>
-          <span>{{ cell.summary.members }}</span>
-          <span v-if="cell.summary.running">{{ cell.summary.running }}</span>
-          <span v-if="cell.summary.completed">{{ cell.summary.completed }}</span>
-          <span v-if="cell.summary.problem" class="is-problem">{{ cell.summary.problem }}</span>
+          <span class="org-team-count">{{ cell.summary.members }}</span>
+          <OrganizationStatusBadge
+            :bucket="cell.summary.bucket"
+            :label="cell.summary.label"
+            compact
+          />
+        </div>
+        <div
+          v-if="cell.summary.total > 0"
+          class="org-team-meter"
+          role="img"
+          :aria-label="cell.summary.meterLabel"
+        >
+          <i
+            v-for="part in cell.summary.parts"
+            :key="part.kind"
+            class="org-meter-part"
+            :class="`is-${part.kind}`"
+            :style="{ flexGrow: part.count }"
+          />
         </div>
         <div class="org-team-members">
           <div v-for="node in cell.nodes" :key="node.member.id" class="org-member">
@@ -182,8 +235,8 @@ watch(cells, async () => {
 <style scoped>
 /* 一层分支：横着排；每个分支自己带「总线—短竖线—子节点」的连线 */
 .org-children {
-  --org-gap: 14px;
-  --org-stem: 18px;
+  --org-gap: 12px;
+  --org-stem: 16px;
   position: relative;
   display: flex;
   justify-content: center;
@@ -247,21 +300,27 @@ watch(cells, async () => {
   align-items: center;
 }
 
-/* 团：一个纵向列，团头在外，成员自上而下；点框本身也打开群聊 */
+/* 团：一个纵向列，团头在外，成员自上而下；整框按团的状态着色 */
 .org-team {
+  --org-team-accent: var(--border-color);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-width: 232px;
-  padding: 8px;
+  min-width: 220px;
+  padding: 9px;
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-left: 2px solid var(--org-team-accent);
+  border-radius: 10px;
   background: var(--bg-secondary);
   cursor: pointer;
   transition: border-color 0.15s ease;
 }
-.org-team:hover { border-color: rgba(var(--accent-rgb, 137, 180, 250), 0.45); }
+.org-team.is-running { --org-team-accent: var(--accent-primary); }
+.org-team.is-waiting { --org-team-accent: var(--color-warning, #e5c07b); }
+.org-team.is-completed { --org-team-accent: var(--color-success, #98c379); }
+.org-team.is-problem { --org-team-accent: var(--color-danger, #e06c75); }
+.org-team:hover { border-color: rgba(var(--accent-rgb, 137, 180, 250), 0.4); }
 
 .org-team-head {
   display: flex;
@@ -278,30 +337,55 @@ watch(cells, async () => {
   font-weight: 600;
   color: var(--text-primary);
 }
-.org-team-sub {
+.org-team-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px 8px;
-  margin-top: -3px;
+  gap: 4px 8px;
+  min-width: 0;
   font-size: 11px;
   line-height: 1.3;
   color: var(--text-secondary);
 }
-.org-team-owner { color: var(--text-primary); }
-.org-team-sub .is-problem { color: var(--color-danger, #e06c75); }
+.org-team-owner {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.org-team-count { flex-shrink: 0; }
+.org-team-meta .org-status-badge { margin-left: auto; }
+
+.org-team-meter {
+  display: flex;
+  gap: 2px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+}
+.org-meter-part {
+  display: block;
+  flex-basis: 0;
+  min-width: 4px;
+  height: 100%;
+  border-radius: 999px;
+}
+.org-meter-part.is-completed { background: var(--color-success, #98c379); }
+.org-meter-part.is-running { background: var(--accent-primary); }
+.org-meter-part.is-waiting { background: var(--color-warning, #e5c07b); }
+.org-meter-part.is-failed { background: var(--color-danger, #e06c75); }
+.org-meter-part.is-interrupted { background: var(--text-secondary); }
 
 .org-review {
   flex-shrink: 0;
-  padding: 1px 7px;
-  border-radius: 8px;
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--text-secondary);
-  background: var(--bg-tertiary);
 }
-.org-review.is-pass { color: var(--color-success, #98c379); background: rgba(var(--color-success-rgb, 152, 195, 121), 0.14); }
-.org-review.is-reject { color: var(--color-danger, #e06c75); background: rgba(var(--color-danger-rgb, 224, 108, 117), 0.14); }
-.org-review.is-pending { color: var(--color-warning, #e5c07b); background: rgba(var(--color-warning-rgb, 229, 192, 123), 0.12); }
+.org-review.is-pass { color: var(--color-success, #98c379); }
+.org-review.is-reject { color: var(--color-danger, #e06c75); }
+.org-review.is-pending { color: var(--color-warning, #e5c07b); }
 
 .org-team-chat {
   margin-left: auto;

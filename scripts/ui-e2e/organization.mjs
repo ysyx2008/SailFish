@@ -14,6 +14,7 @@
  * 4b. 两个组长名下各有一个同名团：点开哪个看哪个的成员
  * 5. 返回后回到组织图，再返回回到对话
  * 6. 组织里的人都干完了：顶部写「都干完了」
+ * 6b. 都做完后的组织图：顶部概览、每个人和每个团都变成做完的样子
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -189,7 +190,14 @@ try {
   check('组长名下的人都在，组长的组长也在', ['前端', '后端', '文档', '投放组', '小投', '小营'].every((n) => chart.includes(n)), chart)
   check('团头：团名和验收状态', chart.includes('团「项目团」') && chart.includes('待验收'), chart)
   check('验收人有标记', await page.locator('.organization-chart .org-reviewer').count() === 1)
-  check('标题写着共 8 人、7 人没做完、2 个团', /共 8 人/.test(chart) && /7 人没做完/.test(chart) && /2 个团/.test(chart), chart)
+  check('标题写着共 8 人 · 2 个团', /共 8 人/.test(chart) && /2 个团/.test(chart), chart)
+  check('顶部概览写着 7 人在干、1 人做完', /7 人在干/.test(chart) && /1 人做完/.test(chart), chart)
+  check('在干的人都有醒目的状态标签', await page.locator('.organization-chart .org-node.is-running').count() === 7)
+  check('做完的人也有醒目的状态标签', await page.locator('.organization-chart .org-node.is-completed').count() === 1)
+  check('还在干的两个团框都按状态着色', await page.locator('.organization-chart .org-team.is-running').count() === 2)
+  check('团框里写着还有人在干', chart.includes('1 人在干'), chart)
+  check('团框有做完与在干两段进度', await page.locator('.organization-chart .org-meter-part.is-completed').count() === 1
+    && await page.locator('.organization-chart .org-meter-part.is-running').count() === 2)
   const nested = await page.locator('.organization-chart .org-children[data-depth="2"]').count()
   check('组长名下的组长再往下长一层', nested >= 1, nested)
   const teamMembers = await page.locator('.organization-chart .org-team').first().locator('.org-team-members > .org-member').count()
@@ -273,6 +281,17 @@ try {
   const doneCard = await page.locator('.ai-messages:visible .organization-card').first().innerText().catch(() => '')
   check('卡片写着都干完了', /都干完了/.test(doneCard), doneCard)
   await shot('6-done')
+
+  console.log('\n[6b] 都做完后的组织图')
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.organization-chart').waitFor({ state: 'visible', timeout: 10_000 })
+  const doneChart = await text('.organization-chart')
+  check('顶部概览写着 8 人做完', /8 人做完/.test(doneChart) && !/人在干/.test(doneChart), doneChart)
+  check('所有人都是做完状态', await page.locator('.organization-chart .org-node.is-completed').count() === 8)
+  check('两个团框都变成全组做完', await page.locator('.organization-chart .org-team.is-completed').count() === 2 && doneChart.includes('全组做完'), doneChart)
+  await shot('6b-done-chart')
+  await page.locator('.organization-chart .oc-icon-btn').first().click()
+  await sleep(300)
 
   console.log('\n[7] 同一份组织挂在两个派出步骤上')
   // 第二批的快照故意停在「还有 1 人在干」：顶部要认最早那份新鲜快照，不能跟着旧快照转圈

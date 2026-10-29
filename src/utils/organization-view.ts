@@ -1,6 +1,9 @@
 import type { OrganizationMemberView, OrganizationTeamView, OrganizationView } from '@shared/types'
 import { subAgentBucket, type SubAgentBucket, type Translate, type DockKind } from './sub-agent-summary'
 
+/** 组织图上的状态标签：个人用 SubAgentBucket，团另有「有人出问题」和「还没有人」 */
+export type OrgStatusBucket = SubAgentBucket | 'problem' | 'empty'
+
 /** 一位组长（或秘书）名下的一组人：一个团，或没组团的散人 */
 export interface OrgGroup {
   team?: OrganizationTeamView

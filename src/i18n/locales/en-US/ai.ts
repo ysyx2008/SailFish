@@ -879,6 +879,10 @@ export default {
     organization: {
       title: 'Project organization',
       meta: '{total} people, {live} not finished, {teams} teams',
+      metaSimple: '{total} people · {teams} teams',
+      summaryLive: '{live} working',
+      summaryDone: '{count} done',
+      summaryProblem: '{count} with problems',
       secretary: 'Secretary',
       lead: 'Lead',
       reviewer: 'Reviewer',
@@ -900,6 +904,12 @@ export default {
       teamMembers: '{count} people',
       teamChat: 'Chat · {count}',
       openTeamChat: 'Open this team’s chat',
+      teamRunning: '{count} working',
+      teamWaiting: '{count} waiting for model',
+      teamDone: 'All done',
+      teamProblem: '{count} with problems',
+      teamEmpty: 'No members yet',
+      teamProgress: 'Team progress: {completed} done, {running} working, {problem} with problems',
       review: {
         none: 'No reviewer',
         pending: 'Awaiting review',
