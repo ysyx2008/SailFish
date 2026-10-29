@@ -73,6 +73,15 @@ describe('挂在顶部的派出的人', () => {
     expect(tracker.update([say('u'), dispatch('old', 'completed', 'interrupted'), plain('m')])).toEqual([])
   })
 
+  it('直接恢复深层成员时，直属名单为空也按全组织进度挂在顶部', () => {
+    const tracker = new PinnedDispatchTracker()
+    const step = { ...dispatch('deep'), organization: { members: [], teams: [], total: 5, live: 1 } }
+    expect(ids(tracker.update([say('u'), step]))).toEqual(['deep'])
+    const stopped = { ...step, organization: { ...step.organization, live: 0 } }
+    expect(ids(tracker.update([say('u'), stopped]))).toEqual(['deep'])
+    expect(tracker.update([say('u'), stopped, say('next')])).toEqual([])
+  })
+
   it('刚派出、还没人的那一步不挂', () => {
     expect(new PinnedDispatchTracker().update([dispatch('d')])).toEqual([])
     expect(hasUnfinishedSubAgents(dispatch('d', 'completed', 'interrupted').subAgents)).toBe(false)

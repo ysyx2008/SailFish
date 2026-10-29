@@ -342,6 +342,7 @@ scenario('进程被 kill -9：新进程接着同一场会话，秘书叫醒组�
         const who = whoAsks(entry, names)
         entry.who = who
         if (who === 'main') {
+          if (text.includes('直接叫醒小甲')) return callTool('followup_agent', { name: '小甲', message: '接着做完' })
           if (text.includes('让研发组')) return callTool('followup_agent', { name: '研发组', message: '接着做完' })
           if (text.includes('[专家') || text.includes('[伙计')) return say('秘书收到：组织做完了')
           return callTool('dispatch_agents', {
@@ -362,6 +363,7 @@ scenario('进程被 kill -9：新进程接着同一场会话，秘书叫醒组�
         }
         if (who === '小甲') {
           if (text.includes('我是小甲，')) return callTool('write_text_file', { path: path.join(env.cwd, 'jia.txt'), content: 'a', mode: 'create' })
+          if (marker === 66) return callTool('exec', { command: 'sleep 1' })
           return say('小甲：接着做完了')
         }
         if (who === '小乙') return callTool('write_text_file', { path: path.join(env.cwd, 'yi.txt'), content: 'b', mode: 'create' })
@@ -376,6 +378,7 @@ scenario('进程被 kill -9：新进程接着同一场会话，秘书叫醒组�
           return say('小甲：做完了')
         }
         if (who === '小乙') { seen.yiDone = true; return say('小乙：做完了') }
+        if (marker === 66 && who === 'main' && content.includes('已向')) return callTool('wait_agents', { timeout: 2 })
         if (who === '研发组' && content.includes('已向')) return say('组长：已交代，等他')
         if (who === '研发组' || who === 'main') return say('已派出，等他们')
         return say('好')
@@ -405,6 +408,26 @@ scenario('进程被 kill -9：新进程接着同一场会话，秘书叫醒组�
   check('小甲盘上还写着「在干」', before.children['小甲']?.state.status === 'running', JSON.stringify(before.children['小甲']?.state))
   const sessionId = path.basename(before.sessions[0])
 
+  // 先直接叫深层成员，负责人不额外调用模型；再跑原来的逐层恢复验证。
+  const directLlm = await makeLlm(66)
+  try {
+    const direct = await runPlain([], {
+      ...env,
+      env: { ...env.env, SFT_API_URL: `http://127.0.0.1:${directLlm.port}/v1`, RESUME_SESSION: sessionId, RESUME_LINE: '直接叫醒小甲' },
+    }, 90_000, RUNNER)
+    check('直接叫深层成员后这一轮正常结束', direct.out.includes('RESUME_DONE'), `${direct.out.slice(-300)} ${direct.err.slice(-600)}`)
+    const jia = directLlm.requests.find(r => r.who === '小甲' && r.lastText.includes('[上次的情形]'))
+    check('小甲从异常退出处直接恢复', !!jia && jia.lastText.includes('异常退出'), jia?.lastText)
+    // 完成通知可能紧接等待结果插入为最后一条 user 消息，要查整段工具记录。
+    const waitEvidence = directLlm.requests.filter(r => r.who === 'main')
+      .flatMap(r => r.body.messages ?? []).filter(m => m.role === 'tool')
+      .map(m => typeof m.content === 'string' ? m.content : JSON.stringify(m.content))
+    check('直接恢复后默认等待没有误报无人可等', waitEvidence.some(text => text.includes('要等的 1 个里')) && !waitEvidence.some(text => text.includes('没有要等的伙计')), waitEvidence.join('\n').slice(-500))
+    check('直接恢复没有运行中间负责人', !directLlm.requests.some(r => r.who === '研发组'))
+    const saved = readOrg(env.dataDir)
+    check('小甲完成并保留原汇报关系', saved.children['小甲']?.state.status === 'completed' && saved.children['小甲']?.state.parent === '研发组')
+  } finally { await directLlm.close(); killStrays('sleep 66') }
+
   const llm2 = await makeLlm(65)
   try {
     const resumed = await runPlain([], {
@@ -414,8 +437,8 @@ scenario('进程被 kill -9：新进程接着同一场会话，秘书叫醒组�
     check('新进程说完这一轮', resumed.out.includes('RESUME_DONE'), `${resumed.out.slice(-300)} ${resumed.err.slice(-600)}`)
     const leadBack = llm2.requests.find((r) => r.who === '研发组' && r.lastText.includes('[上次的情形]'))
     check('组长被叫醒时带着盘上的对话，并被告知异常退出', !!leadBack && leadBack.lastText.includes('异常退出') && leadBack.lastText.includes('接着做完'), leadBack?.lastText)
-    const jiaBack = llm2.requests.find((r) => r.who === '小甲' && r.lastText.includes('[上次的情形]'))
-    check('组长再把他名下的小甲叫醒，小甲带着盘上的对话', !!jiaBack && jiaBack.lastText.includes('异常退出') && jiaBack.lastText.includes('接着做完'), jiaBack?.lastText)
+    const jiaBack = llm2.requests.find((r) => r.who === '小甲' && r.lastText.includes('接着做完'))
+    check('组长再把他名下的小甲叫醒，小甲带着盘上的对话', !!jiaBack && jiaBack.lastText.includes('接着做完'), jiaBack?.lastText)
     const after = readOrg(env.dataDir)
     check('全部做完', Object.values(after.children).every((c) => c.state.status === 'completed'),
       Object.values(after.children).map((c) => `${c.state.name}:${c.state.status}`).join(' '))

@@ -7,6 +7,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Network, ChevronRight } from 'lucide-vue-next'
 import type { OrganizationView } from '@shared/types'
+import { organizationAttention } from '../../utils/organization-view'
 
 const props = defineProps<{ organization: OrganizationView }>()
 const emit = defineEmits<{ open: [] }>()
@@ -25,6 +26,7 @@ const counts = computed(() => {
 })
 const detail = computed(() => {
   const { completed } = counts.value
+  const attention = organizationAttention(props.organization)
   // 失败 / 打断用全组织的数：成员太多没放全时，没放进来的人出问题也要算
   const problem = Math.max(counts.value.problem, props.organization.problems ?? 0)
   const teamCount = props.organization.teams.length + (props.organization.omittedTeams ?? 0)
@@ -34,9 +36,12 @@ const detail = computed(() => {
     // 成员没放全时干完的数只是看得到的那些，不写出来免得当成全组织
     completed > 0 && !props.organization.omitted ? t('ai.organization.cardCompleted', { count: completed }) : '',
     problem > 0 ? t('ai.organization.cardProblem', { count: problem }) : '',
+    attention.rejected ? t('ai.organization.summaryRejected', { count: attention.rejected }) : '',
+    attention.pending ? t('ai.organization.summaryPending', { count: attention.pending }) : '',
+    attention.waiting ? t('ai.organization.summaryWaiting', { count: attention.waiting }) : '',
   ].filter(Boolean)
   // 都干完了才写「都干完了」；有人失败或被打断时仍显示计数，成员没放全时也不下这个结论
-  if (props.organization.live === 0 && problem === 0 && !props.organization.omitted) {
+  if (props.organization.live === 0 && problem === 0 && !props.organization.omitted && !attention.rejected && !attention.pending && !attention.waiting) {
     parts.push(t('ai.organization.cardAllDone'))
   }
   return parts.join(' · ')

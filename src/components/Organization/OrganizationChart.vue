@@ -7,7 +7,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Maximize2, Minimize2, X, Network, UserRound } from 'lucide-vue-next'
 import { useTerminalStore } from '../../stores/terminal'
-import { buildOrgTree } from '../../utils/organization-view'
+import { buildOrgTree, organizationAttention } from '../../utils/organization-view'
 import type { ArtifactPanelBindings } from '@sailfish/workbench-assistant/artifact/composer-quote'
 import OrganizationBranch from './OrganizationBranch.vue'
 import OrganizationTeamArtifacts from './OrganizationTeamArtifacts.vue'
@@ -32,6 +32,7 @@ const organization = computed(() => terminalStore.tabs
   .find(s => s.id === props.stepId)?.organization)
 const tree = computed(() => organization.value ? buildOrgTree(organization.value) : [])
 /** 全组织的概览：在干几人、做完几人、几人出问题 */
+const attention = computed(() => organization.value ? organizationAttention(organization.value) : null)
 const stats = computed(() => {
   const org = organization.value
   if (!org) return null
@@ -145,6 +146,9 @@ onMounted(() => {
         :label="t('ai.organization.summaryProblem', { count: stats.problems })"
         compact
       />
+      <OrganizationStatusBadge v-if="attention?.rejected" bucket="problem" :label="t('ai.organization.summaryRejected', { count: attention.rejected })" compact />
+      <OrganizationStatusBadge v-if="attention?.pending" bucket="waiting" :label="t('ai.organization.summaryPending', { count: attention.pending })" compact />
+      <OrganizationStatusBadge v-if="attention?.waiting" bucket="waiting" :label="t('ai.organization.summaryWaiting', { count: attention.waiting })" compact />
     </div>
 
     <div ref="bodyRef" class="oc-body">

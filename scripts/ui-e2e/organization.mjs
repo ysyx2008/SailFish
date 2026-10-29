@@ -529,6 +529,30 @@ try {
   check('行距与上方计划卡片一致', spacing.above !== null && Math.abs(spacing.rows - spacing.above) < 1, JSON.stringify(spacing))
   await shot('9-spacing')
 
+  console.log('\n[9b] 完整展示 1000 人、101 团与异常汇总')
+  await page.locator('.sub-agent-dock .dock-team', { hasText: '看组织图' }).click()
+  await page.locator('.organization-chart').waitFor({ state: 'visible' })
+  const large = dispatchStep(true)
+  large.organization.members = Array.from({ length: 1000 }, (_, i) => member(`大组织成员${i}`, i === 0 ? 'failed' : 'completed', i === 0 ? { lead: true, role: '负责人' } : { parent: '大组织成员0', team: `大团${i % 101}` }))
+  large.organization.teams = Array.from({ length: 101 }, (_, i) => ({ name: `大团${i}`, owner: '大组织成员0', review: i === 100 ? 'reject' : i === 99 ? 'pending' : 'none', messageCount: 0, waitingLeader: i === 100, wakeLimit: 30 }))
+  Object.assign(large.organization, { total: 1000, live: 0, problems: 1 })
+  const recovering = { ...large, subAgents: [], organization: { ...large.organization, live: 1,
+    members: large.organization.members.map((m, i) => i === 999 ? { ...m, status: 'running' } : m),
+  } }
+  await updateStep(recovering)
+  await page.locator('.sub-agent-dock').filter({ hasText: '1 人在干，共 1000 人' }).waitFor({ state: 'visible' })
+  check('没有直属运行成员时仍展示深层成员的组织进度', true)
+  await updateStep(large)
+  await page.locator('.organization-chart .org-node').nth(999).waitFor({ state: 'attached', timeout: 15000 })
+  check('1000 人全部展开在图上', await page.locator('.organization-chart .org-node').count() === 1000)
+  check('101 个团队全部展示', await page.locator('.organization-chart .org-team').count() === 101)
+  const summary = await text('.oc-summary')
+  check('汇总同时列出执行异常、打回、待验收、等负责人', /1 人出问题/.test(summary) && /1 团验收打回/.test(summary) && /1 团待验收/.test(summary) && /1 团等负责人/.test(summary), summary)
+  const scroll = await page.locator('.oc-body').evaluate(el => ({ width: el.scrollWidth, clientWidth: el.clientWidth, height: el.scrollHeight, clientHeight: el.clientHeight }))
+  check('大组织保留双向滚动空间', scroll.width > scroll.clientWidth && scroll.height > scroll.clientHeight, JSON.stringify(scroll))
+  await page.locator('.oc-close-btn').click()
+  await updateStep(mixed)
+
   console.log('\n[10] 没有助手面板宿主的对话覆盖层')
   // 隔离夹具撤掉助手专属宿主回调，走 AiPanel 为终端/联络保留的真实覆盖层入口。
   await page.evaluate(() => {
@@ -569,6 +593,8 @@ try {
   await page.locator('.oa-header .oa-icon').first().click()
   await page.locator('.oc-close-btn').click()
   await page.evaluate(() => { window.__e2eOrgHost.vm.props.openOrganizationSeat = window.__e2eOrgHost.open })
+
+
 } catch (error) {
   failures.push(`脚本出错：${error?.stack || error}`)
   console.error(`  FAIL 脚本出错：${error?.stack || error}`)

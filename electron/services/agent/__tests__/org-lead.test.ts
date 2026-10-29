@@ -523,21 +523,57 @@ describe('组织看板与开场', () => {
 
 describe('组织的存盘', () => {
   const state = (name: string, parent?: string, lead = false) => ({
-    name, description: name, prompt: 'p', status: 'completed' as const, steps: [], ...(parent ? { parent } : {}), ...(lead ? { lead: true, role: '组长甲' } : {}),
+    name, description: name, prompt: 'p', status: 'completed' as const, steps: [], revive: () => ({ handle: worker(5), steps: [] }), ...(parent ? { parent } : {}), ...(lead ? { lead: true, role: '组长甲' } : {}),
   })
 
-  it('秘书只从盘上取自己直接派的人；组长名下的记作别人的，点名时说明归谁', () => {
+  it('秘书可直接恢复深层成员，名字仍按全组织占用', async () => {
     const root = new SubAgentRoster({ knockSettleMs: 0 })
-    const restoreDormant = () => [state('研发组', undefined, true), state('前端', '研发组')] as any
-    const d = { ...deps(() => worker()), restoreDormant }
+    const restoreDormant = () => [state('研发组', undefined, true), { ...state('前端', '研发组'), team: '开发团' }] as any
+    const d = { ...deps(() => worker(5)), restoreDormant, teamTexts: createTeamTexts(() => '') }
     const reply = root.followup('前端', 'hi', d)
-    expect(reply.ok).toBe(false)
-    expect(reply.error).toContain('研发组')
+    expect(reply.ok).toBe(true)
+    expect(root.orgEntries().find(entry => entry.owner === '研发组')?.roster.get('前端')?.status).toBe('running')
+    const team = root.orgEntries().find(entry => entry.owner === '研发组')?.roster.getTeam('开发团')
+    expect(team?.messagesAfter(0)).toEqual([expect.objectContaining({ from: '秘书', text: 'hi' })])
     expect(root.followup('不存在', 'hi', d).error).toContain('没有叫')
     // 名字全组织不重复：新派的人不能占用盘上组长名下的名字
     root.spawn([{ description: '前端', prompt: 'p' }], d)
     expect(root.childNames()).toEqual(['前端-2'])
     root.abortAll()
+    await root.settled()
+  })
+})
+
+describe('只恢复管理链，不启动中间负责人', () => {
+  it('四层人员直接叫醒叶子，祖先可接管且根停止仍能覆盖它', async () => {
+    const revived: string[] = []
+    const make = (name: string, parent?: string, lead = false) => ({
+      name, parent, lead, role: lead ? '组长' : undefined, description: name, prompt: 'p', status: 'completed' as const,
+      revive: () => { revived.push(name); return { handle: worker(30), steps: [] } },
+    })
+    const saved = [make('一层', undefined, true), make('二层', '一层', true), make('三层', '二层', true), make('叶子', '三层'), make('另组', undefined, true), make('旁人', '另组')]
+    const root = new SubAgentRoster({ knockSettleMs: 0 })
+    const d = { ...deps(() => worker(5)), restoreDormant: () => saved }
+    expect(root.followup('叶子', '继续', d).ok).toBe(true)
+    expect(revived).toEqual(['叶子'])
+    const entries = () => root.orgEntries()
+    const first = entries().find(entry => entry.owner === '一层')!.roster
+    const third = entries().find(entry => entry.owner === '三层')!.roster
+    expect(entries().map(entry => entry.depth)).toEqual([0, 1, 2, 3])
+    expect(third.get('叶子')?.status).toBe('running')
+    expect(first.hasLive()).toBe(true)
+    expect(first.followup('旁人', '越枝', d).ok).toBe(false)
+    const knocks: string[] = []
+    first.bindOwner(text => knocks.push(text))
+    expect(third.deliverToOwner('叶子进度')).toBe(true)
+    expect(knocks).toEqual(['叶子进度'])
+    expect(entries().find(entry => entry.owner === '一层')?.roster).toBe(first)
+    root.abortAll(); await root.settled()
+    expect(third.get('叶子')?.status).toBe('interrupted')
+    expect(root.hasLive()).toBe(false)
+    expect(revived).toEqual(['叶子'])
+    first.release(); root.release()
+    expect(entries()).toHaveLength(0)
   })
 })
 

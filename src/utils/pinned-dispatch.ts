@@ -27,7 +27,7 @@ export class PinnedDispatchTracker {
   private readonly finishedAt = new Map<string, number>()
 
   update(steps: readonly AgentStep[]): AgentStep[] {
-    const dispatches = steps.filter(step => step.subAgents && step.subAgents.length > 0)
+    const dispatches = steps.filter(step => step.organization || (step.subAgents && step.subAgents.length > 0))
     const speech = steps.reduce((n, step) => n + (isUserSpeech(step) ? 1 : 0), 0)
 
     const alive = new Set(dispatches.map(step => step.id))
@@ -37,7 +37,7 @@ export class PinnedDispatchTracker {
     const pinned: AgentStep[] = []
     let latestFinished: AgentStep | undefined
     for (const step of dispatches) {
-      if (hasUnfinishedSubAgents(step.subAgents)) {
+      if (step.organization ? step.organization.live > 0 : hasUnfinishedSubAgents(step.subAgents)) {
         this.working.add(step.id)
         this.finishedAt.delete(step.id)
         pinned.push(step)

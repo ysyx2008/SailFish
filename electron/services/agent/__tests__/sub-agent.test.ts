@@ -251,6 +251,20 @@ describe('dispatch_agents 异步派出', () => {
     roster.abortAll()
   })
 
+  it('组长再交代自己的成员时，不把全组织快照写进组长的步骤', async () => {
+    const ledger = new OrgLedger()
+    const root = new SubAgentRoster()
+    root.attachLedger(ledger, undefined, 0)
+    const lead = new SubAgentRoster({ knockSettleMs: 0 })
+    lead.attachLedger(ledger, '研发组长', 1)
+    const executor = createExecutor(lead, stubChild('ok', 50))
+    await dispatchSubAgents({ tasks: [{ name: '甲', description: '甲', prompt: '甲' }] }, defaultConfig, executor)
+    expect((await followupAgent({ name: '甲', message: '再看' }, executor)).success).toBe(true)
+    const step = (executor as unknown as { _steps: AgentStep[] })._steps.at(-1)
+    expect(step?.organization).toBeUndefined()
+    lead.abortAll(); await lead.settled(); lead.release(); root.release()
+  })
+
   it('wait_agents 超时后返回还在跑的状态，不挂死', async () => {
     const roster = new SubAgentRoster()
     let rejectRun: ((err: Error) => void) | undefined
@@ -331,6 +345,26 @@ describe('dispatch_agents 异步派出', () => {
     // 敲门还在组长的名册上，组长自己等得到
     const leaderNews = await lead.waitForNews(['小甲'], new AbortController().signal)
     expect(leaderNews.arrived.map(c => c.name)).toEqual(['小甲'])
+  })
+
+  it('直接恢复深层成员后，不点名也会等到他，并保留负责人的敲门', async () => {
+    const root = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(root, stubChild('unused'))
+    executor.restoreDormantChildren = () => [
+      { name: '研发组长', lead: true, role: '负责人', description: '研发', prompt: '研发', status: 'completed', revive: () => { throw new Error('不应运行组长') } },
+      { name: '小甲', parent: '研发组长', description: '核对', prompt: '核对', status: 'completed', revive: () => ({ handle: stubChild('核对完成', 50), steps: [] }) },
+    ]
+    expect((await followupAgent({ name: '小甲', message: '继续' }, executor)).success).toBe(true)
+    const started = Date.now()
+    const waited = await waitAgents({ timeout: 2 }, executor)
+    expect(Date.now() - started).toBeGreaterThanOrEqual(30)
+    expect(waited.success).toBe(true)
+    expect(waited.output).not.toContain('没有要等的伙计')
+    expect(waited.output).toContain('要等的 1 个里：做完 1')
+    const holder = root.orgEntries().find(entry => entry.owner === '研发组长')!.roster
+    const news = await holder.waitForNews(['小甲'], new AbortController().signal)
+    expect(news.arrived.map(member => member.name)).toEqual(['小甲'])
+    root.abortAll(); await root.settled(); root.release()
   })
 
   it('跨枝一起等时，本枝先回来就先返回，不被别枝的慢活拖住', async () => {
@@ -628,7 +662,7 @@ describe('结果落文件与总览', () => {
     expect(second.overviewPath).toBe(first.overviewPath)
   })
 
-  it('团太多时只放前面 100 个，并给出没放下的团数', () => {
+  it('超过 100 个团仍完整提供，不丢团框和群聊入口', () => {
     const ws = new SubAgentWorkspace('/tmp/org-team-limit')
     const teamViews = Array.from({ length: 101 }, (_, i) => ({
       name: `团${i}`, review: 'none', messageCount: 0, waitingLeader: false, wakeLimit: 30,
@@ -637,8 +671,8 @@ describe('结果落文件与总览', () => {
       owner: undefined, depth: 0, rows: [], teams: [], live: 0, total: 0, members: [], teamViews,
     })
     const view = ws.organizationView()
-    expect(view.teams).toHaveLength(100)
-    expect(view.omittedTeams).toBe(1)
+    expect(view.teams).toHaveLength(101)
+    expect(view.omittedTeams).toBeUndefined()
   })
 
   it('重开时先用保存的组织全貌把看板铺出来', () => {
@@ -657,13 +691,17 @@ describe('结果落文件与总览', () => {
     expect(seeded.members.map(m => m.name)).toEqual(['研发组', '小甲'])
     expect(seeded.teams[0]).toMatchObject({ name: '项目团', owner: '研发组', review: 'pass' })
     expect(seeded.live).toBe(1)
+    ws.rememberBoardSection({ owner: '研发组', depth: 1, rows: [], teams: [], live: 0, total: 1,
+      members: seeded.members.filter(m => m.parent === '研发组'), teamViews: [],
+    })
+    expect(ws.organizationView().teams).toEqual(seeded.teams)
     // 截断过的快照不铺：铺出来会把看得到的部分当成全组织
     const truncated = new SubAgentWorkspace('/tmp/org-seed-truncated')
     seedOrganizationBoard(truncated, { ...view, omitted: 5 })
     expect(truncated.hasBoard()).toBe(false)
   })
 
-  it('成员太多没放全时，失败 / 打断的人数仍按全组织给出', () => {
+  it('超过 200 人仍保留所有节点与真实异常合计', () => {
     const ws = new SubAgentWorkspace('/tmp/org-member-limit')
     const member = (name: string, status: string) => ({ id: name, name, description: '', status })
     const members = Array.from({ length: 200 }, (_, i) => member(`m${i}`, 'completed'))
@@ -672,8 +710,8 @@ describe('结果落文件与总览', () => {
       owner: undefined, depth: 0, rows: [], teams: [], live: 0, total: 201, members, teamViews: [],
     })
     const view = ws.organizationView()
-    expect(view.members).toHaveLength(200)
-    expect(view.omitted).toBe(1)
+    expect(view.members).toHaveLength(201)
+    expect(view.omitted).toBeUndefined()
     expect(view.problems).toBe(1)
   })
 

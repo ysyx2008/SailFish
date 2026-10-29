@@ -73,6 +73,30 @@ export class OrgLedger {
     return n
   }
 
+  /** 本枝的花名册，包括尚未启动负责人模型的恢复座位。 */
+  branchRosters(roster: SubAgentRoster): SubAgentRoster[] {
+    if (this.nodes.get(roster)?.depth === 0) return [...this.nodes.keys()]
+    const found = new Set([roster])
+    const names = new Set(roster.memberNames())
+    for (let depth = 0; depth <= MAX_ORG_DEPTH; depth++) {
+      let added = false
+      for (const [candidate, node] of this.nodes) {
+        if (found.has(candidate) || !node.owner || !names.has(node.owner)) continue
+        found.add(candidate)
+        for (const name of candidate.memberNames()) names.add(name)
+        added = true
+      }
+      if (!added) break
+    }
+    return [...found]
+  }
+
+  parentOf(roster: SubAgentRoster): SubAgentRoster | undefined {
+    const owner = this.nodes.get(roster)?.owner
+    const parent = owner ? this.rosterOf(owner) : undefined
+    return parent === roster ? undefined : parent
+  }
+
   /** 全树现在名册里的名字 */
   usedNames(): Set<string> {
     const names = new Set<string>()
@@ -88,6 +112,12 @@ export class OrgLedger {
     for (const roster of this.nodes.keys()) {
       if (roster.hasMember(name)) return roster
     }
+    return undefined
+  }
+
+  /** 某位负责人的花名册，包含仅恢复了座位、负责人尚未开跑的枝。 */
+  rosterOwnedBy(owner: string): SubAgentRoster | undefined {
+    for (const [roster, node] of this.nodes) if (node.owner === owner) return roster
     return undefined
   }
 

@@ -564,7 +564,7 @@ export interface OrganizationArtifactView {
   data: import('./canvas').CanvasData
 }
 
-/** 项目组织的全貌（派出组长的那一步上实时更新）。人数很多时只放前面一部分，live / total 是真实合计 */
+/** 项目组织的全貌（派出组长的那一步上实时更新）；保留完整成员与团，旧记录可能仍带遗漏标记 */
 export interface OrganizationView {
   /** 所属主会话；联络合并历史时仍从原会话读取团队成果。 */
   sessionId?: string

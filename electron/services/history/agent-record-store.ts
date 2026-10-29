@@ -526,7 +526,7 @@ export class AgentRecordStore {
       const steps = found.steps.map(step => {
         let next = step
         if (step.organization) {
-          next = { ...next, organization: rebuildOrganization({ ...step.organization, sessionId: step.organization.sessionId ?? found.id }, children, leaderRecords) }
+          next = { ...next, organization: rebuildOrganization({ ...step.organization, sessionId: step.organization.sessionId ?? found.id }, children, leaderRecords, found) }
         }
         if (step.subAgents?.length) {
           let changed = false

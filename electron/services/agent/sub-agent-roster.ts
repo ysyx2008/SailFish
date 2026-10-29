@@ -147,6 +147,8 @@ export interface RosterSpawnDeps {
   teamTexts?: TeamTexts
   /** 这场会话以前派出的、已经停下的伙计；每份花名册只读一次 */
   restoreDormant?: () => DormantChild[]
+  /** 冷恢复的枝使用独立工作区和进度通道，但不启动负责人模型。 */
+  forRestoredBranch?: (roster: SubAgentRoster) => RosterSpawnDeps
   /** 叫醒休眠的伙计时，开口前先告诉他上次的情形；没什么要说的返回空 */
   resumeNotice?: (child: DormantChild) => string
   /** 以前那个团的样子：重建时接上群聊文件、条数和最后一次验收结论 */
@@ -165,7 +167,7 @@ export interface TeamHistory {
 }
 
 type RunDeps = Pick<RosterSpawnDeps,
-  'getParentContext' | 'onProgress' | 'knock' | 'formatKnock' | 'archiveResult' | 'isParentAborted' | 'teamTexts' | 'restoreDormant' | 'resumeNotice' | 'teamHistoryFor' | 'adoptTeamHistory'>
+  'getParentContext' | 'onProgress' | 'knock' | 'formatKnock' | 'archiveResult' | 'isParentAborted' | 'teamTexts' | 'restoreDormant' | 'resumeNotice' | 'teamHistoryFor' | 'adoptTeamHistory' | 'forRestoredBranch'>
 
 interface ChildSlot extends ChildSnapshot {
   handle?: ChildAgentHandle
@@ -242,6 +244,9 @@ export class SubAgentRoster {
   /** 以前几轮派出的、已经停下的；叫醒后进 children */
   private dormant = new Map<string, DormantChild>()
   private dormantRestored = false
+  private readonly dormantIndex = new Map<string, DormantChild>()
+  private restoredSeatOnly = false
+  private ownerKnock?: (message: string) => void
   private teams = new Map<string, TeamEntry>()
   private waiters: Array<() => void> = []
   /** 还没被 waitForNews 领走的敲门，按先后排队。 */
@@ -271,6 +276,27 @@ export class SubAgentRoster {
     this.ownerName = owner
     this.depth = depth
     ledger.register(this, owner, depth)
+    const root = ledger.root()
+    if (owner && root && root !== this && root.dormantIndex.size) {
+      this.ensureDormant({ restoreDormant: () => [...root.dormantIndex.values()] })
+    }
+  }
+
+  /** 真正的负责人回来时接管同一份花名册，保留已经叫醒的下级。 */
+  bindOwner(knock: (message: string) => void): void {
+    this.ownerKnock = knock
+    this.restoredSeatOnly = false
+  }
+
+  deliverToOwner(message: string): boolean {
+    let holder: SubAgentRoster | undefined = this
+    const seen = new Set<SubAgentRoster>()
+    while (holder && !seen.has(holder)) {
+      seen.add(holder)
+      if (holder.ownerKnock) { holder.ownerKnock(message); return true }
+      holder = this.ledger?.parentOf(holder)
+    }
+    return false
   }
 
   private ensureLedger(): OrgLedger {
@@ -283,6 +309,10 @@ export class SubAgentRoster {
     for (const hook of this.releaseHooks.splice(0)) {
       try { hook() } catch { /* 收尾的记录失败不挡着退出 */ }
     }
+    for (const roster of this.ledger?.branchRosters(this) ?? []) {
+      if (roster !== this && roster.restoredSeatOnly) roster.release()
+    }
+    this.ownerKnock = undefined
     this.ledger?.unregister(this)
   }
 
@@ -328,6 +358,13 @@ export class SubAgentRoster {
 
   childNames(): string[] {
     return [...this.children.keys()]
+  }
+
+  /** 当前可等待的成员：仍在运行，或本名册尚未领取他的敲门。 */
+  waitingNames(consumeNews = true): string[] {
+    return [...this.children.values()]
+      .filter(child => LIVE.has(child.status) || (consumeNews && this.unreadNews.includes(child.name)))
+      .map(child => child.name)
   }
 
   hasChild(name: string): boolean {
@@ -384,6 +421,7 @@ export class SubAgentRoster {
   }
 
   hasLive(): boolean {
+    if (this.ledger) return this.ledger.branchRosters(this).some(roster => roster.liveCount() > 0)
     for (const child of this.children.values()) {
       if (LIVE.has(child.status)) return true
     }
@@ -410,6 +448,11 @@ export class SubAgentRoster {
 
   list(): ChildSnapshot[] {
     return [...this.children.values()].map(snapshotOf)
+  }
+
+  /** 组织图还需保留已停止、尚未叫醒的历史成员。 */
+  organizationMembers(): ChildSnapshot[] {
+    return [...this.list(), ...[...this.dormant.values()].map(child => snapshotOf({ ...child, steps: [], forkTurns: { kind: 'all' }, segment: 0 }))]
   }
 
   /** 只要名字、角色和状态的名单：界面标题要认「这几位是不是专家」，不必把每人的步骤都复制一遍 */
@@ -439,6 +482,7 @@ export class SubAgentRoster {
   wake(): void {
     const waiters = this.waiters.splice(0)
     for (const wake of waiters) wake()
+    this.ledger?.parentOf(this)?.wake()
   }
 
   /** 等到有人敲门、没人在干了或中止。把陆续回来的攒一攒，在主人接着跑之前做（见 settleKnocks），这里不再等 */
@@ -521,16 +565,54 @@ export class SubAgentRoster {
   }
 
   /** 第一次要用到这场会话的老伙计时读一次盘。这一轮已经有的名字以内存里的为准 */
-  private ensureDormant(deps: Pick<RosterSpawnDeps, 'restoreDormant'>): void {
-    if (this.dormantRestored) return
+  private ensureDormant(deps: Pick<RosterSpawnDeps, 'restoreDormant'>, refresh = false): void {
+    if (this.dormantRestored && !refresh) return
     this.dormantRestored = true
     for (const child of deps.restoreDormant?.() ?? []) {
+      if (this.depth === 0) this.dormantIndex.set(child.name, child)
       if (child.parent !== this.ownerName) {
         this.foreignNames.set(child.name, child.parent)
         continue
       }
       if (!this.children.has(child.name)) this.dormant.set(child.name, child)
     }
+  }
+
+  /** 秘书直接点深层成员：只恢复汇报链上的座位，不运行中间负责人。 */
+  private restoreDormantHolder(name: string, deps: RunDeps): SubAgentRoster | undefined {
+    if (this.depth !== 0) return undefined
+    this.ensureDormant(deps, true)
+    let current = this.dormantIndex.get(name)
+    if (!current?.parent) return undefined
+    const chain: DormantChild[] = []
+    const visited = new Set([name])
+    while (current.parent) {
+      if (visited.has(current.parent) || chain.length >= MAX_ORG_DEPTH) return undefined
+      visited.add(current.parent)
+      const parent = this.dormantIndex.get(current.parent)
+      if (!parent?.lead) return undefined
+      chain.unshift(parent)
+      current = parent
+    }
+    const ledger = this.ensureLedger()
+    let holder: SubAgentRoster | undefined
+    for (const [index, parent] of chain.entries()) {
+      holder = ledger.rosterOwnedBy(parent.name)
+      if (!holder) {
+        holder = new SubAgentRoster({ knockSettleMs: this.knockSettleMs })
+        holder.attachLedger(ledger, parent.name, index + 1)
+        holder.restoredSeatOnly = true
+      }
+      if (!holder.lastDeps) {
+        const branch = holder
+        holder.lastDeps = deps.forRestoredBranch?.(branch) ?? {
+          ...deps,
+          onProgress: () => { deps.onProgress(); branch.notifyOrg() },
+          knock: (message) => { if (!branch.deliverToOwner(message)) deps.knock(message) },
+        }
+      }
+    }
+    return holder
   }
 
   /** 名册里没有这个名字：盘上记着他在别的组长名下时，说明他归哪位组长 */
@@ -726,9 +808,9 @@ export class SubAgentRoster {
     const slot = this.children.get(name)
     if (!slot) {
       const sleeper = this.dormant.get(name)
-      if (sleeper) return this.wakeDormant(sleeper, message, deps)
+      if (sleeper) return this.wakeDormant(sleeper, message, deps, from)
       // 只有秘书能越过组长对别的组长名下的人说话；组长只管自己这一枝
-      const owner = this.depth === 0 ? this.ledger?.rosterOf(name) : undefined
+      const owner = this.depth === 0 ? this.ledger?.rosterOf(name) ?? this.restoreDormantHolder(name, deps) : undefined
       if (owner && owner !== this && owner.lastDeps) return owner.followup(name, message, owner.lastDeps, SECRETARY)
       return { ok: false, error: this.unknownError(name) }
     }
@@ -756,9 +838,9 @@ export class SubAgentRoster {
 
   /**
    * 叫醒以前几轮停下的伙计：从盘上接回他的对话，开口前先告诉他上次的情形，再交代这一句。
-   * 不带过去的团：他单独接着干。
+   * 保留原团的身份；秘书越级交代时，发言仍以秘书记入原群。
    */
-  private wakeDormant(sleeper: DormantChild, message: string, deps: RunDeps): { ok: boolean; error?: string } {
+  private wakeDormant(sleeper: DormantChild, message: string, deps: RunDeps, from?: string): { ok: boolean; error?: string } {
     const { name } = sleeper
     if (deps.isParentAborted()) return { ok: false, error: '已中止' }
     if (this.room() <= 0) {
@@ -798,8 +880,13 @@ export class SubAgentRoster {
     if (slot.lead) revived.handle.becomeLead?.({ ledger: this.ensureLedger(), name, depth: this.depth + 1 })
     persistSlot(slot)
     deps.onProgress()
+    const entry = this.entryOf(name)
+    const said = from && entry ? entry.team.outsiderSpoke(from, name, message) : undefined
+    const task = said && entry && deps.teamTexts
+      ? deps.teamTexts.wake(entry.team, name, entry.team.takeUnread(name), said)
+      : message
     const notice = deps.resumeNotice?.(sleeper)
-    slot.runPromise = this.runExisting(slot, notice ? `${notice}\n\n${message}` : message, deps)
+    slot.runPromise = this.runExisting(slot, notice ? `${notice}\n\n${task}` : task, deps)
     return { ok: true }
   }
 
@@ -913,6 +1000,9 @@ export class SubAgentRoster {
   }
 
   abortAll(): void {
+    for (const roster of this.ledger?.branchRosters(this) ?? []) {
+      if (roster !== this && roster.restoredSeatOnly) roster.abortAll()
+    }
     for (const slot of this.children.values()) {
       if (!LIVE.has(slot.status)) continue
       slot.handle?.abort()
@@ -927,9 +1017,12 @@ export class SubAgentRoster {
 
   /** 每位当前这一段都收尾（该写的盘都写完）之后兑现；不会拒绝。已经收尾的立刻兑现 */
   settled(): Promise<void> {
-    const pending = [...this.children.values()]
+    const pending: Promise<unknown>[] = [...this.children.values()]
       .map(slot => slot.runPromise)
       .filter((p): p is Promise<void> => !!p)
+    for (const roster of this.ledger?.branchRosters(this) ?? []) {
+      if (roster !== this && roster.restoredSeatOnly) pending.push(roster.settled())
+    }
     return Promise.allSettled(pending).then(() => undefined)
   }
 

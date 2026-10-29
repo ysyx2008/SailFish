@@ -1970,9 +1970,10 @@ export abstract class Agent {
       terminalOutput: [],
     }
     if (!this._isSubAgent || this._leadSeat) {
-      const roster = new SubAgentRoster()
       const seat = this._leadSeat
+      const roster = seat?.ledger.rosterOwnedBy(seat.name) ?? new SubAgentRoster()
       if (seat) roster.attachLedger(seat.ledger, seat.name, seat.depth)
+      roster.bindOwner(message => this.injectSubAgentKnock(message))
       this._subAgentRoster = roster
     }
     
@@ -3140,8 +3141,8 @@ export abstract class Agent {
     this.currentStreamingExecutor = undefined
     const roster = this._subAgentRoster
     roster?.abortAll()
-    roster?.release()
     this._previousChildrenSettling = roster?.settled()
+    roster?.release()
     this._subAgentRoster = undefined
   }
 

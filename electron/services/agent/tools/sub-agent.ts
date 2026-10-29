@@ -219,7 +219,15 @@ export class SubAgentWorkspace {
   private readonly boardSections = new Map<string, RememberedSection>()
 
   rememberBoardSection(section: RememberedSection): void {
-    this.boardSections.set(section.owner ?? '', section)
+    const key = section.owner ?? ''
+    const previous = this.boardSections.get(key)
+    // 冷恢复只叫醒一部分人；没有再次运行的团仍沿用历史元数据。
+    const teamViews = [...new Map([...(previous?.teamViews ?? []), ...section.teamViews].map(team => [team.name, team])).values()]
+    this.boardSections.set(key, {
+      ...section,
+      teamViews,
+      teams: teamViews.map(team => ({ name: team.name, review: team.review, reviewers: team.reviewers ?? [] })),
+    })
   }
 
   /** 看板上已经有内容了（重开时先铺一次，之后按账本刷新） */
@@ -234,26 +242,19 @@ export class SubAgentWorkspace {
       .flatMap(s => s.teamViews)
   }
 
-  /** 组织全貌给界面看：人数多时只放前面一部分（组长优先、没做完的优先），合计是真实的 */
+  /** 完整组织元数据：节点不按人数裁掉，所有分组与汇报链保持完整。 */
   organizationView(): OrganizationView {
     const sections = [...this.boardSections.values()].sort((a, b) => a.depth - b.depth)
-    const all = sections.flatMap(s => s.members)
-    const rank = (m: OrganizationMemberView) => (m.lead ? 0 : 2) + (m.status === 'running' || m.status === 'pending' ? 0 : 1)
-    const kept = all.length > ORG_VIEW_MEMBER_LIMIT
-      ? all.map((m, i) => ({ m, i })).sort((a, b) => rank(a.m) - rank(b.m) || a.i - b.i).slice(0, ORG_VIEW_MEMBER_LIMIT).sort((a, b) => a.i - b.i).map(x => x.m)
-      : all
-    const allTeams = sections.flatMap(s => s.teamViews)
-    const teams = allTeams.slice(0, ORG_VIEW_TEAM_LIMIT)
-    const problems = all.filter(m => m.status === 'failed' || m.status === 'interrupted').length
+    const members = sections.flatMap(s => s.members)
+    const teams = sections.flatMap(s => s.teamViews)
+    const problems = members.filter(m => m.status === 'failed' || m.status === 'interrupted').length
     return {
       ...(this.sessionId ? { sessionId: this.sessionId } : {}),
-      members: kept,
+      members,
       teams,
       live: sections.reduce((n, s) => n + s.live, 0),
       total: sections.reduce((n, s) => n + s.total, 0),
       ...(problems > 0 ? { problems } : {}),
-      ...(all.length > kept.length ? { omitted: all.length - kept.length } : {}),
-      ...(allTeams.length > teams.length ? { omittedTeams: allTeams.length - teams.length } : {}),
       boardPath: this.boardPath,
       updatedAt: Date.now(),
     }
@@ -334,9 +335,6 @@ export class SubAgentWorkspace {
 }
 
 const ORG_DIR = 'org'
-/** 推给界面、随派出那一步落盘的组织全貌：人数和团数上限（那一步存盘是一行，太大读回时整步会被略掉） */
-const ORG_VIEW_MEMBER_LIMIT = 200
-const ORG_VIEW_TEAM_LIMIT = 100
 
 interface RememberedSection extends BoardSection {
   live: number
@@ -425,11 +423,11 @@ export function refreshOrgBoard(roster: SubAgentRoster): void {
       owner: entry.owner,
       depth: entry.depth,
       reportsTo: entry.reportsTo,
-      rows: workspaceOf(r).rowsOf(r.list()),
+      rows: workspaceOf(r).rowsOf(r.organizationMembers()),
       teams: r.listTeams().map(team => ({ name: team.name, review: team.reviewState(), reviewers: team.reviewerNames() })),
       live: r.liveCount(),
-      total: r.list().length,
-      members: r.list().map(c => toOrganizationMember(c, r.owner)),
+      total: r.organizationMembers().length,
+      members: r.organizationMembers().map(c => toOrganizationMember(c, r.owner)),
       teamViews: r.listTeams().map(team => toOrganizationTeam(team, r.owner, workspaceOf(r))),
     })
     if (!watchedForRelease.has(r)) {
@@ -905,7 +903,8 @@ export function resumeNoticeFor(child: DormantChild): string {
 export function spawnDeps(
   executor: ToolExecutorConfig,
   progressStepId: string,
-  ownedNames?: Set<string>
+  ownedNames?: Set<string>,
+  includeOrganization = false,
 ): RosterSpawnDeps | { error: string } {
   const roster = executor.getSubAgentRoster?.()
   if (!roster) return { error: 'dispatch_agents 需要主人花名册（内部错误）' }
@@ -925,7 +924,13 @@ export function spawnDeps(
   const progress = new ProgressThrottle(() => {
     const names = ownedNames ?? new Set(roster.list().map(c => c.name))
     for (const team of roster.listTeams()) workspace.writeTeamChat(team)
-    executor.updateStep(progressStepId, dispatchStepView(roster, names))
+    const view = dispatchStepView(roster, names)
+    const root = roster.orgRoot()
+    if (includeOrganization && root && roster.owner === undefined) {
+      if (!view.organization) refreshOrgBoard(root)
+      view.organization = workspaceOf(root).organizationView()
+    }
+    executor.updateStep(progressStepId, view)
     for (const team of roster.listTeams()) workspace.writeTeamTranscript(team)
   })
   const createChild = executor.createChildAgent
@@ -949,6 +954,18 @@ export function spawnDeps(
     },
     openingFor: (child, team) => expertOpening(child, team) + orgNoteFor(roster, child),
     restoreDormant: executor.restoreDormantChildren,
+    forRestoredBranch: (branch) => {
+      const branchDeps = spawnDeps({
+        ...executor,
+        getSubAgentRoster: () => branch,
+        updateStep: () => { roster.notifyOrg() },
+        knockParent: (message) => {
+          if (!branch.deliverToOwner(message)) executor.knockParent?.(message)
+        },
+      }, progressStepId)
+      if ('error' in branchDeps) throw new Error(branchDeps.error)
+      return branchDeps
+    },
     resumeNotice: resumeNoticeFor,
     teamTexts: createTeamTexts(team => workspace.teamTranscriptPath(team)),
     teamHistoryFor: (teamName) => {
@@ -1319,7 +1336,7 @@ export async function followupAgent(
     success: true,
   })
 
-  const deps = spawnDeps(executor, progressStep.id, new Set([name]))
+  const deps = spawnDeps(executor, progressStep.id, new Set([name]), true)
   if ('error' in deps) return { success: false, output: '', error: deps.error }
 
   // 他还在跑时一收到话就可能用上新命令，所以先记进单子，再交话
@@ -1333,7 +1350,7 @@ export async function followupAgent(
     return { success: false, output: '', error: result.error }
   }
   // 再交代一位组长：这一步也挂着组织全貌，之后哪一层有人变了都跟着刷新
-  if (roster.owner === undefined && roster.get(name)?.lead) {
+  if (roster.owner === undefined && roster.orgRoot()) {
     refreshOrgBoard(roster)
     const root = roster.orgRoot()
     if (root) executor.updateStep(progressStep.id, { organization: workspaceOf(root).organizationView() })
@@ -1376,7 +1393,14 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
       waitGroups.set(holder, group)
     }
   }
-  // 没有点名，或点的名字哪里都找不到：仍交给本名册，保持原来的「没有可等的」
+  if (!names?.length && roster.owner === undefined) {
+    for (const { roster: holder } of roster.orgEntries()) {
+      const consume = holder === roster
+      const waiting = holder.waitingNames(consume)
+      if (waiting.length) waitGroups.set(holder, { names: waiting, consume })
+    }
+  }
+  // 没有运行成员和未读敲门，或点名均未找到时，沿用本名册的原有回执。
   if (waitGroups.size === 0) waitGroups.set(roster, { names: names ?? [], consume: true })
 
   let news: Awaited<ReturnType<SubAgentRoster['waitForNews']>>

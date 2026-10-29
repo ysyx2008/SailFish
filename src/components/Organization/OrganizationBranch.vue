@@ -190,6 +190,7 @@ watch(cells, async () => {
         <div class="org-team-meta">
           <span class="org-team-owner">{{ cell.summary.owner }}</span>
           <span class="org-team-count">{{ cell.summary.members }}</span>
+          <OrganizationStatusBadge v-if="cell.team.waitingLeader" bucket="waiting" :label="t('ai.organization.waitingLeader')" compact />
           <OrganizationStatusBadge
             :bucket="cell.summary.bucket"
             :label="cell.summary.label"

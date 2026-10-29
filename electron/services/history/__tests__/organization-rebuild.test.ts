@@ -117,6 +117,50 @@ describe('从伙计记录重建组织', () => {
     expect(twice.live).toBe(4)
   })
 
+  it('250 人截断快照补齐后不把遗漏的 50 人再次计入，状态按存盘更新', () => {
+    const all = Array.from({ length: 250 }, (_, i) => child(`成员${i}`, { parent: '研发组长', status: i < 10 ? 'failed' : 'completed' }))
+    const old: OrganizationView = {
+      members: all.slice(0, 200).map(c => ({ id: c.name, name: c.name, description: c.description, parent: c.parent, status: 'running' })),
+      teams: [], total: 250, live: 250, omitted: 50,
+    }
+    const result = rebuildOrganization(old, all, [])
+    expect(result.members).toHaveLength(250)
+    expect(result.total).toBe(250)
+    expect(result.live).toBe(0)
+    expect(result.problems).toBe(10)
+    expect(result.omitted).toBeUndefined()
+    expect(rebuildOrganization(result, all, [])).toEqual(result)
+  })
+  it('只恢复部分遗漏时扣除已补部分，并保持重复恢复幂等', () => {
+    const all = Array.from({ length: 220 }, (_, i) => child(`成员${i}`, { parent: '研发组长' }))
+    const old: OrganizationView = { members: all.slice(0, 200).map(c => ({ id: c.name, name: c.name, description: '', parent: c.parent, status: c.status })), teams: [], total: 250, live: 50, omitted: 50 }
+    const result = rebuildOrganization(old, all, [])
+    expect(result.total).toBe(250)
+    expect(result.omitted).toBe(30)
+    expect(result.live).toBe(30)
+    expect(rebuildOrganization(result, all, [])).toEqual(result)
+  })
+  it('已有团的旧验收会更新，但消息更旧的记录不覆盖新结论', () => {
+    const record = leaderRecord('研发组长', '研发团', [])
+    record.steps[0].expertTeam!.review = 'reject'
+    record.steps[0].expertTeam!.messages = [{ seq: 1, from: '安全复核与实测', to: ['组长'], text: '打回', at: 20, verdict: 'reject' }]
+    const team = { name: '研发团', owner: '研发组长', review: 'pending' as const, messageCount: 0, waitingLeader: false, wakeLimit: 30 }
+    const result = rebuildOrganization({ ...base, teams: [team], omittedTeams: 1 }, children, [{ leader: children[0], record }])
+    expect(result.teams[0]).toMatchObject({ review: 'reject', messageCount: 1, chatFile: 'team-研发团.jsonl' })
+    const newer = { ...result, teams: [{ ...result.teams[0], review: 'pass' as const, messageCount: 2 }] }
+    expect(rebuildOrganization(newer, children, [{ leader: children[0], record }]).teams[0].review).toBe('pass')
+  })
+  it('截断里的根成员也补回来，秘书直接带的团同步验收结论', () => {
+    const extra = child('根成员', { team: '项目组', updatedAt: 100 })
+    const root = leaderRecord('秘书', '项目组', [])
+    root.steps[0].expertTeam!.review = 'reject'
+    const result = rebuildOrganization({ ...base, total: 3, omitted: 1 }, [children[0], children[1], extra], [], root)
+    expect(result.total).toBe(3)
+    expect(result.omitted).toBeUndefined()
+    expect(result.members.find(m => m.name === '根成员')).toMatchObject({ team: '项目组' })
+    expect(result.teams.find(t => t.name === '项目组' && !t.owner)?.review).toBe('reject')
+    expect(result.updatedAt).toBe(100)
+  })
   it('组长没有自己组团的记录时，组员按 parent 挂回组长', () => {
     const noTeams = leaders.map(({ leader }) => ({ leader, record: { steps: [] } as unknown as AgentRecord }))
     const org = rebuildOrganization(base, children, noTeams)
@@ -188,6 +232,25 @@ describe('从伙计记录重建组织', () => {
         '研发组长', '运营组长', '写清理脚本', '安全复核与实测', '写使用指引', '写风险提示',
       ])
       expect(org?.teams.map(t => t.name)).toEqual(['项目组', '研发团', '运营团'])
+    })
+
+    it('完整的 1000 人和 101 团跨越大 JSONL 行限制后仍可从元数据读回', () => {
+      const history = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-large-org-'))
+      tmpDirs.push(history)
+      const org: OrganizationView = {
+        members: Array.from({ length: 1000 }, (_, i) => ({ id: `m${i}`, name: `成员${i}`, description: 'x'.repeat(5000), status: 'completed' as const, team: `团${i % 101}` })),
+        teams: Array.from({ length: 101 }, (_, i) => ({ name: `团${i}`, review: 'none' as const, messageCount: 0, waitingLeader: false, wakeLimit: 30 })),
+        total: 1000, live: 0,
+      }
+      const record = { id: 'large-org', timestamp: Date.UTC(2026, 9, 30), duration: 1, userTask: '完整组织', terminalId: 'pty', terminalType: 'local', messages: [], status: 'completed',
+        steps: [{ id: 'large-step', type: 'tool_call', timestamp: 1, content: '派人', organization: org }],
+      } as unknown as AgentRecord
+      saveSessionRecord(path.join(history, 'agent'), record)
+      const restored = new AgentRecordStore(history).getAgentRecordById('large-org')?.steps[0].organization
+      expect(restored?.members).toHaveLength(1000)
+      expect(restored?.teams).toHaveLength(101)
+      expect(restored?.members.at(-1)?.name).toBe('成员999')
+      expect(restored?.total).toBe(1000)
     })
 
     it('步骤上残留的子 Agent 状态按伙计记录校正', () => {

@@ -46,12 +46,32 @@ export function buildOrgTree(view: OrganizationView): OrgGroup[] {
   return groupsOf(view, undefined, 0)
 }
 
-/** 顶部那一行：有人在干就写在干几人、共几人；都做完写「都干完了」 */
+/** 执行状态与验收分开统计，不把收工等同于验收通过。 */
+export function organizationAttention(org: OrganizationView) {
+  return {
+    problems: Math.max(org.problems ?? 0, org.members.filter(m => m.status === 'failed' || m.status === 'interrupted').length),
+    rejected: org.teams.filter(team => team.review === 'reject').length,
+    pending: org.teams.filter(team => team.review === 'pending').length,
+    waiting: org.teams.filter(team => team.waitingLeader).length,
+  }
+}
+
+/** 顶部概览同时保留正在进行、执行异常和验收异常，不用一种状态盖掉另一种。 */
 export function describeOrgDock(t: Translate, org: OrganizationView): { kind: DockKind; headline: string } {
-  if (org.live > 0) return { kind: 'working', headline: t('ai.organization.dockWorking', { live: org.live, total: org.total }) }
-  const problem = (org.problems ?? 0) > 0 || org.members.some(m => m.status === 'failed' || m.status === 'interrupted')
-  if (problem) return { kind: 'problem', headline: t('ai.organization.dockProblem', { total: org.total }) }
-  return { kind: 'done', headline: t('ai.organization.dockDone', { total: org.total }) }
+  const { problems, rejected, pending, waiting } = organizationAttention(org)
+  const kind: DockKind = problems > 0 || rejected > 0 ? 'problem' : org.live > 0 ? 'working' : pending > 0 || waiting > 0 ? 'problem' : 'done'
+  const base = org.live > 0
+    ? t('ai.organization.dockWorking', { live: org.live, total: org.total })
+    : problems > 0 ? t('ai.organization.dockProblem', { total: org.total })
+      : rejected > 0 || pending > 0 || waiting > 0 ? t('ai.organization.dockStopped', { total: org.total })
+        : t('ai.organization.dockDone', { total: org.total })
+  return { kind, headline: [
+    base,
+    org.live > 0 && problems > 0 ? t('ai.organization.cardProblem', { count: problems }) : '',
+    rejected > 0 ? t('ai.organization.summaryRejected', { count: rejected }) : '',
+    pending > 0 ? t('ai.organization.summaryPending', { count: pending }) : '',
+    waiting > 0 ? t('ai.organization.summaryWaiting', { count: waiting }) : '',
+  ].filter(Boolean).join(' · ') }
 }
 
 /** 组织里的团数 */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { OrganizationMemberView, OrganizationView } from '@shared/types'
-import { buildOrgTree, describeOrgDock } from './organization-view'
+import { buildOrgTree, describeOrgDock, organizationAttention } from './organization-view'
 
 const m = (name: string, extra: Partial<OrganizationMemberView> = {}): OrganizationMemberView => ({
   id: name, name, description: name, status: 'running', ...extra,
@@ -47,11 +47,45 @@ describe('组织图', () => {
   it('顶部一行：在干 / 有问题 / 都干完', () => {
     expect(describeOrgDock(t, view)).toMatchObject({ kind: 'working' })
     const done: OrganizationView = { ...view, live: 0, members: view.members.map(x => ({ ...x, status: 'completed' as const })) }
-    expect(describeOrgDock(t, done).kind).toBe('done')
+    expect(describeOrgDock(t, done).headline).toContain('dockStopped')
+    expect(describeOrgDock(t, { ...done, teams: [] }).kind).toBe('done')
     const bad: OrganizationView = { ...done, members: done.members.map((x, i) => (i === 0 ? { ...x, status: 'failed' as const } : x)) }
     expect(describeOrgDock(t, bad).kind).toBe('problem')
     // 出问题的人没放进 members（人数太多被截断）时，也要按全组织的数报问题
     expect(describeOrgDock(t, { ...done, problems: 1 }).kind).toBe('problem')
+  })
+
+  it('正在做、执行失败、打回、待验收和等负责人同时保留', () => {
+    const mixed: OrganizationView = { ...view, members: [...view.members, m('失败', { status: 'failed' })], teams: [
+      { ...view.teams[0], review: 'reject', waitingLeader: true },
+      { ...view.teams[0], name: '待验团', review: 'pending' },
+    ] }
+    expect(organizationAttention(mixed)).toEqual({ problems: 1, rejected: 1, pending: 1, waiting: 1 })
+    const dock = describeOrgDock(t, mixed)
+    expect(dock.kind).toBe('problem')
+    for (const key of ['dockWorking', 'cardProblem', 'summaryRejected', 'summaryPending', 'summaryWaiting']) expect(dock.headline).toContain(key)
+    const stopped = describeOrgDock(t, { ...mixed, live: 0, members: [], problems: 0 })
+    expect(stopped.headline).toContain('dockStopped')
+    expect(stopped.headline).not.toContain('dockDone')
+  })
+
+  it('仅等负责人处理时显示已收工与等待，不显示都干完了或完成勾', () => {
+    const waiting: OrganizationView = { ...view, live: 0, members: view.members.map(x => ({ ...x, status: 'completed' })),
+      teams: [{ ...view.teams[0], review: 'none', waitingLeader: true }],
+    }
+    expect(describeOrgDock(t, waiting).kind).toBe('problem')
+    expect(describeOrgDock(t, waiting).headline).toContain('dockStopped')
+    expect(describeOrgDock(t, waiting).headline).toContain('summaryWaiting')
+    expect(describeOrgDock(t, waiting).headline).not.toContain('dockDone')
+  })
+
+  it('完整构建 1000 人、101 团，默认包含尾部节点', () => {
+    const members = Array.from({ length: 1000 }, (_, i) => m(`成员${i}`, { team: `团${i % 101}` }))
+    const teams = Array.from({ length: 101 }, (_, i) => ({ name: `团${i}`, review: 'none' as const, messageCount: 0, waitingLeader: false, wakeLimit: 30 }))
+    const tree = buildOrgTree({ members, teams, total: 1000, live: 1000 })
+    expect(tree).toHaveLength(101)
+    expect(tree.flatMap(g => g.nodes)).toHaveLength(1000)
+    expect(tree.flatMap(g => g.nodes).some(n => n.member.name === '成员999')).toBe(true)
   })
 
   it('不同组长手下的同名团各归各的组', () => {
