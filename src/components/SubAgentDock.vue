@@ -1,30 +1,64 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, TriangleAlert, Network } from 'lucide-vue-next'
+import { Check, TriangleAlert, Network, ChevronDown } from 'lucide-vue-next'
 import type { AgentStep } from '@shared/types'
-import { describeOrgDock } from '../utils/organization-view'
+import { buildOrgTree, describeOrgDock } from '../utils/organization-view'
 import { teamCards, teamSources } from '../utils/team-view'
+import TeamMemberTree from './Organization/TeamMemberTree.vue'
 
-const props = defineProps<{ steps: readonly AgentStep[]; teamSteps?: readonly AgentStep[]; attached?: boolean; openTeamStepId?: string | null; organizationStep?: AgentStep }>()
-const emit = defineEmits<{ openTeam: [stepId: string]; toggleTeam: [stepId: string]; openOrganization: [stepId: string] }>()
+const props = defineProps<{ steps: readonly AgentStep[]; teamSteps?: readonly AgentStep[]; attached?: boolean }>()
+const emit = defineEmits<{ openOrganization: [stepId: string, member?: string] }>()
 const { t } = useI18n()
+const root = ref<HTMLElement | null>(null)
+const opened = ref<string | null>(null)
 const items = computed(() => {
   const sources = props.teamSteps ?? props.steps
   return [...teamCards(sources)]
     .filter(([id]) => teamSources(sources, id).some(source => props.steps.some(step => step.id === source.id)))
-    .map(([id, org]) => ({ id, ...describeOrgDock(t, org) }))
+    .map(([id, org]) => ({ id, ...describeOrgDock(t, org), org }))
+})
+const selected = computed(() => items.value.find(item => item.id === opened.value))
+const tree = computed(() => selected.value ? buildOrgTree(selected.value.org) : [])
+watch(items, () => { if (!selected.value) opened.value = null })
+function open(stepId: string, member?: string) {
+  opened.value = null
+  emit('openOrganization', stepId, member)
+}
+function onPointer(event: PointerEvent) {
+  if (event.target instanceof Node && !root.value?.contains(event.target)) opened.value = null
+}
+function onKey(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || !opened.value || !root.value?.getClientRects().length) return
+  event.preventDefault()
+  event.stopPropagation()
+  root.value?.querySelector<HTMLButtonElement>('.dock-toggle[aria-expanded="true"]')?.focus()
+  opened.value = null
+}
+onMounted(() => {
+  document.addEventListener('pointerdown', onPointer, true)
+  document.addEventListener('keydown', onKey, true)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onPointer, true)
+  document.removeEventListener('keydown', onKey, true)
 })
 </script>
 
 <template>
-  <div v-if="items.length" class="sub-agent-dock" :class="{ attached }">
+  <div v-if="items.length" ref="root" class="sub-agent-dock" :class="{ attached }">
     <div v-for="item in items" :key="item.id" class="dock-row">
-      <button type="button" class="dock-bar" :class="item.kind" @click="emit('openOrganization', item.id)">
-        <span class="dock-icon"><span v-if="item.kind === 'working'" class="dock-spinner" /><Check v-else-if="item.kind === 'done'" :size="13" /><TriangleAlert v-else :size="13" /></span>
-        <span class="dock-headline">{{ item.headline }}</span>
-        <span class="dock-team"><Network :size="12" /><span>{{ t('ai.organization.openChart') }}</span></span>
-      </button>
+      <div class="dock-bar" :class="[item.kind, { open: opened === item.id }]">
+        <button type="button" class="dock-toggle" :aria-expanded="opened === item.id" @click="opened = opened === item.id ? null : item.id">
+          <span class="dock-icon"><span v-if="item.kind === 'working'" class="dock-spinner" /><Check v-else-if="item.kind === 'done'" :size="13" /><TriangleAlert v-else :size="13" /></span>
+          <span class="dock-headline">{{ item.headline }}</span>
+          <ChevronDown :size="13" class="dock-chevron" :class="{ open: opened === item.id }" />
+        </button>
+        <button type="button" class="dock-team" @click="open(item.id)"><Network :size="12" /><span>{{ t('ai.organization.openChart') }}</span></button>
+      </div>
+    </div>
+    <div v-if="selected" class="dock-panel">
+      <TeamMemberTree :groups="tree" @open="open(selected.id, $event)" />
     </div>
   </div>
 </template>
@@ -49,7 +83,7 @@ const items = computed(() => {
 }
 
 .dock-row {
-  position: relative;
+  min-width: 0;
 }
 
 .dock-bar {
@@ -60,9 +94,9 @@ const items = computed(() => {
   border: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
   height: 30px;
-  padding: 0 10px 0 9px;
+  padding: 0 4px 0 0;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: var(--bg-secondary);
@@ -76,10 +110,13 @@ const items = computed(() => {
 
 .dock-bar:hover,
 .dock-bar.open,
-.dock-bar:focus-visible {
+.dock-bar:focus-within {
   background: var(--bg-tertiary);
   outline: none;
 }
+
+.dock-toggle { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; height: 100%; padding: 0 7px 0 9px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.dock-toggle:focus-visible, .dock-team:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -2px; border-radius: 6px; }
 
 .dock-icon {
   flex-shrink: 0;
@@ -133,7 +170,7 @@ const items = computed(() => {
   transform: rotate(180deg);
 }
 
-/* 群聊：行尾一个小按钮，开着时亮着，再点收起 */
+/* 全景入口独立于名单展开按钮 */
 .dock-team {
   flex-shrink: 0;
   display: inline-flex;
@@ -161,8 +198,8 @@ const items = computed(() => {
 /* 展开的内容盖在对话上面（栏的下沿开始），不把对话往下挤，也不盖住栏里别的行 */
 .dock-panel {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 12px;
+  right: 12px;
   top: calc(100% + 4px);
   max-height: min(60vh, 520px);
   overflow-y: auto;

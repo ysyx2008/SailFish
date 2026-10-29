@@ -877,6 +877,7 @@ export default {
       secretary: 'Secretary',
     },
     organization: {
+      closeMember: 'Close member details',
       responsibility: 'Responsibility',
       memberLoadFailed: 'Could not load member activity',
       noMemberProcess: 'No recorded activity or result yet',

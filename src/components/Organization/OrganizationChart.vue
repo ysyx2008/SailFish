@@ -5,7 +5,7 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Maximize2, Minimize2, X, Network, UserRound } from 'lucide-vue-next'
+import { Network, UserRound } from 'lucide-vue-next'
 import { useTerminalStore } from '../../stores/terminal'
 import { teamViewForStep, teamMemberSnapshot, teamSources } from '../../utils/team-view'
 import { buildOrgTree, organizationAttention } from '../../utils/organization-view'
@@ -14,6 +14,7 @@ import OrganizationBranch from './OrganizationBranch.vue'
 import OrganizationTeamArtifacts from './OrganizationTeamArtifacts.vue'
 import type { TeamArtifactSource } from '@shared/types'
 import OrganizationMemberDetail from './OrganizationMemberDetail.vue'
+import TeamPanelHeader from './TeamPanelHeader.vue'
 import OrganizationStatusBadge from './OrganizationStatusBadge.vue'
 
 const props = withDefaults(defineProps<{
@@ -23,9 +24,11 @@ const props = withDefaults(defineProps<{
   /** panel：右侧面板；overlay：覆盖对话。两种模式共用标题旁关闭和铺满入口。 */
   mode?: 'panel' | 'overlay'
   focusActive?: boolean
+  /** 每次从横幅进入都会给新请求，可直达同一成员或回到总览。 */
+  entry?: { member?: string }
   artifactBindings?: ArtifactPanelBindings
 }>(), { mode: 'overlay', focusActive: undefined })
-const emit = defineEmits<{ close: []; toggleFocus: []; openTeam: [team: { name: string; owner?: string }] }>()
+const emit = defineEmits<{ close: []; toggleFocus: []; overview: []; openTeam: [team: { name: string; owner?: string }] }>()
 
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
@@ -59,10 +62,14 @@ const stats = computed(() => {
 })
 
 const artifactTeam = ref<TeamArtifactSource | null>(null)
-const memberName = ref<string | null>(null)
+const memberName = ref<string | null>(props.entry?.member ?? null)
 const member = computed(() => organization.value?.members.find(member => member.name === memberName.value))
+function showOverview() {
+  memberName.value = null
+  emit('overview')
+}
 const memberSnapshot = computed(() => memberName.value ? teamMemberSnapshot(state.value?.steps ?? [], props.stepId, memberName.value) : undefined)
-watch([() => props.tabId, () => props.stepId], () => { artifactTeam.value = null; memberName.value = null })
+watch([() => props.tabId, () => props.stepId, () => props.entry], () => { artifactTeam.value = null; memberName.value = props.entry?.member ?? null })
 const bodyRef = ref<HTMLElement | null>(null)
 const rootRef = ref<HTMLElement | null>(null)
 const localFocus = ref(false)
@@ -116,31 +123,11 @@ onMounted(() => {
   <Teleport :disabled="!localFocus" :to="focusTarget || 'body'">
   <section ref="rootRef" class="organization-chart" :class="[`is-${mode}`, { 'is-focus': focused }]" :style="localFocus ? focusBounds : undefined">
     <OrganizationTeamArtifacts v-if="artifactTeam" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" :team="artifactTeam" :focus-active="focused" @close="artifactTeam = null" @toggle-focus="toggleFocus" />
-    <OrganizationMemberDetail v-else-if="member" :session-id="organization?.sessionId" :member="member" :snapshot="memberSnapshot" :focus-active="focused" @close="memberName = null" @artifacts="artifactTeam = { member: member.name }" @toggle-focus="toggleFocus" />
+    <OrganizationMemberDetail v-else-if="member" :session-id="organization?.sessionId" :member="member" :snapshot="memberSnapshot" :focus-active="focused" @close="showOverview" @artifacts="artifactTeam = { member: member.name }" @toggle-focus="toggleFocus" />
     <template v-else>
-    <header class="oc-header">
-      <div class="oc-tab">
-      <span class="oc-title-icon" aria-hidden="true"><Network :size="14" /></span>
-      <div class="oc-title">
-        <span class="oc-title-name">{{ t('ai.organization.title') }}</span>
-      </div>
-      <button
-        type="button"
-        class="oc-icon-btn oc-close-btn"
-        :title="t('ai.organization.close')"
-        :aria-label="t('ai.organization.close')"
-        @click="emit('close')"
-      >
-        <X :size="12" />
-      </button>
-      </div>
-      <span v-if="organization" class="oc-title-meta">{{ t('ai.organization.metaSimple', { total: organization.total, teams: organization.teams.length + (organization.omittedTeams ?? 0) }) }}</span>
-      <div class="oc-header-fill" />
-      <button type="button" class="oc-icon-btn oc-focus-btn" :aria-pressed="focused" :title="focused ? t('canvas.splitDocument') : t('ai.organization.focus')" :aria-label="focused ? t('canvas.splitDocument') : t('ai.organization.focus')" @click="toggleFocus">
-        <Minimize2 v-if="focused" :size="14" />
-        <Maximize2 v-else :size="14" />
-      </button>
-    </header>
+    <TeamPanelHeader class="oc-header" :title="t('ai.organization.title')" :close-label="t('ai.organization.close')" :meta="organization ? t('ai.organization.metaSimple', { total: organization.total, teams: organization.teams.length + (organization.omittedTeams ?? 0) }) : undefined" :focused="focused" :focus-label="focused ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="emit('close')" @toggle-focus="toggleFocus">
+      <template #icon><Network :size="14" /></template>
+    </TeamPanelHeader>
 
     <div v-if="plan" class="oc-progress"><strong>{{ plan.title }}</strong><span v-if="currentPlanStep">{{ currentPlanStep.title }}</span></div>
     <div v-if="organization && stats && (stats.live > 0 || stats.done > 0 || stats.problems > 0)" class="oc-summary">
@@ -216,45 +203,7 @@ onMounted(() => {
   border-left: 1px solid var(--border-color);
 }
 .organization-chart.is-focus { border-left: none; }
-.organization-chart.is-focus .oc-header { padding-left: max(12px, var(--shell-inset-left, 0px)); padding-right: calc(max(8px, var(--shell-inset-right, 0px)) + 36px); }
 .organization-chart.is-focus .oc-body { padding-bottom: var(--assistant-focus-overlay, 22px); }
-
-.oc-header {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-sizing: border-box;
-  height: var(--workbench-panel-header-height, 38px);
-  padding: 0 calc(max(8px, var(--shell-inset-right, 0px)) + 30px) 0 12px;
-  background: var(--bg-tertiary, var(--bg-secondary, #252525));
-  border-bottom: 1px solid var(--border-color);
-  -webkit-app-region: drag;
-}
-.oc-header .oc-icon-btn {
-  -webkit-app-region: no-drag;
-}
-.oc-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.oc-icon-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
-.oc-tab { display: flex; align-items: center; gap: 7px; min-width: 0; height: 28px; padding: 0 5px 0 9px; border-radius: 8px; background: var(--bg-secondary); -webkit-app-region: no-drag; }
-.oc-tab .oc-close-btn { width: 18px; height: 18px; flex-shrink: 0; }
-.oc-header-fill { flex: 1; align-self: stretch; }
-.oc-focus-btn { width: 22px; height: 22px; flex-shrink: 0; border: 1px solid var(--border-color); border-radius: 5px; }
-.oc-title-icon { display: inline-flex; color: var(--accent-primary); }
-.oc-title { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
-.oc-title-name { font-size: 12px; font-weight: 500; white-space: nowrap; }
-.oc-title-meta { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .oc-progress { flex-shrink: 0; padding: 10px 14px; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .oc-progress span { color: var(--text-secondary); }

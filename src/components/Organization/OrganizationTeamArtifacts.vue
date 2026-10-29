@@ -2,13 +2,14 @@
 /** 团队成果清单；预览复用产出物面板与同一份草稿存储。 */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, FileText, FolderOpen, RefreshCw, X, Maximize2, Minimize2 } from 'lucide-vue-next'
+import { FileText, FolderOpen, RefreshCw, Files } from 'lucide-vue-next'
 import { resolveCanvasArtifactId, type OrganizationArtifactView, type TeamArtifactSource } from '@shared/types'
 import { checkFilePathExists, requireArtifactDesktopHost, useAssistantArtifactStore } from '@sailfish/workbench-assistant/artifact'
 import type { ArtifactPanelBindings } from '@sailfish/workbench-assistant/artifact/composer-quote'
 import { loadArtifactContentFromDisk } from '@sailfish/workbench-assistant/artifact/domain/artifact-content-loader'
 import ArtifactPanel from '@sailfish/workbench-assistant/artifact/components/ArtifactPanel.vue'
 import { teamViewForStep } from '../../utils/team-view'
+import TeamPanelHeader from './TeamPanelHeader.vue'
 import { useTerminalStore } from '../../stores/terminal'
 
 const props = defineProps<{ tabId: string; stepId: string; team: TeamArtifactSource; focusActive: boolean; artifactBindings?: ArtifactPanelBindings }>()
@@ -124,14 +125,10 @@ const titleOf = (item: OrganizationArtifactView) => item.kind === 'result'
 
 <template>
   <section class="org-artifacts" :class="{ 'is-focus': focusActive }">
-    <header class="oa-header">
-      <button type="button" class="oa-icon" :title="t(preview ? 'ai.organization.backToArtifacts' : 'ai.organization.backToChart')" @click="back"><ArrowLeft :size="15" /></button>
-      <span class="oa-title">{{ sourceName }} · {{ t('ai.organization.teamArtifacts') }}</span>
-      <button type="button" class="oa-icon" :title="t('ai.organization.closeArtifacts')" @click="close"><X :size="15" /></button>
-      <span v-if="'name' in team" class="oa-owner">{{ sourceOwner || t('ai.organization.secretary') }}</span>
-      <button v-if="!preview" type="button" class="oa-icon oa-refresh" :disabled="loading" :title="t('ai.organization.refreshArtifacts')" @click="refresh(true)"><RefreshCw :size="14" /></button>
-      <button v-if="!preview" type="button" class="oa-icon" :aria-pressed="focusActive" :title="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @click="toggleFocus"><Minimize2 v-if="focusActive" :size="14" /><Maximize2 v-else :size="14" /></button>
-    </header>
+    <TeamPanelHeader class="oa-header" :title="`${sourceName} · ${t('ai.organization.teamArtifacts')}`" :close-label="t('ai.organization.closeArtifacts')" :back-label="t(preview ? 'ai.organization.backToArtifacts' : 'ai.organization.backToChart')" :meta="'name' in team ? sourceOwner || t('ai.organization.secretary') : undefined" :focused="focusActive" :hide-focus="preview" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="close" @back="back" @toggle-focus="toggleFocus">
+      <template #icon><Files :size="14" /></template>
+      <template v-if="!preview" #actions><button type="button" class="oa-refresh" :disabled="loading" :title="t('ai.organization.refreshArtifacts')" @click="refresh(true)"><RefreshCw :size="14" /></button></template>
+    </TeamPanelHeader>
     <ArtifactPanel v-if="preview" ref="panel" v-bind="artifactBindings" :tab-id="tabId" :artifact-ids="ids" :focus-active="focusActive" @toggle-focus="toggleFocus" />
     <div v-else class="oa-list">
       <p v-if="openError" class="oa-error" role="alert">{{ openError }}</p>
@@ -151,12 +148,6 @@ const titleOf = (item: OrganizationArtifactView) => item.kind === 'result'
 
 <style scoped>
 .org-artifacts { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; height: 100%; background: var(--bg-primary); }
-.oa-header { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 10px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; -webkit-app-region: drag; }
-.is-focus .oa-header { padding-left: max(10px, var(--shell-inset-left, 0px)); padding-right: calc(max(10px, var(--shell-inset-right, 0px)) + 36px); }
-.oa-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
-.oa-owner { margin-left: auto; font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.oa-icon { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; flex-shrink: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-secondary); cursor: pointer; -webkit-app-region: no-drag; }
-.oa-icon:hover { background: var(--bg-tertiary); color: var(--text-primary); }
 .oa-list { flex: 1; overflow: auto; padding: 14px; }
 .is-focus .oa-list { padding-bottom: var(--assistant-focus-overlay, 22px); }
 .oa-error { padding: 10px; color: var(--color-error, #e06c75); font-size: 12px; overflow-wrap: anywhere; }

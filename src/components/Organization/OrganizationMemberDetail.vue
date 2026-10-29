@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, Files, Maximize2, Minimize2 } from 'lucide-vue-next'
+import { Files, UserRound } from 'lucide-vue-next'
 import type { OrganizationMemberView, SubAgentResult } from '@shared/types'
+import TeamPanelHeader from './TeamPanelHeader.vue'
 import SubAgentGroup from '../SubAgentGroup.vue'
 
 const props = defineProps<{ sessionId?: string; member: OrganizationMemberView; snapshot?: SubAgentResult; focusActive: boolean }>()
@@ -51,12 +52,10 @@ onBeforeUnmount(() => { request++; clearInterval(timer) })
 
 <template>
   <section class="org-member-detail">
-    <header class="om-header">
-      <button type="button" :title="t('ai.organization.backToChart')" @click="emit('close')"><ArrowLeft :size="15" /></button>
-      <strong>{{ member.name }}</strong>
-      <button type="button" class="om-artifacts" @click="emit('artifacts')"><Files :size="14" />{{ t('ai.organization.teamArtifacts') }}</button>
-      <button type="button" :aria-pressed="focusActive" :title="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @click="emit('toggleFocus')"><Minimize2 v-if="focusActive" :size="14" /><Maximize2 v-else :size="14" /></button>
-    </header>
+    <TeamPanelHeader class="om-header" :title="member.name" :close-label="t('ai.organization.closeMember')" :back-label="t('ai.organization.backToChart')" :focused="focusActive" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="emit('close')" @back="emit('close')" @toggle-focus="emit('toggleFocus')">
+      <template #icon><UserRound :size="14" /></template>
+      <template #actions><button type="button" class="om-artifacts" @click="emit('artifacts')"><Files :size="14" />{{ t('ai.organization.teamArtifacts') }}</button></template>
+    </TeamPanelHeader>
     <div class="om-body">
       <p class="om-responsibility"><span>{{ t('ai.organization.responsibility') }}</span>{{ member.description }}</p>
       <p v-if="failed" role="alert">{{ t('ai.organization.memberLoadFailed') }} <button type="button" @click="refresh">{{ t('ai.organization.retry') }}</button></p>
@@ -69,11 +68,7 @@ onBeforeUnmount(() => { request++; clearInterval(timer) })
 
 <style scoped>
 .org-member-detail { display: flex; flex-direction: column; min-height: 0; height: 100%; }
-.om-header { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 12px; border-bottom: 1px solid var(--border-color); }
-.om-header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.om-header button, .om-body button { display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); background: transparent; border: 0; cursor: pointer; padding: 5px; }
-.om-header button:hover, .om-body button:hover { color: var(--text-primary); }
-.om-artifacts { margin-left: auto; flex-shrink: 0; }
+.om-body button { color: var(--text-secondary); background: transparent; border: 0; cursor: pointer; }
 .om-body { overflow: auto; padding: 14px; padding-bottom: var(--assistant-focus-overlay, 22px); }
 .om-responsibility { margin: 0 0 14px; white-space: pre-wrap; font-size: 12px; line-height: 1.6; }
 .om-responsibility span { display: block; margin-bottom: 4px; color: var(--text-muted); font-size: 11px; }

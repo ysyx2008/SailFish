@@ -88,7 +88,7 @@ describe('团队产出物的实时边界', () => {
     container.querySelector<HTMLButtonElement>('.oa-item')!.click(); await settle()
     expect(container.querySelector('.artifact-preview-stub')).not.toBeNull()
     readArtifacts.mockResolvedValue([artifact, { member: '乙员', kind: 'result', data: { action: 'open', renderer: 'markdown', artifactId: 'new-result', content: '新交回结果' } }])
-    container.querySelector<HTMLButtonElement>('.oa-header .oa-icon')!.click(); await settle()
+    container.querySelector<HTMLButtonElement>('.oa-header .tph-back')!.click(); await settle()
     expect(container.querySelectorAll('.oa-item')).toHaveLength(2)
   })
   it('团队在轮询前收工，最后一批成果仍会刷新出来', async () => {

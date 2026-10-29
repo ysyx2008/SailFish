@@ -104,7 +104,7 @@ const props = withDefaults(defineProps<{
   openedExpertTeamStepId?: string | null
   closeExpertTeam?: () => void
   /** 外壳有地方放组织图时由它打开；不给就盖在对话栏上 */
-  openOrganizationSeat?: (stepId: string) => void
+  openOrganizationSeat?: (stepId: string, member?: string) => void
 }>(), {
   visible: true,
   tabActive: true,
@@ -556,44 +556,26 @@ const getHostname = (url: string): string => {
 
 /** 盖在对话栏上的专家团群聊（外壳没接手时） */
 const overlayTeamStepId = ref<string | null>(null)
-const openExpertTeam = (stepId: string) => {
-  if (props.openExpertTeam) props.openExpertTeam(stepId)
-  else overlayTeamStepId.value = stepId
-}
 /** 盖在对话栏上的项目组织图，和从图里点开的某个团的群聊（再盖在组织图上） */
 const overlayOrgStepId = ref<string | null>(null)
+const overlayOrgEntry = ref<{ member?: string }>({})
 const overlayOrgTeam = ref<{ name: string; owner?: string } | null>(null)
-const openOrganization = (stepId: string) => {
+const openOrganization = (stepId: string, member?: string) => {
   if (props.openOrganizationSeat) {
-    props.openOrganizationSeat(stepId)
+    props.openOrganizationSeat(stepId, member)
     return
   }
   overlayOrgStepId.value = stepId
+  overlayOrgEntry.value = { member }
   overlayOrgTeam.value = null
 }
 /** 同一份组织可能挂在多个派出步骤上：每个任务只认第一份，对话里每个任务也只挂一张卡片 */
 const teamCardViews = computed(() => teamCards(agentState.value?.steps ?? [], agentState.value?.sessionId))
-const organizationStep = computed(() => {
-  const steps = agentState.value?.steps ?? []
-  const entries = [...teamCardViews.value]
-  const latest = entries[entries.length - 1]
-  return latest ? { ...steps.find(step => step.id === latest[0])!, organization: latest[1] } : undefined
-})
 watch(() => props.tabId, () => {
   overlayTeamStepId.value = null
   overlayOrgStepId.value = null
   overlayOrgTeam.value = null
 })
-/** 此刻开着群聊的专家团 */
-const openedTeamStepId = computed(() => (props.openExpertTeam ? props.openedExpertTeamStepId : overlayTeamStepId.value) ?? null)
-/** 顶部群聊按钮：没开就打开，开着再点就收起 */
-const toggleExpertTeam = (stepId: string) => {
-  if (openedTeamStepId.value !== stepId) openExpertTeam(stepId)
-  else if (props.closeExpertTeam) props.closeExpertTeam()
-  else overlayTeamStepId.value = null
-}
-
-
 // ==================== 初始化 Composables ====================
 
 // 当前终端 ID（使用 prop，每个实例固定绑定一个 tab）
@@ -2705,10 +2687,6 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         :steps="pinnedDispatches"
         :team-steps="agentState?.steps ?? []"
         :attached="!!currentPlan"
-        :open-team-step-id="openedTeamStepId"
-        :organization-step="organizationStep"
-        @open-team="openExpertTeam"
-        @toggle-team="toggleExpertTeam"
         @open-organization="openOrganization"
       />
 
@@ -3530,6 +3508,8 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
       mode="overlay"
       :tab-id="tabId"
       :step-id="overlayOrgStepId"
+      :entry="overlayOrgEntry"
+      @overview="overlayOrgEntry = {}"
       @close="overlayOrgStepId = null; overlayOrgTeam = null"
       @open-team="overlayOrgTeam = $event"
     />

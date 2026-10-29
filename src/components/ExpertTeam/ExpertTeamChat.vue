@@ -9,13 +9,14 @@
  */
 import { computed, nextTick, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, X, ArrowDown, Crown, MessagesSquare, Maximize2, Minimize2 } from 'lucide-vue-next'
+import { ArrowDown, Crown, MessagesSquare } from 'lucide-vue-next'
 import { EXPERT_TEAM_LEADER, SECRETARY_NAME, type ExpertTeamChatCursor, type ExpertTeamMessageView, type ExpertTeamView, type SubAgentResult } from '@shared/types'
 import { useTerminalStore } from '../../stores/terminal'
 import { useMarkdown } from '../../composables/useMarkdown'
 import { avatarHue, avatarInitial, continuesPrevious, memberLabel } from '../../utils/expert-team-view'
 import { countSubAgents, subAgentBucket, type SubAgentBucket } from '../../utils/sub-agent-summary'
 import { teamViewForStep, teamSources } from '../../utils/team-view'
+import TeamPanelHeader from '../Organization/TeamPanelHeader.vue'
 import { ExpertTeamChatPages } from '../../utils/expert-team-chat-pages'
 
 const props = withDefaults(defineProps<{
@@ -218,39 +219,9 @@ onMounted(() => { void openChat(true) })
 
 <template>
   <section class="expert-team-chat" :class="[`is-${mode}`, { 'is-focus': focusActive, 'has-focus-controls': focusActive !== undefined }]">
-    <header class="etc-header">
-      <button
-        v-if="mode === 'overlay'"
-        type="button"
-        class="etc-icon-btn"
-        :title="t('ai.expertTeam.back')"
-        :aria-label="t('ai.expertTeam.back')"
-        @click="emit('close')"
-      >
-        <ArrowLeft :size="15" />
-      </button>
-      <span class="etc-title-icon" aria-hidden="true"><MessagesSquare :size="14" /></span>
-      <div class="etc-title">
-        <span class="etc-title-name">{{ t('ai.expertTeam.title', { team: team?.name ?? '' }) }}</span>
-        <span class="etc-title-meta">
-          {{ t('ai.expertTeam.members', { count: agents.length }) }}<template v-if="runningCount > 0"> · {{ t('ai.subAgentCount.running', { count: runningCount }) }}</template>
-        </span>
-      </div>
-      <button
-        v-if="mode === 'panel'"
-        type="button"
-        class="etc-icon-btn"
-        :title="t('ai.expertTeam.close')"
-        :aria-label="t('ai.expertTeam.close')"
-        @click="emit('close')"
-      >
-        <X :size="15" />
-      </button>
-      <button v-if="focusActive !== undefined" type="button" class="etc-icon-btn etc-focus-btn" :aria-pressed="focusActive" :title="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" :aria-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @click="emit('toggleFocus')">
-        <Minimize2 v-if="focusActive" :size="14" />
-        <Maximize2 v-else :size="14" />
-      </button>
-    </header>
+    <TeamPanelHeader class="etc-header" :title="t('ai.expertTeam.title', { team: team?.name ?? '' })" :close-label="t('ai.expertTeam.close')" :back-label="teamName ? t('ai.organization.backToChart') : mode === 'overlay' ? t('ai.expertTeam.back') : undefined" :meta="t('ai.expertTeam.members', { count: agents.length }) + (runningCount > 0 ? ` · ${t('ai.subAgentCount.running', { count: runningCount })}` : '')" :focused="focusActive" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="emit('close')" @back="emit('close')" @toggle-focus="emit('toggleFocus')">
+      <template #icon><MessagesSquare :size="14" /></template>
+    </TeamPanelHeader>
 
     <div class="etc-main">
       <aside class="etc-members" :aria-label="t('ai.expertTeam.membersTitle')">
@@ -371,83 +342,8 @@ onMounted(() => { void openChat(true) })
   inset: 0;
   z-index: 30;
 }
-.expert-team-chat.has-focus-controls .etc-header { padding-right: calc(max(8px, var(--shell-inset-right, 0px)) + 30px); }
-.expert-team-chat.is-focus .etc-header { padding-left: max(12px, var(--shell-inset-left, 0px)); }
 .expert-team-chat.is-focus .etc-list { padding-bottom: calc(var(--assistant-focus-overlay, 160px) + 20px); }
 .expert-team-chat.is-focus .etc-jump { bottom: calc(var(--assistant-focus-overlay, 160px) + 14px); }
-
-/* 头部 */
-.etc-header {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-sizing: border-box;
-  height: var(--workbench-panel-header-height, 38px);
-  padding: 0 10px;
-  /* 和产出物面板、对话顶栏同一个底色 */
-  background: var(--bg-tertiary, var(--bg-secondary, #252525));
-  border-bottom: 1px solid var(--border-color);
-  /* 群聊在窗口最上面时，标题栏同样能拖动窗口；按钮仍可点 */
-  -webkit-app-region: drag;
-}
-
-.etc-header .etc-icon-btn {
-  -webkit-app-region: no-drag;
-}
-
-.etc-title-icon {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  color: var(--accent-primary);
-  background: rgba(var(--accent-rgb, 137, 180, 250), 0.14);
-}
-
-.etc-title {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.etc-title-name {
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.etc-title-meta {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.etc-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.etc-icon-btn:hover {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
-  color: var(--text-primary);
-}
 
 .etc-main {
   flex: 1;

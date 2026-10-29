@@ -878,6 +878,7 @@ export default {
       secretary: '秘书',
     },
     organization: {
+      closeMember: '关闭成员详情',
       responsibility: '职责',
       memberLoadFailed: '成员过程读取失败',
       noMemberProcess: '还没有记录到执行过程或结果',

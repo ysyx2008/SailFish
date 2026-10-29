@@ -104,6 +104,7 @@ let seatBeforeTeam: DeskSeat = 'none'
 const teamSeated = computed(() => seat.value === 'team' && !!teamStepId.value)
 /** 右侧在看哪个项目组织（派出组织的那一步），以及从图里点开的团 */
 const orgStepId = ref<string | null>(null)
+const orgEntry = ref<{ member?: string }>({})
 const orgTeamName = ref<{ name: string; owner?: string } | null>(null)
 /** 打开组织图前坐的是谁，关掉组织图回到它 */
 let seatBeforeOrg: DeskSeat = 'none'
@@ -376,12 +377,13 @@ function closeExpertTeam() {
   else seat.value = 'none'
 }
 
-function openOrganization(stepId: string) {
+function openOrganization(stepId: string, member?: string) {
   if (seat.value !== 'org') {
     seatBeforeOrg = seat.value
     artifactBeforeOrg = seat.value === 'artifact' ? artifactStore.getActiveArtifact(props.tab.id)?.id ?? null : null
   }
   orgStepId.value = stepId
+  orgEntry.value = { member }
   orgTeamName.value = null
   seat.value = 'org'
   listOpen.value = false
@@ -402,6 +404,7 @@ function closeOrganization() {
 
 /** 组织图里点某个团：右侧面板换成那个团的群聊，关掉群聊回到图上 */
 function openOrgTeam(team: { name: string; owner?: string }) {
+  orgEntry.value = {}
   orgTeamName.value = team
 }
 
@@ -582,6 +585,8 @@ defineExpose({
                 mode="panel"
                 :tab-id="tab.id"
                 :step-id="orgStepId!"
+                :entry="orgEntry"
+                @overview="orgEntry = {}"
                 :focus-active="focusActive"
                 @toggle-focus="toggleFocus"
                 @close="closeOrganization"
