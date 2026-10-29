@@ -1,0 +1,335 @@
+# SailFish 项目架构
+
+> **每次新会话开始时**阅读「概览」「目录结构」和章节标题以建立地图；动手前完整阅读任务涉及的章节和相关引用，不要求每次通读所有专题细节。
+> **完成重大功能新增或架构变更后**，必须更新本文件中相关的章节，保持信息准确。
+
+## 概览
+
+SailFish（旗鱼）是一个私人 AI Agent 桌面应用。用户用自然语言描述需求，AI 自主规划并执行任务。支持本地和远程 (SSH) 环境操作，可通过钉钉/飞书/企业微信/微信/Slack/Telegram 远程访问 Agent。
+
+| 层 | 技术 | 说明 |
+|---|---|---|
+| 桌面壳 | Electron 44 | 窗口管理、系统集成、IPC |
+| 前端 | Vue 3 + Pinia + xterm.js | UI、终端渲染、状态管理 |
+| 后端服务 | TypeScript (Node.js) | 业务逻辑核心 |
+| CLI | Node.js + tsx | 纯命令行模式，复用后端服务 |
+| AI | Transformers.js + LanceDB | 本地向量嵌入、知识库 |
+| 构建 | Vite + electron-builder | 多平台打包（macOS/Windows） |
+
+## 目录结构
+
+```
+SailFish/
+├── packages/                    # Monorepo（进度见 docs/workbench-monorepo-design.md §6.0）
+│   ├── shared-types/            # ✅ @sailfish/shared-types 物理真相源（shared/types 为兼容 re-export）
+│   ├── workbench-sdk/           # ⚠️ 仍 re-export src/workbench
+│   └── workbench-{assistant,local,ssh,companion}/  # ⚠️ 骨架
+├── shared/types/                # 兼容 re-export → packages/shared-types（请新代码用 @sailfish/shared-types）
+├── shared/oem.config.template.ts # OEM 模板（运行时 oem.config.ts 由 ensure 生成，不进主线）
+├── electron/                    # Electron 主进程 + 后端服务
+│   ├── main.ts                  # 主进程入口（窗口、IPC、服务初始化）
+│   ├── preload.ts               # 预加载脚本（IPC 桥接）
+│   ├── cli/                     # CLI 模式入口
+│   │   ├── main.js              # 入口（纯 JS，拦截 require('electron')）
+│   │   ├── electron-shim.js     # Electron API 垫片
+│   │   ├── index.ts             # 命令注册与分发
+│   │   └── test-cli.sh          # CLI 回归测试
+│   ├── migrations/              # 数据迁移框架（版本化 migration + 自动备份，见 migrations/SPEC.md）
+│   ├── utils/                   # 工具函数（logger、normalize 等）
+│   └── services/                # 后端服务
+│       ├── ai.service.ts        # AI 对话（多 provider 支持，见 AISERVICE_SPEC.md）
+│       ├── model-request-buffer.ts # 发往模型的请求共用的自适应缓冲池（按接口地址+密钥+模型分组；没被限流逐步放开，被限流就收窄并缓一缓；当面等的不排队、被限流后重试排最前；已开工的伙计优先于新排上的；档位读 CONVERSATION_POLICY.modelRequestPriority）
+│       ├── config.service.ts    # 配置管理（electron-store）
+│       ├── pty.service.ts       # 本地终端（node-pty）
+│       ├── ssh.service.ts       # SSH 连接管理
+│       ├── sftp.service.ts      # SFTP 文件传输
+│       ├── unified-terminal.service.ts # local/ssh 统一终端抽象
+│       ├── remote-exec/ # 后台远程通道（不开终端窗在已存主机上跑命令：连接复用、跳板限流、认证失败不重试、超时必杀；通用底层，见 remote-exec/SPEC.md）
+│       ├── host-profile.service.ts     # 主机画像
+│       ├── history.service.ts   # 历史运维：聊天记录(ChatRecord) + Token 统计 + 导入导出 + 清理；组合 AgentRecordStore
+│       ├── history/             # 会话存储底层
+│       │   ├── agent-record-store.ts # AgentRecordStore——会话记录存储聚合（agent/watch 两棵历史树+索引+图片外化），ConversationStore 的真相源
+│       │   ├── agent-storage.ts      # 会话记录文件 IO 纯函数
+│       │   ├── sub-agent-record-store.ts # 伙计/专家的状态与对话（history/sub-agents/<日期>/<主会话>/<伙计>/，不进索引，跟主会话删/过期；2026-10-23）
+│       │   ├── session-date-tree.ts  # 「日期/会话」目录树的删除与过期（专家团群聊、伙计记录共用）
+│       │   └── date-util.ts          # 历史日期工具纯函数
+│       ├── conversation/        # 会话领域模型（Conversation 聚合根 + Store + Manager + 策略表）
+│       │                        # —— 重构中，见 docs/conversation-refactor-design.md
+│       ├── mcp.service.ts       # MCP 服务器管理
+│       ├── gateway.service.ts   # HTTP 网关（Webhook、Web 会话接入）
+│       ├── web-chat.service.ts  # Web 远程会话（后端直驱 Agent）
+│       ├── web-fetch.service.ts # 网页拉取与正文提取（Jina Reader / Readability + jsdom，给 web_fetch 工具用）
+│       ├── credential.service.ts # 凭证存储（OOP：CredentialService 类 + 模块级单例）
+│       ├── auth/                 # 应用 SSO（OAuth2/OIDC 协议底座，features.sso 默认关；见 auth/SPEC.md）
+│       ├── credential/           # 凭证加密底层
+│       │   └── master-key.ts     # MasterKey 类：salt 文件 + PBKDF2 + AES-256-GCM（g1: 格式）
+│       ├── diagnostics/            # 崩溃诊断（转储 + 异常退出判定 + 可粘贴摘要 + 诊断包，见 diagnostics/SPEC.md）
+│       ├── document-parser.service.ts  # 文档解析（PDF/Word/Excel）
+│       ├── local-fs.service.ts  # 本地文件系统
+│       ├── bastion.service.ts   # 堡垒机/跳板机
+│       ├── bond.service.ts      # 多终端绑定会话
+│       ├── agent/               # AI Agent 子系统（详细见 agent/SPEC.md）
+│       │   ├── agent.ts         # 抽象 Agent 基类（ReAct 循环、会话、记忆）
+│       │   ├── sailfish.ts      # SailFish Agent 实现
+│       │   ├── prompt-builder.ts / context-builder.ts / task-memory.ts
+│       │   ├── tools.ts + tools/        # 工具定义 + 执行（含 sub-agent.ts 并行子 Agent）
+│       │   ├── remote-access/           # 伙计的远程范围：授权闸（派出/补单前的只读预检 + 按审批方式批准）、主机与命令清单、伙计侧执行与留痕
+│       │   ├── command-audit/           # 命令审计（风险分级 + 只读判定，本机/远程两种处境）
+│       │   ├── skills/          # 技能包（见下方「AI Agent 架构」）
+│       │   ├── orchestrator.ts  # 多 Agent 编排
+│       │   ├── streaming-tool-executor.ts  # 流式工具并行执行
+│       │   ├── task-supervisor.ts # 联络任务监督（manage_tasks 交办—复命闭环，见 agent/SPEC.md）
+│       │   └── risk-assessor.ts # 命令风险分级
+│       ├── watch/               # 关切（Watch）系统
+│       │   ├── watch.service.ts # 核心服务（触发、事件分发、pre-check）
+│       │   ├── store.ts / templates.ts / event-pool.ts / types.ts
+│       ├── sensor/              # 触发器传感器
+│       │   ├── event-bus.ts     # 事件总线（串行队列）
+│       │   ├── heartbeat-sensor.ts / file-watch-sensor.ts
+│       │   ├── calendar-sensor.ts / email-sensor.ts
+│       │   ├── http-probe-sensor.ts / command-probe-sensor.ts
+│       │   └── app-lifecycle-sensor.ts
+│       ├── terminal-awareness/  # 终端感知（进程监控）
+│       ├── knowledge/           # 知识库（L2 知识文档，向量存储 + 嵌入；按字面找的词和向量同表同行，LanceDB 原生全文索引，jieba 自切词，见 knowledge/SPEC.md）
+│       ├── im/                  # IM 集成（钉钉/飞书/企业微信/微信/Slack/Telegram）
+│       ├── tts/                 # TTS 语音合成（可插拔 provider）
+│       ├── speech/              # 语音识别（模型包按需安装，见 speech/SPEC.md）
+│       ├── web-search/          # 网页搜索
+│       ├── plugin/              # 插件系统（详细见 plugin/SPEC.md）
+│       │   ├── registry.ts / loader.ts / installer.ts
+│       │   ├── hook-bus.ts      # 生命周期钩子总线
+│       │   └── sdk-shim.js      # 插件 SDK 注入
+│       └── __tests__/           # 服务单元测试
+├── src/                         # 前端（Vue 3）
+│   ├── views/                   # 页面视图
+│   ├── components/              # 组件
+│   │   ├── Settings/            # 设置面板（AI / IM / Plugin / …）
+│   │   ├── FileManager/ + FileExplorer/
+│   │   ├── AiPanel.vue / Awaken.vue / SetupWizard.vue
+│   │   └── ...
+│   ├── stores/                  # Pinia 状态（terminal、config、agent 等）
+│   ├── workbench/               # 工作台抽象（local/ssh/assistant）；助手产出物见 assistant/artifact/
+│   ├── composables/             # 组合式函数
+│   ├── config/                  # 前端配置（AI 模板等）
+│   ├── i18n/                    # 国际化（中/英）
+│   └── themes/                  # 终端主题
+├── resources/                   # 打包资源（嵌入模型 lite 等；语音 ASR 包按需下载）
+├── scripts/                     # 构建/模型下载脚本
+├── docs/                        # 文档（sensor-loop-architecture / plugin-dev-guide / …）
+├── website/                     # 官网
+└── package.json                 # 依赖 & 脚本
+```
+
+> 次要单文件服务（`menu` / `xshell-import` / `screen-content` / `ai-debug` / `command-executor` / `skill-market` / `user-skill` / `file-search` / `terminal-state` / `llm-bench`）不构成架构关键路径，按需查阅源码即可。废弃服务 `scheduler.service.ts` 已整合进关切系统（启动时自动迁移），保留仅为兼容。压测控制台（`llm-bench`）是独立工程窗口，不进秘书主界面；题冻住（中文、按字数分档），一次打完上下文长短（每档含写速）、工具往返、三路并发，用来比较不同机器/模型的接口表现。
+
+## 关键架构模式
+
+### 主进程响应性（Electron 事件循环 = 窗口消息泵）
+
+凡非「窗口生命周期 / 同步 IPC 契约所必需」的工作，**不得以阻塞主线程的方式执行**。Windows 上将直接表现为标题栏「未响应」。
+
+| 层级 | 要求 |
+|------|------|
+| 禁止（主线程） | 大文件 `*Sync` I/O、`execFileSync`/`spawnSync`、大 JSON `stringify`/`parse` 不让出、ONNX/LanceDB/原生 DLL 首次加载与推理 |
+| 允许的微同步 | 极小配置读、路径 `existsSync`、毫秒级内存操作 |
+| 必须异步 | 目录拷贝、注册表、网络、备份、索引重建、组件安装/迁移 |
+| 必须进 utilityProcess / worker | CPU 重 / 原生推理 / 易被杀毒扫描的 DLL 热路径（Embedding、LanceDB）；桌面端 worker 失败**禁止**静默回退主进程 |
+| 调度 | 首屏前只做「能显示窗口」的最小集；其余 `ready-to-show` / `app:mounted` 后 defer |
+| 伪装异步不算合规 | `async` 函数里调 `readFileSync` 仍算违规 |
+
+### 共享类型（shared/types/）
+- 前后端共用类型统一定义在 `shared/types/`（`@shared/types`），禁止重复定义
+- 后端通过 re-export 保持 import 路径兼容；仅后端使用的类型留在 `electron/services/` 中
+- 前端 `vite-env.d.ts` 通过 `type X = import('@shared/types').X` 保持全局可用
+
+### 工作台与助手产出物
+- **Workbench**（`src/workbench/`）：Tab 界面形态抽象；`local`/`ssh` 共用 `TerminalTabView`，`assistant` 用 `AssistantWorkbench`（聊天 + 产出物面板）
+- **产出物面板**（`@sailfish/workbench-assistant/artifact`，物理在 `packages/workbench-assistant/src/artifact/`）：assistant 专属；Pinia `useAssistantArtifactStore`；Agent 协议仍用 `CanvasData`（`shared/types/canvas.ts`）
+- **HTML/URL 预览（2026-08-04，2026-09-05 补）**：预览用 `<webview>`（主窗 `webviewTag: true`），内容型经 `sailfish-artifact://` 协议由主进程 `artifact-preview.service` 内存缓存供给（相对资源映射根由主进程从 artifactId 推导，防目录穿越）；URL 型产出物（`browser` renderer、`CanvasData.url` 显式声明）直载真实地址、地址栏可导航，Agent 经 `manage_workbench_artifacts` 传 `url` 注册；截图反馈闭环 = webview `capturePage` → PNG 落盘 scratch/feedback + dataUrl 注入 Composer 待发送图片；HTML **文件**预览还可划选文字作为修改作用域（无右键快捷菜单，与 Word/Markdown 同一条旁路；PPT / live URL 不划选）
+- 旧路径 `src/canvas/`、`stores/canvas.ts` 保留 deprecated re-export
+- **单助手 Hub 模型**（2026-06-18）：本地 assistant Tab 默认不显示在顶栏，通过左侧「最近对话」聚焦切换（`hubFocusedAssistantTabId`）。2026-08-14 壳层：固定入口在侧栏（新对话 / 联络 / 终端），本机与远程动态 tab 收在终端页内；助手不再进顶栏。秘书菜单（联系人 / 待办 / 记忆 / 关切 / 觉醒 / 控制面板）里，联系人、待办、记忆是占主区的秘书面板；记忆面板是记忆 + 知识库的内容管理，设置里「记忆与知识库」只留设置项。2026-08-15：会话「提升为独立 Tab」整套取消（顶栏 Tab 条已撤，提升出来的页面无标签承载），新会话一律走 Hub 焦点流。LRU 回收上限 5 个 Hub 会话，并发软上限 8 个；远程助手（`isRemote=true`）不受影响
+
+### 任务 / 联络 / 关切 / 唤醒 四类会话（用户心智模型）
+
+Agent 有四种存在方式，对应四类**互斥**的会话（`kind`）。把四类讲圆，Agent 才完整：**有内心独白、能独自做事（心跳/Wakeup），有与用户的持续对话（联络），也能直接接受指令完成工作（任务），还能按配置独立执行一次性关切（watch）**。其中只有任务、联络是用户可见的常驻入口；关切（watch）与唤醒（wakeup）是 Agent 的内部执行，不直接示人。
+
+> 注：唤醒（wakeup）原属关切（watch）一类，v7 起独立成第四类——关切是用户配置的一次性任务（逐次失忆避免串味），唤醒是 Agent 自主循环（保留历史记忆辅助决策）。详见下方「wakeup vs watch 上下文分离」。
+
+| 维度 | 任务（`task`） | 联络（`companion` / `__companion__`） | 关切（`watch` / `__watch__`） | 唤醒（`wakeup` / `__wakeup__`） |
+|---|---|---|---|---|
+| 心智 | 我**支使** AI——被动、可并行、可隔离 | 我和觉醒的 AI **互相找**——常驻、连续、双向 | 用户配置的**一次性任务** | AI 的**内心独白** / 自主循环（心跳） |
+| 触发 | 仅用户主动发起 | 用户发起 **或** AI 主动（`talk_to_user`） | 用户配置的触发器 | 传感器/心跳事件，AI 自循环 |
+| agentKey | 当前 tabId（**会变**，见会话漫游） | 恒为 `__companion__`，全渠道汇入一条线 | 运行时 `__watch__:${watchId}`（legacy 曾用单一 `__watch__`）；历史仍 `kind=watch` | 恒为 `__wakeup__` |
+| 工作记忆 | 不回种（新任务本就独立） | 冷启动回种（续上同一条线） | **逐次失忆**（避免串味） | **保留历史记忆**（辅助决策） |
+| 用户可见 | 是，进「最近对话」任务侧栏 | 是，独立常驻 tab（按 agentKey 从任务侧栏剔除） | 不进会话列表/长期记忆，但有独立**执行历史/执行速览**（WatchStore `history` 上限 500 条 + `history/watch` 正文）供复盘审计；要进对话须经 `talk_to_user` 冒泡进联络 | 不进会话列表；与 watch 共用 `history/watch` 正文树，但**速览分桶**（WatchStore `wakeupHistory`，与用户关切 `history` 互不挤占）；总览默认不展示 wakeup 流水；要进对话同样须经 `talk_to_user` 冒泡进联络 |
+
+- **为什么这么分**：任务是桌面主力（专注、可并行）；联络承载「觉醒」——主动找人、跨渠道连续；关切是用户配置的一次性任务（独立执行、逐次失忆）；唤醒是 Agent 自己的循环（保留记忆做决策），不该污染用户视野。
+- **关键标识**：`AgentRecord.agentKey` 区分常驻命名 Agent（`__companion__` / `__watch__` 前缀 / `__wakeup__`）与普通 tab Agent；联络历史恢复、Watch 上下文、侧栏过滤都依赖它。
+- **身份 vs 运行时绑定 vs 形态**：会话身份 = `id`(sessionId) + `kind`，**不可变**；形态 = `terminalType`(local/ssh/assistant) + ssh 的 `sshHost`，会话创建时确定、**不可变**；`agentKey`（当前哪个 tab/实例在跑）是**可变的运行时绑定**。
+- **会话漫游（限同形态）**：用户点开旧会话续聊——同一个 `sessionId` 继续、改由当前 tab 的 Agent 跑、`agentKey` 更新但 `terminalType` 不变、id 与历史保持一条线，**不自动 fork**。**跨形态**（local↔ssh↔assistant）续聊不漫游，走"从历史创建任务"（避免把 ssh 历史的命令/工具名带进本地形态造成幻觉）；用户**手动 fork** 另起一聊（联络→任务亦然：新建 `kind=task` 会话、种子/拷贝起头、原线只读保留）。
+- **任务目标（2026-08-21）**：只有任务会话能挂一个会自己推进的目标。用户用斜杠命令 `/goal` 设下后，空闲时自动续跑，直到达成、停滞、额度受限或预算用尽。关掉 App 不续跑；点停止等于暂停。联络 / 关切 / 唤醒不挂目标。输入框上方有状态胶囊。斜杠命令是通用入口，`/help` 与 `/goal` 都走同一套，只认整条输入开头的精确命令名。
+
+#### 联络的上下文设计（多渠道 · 常驻 · 主动消息）
+
+- **一条 session 多渠道汇流**：IM/Gateway/桌面共用一个 `__companion__`，所有对话进同一条 `_sessionMessages`。代价是渠道间会"串味"，符合"联络=一条连续关系线"定位。
+- **每次对话取上下文**（`agent.ts buildContext`）：session 内热路径直接复用上次完整 messages 做前缀（命中 prompt cache）。有交接检查点则接着检查点，不把已交原文再展开。没有前缀时冷启动：任务从工作记忆带原文（含过程）；联络走五档只收过程（问答留下）+ L2 知识文档 + L3 向量检索。任务窗口快满走已有交接，不按远近把过程先收掉。
+- **跨重启**：持久命名 Agent（companion/watch）**无条件**重建工作记忆（`restoreRecentTaskMemory`），**不**因 sessionId 精确命中「最新单条」而短路——否则会漏掉同期其它并行会话（典型：联络分裂成两条 session，「继续」落到只含菜单那条、写文档内容在另一条里，造成「合并展示看得见但 AI 记不住」）。数据 scope 按 kind 分流：**companion 仅取同 agentKey（`__companion__`）的最近 N 条**（与前端合并视图 `Companion.getMergedViewRecord` 同源查询，AI 上下文不再被任务 tab transcript 污染），**watch 维持全局 main 树 + wakeup 过滤**（Watch 需参考用户在任意 tab 的活动做决策）。同时仍恢复最新单条的会话状态以保证 checkpoint 续写不丢历史。此外 `run()` 对持久命名 Agent 在无 sessionId 入口（IM/网关/主动消息）时会从 `getLatestRecordByAgentKey` **回种** sessionId（`startNewSession`/`resetSession` 经 `_suppressSessionSeed` 跳过），前端 `history:getCompanionMergedView` 经后端 `Companion.getMergedViewRecord` 保证 id/timestamp 成对取最新——两者共同根除「联络裂成两条断链 session」。详见 `agent/SPEC.md`。
+- **主动消息衔接**：`talk_to_user`（含 Watch 的对外通知）经 `proactive-store.ts` 按 `'__companion__'` 暂存（30min TTL），用户回复时 `consumeProactiveContext` 注入——这是 companion 知道"我刚才主动说了啥"的唯一通道。Watch/wakeup 自身执行是**内心独白**（wakeup 进 `__wakeup__`、watch 进 `__watch__:${watchId}`，刻意跳过 cache path、不累积会话），只有 `talk_to_user` 这一条对外消息才进 companion。
+- **cache 利用分两层**：① **cache path**（复用上次前缀、省掉 cold start 重建）只要进程内有快照、非 wakeup 就走（有交接时即使窗口变小也接着检查点），**与时间间隔无关**——cold start 只在首次对话、跨重启且没有检查点、`resetSession` 后发生。② **provider 端 prompt cache 命中**（真正省 token）取决于本次前缀是否还在 provider 分钟级 TTL 内：连着聊命中，长间隔后的首条 miss 但会重建缓存、之后又命中。联络访问"间隔两极化"——长间隔首条命中率低、连续段正常，并非每条都冷启动；这是场景本质，无需特殊优化。
+
+### 前后端通信
+- Electron IPC：`ipcMain.handle` ↔ `ipcRenderer.invoke`
+- 前端通过 `preload.ts` 暴露的 API 调用后端服务
+- `main.ts` 中注册所有 IPC handler，大多是对服务方法的薄封装
+- 远程 Web 会话由 WebChatService 后端直驱 Agent 执行，前端仅渲染；SSE 实时推送到 Web 客户端
+- **对话只有一个入口（2026-10-10）**：往一场对话里说一句统一走 `agent:say` → `AgentService.say` → `Agent.say`（在跑就补话，否则开新一轮）；会话号与首个标题由后端起。桌面、CLI、联络（`TaskSupervisor` 建任务 / 再交代）都调它，界面只收输入和渲染。没带回调的调用由宿主注入的界面回调工厂推送过程；`onStart` 带会话形态与标题且先于第一句发出，`App.vue` 全局 `onRunning` 经 `terminalStore.claimConversation` 认领界面上没开着的任务会话（本机终端重开后 `agent:adoptPane` 交窗）。详见 `docs/plans/done-2026-10-10-single-conversation-path-design.md`
+
+### CLI 模式（纯 Node.js 运行后端）
+- **入口**：`electron/cli/main.js`（纯 JS）
+- **原理**：通过 `Module._resolveFilename` 拦截 `require('electron')`，替换为 `electron-shim.js`
+- **特点**：所有后端服务无需修改即可在 CLI 下运行
+- **配置/凭据**：从仓库跑（`npm run sailfish` / 开发态薄壳）**默认进沙箱** `{userData}/cli-sandbox/`，只借用 AI Profiles + credentials，不写桌面真实历史。装机后的正式命令默认与桌面共用 userData；`--sandbox` 显式隔离，`--share-desktop` 开发态改用真数据。回归测试强制临时 `SFT_DATA_DIR` 仍会借用。Agent 默认 `--mode relaxed`（高危需确认）；`--free` / `--mode free` 才全自动
+- **装机命令**：macOS 可在「设置 → 数据管理」安装 `sailfish` 到 `~/.local/bin`（VS Code 式薄壳）。打包态经 `ELECTRON_RUN_AS_NODE` 加载 `dist-electron/cli.js`；开发态指向仓库 `electron/cli/main.js`
+- **用法**：`npm run sailfish -- "任务说明"` 或安装后 `sailfish "任务说明"` / `sailfish <command>`（`npm run sft` / `cli` 为别名）
+- **测试**：`bash electron/cli/test-cli.sh`（12 个功能区覆盖，含 Watch & Sensor）
+- **目标（`/goal`，2026-10-20）**：命令行里同样在对话里写 `/goal 目标正文`（也可 `edit / pause / resume / clear`），续跑用的就是后端的目标推进，终端只负责解析、确认、每轮一行与收工一句；Ctrl+C = 暂停；没有交互终端时不替人答确认。解析与展示规则在 `shared/utils/goal-command.ts` / `goal-view.ts`（桌面同用）。端到端：`node scripts/cli-e2e/goal.mjs`（真起命令行进程 + 脚本化假模型；`E2E_SHOW=1` 看终端真实输出）
+
+### 服务实例化
+- 服务在 `main.ts` 中直接实例化，部分使用工厂函数（如 `getKnowledgeService()`）
+- CLI 中通过懒加载单例模式按需创建服务实例
+- 部分服务支持构造器注入（如 `AgentService` 注入 AI、PTY、HostProfile 等）
+
+### AI Agent 架构
+- **ReAct 循环**：思考 → 工具调用 → 观察结果 → 循环
+- **工具系统**：内置工具 + 技能系统（按需加载）+ MCP 工具 + 插件工具
+- **三种终端模式**：`local` / `ssh` / `assistant`，见下方独立章节
+- **并行子 Agent**：`dispatch_agents` 工具分派轻量子任务并行执行，派多少由 AI 定（唯一保险丝：一场任务里没做完的不超过 1000 个，超了整批退回），派出即全部开工；两种写法可混用（`tasks` 每人一份指令 / `batch` 一份共同指令加一批条目），默认都带全部对话以复用缓存；每个伙计的结果全文落中转文件，对话里直接带回的随人数收紧，另有一份一人一行的总览；敲门合并、不掐断主人正在等的回复；超过 5 个时界面收成一行计数（2026-10-20，见 `agent/SPEC.md`「伙计可以大批量同时干活」）；伙计不分类型，能用哪些工具看 `ToolMeta.allowedForSubAgent`，标了 `inheritToSubAgents` 的技能连同状态（深拷贝）一起带给伙计。仅 local 和 assistant 模式可用（子 Agent 只能操作本地文件系统和执行本地命令）。**伙计连远程主机（2026-10-21）**：派出时给伙计写 `hosts`（已存会话 id）、整批写共有的 `remote_commands`、每个伙计可再写自己的（清单不同时确认卡与专家都按块看），伙计才有 `remote_exec`（`ToolMeta.requiresRemoteAccess`，按处境出现，不挂工具名）；范围由 `remote-access/` 的授权闸在派出前定死——严格、宽松每批直接弹卡、不请专家、命令不限只读；替我审批与自由才由独立的「运维专家」（`remote-access/expert/`，一批一次、无工具的模型调用，复用评审员的模型通道/超时/用户原话；只读判定降为给它的一条事实；第一行先写结论、后面写说明，流式输出，界面同一行先显示结论再补说明）判放行 / 问用户 / 拒绝（理由退给秘书）：替我审批放行不打扰、问用户先留一行再弹卡；free 不问人，问用户与拒绝都退回；专家出错：替我审批弹卡、free 退回只读判定；无人在场非 free 直接退回，关切/唤醒由 `CONVERSATION_POLICY.workersMayUseRemoteHosts` 禁止；伙计只能原样跑单上的命令。设计与撤销办法见 `docs/plans/done-2026-10-25-remote-expert-review-design.md`（撤销标签 `checkpoint/before-remote-expert`）；通道是 `remote-exec/` 的 `RemoteExecPool`（每场伙计一份，整场被打断时一起关），留痕写在这一轮伙计落盘目录的 `remote-ops.jsonl`。端到端：`npx tsx scripts/cli-e2e/remote-hosts.mts`（本机起 38 台主机，`E2E_REAL_MODEL=1` 加跑真模型）；真机：`npx tsx scripts/cli-e2e/remote-real-host.mts`（目标默认是桌面里存的「MacBook Air Server」，`E2E_HOST_NAME` 可换，只复制那一台的会话和凭据到临时目录；专家的各种结论见 `remote-hosts.mts` 5～8 号场景；界面卡片：`node scripts/ui-e2e/remote-expert-card.mjs`）。详见 `agent/SPEC.md`「伙计可以在派给它的已存主机上后台干活」
+- **伙计和专家被打断后接着干（2026-10-23）**：伙计走和主人同一套每轮检查点，对话与状态记在 `history/sub-agents/`（单独的树，不进任何索引、不进最近对话和用量统计，跟主会话一起删、一起过期；相同开局只存一份）。名册仍按「这一轮」建，这场会话以前几轮派出的、已停下的作为休眠成员（不占 1000 的名额、不进总览、新派的不会重名）；`followup_agent` 点名时从盘上叫醒——新建实例，开局 = 当时带的主人对话 + 他自己的对话，往后检查点写「旧的加新的」。叫醒前先把上次的情形当事实告诉他（被中断 / 出错 / 程序异常退出，没记录结果的调用）；不自动续跑、不撤回文件改动。盘上还写着「在干」的就当异常退出。端到端：`node scripts/cli-e2e/sub-agent-persistence.mjs`（真起命令行进程 + 脚本化假模型：Ctrl+C 后同一场接着干、`kill -9` 后新进程接着同一场会话、一次派 40～200 位量写入）。详见 `agent/SPEC.md`「子智能体被打断后能接着干」与 `docs/plans/done-2026-10-23-sub-agent-persistence-design.md`
+- **派专家 / 专家团（2026-10-21，`feat/sub-agent-team`）**：`dispatch_agents` 的 `tasks[].role` 派带专家角色的专家，运行上就是伙计（同一个花名册、同一个 1000 保险丝，派人只有这一个工具）。不带 `team` 各干各的、照常敲门；带 `team` 时 2–15 位组成专家团（`expert-team.ts`），秘书是组长，专家用只给团员的 `team_say`（`ToolMeta.onlyForTeamMember`）在公开群里点名交接；团员干完一段不敲门，只在点名组长、失败、全团停下、互相叫醒每满 30 次时敲门，组长 `followup_agent` 记进群里并重新数。团说明和身份放在第一条话里，系统说明不变。界面：派出那一步带 `subAgents[].role` 和 `expertTeam`（只留最近一小段给小卡片；群聊全文随会话存在 `history/expert-teams/<日期>/<会话>/`，`history/expert-team-chat-store.ts`，一条一行追加，界面经 `history:readExpertTeamChat` 按位置翻页读，跟着删会话 / 按天清理）；对话里专家名字前有角色标签，团下面一行小卡片（`ExpertTeamCard`），点开完整群聊 `ExpertTeamChat`——助手页放进 `AssistantWorkbench` 右侧（座位 `team`），终端页 / 联络盖在 `AiPanel` 对话栏上。见 `agent/SPEC.md`「派专家团」
+- **联络任务管理（交办—复命，2026-08-07）**：联络 Agent 专属 `manage_tasks` 工具（定义由联络工作台 `@sailfish/workbench-companion/agent-tools` 贡献，不进 agent 通用注册表）——查看/创建（仅无终端助手形态）/停止任务、转达用户对危险确认的批准/拒绝；秘书模型（2026-10-10）：联络开头的那一轮，结束/待确认/向用户提问都以回执交给联络自己（走联络收后台结果的同一条路：在跑就插进这一轮，空着就另起一轮不上用户气泡；结束事件防抖合并）。**联络派完任务这一轮不收工（2026-10-18）**：和伙计、后台命令同一类「欠着结果的活」——`TaskSupervisor` 给联络开头的任务记「欠回执」账，`manage_tasks` create/instruct 成功后登记一份 `TaskWatch`（实现 `BackgroundWatch`，复用 `runUntilIdle` 的挂着等），回执在同一轮里送进、联络的回复用户看得见，用户说话让路；用户按停联络只是不再等、不停任务；等不住（重启 / 按停 / 超 1 小时，命令行用 `--task-wait` 作上限）才走上面「另起一轮」的兜底。回执按走的路带两种尾巴（用户在场 / 不在这一轮里），由联络决定是否经 `talk_to_user` 告诉用户；用户自己开头的那一轮不往联络送任何东西，不再推卡片。信任模型为转述制：联络永不自行批准，唯一例外是用户创建任务时显式声明「全自动」（否则那场定为替我审批）。建任务 / 再交代走与界面同一个说话入口，`TaskSupervisor` 只读视图 + 事件回流，不另开前端通道。**出身（2026-10-18）**：联络派的任务在那场会话自己身上记一个不可变的「谁派的」（`AssignedBy`，目前只有 `companion`，建会话时定下，随记录/索引/摘要落盘，经开跑事件带给界面），侧栏行首据此画纸飞机小图标（说明即时弹出，复用 `useHoverTip`）、对话窗口顶栏正中淡入一行字「这是XX派出的任务」（XX 是智能体的名字；只有字，没有横幅，不占高度、不压对话；打开、切回、用户滚动时淡入，停一阵淡出）；与每轮的 `ledBy`（只管回执送谁）、与终端标志（由 `terminalType` 算出）互相独立，分支不继承、老任务不补标。详见 `agent/SPEC.md`
+- **风险评估**：safe / moderate / dangerous / blocked 四级
+- **执行模式**：strict（全确认）/ relaxed（危险确认）/ free（全自动）。输入框把「替我审批」列成第四档（选它等于宽松，再加先替你看；默认关）：本来要问用户的确认，可先交给独立评审员对照用户原话决定是否替他放行，见 `agent/SPEC.md`。**审批方式归每场对话**（2026-10-10，`ApprovalMode` 四档记在 `Conversation` 上并落盘）：设置里的执行档 + 替我审批开关只是新会话的起步值；输入框下拉框改眼前这场（`agent:setApproval`）；IM / 网页 / 关切 / CLI 显式传执行档时那一轮按渠道的来，不改会话记下的；伙计不参与
+- **Agent Workspace**：`{userData}/agent-workspace/`，Agent 私有数据目录，文件读写自动跳过确认
+- **三级记忆**：L1 任务记忆 / L2 知识文档 / L3 对话记录，见下方独立章节
+- **会话持久化**：Agent 实例按 `agentKey` 复用，会话状态跨多次 run 累积；后端是唯一数据源，增量检查点防丢失，支持跨会话恢复。细节见 `agent/SPEC.md`
+- **重开会话的第一个请求（2026-10-23）**：每场对话记下最近一次请求的真实用量，重开时历史原样带回的就以它为准，不整段重估；单次读入固定 16000 字符上限。端到端：`node scripts/cli-e2e/saved-usage.mjs`（真起命令行进程 + 假模型，7 个场景含强杀、打断、历史被裁、旧记录）。见 `agent/SPEC.md`「估算偏差不能让第一个请求超限」
+- **交接小结的篇幅跟窗口走（2026-10-24）**：压缩时写小结的输出额度按「能发的输入 − 固定前缀」的 8% 算，下限 2048、上界 16384 token，极小窗口不超过整窗 1/8；窗口快满时给写小结预留的空间 = 这个额度 + 2000，提示词里的字数与发给接口的额度同出一处。小结停在输出额度上时补写一次拼起来，仍写不完就用已写出的部分并记警告。端到端：`node scripts/cli-e2e/summary-budget.mjs`（真起命令行 / 后端进程 + 假模型，10 个场景：各档窗口的额度、触发时机、人点名压缩、截断补写、接口报错兜底、连压多次、压完重开）；`node scripts/cli-e2e/summary-budget-real.mjs [配置ID]` 用沙箱借来的真实模型走一遍人点名压缩（会花几千 token）。见 `agent/SPEC.md`「交接小结的长度跟窗口走」
+- **压缩归档的取回（2026-10-24）**：归档存完整原文（读文件 / 命令的输出进对话时已按各自上限截过，归档里是模型当时看到的）；`recall(archive_id)` 给一览（每条开头约 500 字符、工具入参约 200 字符），`message_index` 单取一条全文，超 20000 字符用 `offset` 接着读；被截短留在窗口里的老任务消息，原文同样进归档。端到端：`node scripts/cli-e2e/recall-archive.mjs`；压缩前说过的每一条（含用户原话、中间消息里的长正文）压完要么在窗口要么在归档、不能蒸发：`node scripts/cli-e2e/compress-no-loss.mjs`
+- **会话领域模型（OOP 重构中）**：`electron/services/conversation/`——把原本散在 `Agent` 上的 `_session*` 一族状态收进 **`Conversation` 聚合根**（唯一真相源：transcript `messages`+`steps`，派生投影 taskMemory/cachePrefix，token 账；身份 `id/kind/createdAt` 与形态 `terminalType/sshHost` 不可变）。三类会话 `kind`（task/companion/watch）的行为差异由 **`CONVERSATION_POLICY` 数据驱动策略表**表达（不散布 `if (kind===…)`），`ConversationManager` 读表决策（如冷启动是否回种 sessionId）+ 委托 `ConversationStore` 查询/落盘。注意 `seedFromHistoryOnColdStart` 对 companion+watch 均为 true（== 旧 `_persistentNamedAgent`，持久命名 Agent）。详见 `docs/conversation-refactor-design.md`
+- **Agent ↔ Tab ↔ 窗格 模型**（v2，2026-05-02）：一个 tab = 一个 Agent + N 个终端窗格。Agent 实例由 tab 拥有（`agentKey = tabId`，终端 Agent；助手 Agent 用前端 UUID）。窗格关闭、SSH 断开、分屏切换都不影响 Agent 实例存活——Agent 与底层 PTY/SSH 生命周期完全解耦，仅在用户关闭 tab 时由前端 `closeTab` 显式触发 `cleanupAgent`。Agent 类自身不持有 ptyId 字段，每次 run 通过 `context.ptyId` 知道当前操作哪个窗格。
+- **技能系统**：`agent/skills/` 下为按需加载的技能包，如 excel / email / browser / word / pdf / chart / calendar / todo（本地秘书待办 → `TODO.json`）/ contact（本地联系人 → `CONTACTS.json`，不进心跳；用户话里提到谁就把谁的名片附给模型）/ terminal / watch / personality / skill-creator / 以及 IM 渠道（feishu / wecom / dingtalk）等，通过 `skill` 工具触发。内置技能开关统一由 `skills/enablement.ts` 回答：大多默认开（关掉进 `disabledBuiltinSkills`），`defaultEnabled: false` 的默认关（打开进 `enabledOptInSkills`）。技能可挂通用钩子：给出工作目录（本机文件相对路径与 `exec` 默认 cwd 以它为准）、每轮开始、包住每次工具调用（先加载的在外层，出错不连累工具）、随伙计继承；还有一个不要求装上、只要开着就会被问的钩子：用户开口时附一段背景（`noteForUserMessage`，哪类会话附由 `CONVERSATION_POLICY.skillNotesOnUserMessage` 决定）
+- **编程技能**（`skills/coding/`，默认关，见其 SPEC）：打开本机项目、ripgrep 搜索、一次改多处、改后 tree-sitter 语法检查（只报新引入的错误）、每轮检查点 + 撤回。检查点是 `{userData}/coding/checkpoints/<项目路径哈希>/` 下的影子 git 仓库（`--git-dir` + `--work-tree`），从不改项目自己的 `.git`；项目是 git 仓库时经 alternates 只读借用它的对象库（借读来源没了 / 内容缺了就作废重来并告知）。只留 7 天，30 天没用或项目找不到且 7 天没用整份删（每天后台清一次）；单个超过 20MB 的文件不进检查点
+- **浏览器助手（Browser Bridge）**：`resources/browser-bridge/` + `electron/services/browser-bridge/` — Chrome/Edge/Firefox 扩展 + Native Host，复用用户已打开浏览器标签与登录态；数据目录随 `userData`（可自定义），host 通过 `$HOME/.sailfish-browser-bridge.json` 指针定位；Agent 使用 `browser_launch { attach: true }`；设置 → 集成 → 浏览器助手
+- **详细设计**：`electron/services/agent/SPEC.md`
+
+### 三种终端模式（⚠️ 开发新功能必须考虑）
+
+Agent 的运行环境分三种：`local`（本地终端）、`ssh`（SSH 远程终端）、`assistant`（无终端助手）。**核心区别是默认操作哪台机器**：眼前窗格里的命令和远程文件走当前终端对应的通道（本机 PTY / SSH/SFTP）；本机读写和本机命令（读、写、改、搜本机文件，以及在本机跑命令）在远程会话里同样可用——不必再开一扇本地窗。相对路径按本机目录理解，不拿远程当前目录往本机上拼。新增涉及文件或命令的功能时，必须明确它操作的是哪台机器，并通过 `_meta.supportedModes` 限定适用模式。详见 `tools.ts` 中各工具的 `_meta` 定义。
+
+**异构分屏**：分屏后同一个 tab 里允许混合不同 terminalType 的窗格——本地终端、多个不同主机的 SSH 连接可以并存。每个 `SplitPane.terminalType` / `sshSessionId` 都独立，所以 tab.type 只跟 root 兼容，"操作哪台机器"的真相是当前激活窗格（或工具显式指定的 pane_id）。`splitTerminal(direction, target)` 的 `target` 参数（`inherit` / `local` / `ssh:sessionId`）控制新窗格连哪里；Agent 也能调 `list_ssh_sessions` 拿 sessionId 后主动开 SSH 窗格。
+
+### 关切系统（Watch / Sensor Loop）
+- **关切（Watch）**：Agent 的"关注点"配置，定义触发条件、执行 prompt、输出渠道
+- **Agent 驱动**：关切主要由 Agent 通过 `watch_*` 工具创建和管理，UI 面板为只读仪表盘
+- **10 种触发器 / 5 种传感器 / 8 个内置模板**：具体清单见 `docs/sensor-loop-architecture.md`
+- **Webhook**：Gateway 的 `POST /hooks/:token` 端点，外部系统可触发 Watch
+- **Pre-check**：执行前让 AI 自主判断"该不该做"（Agency of Omission）
+- **有状态工作流**：Watch 自身状态 + 跨 Watch 共享状态，Agent 通过 `STATE_UPDATE` / `SHARED_UPDATE` 指令自动更新
+- **事件派发**：所有事件通过 EventBus 排队派发；Watch **执行**由 WatchService 并发调度（不同 `watchId` 可并行，同 `watchId` 互斥，全局软上限默认 5）
+- **独立 Agent**：普通关切使用 `__watch__:${watchId}`（逐次失忆、可并发）；唤醒用 `__wakeup__`（自身单实例，可与普通关切并行）；两者均与 IM/桌面助手的 `__companion__` 隔离
+- **执行形态**：关切一律本机助手 Agent（`runAssistant`）；需跑命令时用 `exec` 等工具，**不为关切创建/绑定专用 PTY**；过程经 `agent:step` 进关切面板；`output` 只约束对外打扰
+- **独立历史树**（v6 起）：watch/wakeup 执行记录（`isWatchAgentKey(agentKey)` 或 `agentKey='__wakeup__'`）存到独立的 `history/watch/<date>/` + `watch-index.jsonl`，与主 agent 历史/索引物理隔离——避免高频触发把主索引压舱（曾达 149MB/2.6w 条）。正文按日期长期保存可审计；token 成本仍合并计入统计。用户可见的「执行速览」另由 `WatchStore` 提供，且 **用户关切 `history` 与唤醒 `wakeupHistory` 分桶**（各上限 500，互不挤占）。见 `HISTORY_SPEC.md` / `watch/SPEC.md`
+- **wakeup vs watch 上下文分离**（v7 起）：wakeup（心跳/唤醒）从 watch 中独立成第四类 `ConversationKind`——关切是用户配置的一次性任务（prompt 自带指令，逐次失忆避免 A 关切串味到 B），wakeup 是 Agent 自主循环（需要历史记忆辅助决策「该不该主动找人、上次说过什么避免重复通知」）。两者共用 watch 历史树但 agentKey 分离（`__watch__:${id}` vs `__wakeup__`），策略见 `CONVERSATION_POLICY`
+- **Scheduler 废弃**：旧版定时任务已整合到关切系统，启动时自动迁移，`schedule_*` 工具标记为废弃
+
+### 三级记忆架构
+
+Agent 的记忆分三层，模拟人类记忆的衰减梯度，三层协同在有限上下文窗口内模拟无限记忆：
+
+**L1 — 任务记忆（工作记忆）**
+- 当前会话的对话，直接作为 messages 注入上下文
+- 任务：装得下就带原文（含过程）；窗口满了走交接，检查点跟对话一起记住。重开有检查点接着检查点，没有就带原文；原文装不下这一次改用五档重装（2026-10-23），再装不下才由紧急压缩把更早历史整体存档
+- 联络：关掉再开走五档只收过程（问答留下）；窗口有限时先多记做过什么，近处再补怎么做的。重启只装最近几条记录、几十轮对话。一直开着接着聊仍走热路径前缀；窗口满了仍走交接
+- 类比：刚做完的事，记得原话和怎么做的
+
+**L2 — 知识文档（长期事实记忆）**
+- 按上下文维度（contextId）组织的持久化知识，每次对话时自动注入 system prompt
+- contextId：终端页 = 那台主机；独立助手默认个人。助手若在看得见的终端里对某台动手过，那台自己的文档也会更新；这场对话里已经开着的窗，会把那台已有文档一并注入
+- 设计目标：每个 contextId 对应一份结构化知识文档，固定 token 预算，整份注入，少而精
+- 核心原则：只保留高频复用的核心事实，每条信息都值得花 token 自动注入
+- 类比：记住的客观知识，不需要回忆具体经历就能想起来
+
+**L3 — 对话记录（情景记忆）**
+- 完整的历史对话记录（messages、steps、工具调用细节），永久保存
+- Agent 通过搜索工具主动检索，按需加载，不占日常 token
+- 与 L2 互补：L2 提供事实（"nginx 监听 8080"），L3 提供经验（"上次怎么排查的"）
+- 有了 L3 兜底，L2 不需要"什么都记"，可以收紧写入标准
+- 类比：需要"想一想"才能回忆的完整经历
+
+### 插件系统
+
+`electron/services/plugin/` 提供扩展机制，宿主核心保持稳定，插件负责接入第三方能力。Manifest 格式兼容 OpenClaw `openclaw.plugin.json`。
+
+- **扩展点**：`registerTool` / `registerProvider` / `registerChannel` / `registerTtsProvider` / `registerHook` / `registerHttpRoute`
+- **Hook 事件**：`before_tool_call` / `after_tool_call` / `before_ai_request` / `message_sending`
+- **前端 UI**：`src/components/Settings/PluginSettings.vue`
+- **公开契约**：`electron/services/plugin/SPEC.md`
+
+### 日志系统
+- **库**：`electron-log` v5.x，console + 文件双写，按日期分文件，自动保留 30 天
+- **接口**：`createLogger(tag)` 返回带 scope 的 Logger，启动时 `initLogging()` 初始化
+- **动态级别**：通过设置页或 `config:setLogLevel` IPC 调整
+- **源码**：`electron/utils/logger.ts`
+
+### 崩溃诊断（`electron/services/diagnostics/`）
+
+原生崩溃不经过日志——进程直接消失，日志最后一行只是崩溃前的正常记录。该模块补上这块盲区，也让崩溃率不再只能靠零星用户反馈猜测。详见 `diagnostics/SPEC.md`。
+- **转储最早开**：`startCrashReporter()` 在 bootstrap 之后、单实例锁之前调用（无状态副作用），保证启动早期的原生崩溃也留下 minidump
+- **记录在单实例锁之后**：`initCrashDiagnostics()` 必须等 `gotTheLock`，否则重复启动的第二个实例会误记假崩溃并抹平真实计数
+- **异常退出判定**：启动写「运行中」标记、`quit` 写「已退出」，下次启动据此补报——主进程崩溃时没有任何 JS 能跑，这是唯一出路
+- **只打断两种场景**：窗口自身崩溃（可精确重载崩掉的那个界面）、上次异常退出；子进程与 webview guest 崩溃只记录
+- **交出方式**：复制脱敏摘要为主（含退出码性质、显卡驱动），完整诊断包为次（含 minidump，界面明示）
+
+### 数据迁移与兼容性
+
+通过三层机制保障老用户平滑升级：
+- **迁移框架**（`electron/migrations/`，详见 `migrations/SPEC.md`）：`schemaVersion` 追踪版本，按 phase 顺序执行，失败可断点续传；迁移前和 auto-update 前自动备份到 `{userData}/backups/`
+- **Normalize 层**（`electron/utils/normalize.ts`）：各 service 读取磁盘数据时补齐新增字段的默认值，防止 undefined 崩溃
+- 新增 migration：创建 `vN-xxx.ts` 实现 `Migration` 接口，在 `index.ts` 注册即可
+
+### 自定义数据目录（`electron/utils/bootstrap.ts`）
+
+所有运行期数据都基于 `app.getPath('userData')`，用户可在「数据管理」页把整个数据目录迁到其他磁盘（解决 C 盘占满）。
+- **引导模块**：`bootstrap.ts` 必须是 `main.ts` 的**第一个 import**，在任何 service 实例化前根据指针文件 `{默认userData}/data-location.json` 执行 `app.setPath('userData', 自定义目录)`。指针文件永远留在默认目录，体积极小。
+- **重启时迁移**：用户选目录后只写 `pendingMigration` 标记并重启；在 `app.whenReady()` 最前（早于 createWindow / sensor / watch / agent，源目录无运行时写入）带进度窗复制数据 → 再次重启切到新目录 → 启动早期延迟清理旧目录（规避 Windows 文件锁）。迁移前用 `AgentService.hasRunningAgents()` 提示重启会中断进行中的任务。
+- **CLI 一致**：`electron/cli/electron-shim.js` 读同一指针文件（`SFT_DATA_DIR` 环境变量优先级最高）。
+
+### 国际化（i18n）
+
+- **翻译文件**：`src/i18n/locales/zh-CN/` 和 `src/i18n/locales/en-US/`，按功能域分文件（`ai` / `common` / `settings` / `terminal` 等）
+- **禁止硬编码**：UI 文案一律用 `t('key')` / `$t('key')`，不得在模板或组件中直接写中英文字符串
+- **中英同步**：新增或修改翻译键时，`zh-CN` 和 `en-US` 两套文件必须同步更新，缺失键会在运行时 fallback 并留下 warning
+- **键命名**：`<domain>.<feature>.<description>`，全小写 camelCase，如 `settings.ai.modelLabel`
+
+## 构建与发布
+
+- **Git / 发版**：日常开发在 **`develop`**（亦为 GitHub **默认分支** — Dependabot 安全/版本更新、Dependency Graph 均以此为准）。常规发版从 develop 打到 `main`；已发出的版本要紧急修时，从该版 tag 拉 `hotfix/*`，发完自动合回 develop（功能分支再 rebase 到最新 develop）。`main` 只接受来自 `develop` 或 `hotfix/*` 的 PR（`.github/workflows/protect-main.yml`）。发版流程见 **`.agents/skills/release/SKILL.md`**。若 Dependabot 安全 PR 误指向 `main`，`.github/workflows/retarget-dependabot-to-develop.yml` 会自动改到 `develop`。
+
+- **开发**：`npm run dev`（Vite dev server + Electron）
+- **构建**：`npm run build`（Vite build → electron-builder）
+- **平台**：macOS (universal)、Windows (NSIS)
+- **自动更新**：GitHub Releases + electron-updater（国内 OSS 镜像与差分/blockmap 策略见 `docs/auto-update-oss.md`）
+- **ripgrep**：`npm run download:ripgrep`（各 build 脚本已前置）按目标平台/架构下载到 `resources/ripgrep/<os>-<arch>/`（不进 git），electron-builder `extraResources` 按 `${os}-${arch}` 取；mac universal 两份各打一次后自动 lipo 合并
+- **tree-sitter**：`web-tree-sitter` + `tree-sitter-wasms` 为 devDependencies，JS 打进主进程产物，十七种语言的 wasm 由 vite 插件拷进 `dist-electron/tree-sitter/`（随 asar，运行时读成字节加载，不必解包）。`tree-sitter-wasms` 里个别语法会调用底座不提供的函数（解析到那一处才崩），这类改用官方新版放在 `resources/tree-sitter/`；加语言前先对照 wasm 导入函数，并拿真实文件扫一遍
+- **模型**：构建前需 `npm run download:models` 下载嵌入模型；语音包用 `npm run build:speech-pack` 另打，上传 OSS / GitHub `speech-pack-v*` Release
+
+## 常用命令
+
+```bash
+npm run dev           # 开发模式
+npm run review        # 列出每一路工作树走到哪；<名字> 起那一路验收（同一时间只开一个开发进程）；npm run review:cli <名字> [一句话] 在那一路跑命令行。node scripts/review.mjs --install 装短命令 review / review --cli
+npm run build         # 完整构建
+npm run sailfish -- --help # CLI 帮助
+npm run test          # 运行测试
+bash electron/cli/test-cli.sh  # CLI 回归测试
+```

@@ -64,9 +64,9 @@ git push --force-with-lease   # rebase 后需要强制推送
 
 ## 内部协作者开发流程
 
-智能体协作入口为 [AGENTS.md](AGENTS.md)，工作树、分支、测试、验收及合入流程以 [.cursor/rules/collaboration.mdc](.cursor/rules/collaboration.mdc) 为准，不在此重复维护。用户验收并明确同意合入后，才合入 `develop`。
+智能体协作入口为 [AGENTS.md](AGENTS.md)，工作树、分支、测试、验收及合入流程以 [.agents/rules/collaboration.md](.agents/rules/collaboration.md) 为准，不在此重复维护。用户验收并明确同意合入后，才合入 `develop`。
 
-发布与热修以 [.cursor/skills/release/SKILL.md](.cursor/skills/release/SKILL.md) 为准；Steam 发布另见对应技能。外部贡献者仍使用上面的 Fork 与 PR 流程。
+发布与热修以 [.agents/skills/release/SKILL.md](.agents/skills/release/SKILL.md) 为准；Steam 发布另见对应技能。外部贡献者仍使用上面的 Fork 与 PR 流程。
 
 ## 提交规范
 

@@ -2,7 +2,7 @@
 
 > 状态：方案设计阶段，未开始实施（v2 是 2026-07-03 重新核实后的精简版，废弃 v1 的 `@sailfish/core` 包与双入口设计）
 > 范围：`src/workbench/`、`src/components/workbench/`、新增 `packages/`
-> 关联：`electron/services/agent/SPEC.md`、`src/workbench/SPEC.md`、`.cursor/rules/project-architecture.mdc`
+> 关联：`electron/services/agent/SPEC.md`、`src/workbench/SPEC.md`、`docs/architecture.md`
 > 起因：业务条线研发团队需自行研发并发布专用工作台；支撑开源主线可被快速 OEM（产品背景另文）
 > 修订：2026-07-13 拆出 OEM 产品说明；同日对齐「Fork 优先 / features 统一可用性 / 双来源装配 / skills 包内自治」
 
@@ -728,7 +728,7 @@ SDK 1.0 只暴露 `WorkbenchDescriptor` / `registerWorkbench` / `resolveWorkbenc
 - Agent 子系统：`electron/services/agent/SPEC.md`
 - 技能系统：`electron/services/agent/skills/registry.ts`
 - MCP 服务：`electron/services/mcp.service.ts`
-- 项目架构：`.cursor/rules/project-architecture.mdc`
+- 项目架构：`docs/architecture.md`
 
 ---
 
