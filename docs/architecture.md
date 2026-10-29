@@ -1,12 +1,24 @@
----
-description: 项目架构全景，新会话必读；重大功能更新后必须同步更新本文件
-alwaysApply: true
----
-
 # SailFish 项目架构
 
-> **每次新会话开始时**应先阅读本文件以快速了解项目。
+> 查结构、定位模块时先读「快速导航」，再读任务涉及的章节和引用；无需每次启动读取本文件。
 > **完成重大功能新增或架构变更后**，必须更新本文件中相关的章节，保持信息准确。
+
+## 快速导航
+
+旗鱼是可操作本机和 SSH 的私人 AI 桌面秘书，支持桌面与 IM 接入。实现技术见「概览」。
+
+| 工作范围 | 入口与设计文档 |
+|---|---|
+| 桌面壳、系统集成 | `electron/main.ts`、`electron/preload.ts` |
+| 前端、工作台、联络 | `src/APP_SPEC.md`、`src/workbench/SPEC.md`、`src/workbench/companion/SPEC.md` |
+| Agent、工具、技能 | `electron/services/agent/SPEC.md` |
+| 会话与历史 | `electron/services/conversation/SPEC.md`、`electron/services/HISTORY_SPEC.md` |
+| 记忆、知识与主动任务 | `electron/services/knowledge/SPEC.md`、`electron/services/watch/SPEC.md` |
+| 远程、网关与 IM | `electron/services/remote-exec/SPEC.md`、`electron/services/GATEWAY_SPEC.md`、`electron/services/im/SPEC.md` |
+| 类型、扩展与数据 | `packages/shared-types/`、`electron/services/plugin/SPEC.md`、`electron/migrations/SPEC.md` |
+| 测试与发布 | `.agents/project.md` 与 `.agents/skills/` |
+
+其余服务按下文目录及模块 SPEC 定位；改动前读相关架构章节。注意主进程响应性、共享类型单一来源、本地/远程操作目标、数据兼容及 i18n 等跨模块约束。
 
 ## 概览
 
@@ -318,7 +330,7 @@ Agent 的记忆分三层，模拟人类记忆的衰减梯度，三层协同在�
 
 ## 构建与发布
 
-- **Git / 发版**：日常开发在 **`develop`**（亦为 GitHub **默认分支** — Dependabot 安全/版本更新、Dependency Graph 均以此为准）。常规发版从 develop 打到 `main`；已发出的版本要紧急修时，从该版 tag 拉 `hotfix/*`，发完自动合回 develop（功能分支再 rebase 到最新 develop）。`main` 只接受来自 `develop` 或 `hotfix/*` 的 PR（`.github/workflows/protect-main.yml`）。发版流程见 **`.cursor/skills/release/SKILL.md`**。若 Dependabot 安全 PR 误指向 `main`，`.github/workflows/retarget-dependabot-to-develop.yml` 会自动改到 `develop`。
+- **Git / 发版**：日常开发在 **`develop`**（亦为 GitHub **默认分支** — Dependabot 安全/版本更新、Dependency Graph 均以此为准）。常规发版从 develop 打到 `main`；已发出的版本要紧急修时，从该版 tag 拉 `hotfix/*`，发完自动合回 develop（功能分支再 rebase 到最新 develop）。`main` 只接受来自 `develop` 或 `hotfix/*` 的 PR（`.github/workflows/protect-main.yml`）。发版流程见 **`.agents/skills/release/SKILL.md`**。若 Dependabot 安全 PR 误指向 `main`，`.github/workflows/retarget-dependabot-to-develop.yml` 会自动改到 `develop`。
 
 - **开发**：`npm run dev`（Vite dev server + Electron）
 - **构建**：`npm run build`（Vite build → electron-builder）

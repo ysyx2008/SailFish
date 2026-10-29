@@ -64,62 +64,9 @@ git push --force-with-lease   # rebase 后需要强制推送
 
 ## 内部协作者开发流程
 
-### 1. 开发新功能
+智能体协作入口为 [AGENTS.md](AGENTS.md)，工作树、分支、测试、验收及合入流程以 [AGENTS.md](AGENTS.md) 为准，不在此重复维护。用户验收并明确同意合入后，才合入 `develop`。
 
-```bash
-# 从 develop 分支创建功能分支
-git checkout develop
-git pull origin develop
-git checkout -b feature/你的功能名称
-
-# 开发完成后，推送并创建 PR
-git push -u origin feature/你的功能名称
-# 在 GitHub 上创建 Pull Request，目标分支选择 develop
-```
-
-### 2. 功能分支命名规范
-
-- `feature/add-xxx` - 新增功能
-- `feature/update-xxx` - 优化/改进功能
-- `feature/fix-xxx` - 修复 bug
-
-### 3. 发布新版本
-
-当 `develop` 分支稳定后，合并到 `main` 并发布：
-
-```bash
-# 切换到 main 分支
-git checkout main
-git pull origin main
-
-# 合并 develop
-git merge develop
-
-# 使用 npm version 自动更新版本号、创建 commit 和 tag
-npm version patch   # Bug 修复：3.0.0 → 3.0.1
-npm version minor   # 新增功能：3.0.0 → 3.1.0
-npm version major   # 大版本：3.0.0 → 4.0.0
-
-# 推送代码和标签
-git push origin main --tags
-
-# 同步版本号到 develop
-git checkout develop
-git merge main
-git push origin develop
-```
-
-### 4. 紧急修复
-
-如果线上版本出现紧急 bug：
-
-```bash
-# 直接在 develop 修复
-git checkout develop
-git checkout -b feature/fix-紧急问题
-
-# 修复后快速合并到 develop，再合并到 main 发布
-```
+发布与热修以 [.agents/skills/release/SKILL.md](.agents/skills/release/SKILL.md) 为准；Steam 发布另见对应技能。外部贡献者仍使用上面的 Fork 与 PR 流程。
 
 ## 提交规范
 
@@ -157,8 +104,8 @@ refactor(ai): 重构 AI 对话模块
 
 ## Pull Request 流程
 
-1. 确保代码通过 lint 检查：`npm run lint`
-2. 确保 TypeScript 类型检查通过：`npm run typecheck`
+1. 按改动范围验证，代码改动执行适用的 lint 检查：`npm run lint`
+2. TypeScript 改动执行类型检查：`npm run typecheck`；纯文档检查引用和内容一致性
 3. 创建 PR 时填写清晰的描述
 4. 等待代码审查通过后合并
 

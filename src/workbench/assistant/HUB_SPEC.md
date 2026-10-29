@@ -18,7 +18,7 @@
 
 ## 一·A. 侧栏三地方（2026-08-14 更新）
 
-> 产品级定位见 `.cursor/rules/project-architecture.mdc`「任务 / 联络 / 关切 / 唤醒」。壳层取舍见 `src/APP_SPEC.md` 设计目标。
+> 产品级定位见 `docs/architecture.md`「任务 / 联络 / 关切 / 唤醒」。壳层取舍见 `src/APP_SPEC.md` 设计目标。
 
 固定入口在左侧，不再钉在顶栏。联络和终端点了是回这个地方；「新对话」点了就是开一个新的。
 

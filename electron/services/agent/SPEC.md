@@ -936,7 +936,7 @@ Companion 语义是「一条跨重启、多渠道汇流的连续关系线」，�
 
 `__tests__/oop-boundary.test.ts`：动态枚举所有内置工具与技能工具的名字，断言上述抽象层文件源码不含任何一个字面量。一旦后续重构（包括 AI 顺手加的代码）违反原则，CI 阶段立刻失败。
 
-`.cursor/rules/agent-oop-boundary.mdc`：在 AI 编辑这些文件时给 LLM 上下文加上 OOP 边界规则，防止"看到 switch 已有 case 就照葫芦画瓢加新 case"的模仿大于架构反模式。
+`.agents/rules/agent-oop-boundary.md`：在 AI 编辑这些文件时给 LLM 上下文加上 OOP 边界规则，防止"看到 switch 已有 case 就照葫芦画瓢加新 case"的模仿大于架构反模式。
 
 ### 上下文用量以模型返回的真实值为准（2026-08-21 设计）
 

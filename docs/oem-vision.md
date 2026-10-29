@@ -304,4 +304,4 @@ Windows 开始菜单和桌面快捷方式的显示名跟随品牌里的中文名
 - OEM 品牌配置：`shared/oem.config.template.ts`（模板）→ 本地/Fork 的 `shared/oem.config.ts`、`shared/brand.ts`
 - 现有工作台体系：`src/workbench/SPEC.md`
 - Agent 子系统：`electron/services/agent/SPEC.md`
-- 项目架构：`.cursor/rules/project-architecture.mdc`
+- 项目架构：`docs/architecture.md`

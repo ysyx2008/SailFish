@@ -2,7 +2,7 @@
 
 > Last verified: 2026-10-01
 > 范围：`src/workbench/companion/` + 渲染组件 `src/components/workbench/CompanionWorkbench.vue`。
-> 工作台体系通用规则见 `src/workbench/SPEC.md`；联络的产品定位见 `.cursor/rules/project-architecture.mdc`「任务 / 联络 双入口模型」。
+> 工作台体系通用规则见 `src/workbench/SPEC.md`；联络的产品定位见 `docs/architecture.md`「任务 / 联络 双入口模型」。
 
 ---
 

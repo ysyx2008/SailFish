@@ -1,0 +1,8 @@
+---
+description: 项目统一开发指令，唯一启动入口
+alwaysApply: true
+---
+
+先完整读取仓库根目录 `AGENTS.md`，再按其中的动作路由读取正文。若已完整加载且未变化，不重复读。
+
+@AGENTS.md
