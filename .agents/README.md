@@ -5,6 +5,7 @@
 - 根目录 `AGENTS.md`：读取策略、文档权威来源、工具降级要求。
 - `rules/`：与编辑器无关的规则正文。
 - `skills/`：以 SKILL.md 组织的操作流程；其中测试、发布命令仍针对 SailFish。
+- `workflow.md`：交付、合入和清理时才读取的操作细则。
 - `project.md`：本项目的分支、工作树、初始化和验收约定。
 - `docs/architecture.md`、`docs/product-philosophy.md`：旗鱼架构地图和产品目标。
 - `.cursor/rules/`：保留 MDC 条件与正文引用；`.cursor/skills/`：保留兼容技能入口。

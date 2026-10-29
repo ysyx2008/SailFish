@@ -1,7 +1,24 @@
 # SailFish 项目架构
 
-> **每次新会话开始时**阅读「概览」「目录结构」和章节标题以建立地图；动手前完整阅读任务涉及的章节和相关引用，不要求每次通读所有专题细节。
+> **每次新会话开始时**只读「快速导航」建立地图；动手前完整阅读任务涉及的章节和相关引用，不要求每次通读所有专题细节。
 > **完成重大功能新增或架构变更后**，必须更新本文件中相关的章节，保持信息准确。
+
+## 快速导航
+
+旗鱼是可操作本机和 SSH 的私人 AI 桌面秘书，支持桌面与 IM 接入。实现技术见「概览」。
+
+| 工作范围 | 入口与设计文档 |
+|---|---|
+| 桌面壳、系统集成 | `electron/main.ts`、`electron/preload.ts` |
+| 前端、工作台、联络 | `src/APP_SPEC.md`、`src/workbench/SPEC.md`、`src/workbench/companion/SPEC.md` |
+| Agent、工具、技能 | `electron/services/agent/SPEC.md` |
+| 会话与历史 | `electron/services/conversation/SPEC.md`、`electron/services/HISTORY_SPEC.md` |
+| 记忆、知识与主动任务 | `electron/services/knowledge/SPEC.md`、`electron/services/watch/SPEC.md` |
+| 远程、网关与 IM | `electron/services/remote-exec/SPEC.md`、`electron/services/GATEWAY_SPEC.md`、`electron/services/im/SPEC.md` |
+| 类型、扩展与数据 | `packages/shared-types/`、`electron/services/plugin/SPEC.md`、`electron/migrations/SPEC.md` |
+| 测试与发布 | `.agents/project.md` 与 `.agents/skills/` |
+
+其余服务按下文目录及模块 SPEC 定位；改动前读相关架构章节。注意主进程响应性、共享类型单一来源、本地/远程操作目标、数据兼容及 i18n 等跨模块约束。
 
 ## 概览
 
