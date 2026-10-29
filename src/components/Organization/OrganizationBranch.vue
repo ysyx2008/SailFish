@@ -194,7 +194,7 @@ watch(cells, async () => {
           />
         </div>
         <div
-          v-if="cell.summary.total > 0"
+          v-if="cell.summary.total > 0 && cell.summary.bucket !== 'completed'"
           class="org-team-meter"
           role="img"
           :aria-label="cell.summary.meterLabel"
@@ -302,7 +302,6 @@ watch(cells, async () => {
 
 /* 团：一个纵向列，团头在外，成员自上而下；整框按团的状态着色 */
 .org-team {
-  --org-team-accent: var(--border-color);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -310,16 +309,11 @@ watch(cells, async () => {
   min-width: 220px;
   padding: 9px;
   border: 1px solid var(--border-color);
-  border-left: 2px solid var(--org-team-accent);
   border-radius: 10px;
   background: var(--bg-secondary);
   cursor: pointer;
   transition: border-color 0.15s ease;
 }
-.org-team.is-running { --org-team-accent: var(--accent-primary); }
-.org-team.is-waiting { --org-team-accent: var(--color-warning, #e5c07b); }
-.org-team.is-completed { --org-team-accent: var(--color-success, #98c379); }
-.org-team.is-problem { --org-team-accent: var(--color-danger, #e06c75); }
 .org-team:hover { border-color: rgba(var(--accent-rgb, 137, 180, 250), 0.4); }
 
 .org-team-head {
@@ -360,9 +354,9 @@ watch(cells, async () => {
 .org-team-meter {
   display: flex;
   gap: 2px;
-  height: 4px;
+  height: 3px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: 2px;
   background: var(--bg-tertiary);
 }
 .org-meter-part {

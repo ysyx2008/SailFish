@@ -52,7 +52,6 @@ const tip = computed(() => [
 
 <style scoped>
 .org-node {
-  --org-accent: var(--border-color);
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -61,19 +60,13 @@ const tip = computed(() => [
   max-width: 230px;
   padding: 6px 8px 6px 7px;
   border: 1px solid var(--border-color);
-  border-left: 2px solid var(--org-accent);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg-secondary);
   color: var(--text-primary);
   font-size: 12px;
   text-align: left;
   transition: border-color 0.15s ease;
 }
-.org-node.is-running { --org-accent: var(--accent-primary); }
-.org-node.is-waiting { --org-accent: var(--color-warning, #e5c07b); }
-.org-node.is-completed { --org-accent: var(--color-success, #98c379); }
-.org-node.is-failed { --org-accent: var(--color-danger, #e06c75); }
-.org-node.is-interrupted { --org-accent: var(--text-secondary); }
 
 .org-avatar {
   flex-shrink: 0;
