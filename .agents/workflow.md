@@ -1,6 +1,6 @@
 # Git 与交付操作细则
 
-准备交付、变基、合入、清理或盘点各路状态时读取。协作原则见 `rules/collaboration.md`，项目命令见 `project.md`。
+准备交付、变基、合入、清理或盘点各路状态时读取。协作原则见 `AGENTS.md`，项目命令见 `.agents/project.md`。
 
 ## 交卷、合入与收尾
 

@@ -1,9 +1,0 @@
----
-description: 旗鱼产品设计理念（含「用户不用动脑」的设计原则），每次会话开始时、设计功能或界面前阅读
----
-
-# 兼容入口（正文请勿写在此处）
-
-本规则适用时，先用文件读取工具完整读取仓库根目录下的 `docs/product-philosophy.md`，再执行任务。
-
-@docs/product-philosophy.md

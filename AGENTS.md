@@ -1,31 +1,40 @@
-# SailFish 项目指令
+# SailFish 开发指令
 
-始终用中文。规则正文在 `.agents/`，项目知识在 `docs/`；编辑器入口只引用，不复制正文。
+始终用中文。新对话只需完整读取本文件；正文已加载且未变化时不重复读，后续按任务查表。所有路径相对仓库根目录。
 
-## 新对话必读
+## 项目定位
 
-- `.agents/rules/collaboration.md`
-- `.agents/rules/local-dev.md`
-- `.agents/rules/spec-driven.md`
-- `.agents/project.md`
-- `docs/product-philosophy.md`
-- `docs/architecture.md` 的「快速导航」；动手前读相关章节及引用。
+旗鱼是可操作本机和 SSH 的私人 AI 桌面秘书。任务承载隔离工作，联络维持持续关系；产品强调主动性、记忆连续和低认知负担。设计界面或改变产品行为前读 `docs/product-philosophy.md`；查结构或定位模块时读 `docs/architecture.md`，再沿相关 SPEC 和设计引用深入。
 
-## 按任务读取
+## 协作底线
 
-| 任务 | 必读 |
+- 用户负责需求、架构取舍和验收；AI 负责实现、验证、审查、提交及 Git 收尾，交付交代效果、验法、证据、限制、分支和状态。
+- 默认聚焦最小模块，开工说明范围；遵循 OOP，不绕过公开边界，不做无关重构、脆弱关键词分支或平行分类映射，复用既有类型与概念。
+- 一任务一分支一工作树，不与他人共用。跨轮、改运行行为/共享接口或验证界面时先隔离；当场完成并提交的小改动可用主目录，拿不准就隔离。准备创建或初始化工作树前读 `.agents/project.md`；所有读写和索引指向同一棵树，不将 node_modules 软链到主目录。
+- 不 stash、覆盖、回退或顺手提交他人改动；与并行任务重叠或依赖其产出时说明并建议排定顺序。
+- 动手前读相关代码和模块 SPEC。新的产品取舍、跨模块行为、公共契约、权限或持久数据变更，先说明方案、风险和验收方式并确认。已有授权不重问；低风险机械修改说明范围后直接做。
+- 确认的设计先入 SPEC；缺少共识不编造目标。大方案拆成可独立验收的步骤及提交，重构与新功能分开。变更需求、写 SPEC 或 Plan 前读 `.agents/rules/spec-driven.md`。
+- 按风险验证：文档查引用与一致性，样式验界面，后端行为跑针对性测试和 CLI 回归，共享基础设施、权限和数据变更扩大验证。优先真实链路与隔离数据，检查异常日志，不用用户真实数据测试。
+- 每次交付自审；新功能或较大行为改动做独立审查，工具不可用时结构化自审并披露限制。不得虚报操作和检查结果。
+- 阶段检查后主动提交，只含本任务；重大架构变化更新架构文档，依赖和落盘格式变化要说明，迁移建议先备份。
+- 保留工作树，用户明确说「合」才合入；验收修补追加提交，撤销已合改动用 revert，不改写集成分支历史。交付及 Git 操作前读 `.agents/workflow.md`。
+
+## 按动作读取
+
+| 动作 | 正文 |
 |---|---|
-| 修改模块 | 对应 SPEC 的设计目标、行为契约及相关当前方案 |
+| 工作树、初始化、用户验收 | `.agents/project.md` |
+| 交付、变基、合入、标签、清理、盘点 | `.agents/workflow.md` |
+| 写需求、SPEC、Plan | `.agents/rules/spec-driven.md` |
 | 查代码结构 | `.agents/rules/codegraph.md` |
-| 改提示词或模型可见文案 | `.agents/rules/agent-prompt-principles.md` |
-| 改 Agent 抽象层 | `.agents/rules/agent-oop-boundary.md`，范围见正文 |
+| 改提示词、工具描述或模型可见文案 | `.agents/rules/agent-prompt-principles.md` |
+| 改 Agent 抽象层指定文件 | `.agents/rules/agent-oop-boundary.md`，范围见正文 |
 | 验证界面 | `.agents/rules/ui-e2e-quiet.md` |
-| 提出点子、完成相关功能 | `.agents/rules/ideas.md` |
-| 交付、变基、合入、清理、盘点分支 | `.agents/workflow.md` |
-| 测试、审查、提交、管理 SPEC、发布 | `.agents/skills/` 中对应的 `cli-testing`、`claude-review`、`commit-scoped-changes`、`spec-management`、`release` 的 `SKILL.md` |
+| 提出产品点子或完成相关功能 | `.agents/rules/ideas.md`，相关状态随提交更新 |
+| 测试、审查、提交、管理 SPEC、发布 | `.agents/skills/` 下对应 `cli-testing`、`claude-review`、`commit-scoped-changes`、`spec-management`、`release` 的 `SKILL.md` |
 
-Steam 技能未纳入 Git；需要时查 `.agents/skills/steam-publish/SKILL.md` 或旧 `.cursor/skills/steam-publish/SKILL.md`，缺失则说明。发布需用户授权。
+## 来源与适配
 
-用户明确指令优先，已有授权不重复确认。协作流程以 collaboration 为准；产品目标以产品理念和模块 SPEC 为准；结构以源码为准；命令以对应技能、提交格式以 CONTRIBUTING 为准。历史 Plan 仅供参考；行为契约实质冲突需确认。
+用户明确指令优先。本文件定义协作原则；产品理念及模块 SPEC 定义目标与契约；源码定义结构；技能定义命令；CONTRIBUTING 定义提交格式。历史 Plan 仅供参考，行为契约实质冲突需确认。
 
-已在上下文完整加载且未变化的正文不重读。工具不可用按规则降级，不虚报操作或检查结果。新增规则同步本入口和编辑器适配；不预读无关文档。
+编辑器入口只指向正文；不可用工具按对应规则降级，不假装执行。新增专项规则同步本表，只有必要的文件匹配才加工具适配，不预读无关文档。发布需用户授权；本机可选 Steam 技能及项目命令见 `.agents/project.md`。
