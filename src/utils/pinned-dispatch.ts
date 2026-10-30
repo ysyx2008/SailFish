@@ -1,4 +1,5 @@
 import type { AgentStep, SubAgentResult } from '@shared/types'
+import { teamCards, teamIdOfStep } from './team-view'
 import { subAgentBucket } from './sub-agent-summary'
 
 /** 这一批人里还有没干完的（排队、在干，含等模型空位） */
@@ -27,7 +28,13 @@ export class PinnedDispatchTracker {
   private readonly finishedAt = new Map<string, number>()
 
   update(steps: readonly AgentStep[]): AgentStep[] {
-    const dispatches = steps.filter(step => step.organization || (step.subAgents && step.subAgents.length > 0))
+    const cards = teamCards(steps)
+    // 新团队取最新的整队状态，旧派出快照不能让已收工的队伍永久挂着。
+    const dispatches = steps.flatMap(step => {
+      if (!teamIdOfStep(step)) return step.organization || step.subAgents?.length ? [step] : []
+      const organization = cards.get(step.id)
+      return organization ? [{ ...step, organization }] : []
+    })
     const speech = steps.reduce((n, step) => n + (isUserSpeech(step) ? 1 : 0), 0)
 
     const alive = new Set(dispatches.map(step => step.id))

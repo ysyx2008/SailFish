@@ -206,7 +206,9 @@ export interface ToolExecutorConfig {
   leadSeat?: import('../org-ledger').LeadSeat
   /** 盘上的主会话号：伙计和组长名下的人都记在它下面 */
   getRootSessionId?: () => string | undefined
-  /** 当前这件事最近的组织全貌：重开时用它把看板接着铺出来 */
+  /** 按团队恢复该会话最近保存的全貌；不改变实际成员管理权限。 */
+  getOrganizationHistory?: () => import('@shared/types').OrganizationView[]
+  /** 兼容只提供单份全貌的执行器。 */
   getCurrentOrganization?: () => import('@shared/types').OrganizationView | undefined
   /** 未按听众过滤的工具目录，供硬拦 */
   getToolCatalog?: () => import('../../ai.service').ToolDefinition[]

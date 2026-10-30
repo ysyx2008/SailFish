@@ -49,3 +49,29 @@ it('团队图只携带活动摘要，不把工具输出正文复制到全局快�
   const source = step('a', { subAgents: [{ ...member('甲'), steps: [{ tool: 'read_file', args: '/tmp/file', status: 'completed', result: '很长的工具输出' }] }] })
   expect(teamViewForStep([source], 'a')?.members[0].activity).toEqual({ tool: 'read_file', args: '/tmp/file', status: 'completed' })
 })
+
+
+describe('明确的团队归属',()=>{
+  const scoped=(id:string,names:string[],updatedAt=1):OrganizationView=>({teamId:id,sessionId:'sid',members:names.map(name=>({...member(name),teamId:id})),teams:[],total:names.length,live:names.length,updatedAt})
+  it('同一轮派出两队也不合并，历史百人与新三人分别显示',()=>{
+    const old=Array.from({length:100},(_,i)=>`旧${i}`)
+    const steps=[step('u',{type:'user_task'}),step('old',{organization:scoped('old',old)}),step('new',{organization:scoped('new',['甲','乙','丙'])})]
+    expect([...teamCards(steps).values()].map(view=>view.total)).toEqual([100,3])
+    expect(teamViewForStep(steps,'new')?.members.map(m=>m.name)).toEqual(['甲','乙','丙'])
+  })
+  it('明确续派跨用户轮次仍归原团队，使用该团队最新完整快照',()=>{
+    const steps=[step('a',{organization:scoped('A',['甲'])}),step('b',{organization:scoped('B',['乙'])}),step('next',{type:'user_task'}),step('continued',{organization:scoped('A',['甲','丙'],20)})]
+    expect([...teamCards(steps).keys()]).toEqual(['a','b'])
+    expect(teamViewForStep(steps,'a')?.total).toBe(2)
+    expect(teamViewForStep(steps,'b')?.total).toBe(1)
+  })
+  it('尚未生成组织快照的等待派出也按自己的归属隔离',()=>{
+    const steps=[step('a',{subAgents:[{...member('甲'),teamId:'A'}]}),step('b',{subAgents:[{...member('乙'),teamId:'B'}]})]
+    expect([...teamCards(steps).values()].map(view=>view.members[0].name)).toEqual(['甲','乙'])
+  })
+  it('旧无标识组织不会进入新团队，相同标识也不能跨原会话',()=>{
+    const steps=[step('legacy',{organization:{members:[member('历史')],teams:[],total:1,live:0}}),step('a',{organization:scoped('A',['甲'])}),step('b',{sourceSessionId:'other',organization:{...scoped('A',['乙']),sessionId:'other'}})]
+    expect(teamViewForStep(steps,'a')?.members.map(m=>m.name)).toEqual(['甲'])
+    expect([...teamCards(steps).values()].map(view=>view.total)).toEqual([1,1,1])
+  })
+})

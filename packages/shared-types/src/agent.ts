@@ -454,6 +454,8 @@ export interface WebSearchResultItem {
 
 /** 子 Agent 执行结果（通过 AgentStep.subAgents 推送进度） */
 export interface SubAgentResult {
+  /** 顶层协作团队的稳定归属；team 字段仍是组内小组名。 */
+  teamId?: string
   id: string
   /** 这场任务里招呼他的名字，要能反映出他在干什么 */
   name?: string
@@ -526,6 +528,7 @@ export interface ExpertTeamView {
 
 /** 项目组织里的一个人（卡片和组织图用） */
 export interface OrganizationMemberView {
+  teamId?: string
   /** 当前或最近一次工具活动；职责仍由 description 表达。 */
   activity?: Pick<SubAgentToolStep, 'tool' | 'args' | 'status'>
   id: string
@@ -544,6 +547,7 @@ export interface OrganizationMemberView {
 
 /** 项目组织里的一个专家团（群聊全文在 chatFile 里，界面翻页读） */
 export interface OrganizationTeamView {
+  teamId?: string
   name: string
   /** 团所在那位组长的名字；秘书自己派的团没有 */
   owner?: string
@@ -570,7 +574,11 @@ export interface OrganizationArtifactView {
 }
 
 /** 项目组织的全貌（派出组长的那一步上实时更新）；保留完整成员与团，旧记录可能仍带遗漏标记 */
+export const LEGACY_TEAM_ID = 'legacy'
+
 export interface OrganizationView {
+  /** 独立团队的稳定标识，旧记录可能没有。 */
+  teamId?: string
   /** 所属主会话；联络合并历史时仍从原会话读取团队成果。 */
   sessionId?: string
   members: OrganizationMemberView[]

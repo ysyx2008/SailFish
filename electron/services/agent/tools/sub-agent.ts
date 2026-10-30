@@ -2,6 +2,8 @@
  * 伙计调度：派出 / 再交代 / 等待 / 打断。
  * 伙计用真正的 Agent 循环，花名册活在这场 run 里。
  */
+import { createHash, randomUUID } from 'crypto'
+import { LEGACY_TEAM_ID } from '@shared/types'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
@@ -105,6 +107,8 @@ export class SubAgentWorkspace {
   /** 总览上次写进去的内容，没变就不重写 */
   private lastOverview?: string
   private lastBoard?: string
+  private readonly seededTeams = new Set<string>()
+  private readonly teamBoards = new Map<string, string>()
   /** 每个群聊文件写到第几条 */
   private readonly transcriptCounts = new Map<string, number>()
   /** 团名对应的群聊文件名 */
@@ -218,13 +222,16 @@ export class SubAgentWorkspace {
   /** 看板上每份花名册的最后样子：组长收工、花名册退出账本以后，他那一段还在 */
   private readonly boardSections = new Map<string, RememberedSection>()
 
-  rememberBoardSection(section: RememberedSection): void {
+  rememberBoardSection(section: RememberedSection, seed = false): void {
     const key = section.owner ?? ''
     const previous = this.boardSections.get(key)
     // 冷恢复只叫醒一部分人；没有再次运行的团仍沿用历史元数据。
     const teamViews = [...new Map([...(previous?.teamViews ?? []), ...section.teamViews].map(team => [team.name, team])).values()]
+    const members = seed ? [...new Map([...(previous?.members ?? []), ...section.members].map(member => [member.name, member])).values()] : section.members
     this.boardSections.set(key, {
       ...section,
+      members,
+      ...(seed ? { total: members.length, live: members.filter(member => member.status === 'pending' || member.status === 'running').length } : {}),
       teamViews,
       teams: teamViews.map(team => ({ name: team.name, review: team.review, reviewers: team.reviewers ?? [] })),
     })
@@ -243,21 +250,31 @@ export class SubAgentWorkspace {
   }
 
   /** 完整组织元数据：节点不按人数裁掉，所有分组与汇报链保持完整。 */
-  organizationView(): OrganizationView {
+  organizationView(teamId?: string): OrganizationView {
     const sections = [...this.boardSections.values()].sort((a, b) => a.depth - b.depth)
-    const members = sections.flatMap(s => s.members)
-    const teams = sections.flatMap(s => s.teamViews)
+    const allMembers = sections.flatMap(s => s.members)
+    const members = teamId ? allMembers.filter(member => (member.teamId ?? LEGACY_TEAM_ID) === teamId) : allMembers
+    const teams = sections.flatMap(s => s.teamViews).filter(team => !teamId || (team.teamId ?? LEGACY_TEAM_ID) === teamId)
     const problems = members.filter(m => m.status === 'failed' || m.status === 'interrupted').length
     return {
-      ...(this.sessionId ? { sessionId: this.sessionId } : {}),
-      members,
-      teams,
-      live: sections.reduce((n, s) => n + s.live, 0),
-      total: sections.reduce((n, s) => n + s.total, 0),
+      ...(teamId ? { teamId } : {}),
+      ...(this.sessionId ? { sessionId: this.sessionId } : {}), members, teams,
+      live: teamId ? members.filter(m => m.status === 'running' || m.status === 'pending').length : sections.reduce((n, s) => n + s.live, 0),
+      total: teamId ? members.length : sections.reduce((n, s) => n + s.total, 0),
       ...(problems > 0 ? { problems } : {}),
-      boardPath: this.boardPath,
-      updatedAt: Date.now(),
+      boardPath: this.boardPathFor(teamId), updatedAt: Date.now(),
     }
+  }
+
+  /** 每个历史团队只铺一次，多个团队可并存于同一会话。 */
+  beginSeed(teamId: string): boolean {
+    if (this.seededTeams.has(teamId)) return false
+    this.seededTeams.add(teamId)
+    return true
+  }
+
+  boardPathFor(teamId?: string): string {
+    return teamId ? path.join(this.dir, ORG_DIR, `team-${safeDirPart(teamId)}-${createHash('sha1').update(teamId).digest('hex').slice(0, 8)}`, 'board.md') : this.boardPath
   }
 
   /** 组织看板放在秘书这一轮的落盘目录下的 org/ 里；内容没变就不重写 */
@@ -266,8 +283,31 @@ export class SubAgentWorkspace {
     const live = sections.reduce((n, s) => n + s.live, 0)
     const total = sections.reduce((n, s) => n + s.total, 0)
     const content = renderBoard(sections, { live, total })
-    if (content === this.lastBoard) return
-    if (this.write(path.join(ORG_DIR, 'board.md'), content)) this.lastBoard = content
+    if (content !== this.lastBoard && this.write(path.join(ORG_DIR, 'board.md'), content)) this.lastBoard = content
+    // 一次分桶，避免团队很多时反复扫描全会话成员。
+    const byTeam = new Map<string, RememberedSection[]>()
+    for (const section of sections) {
+      const buckets = new Map<string, { members: OrganizationMemberView[]; teamViews: OrganizationTeamView[] }>()
+      const bucket = (id: string) => {
+        let value = buckets.get(id)
+        if (!value) { value = { members: [], teamViews: [] }; buckets.set(id, value) }
+        return value
+      }
+      for (const member of section.members) bucket(member.teamId ?? LEGACY_TEAM_ID).members.push(member)
+      for (const team of section.teamViews) bucket(team.teamId ?? LEGACY_TEAM_ID).teamViews.push(team)
+      for (const [id, { members, teamViews }] of buckets) {
+        const filtered = { ...section, members, teamViews, rows: this.rowsOf(members.map(member => ({ ...member, prompt: '', steps: [] }))),
+          teams: teamViews.map(team => ({ name: team.name, review: team.review, reviewers: team.reviewers ?? [] })),
+          total: members.length, live: members.filter(member => member.status === 'running' || member.status === 'pending').length }
+        const list = byTeam.get(id) ?? []
+        list.push(filtered)
+        byTeam.set(id, list)
+      }
+    }
+    for (const [teamId, filtered] of byTeam) {
+      const body = renderBoard(filtered, { live: filtered.reduce((n,s) => n+s.live,0), total: filtered.reduce((n,s)=>n+s.total,0) })
+      if (this.teamBoards.get(teamId) !== body && this.write(path.relative(this.dir, this.boardPathFor(teamId)), body)) this.teamBoards.set(teamId, body)
+    }
   }
 
   get boardPath(): string {
@@ -366,12 +406,14 @@ export function workspaceOf(roster: SubAgentRoster): SubAgentWorkspace {
 /**
  * 重开一场会话、还没按账本刷新时，先用保存下来的组织全貌把看板铺出来：
  * 之前给伙计的看板路径马上有内容，叫醒团里以前的人时也能拿到上一次的验收结论。
- * 已有看板内容时不动（之后由 refreshOrgBoard 按账本刷新）。
+ * 每队只铺一次，多个历史团队合并进看板内存（之后按账本刷新）。
  */
 export function seedOrganizationBoard(workspace: SubAgentWorkspace, view: OrganizationView): void {
-  if (workspace.hasBoard()) return
   // 快照本来就截断过：铺出来会把「看得到的这些人」当成全组织，宁可不铺
   if (view.omitted || view.omittedTeams) return
+  const teamId = view.teamId ?? LEGACY_TEAM_ID
+  if (!workspace.beginSeed(teamId)) return
+  view = { ...view, members: view.members.map(member => ({ ...member, teamId: member.teamId ?? teamId })), teams: view.teams.map(team => ({ ...team, teamId: team.teamId ?? teamId })) }
   const depthOf = (name: string, seen = new Set<string>()): number => {
     const member = view.members.find(m => m.name === name)
     if (!member?.parent || seen.has(name)) return 1
@@ -404,7 +446,7 @@ export function seedOrganizationBoard(workspace: SubAgentWorkspace, view: Organi
       total: members.length,
       members,
       teamViews,
-    })
+    }, true)
   }
   workspace.writeBoardFromMemory()
 }
@@ -414,10 +456,11 @@ export function seedOrganizationBoard(workspace: SubAgentWorkspace, view: Organi
  * 组长收工后他的花名册退出账本，看板上他那一段保留最后的样子。
  */
 export function refreshOrgBoard(roster: SubAgentRoster): void {
-  const root = roster.orgRoot()
+  const root = roster.orgRoot() ?? (roster.owner === undefined ? roster : undefined)
   if (!root) return
   const rootWorkspace = workspaceOf(root)
-  for (const entry of roster.orgEntries()) {
+  const entries = roster.orgEntries()
+  for (const entry of entries.length ? entries : [{ roster, owner: undefined, depth: 0, reportsTo: undefined }]) {
     const r = entry.roster
     rootWorkspace.rememberBoardSection({
       owner: entry.owner,
@@ -428,7 +471,7 @@ export function refreshOrgBoard(roster: SubAgentRoster): void {
       live: r.liveCount(),
       total: r.organizationMembers().length,
       members: r.organizationMembers().map(c => toOrganizationMember(c, r.owner)),
-      teamViews: r.listTeams().map(team => toOrganizationTeam(team, r.owner, workspaceOf(r))),
+      teamViews: r.listTeams().map(team => toOrganizationTeam(team, r.owner, workspaceOf(r), r.teamMembers(team)[0]?.teamId)),
     })
     if (!watchedForRelease.has(r)) {
       watchedForRelease.add(r)
@@ -447,7 +490,7 @@ function orgNoteFor(roster: SubAgentRoster, child: ChildSnapshot): string {
   const note = orgOpeningNote({
     name: child.name,
     role: child.role,
-    boardPath: workspaceOf(root).boardPath,
+    boardPath: workspaceOf(root).boardPathFor(child.teamId),
     resultDir: workspaceOf(roster).directory,
     reportsTo: roster.owner,
     ...(child.lead ? { leadDir: workspaceOf(root).leadDirectory(child.name) } : {}),
@@ -783,6 +826,7 @@ export function viewStepsPerAgent(agentCount: number): number {
 export function toSubAgentView(c: ChildSnapshot, stepLimit: number = VIEW_STEPS_PER_AGENT): SubAgentResult {
   return {
     id: c.name,
+    ...(c.teamId ? { teamId: c.teamId } : {}),
     name: c.name,
     description: c.description,
     prompt: c.shownPrompt ?? c.prompt,
@@ -801,6 +845,7 @@ function toOrganizationMember(c: ChildSnapshot, parent: string | undefined): Org
   return {
     ...(activity ? { activity: { tool: activity.tool, args: activity.args, status: activity.status } } : {}),
     id: c.name,
+    ...(c.teamId ? { teamId: c.teamId } : {}),
     name: c.name,
     description: c.description,
     status: c.status,
@@ -813,10 +858,11 @@ function toOrganizationMember(c: ChildSnapshot, parent: string | undefined): Org
   }
 }
 
-function toOrganizationTeam(team: ExpertTeam, owner: string | undefined, workspace: SubAgentWorkspace): OrganizationTeamView {
+function toOrganizationTeam(team: ExpertTeam, owner: string | undefined, workspace: SubAgentWorkspace, teamId?: string): OrganizationTeamView {
   const view = team.view({ transcriptPath: workspace.teamTranscriptPath(team), chatFile: workspace.teamChatFile(team) })
   return {
     name: team.name,
+    ...(teamId ? { teamId } : {}),
     ...(owner ? { owner } : {}),
     review: team.reviewState(),
     ...(view.reviewers ? { reviewers: view.reviewers } : {}),
@@ -834,14 +880,15 @@ export function dispatchStepView(roster: SubAgentRoster, names: ReadonlySet<stri
   const teamName = mine.find(c => c.team)?.team
   const team = teamName ? roster.getTeam(teamName) : undefined
   const workspace = workspaceOf(roster)
-  const withOrg = roster.owner === undefined && mine.some(c => c.lead)
+  const teamId = mine[0]?.teamId
+  const withOrg = roster.owner === undefined && (mine.some(c => c.lead) || !!teamId)
   if (withOrg) refreshOrgBoard(roster)
   return {
     subAgents: mine.map(c => toSubAgentView(c, viewStepsPerAgent(mine.length))),
     ...(team ? {
       expertTeam: team.view({ transcriptPath: workspace.teamTranscriptPath(team), chatFile: workspace.teamChatFile(team) }),
     } : {}),
-    ...(withOrg ? { organization: workspaceOf(roster.orgRoot() ?? roster).organizationView() } : {}),
+    ...(withOrg ? { organization: workspaceOf(roster.orgRoot() ?? roster).organizationView(teamId) } : {}),
   }
 }
 
@@ -916,8 +963,13 @@ export function spawnDeps(
   // 秘书这一份按会话落盘：同一场会话再开一轮时，看板和结果文件还在原来的路径
   if (roster.owner === undefined) {
     workspace.bindSession(sessionId)
-    const restored = executor.getCurrentOrganization?.()
-    if (restored) seedOrganizationBoard(workspace, restored)
+    const saved = executor.getOrganizationHistory?.() ?? [executor.getCurrentOrganization?.()].filter((view): view is OrganizationView => !!view)
+    const latest = new Map<string, OrganizationView>()
+    for (const view of saved) {
+      const id = view.teamId ?? LEGACY_TEAM_ID
+      if (!latest.has(id) || (view.updatedAt ?? 0) >= (latest.get(id)?.updatedAt ?? 0)) latest.set(id, view)
+    }
+    for (const view of latest.values()) seedOrganizationBoard(workspace, view)
   }
   const overviewProgress = new ProgressThrottle(() => {
     workspace.writeOverview(roster.list())
@@ -930,7 +982,7 @@ export function spawnDeps(
     const root = roster.orgRoot()
     if (includeOrganization && root && roster.owner === undefined) {
       if (!view.organization) refreshOrgBoard(root)
-      view.organization = workspaceOf(root).organizationView()
+      view.organization = workspaceOf(root).organizationView(roster.teamIdOf([...names][0]))
     }
     executor.updateStep(progressStepId, view)
     for (const team of roster.listTeams()) workspace.writeTeamTranscript(team)
@@ -1231,6 +1283,15 @@ export async function dispatchSubAgents(
   if (parsedTasks.some(task => task.lead) && !roster.canAppointLeads()) {
     return { success: false, output: '', error: t('org.depth_limit', { max: MAX_ORG_DEPTH }) }
   }
+  const continuing = args.continue_team
+  if (continuing !== undefined && (typeof continuing !== 'string' || !continuing.trim())) {
+    return { success: false, output: '', error: t('dispatch.bad_continue_team') }
+  }
+  const representative = typeof continuing === 'string' ? continuing.trim() : undefined
+  if (representative && (executor.isSubAgent || roster.owner !== undefined)) return { success: false, output: '', error: t('dispatch.branch_team_fixed') }
+  const existingTeamId = representative ? roster.teamIdOf(representative, { restoreDormant: executor.restoreDormantChildren }) : undefined
+  if (representative && !existingTeamId) return { success: false, output: '', error: t('dispatch.unknown_continue_team', { name: representative }) }
+  const teamId = roster.owner === undefined ? existingTeamId ?? `team-${randomUUID()}` : roster.inheritedTeamId ?? LEGACY_TEAM_ID
   const allExperts = parsedTasks.every(task => !!task.role)
   if (parsedTasks.length > roster.room()) {
     return {
@@ -1253,6 +1314,7 @@ export async function dispatchSubAgents(
     toolArgs: {
       tasks: parsedTasks.map(task => ({ name: task.name, description: task.description, ...(task.role ? { role: task.role } : {}) })),
       ...(team ? { team } : {}),
+      ...(representative ? { continue_team: representative } : {}),
       ...(isBatchArgs(args.batch) ? { batch: { instruction: args.batch.instruction } } : {}),
     },
     riskLevel: 'safe',
@@ -1260,6 +1322,7 @@ export async function dispatchSubAgents(
     // 伙计先按「等着」画出来；批准后换成真正派出的样子
     subAgents: parsedTasks.map((task, i): SubAgentResult => ({
       id: task.name ?? `pending-${i}`,
+      teamId,
       name: task.name ?? task.description,
       description: task.description,
       prompt: task.shownPrompt ?? task.prompt,
@@ -1280,7 +1343,7 @@ export async function dispatchSubAgents(
     return { success: false, output: '', error: deps.error }
   }
 
-  const names = roster.spawn(remote.tasks, deps, team ? { team } : undefined)
+  const names = roster.spawn(remote.tasks, deps, { team, teamId })
   // 这一步里指定了组长：整个组织里任何一层有人变了，都刷新这一步
   if (roster.owner === undefined && remote.tasks.some(task => task.lead)) roster.onOrgChange(() => deps.onProgress())
   const workspace = workspaceOf(roster)
@@ -1302,7 +1365,7 @@ export async function dispatchSubAgents(
   const blankTeam = typeof args.team === 'string' && !teamNameFrom(args.team)
   return {
     success: true,
-    output: formatSpawned(names, snapshots, roster, created?.name) + (blankTeam ? `\n\n${t('expert.blank_team')}` : '')
+    output: formatSpawned(names, snapshots, roster, created?.name) + '\n\n' + t(representative ? 'dispatch.continued_team' : roster.owner === undefined ? 'dispatch.new_team' : 'dispatch.inherited_team', { name: representative ?? '' }) + (blankTeam ? `\n\n${t('expert.blank_team')}` : '')
   }
 }
 
@@ -1355,7 +1418,7 @@ export async function followupAgent(
   if (roster.owner === undefined && roster.orgRoot()) {
     refreshOrgBoard(roster)
     const root = roster.orgRoot()
-    if (root) executor.updateStep(progressStep.id, { organization: workspaceOf(root).organizationView() })
+    if (root) executor.updateStep(progressStep.id, { organization: workspaceOf(root).organizationView(roster.teamIdOf(name)) })
     roster.onOrgChange(() => deps.onProgress())
   }
   return { success: true, output: t('dispatch.followup_ok', { name }) }

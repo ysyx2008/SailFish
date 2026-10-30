@@ -646,7 +646,7 @@ describe('两种写法', () => {
   it('工具说明里写着保险丝的数', () => {
     const tool = getAgentTools(undefined, { mode: 'assistant' }).find(t => t.function.name === 'dispatch_agents')!
     expect(tool.function.description).toContain(String(MAX_LIVE_CHILDREN))
-    expect(Object.keys((tool.function.parameters as { properties: object }).properties).sort()).toEqual(['batch', 'remote_commands', 'tasks', 'team'])
+    expect(Object.keys((tool.function.parameters as { properties: object }).properties).sort()).toEqual(['batch', 'continue_team', 'remote_commands', 'tasks', 'team'])
   })
 })
 
@@ -872,5 +872,57 @@ describe('进度推给界面', () => {
     await roster.waitUntil(undefined, new AbortController().signal)
     await new Promise(r => setTimeout(r, 300))
     expect(step().subAgents![0].waitingForModel).toBeUndefined()
+  })
+})
+
+
+describe('独立团队边界', () => {
+  it('历史百人不混入新三人，默认再次派出另开，明确指定才追加', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, () => stubChild('ok', 5))
+    executor.restoreDormantChildren = () => Array.from({length:100},(_,i)=>({name:`旧${i}`,description:'历史',prompt:'历史指令',status:'completed' as const,revive:()=>{throw Error('不应叫醒历史成员')}}))
+    const tasks = (names:string[]) => names.map(name=>({name,description:name,prompt:'核对',role:'专家'}))
+    const steps = () => (executor as ToolExecutorConfig & {_steps:AgentStep[]})._steps
+    expect((await dispatchSubAgents({tasks:tasks(['新甲','新乙','新丙'])},defaultConfig,executor)).success).toBe(true)
+    const first=steps()[0].organization!
+    expect(first.total).toBe(3)
+    expect(first.members.map(m=>m.name)).toEqual(['新甲','新乙','新丙'])
+    expect(first.teamId).toBeTruthy()
+    expect(first.teamId).not.toBe('legacy')
+    expect((await dispatchSubAgents({tasks:tasks(['另甲','另乙'])},defaultConfig,executor)).success).toBe(true)
+    const second=steps()[1].organization!
+    expect(second.total).toBe(2)
+    expect(second.teamId).not.toBe(first.teamId)
+    expect((await dispatchSubAgents({tasks:tasks(['续甲']),continue_team:'新甲'},defaultConfig,executor)).success).toBe(true)
+    const continued=steps()[2].organization!
+    expect(continued.teamId).toBe(first.teamId)
+    expect(continued.total).toBe(4)
+    expect(continued.members.map(m=>m.name)).toEqual(['新甲','新乙','新丙','续甲'])
+    expect(second.members.map(m=>m.name)).toEqual(['另甲','另乙'])
+    await roster.settled()
+  })
+  it('不存在或格式错误的指定不创建成员，不退化成新队；组长不能另选队', async () => {
+    const roster=new SubAgentRoster()
+    const create=vi.fn(()=>stubChild('ok',1))
+    const executor=createExecutor(roster,create)
+    const tasks=[{name:'不应派出',description:'任务',prompt:'核对'}]
+    for(const value of ['',null,42,'不存在']) expect((await dispatchSubAgents({tasks,continue_team:value},defaultConfig,executor)).success).toBe(false)
+    expect(create).not.toHaveBeenCalled()
+    expect(roster.list()).toEqual([])
+    executor.isSubAgent=true
+    expect((await dispatchSubAgents({tasks,continue_team:'旧团队成员'},defaultConfig,executor)).success).toBe(false)
+  })
+  it('重开后指定旧成员可续派原团队，历史小组名不会复用到新群',async()=>{
+    const roster=new SubAgentRoster()
+    const executor=createExecutor(roster,()=>stubChild('ok',1))
+    executor.restoreDormantChildren=()=>[{name:'旧专家',teamId:'team-old',team:'审核组',description:'历史',prompt:'核对',role:'审核',status:'completed',revive:()=>{throw Error('不应叫醒')}}]
+    const result=await dispatchSubAgents({tasks:[{name:'新审1',role:'审核',description:'核对',prompt:'核对'},{name:'新审2',role:'审核',description:'核对',prompt:'核对'}],team:'审核组',continue_team:'旧专家'},defaultConfig,executor)
+    expect(result.success).toBe(true)
+    expect(roster.get('新审1')?.teamId).toBe('team-old')
+    expect(roster.get('新审1')?.team).not.toBe('审核组')
+    const view=(executor as ToolExecutorConfig & {_steps:AgentStep[]})._steps[0].organization!
+    expect(view.total).toBe(3)
+    expect(view.members.every(m=>m.teamId==='team-old')).toBe(true)
+    await roster.settled()
   })
 })

@@ -87,4 +87,15 @@ describe('挂在顶部的派出的人', () => {
     expect(hasUnfinishedSubAgents(dispatch('d', 'completed', 'interrupted').subAgents)).toBe(false)
     expect(hasUnfinishedSubAgents(undefined)).toBe(false)
   })
+  it('有归属的团队跨轮取最新状态，旧的在干快照不会永久挂着', () => {
+    const tracker = new PinnedDispatchTracker()
+    const first = { ...dispatch('first', 'running'), organization: {teamId:'A', members:[], teams:[], total:3, live:3, updatedAt:1} }
+    expect(ids(tracker.update([first]))).toEqual(['first'])
+    const done = { ...dispatch('done', 'completed'), organization: {...first.organization, live:0, updatedAt:2} }
+    expect(ids(tracker.update([first, say('续交代'), done]))).toEqual(['first'])
+    expect(tracker.update([first, say('续交代'), done, say('下一件事')])).toEqual([])
+    const other = { ...dispatch('other','running'), organization:{...first.organization,teamId:'B',live:2,updatedAt:3} }
+    expect(ids(tracker.update([first,say('续交代'),done,say('下一件事'),other]))).toEqual(['other'])
+  })
+
 })

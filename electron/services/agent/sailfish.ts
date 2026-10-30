@@ -194,6 +194,7 @@ export class SailFish extends Agent {
       const stopped = state.status === 'completed' || state.status === 'failed' || state.status === 'interrupted'
       return {
         name: state.name,
+        teamId: state.teamId,
         askedName: state.askedName,
         description: state.description,
         prompt: state.prompt,

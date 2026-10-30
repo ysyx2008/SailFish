@@ -535,6 +535,7 @@ export class AgentRecordStore {
             if (!state) return sa
             const updated = {
               ...sa,
+              ...(state.teamId ? { teamId: state.teamId } : {}),
               status: state.status,
               ...(state.result !== undefined ? { result: state.result } : {}),
               ...(state.error ? { error: state.error } : {}),
@@ -542,7 +543,7 @@ export class AgentRecordStore {
               ...(state.role ? { role: state.role } : {}),
             }
             if (updated.status !== sa.status || updated.result !== sa.result || updated.error !== sa.error
-              || updated.blockedReason !== sa.blockedReason || updated.role !== sa.role) changed = true
+              || updated.blockedReason !== sa.blockedReason || updated.role !== sa.role || updated.teamId !== sa.teamId) changed = true
             return updated
           })
           if (changed) next = { ...next, subAgents }

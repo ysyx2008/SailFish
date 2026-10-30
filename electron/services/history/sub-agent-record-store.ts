@@ -36,6 +36,8 @@ export interface UnansweredCall {
 
 /** 名册里这位的样子，不含对话 */
 export interface ChildState {
+  /** 所属顶层团队；旧记录缺省。 */
+  teamId?: string
   name: string
   /** 派的时候指定的名字没用上时，当时指定的那个 */
   askedName?: string
@@ -64,7 +66,7 @@ export interface ChildState {
 
 /** 名册交给存储的那部分（对话和开局由存储自己记） */
 export type ChildStateInput = Pick<ChildState,
-  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'lead' | 'reviewer' | 'parent' | 'team' | 'status' | 'result' | 'error' | 'blockedReason'>
+  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'lead' | 'reviewer' | 'parent' | 'team' | 'teamId' | 'status' | 'result' | 'error' | 'blockedReason'>
 
 export interface PersistedChild {
   state: ChildState
@@ -162,6 +164,7 @@ export class ChildRecorder {
   private writeState(input: ChildStateInput): void {
     const state: ChildState = {
       name: input.name,
+      ...(input.teamId ? { teamId: input.teamId } : {}),
       ...(input.askedName ? { askedName: input.askedName } : {}),
       description: input.description,
       prompt: input.prompt,
@@ -345,6 +348,7 @@ function decodeState(text: string): ChildState | undefined {
   const parsed = JSON.parse(text) as Partial<ChildState>
   if (typeof parsed?.name !== 'string' || typeof parsed.description !== 'string' || typeof parsed.prompt !== 'string') return undefined
   if (!isChildStatus(parsed.status)) return undefined
+  if (typeof parsed.teamId !== 'string' || !parsed.teamId.trim()) delete parsed.teamId
   return { ...parsed, updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0 } as ChildState
 }
 

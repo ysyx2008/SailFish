@@ -1972,7 +1972,7 @@ export abstract class Agent {
     if (!this._isSubAgent || this._leadSeat) {
       const seat = this._leadSeat
       const roster = seat?.ledger.rosterOwnedBy(seat.name) ?? new SubAgentRoster()
-      if (seat) roster.attachLedger(seat.ledger, seat.name, seat.depth)
+      if (seat) roster.attachLedger(seat.ledger, seat.name, seat.depth, seat.teamId)
       roster.bindOwner(message => this.injectSubAgentKnock(message))
       this._subAgentRoster = roster
     }
@@ -6184,6 +6184,7 @@ export abstract class Agent {
       inReceiptTurn: run.internalNotice && run.noticeKind === 'task_receipt',
       getSessionId: () => this.getSessionId(),
       getRootSessionId: () => this.rootSessionId(),
+      getOrganizationHistory: () => (this._conversation?.steps ?? []).flatMap(step => step.organization ? [step.organization] : []),
       getCurrentOrganization: () => {
         const steps = this._conversation?.steps ?? []
         let start = 0

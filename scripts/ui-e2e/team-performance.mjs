@@ -32,9 +32,9 @@ try {
       const {store,id}=window.__perf
       store.addAgentStep(id,{id:`u-${shape}`,type:'user_task',content:'千人性能验证',timestamp:Date.now()})
       const step={id:`perf-${shape}`,sourceSessionId:`perf-${shape}`,type:'tool_call',toolName:'dispatch_agents',content:'千人夹具',timestamp:Date.now(),success:true}
-      const members=Array.from({length:1000},(_,i)=>({id:`成员${i}`,name:`成员${i}`,description:`核对第${i}份资料`,status:'running',activity:{tool:'read_file',args:'初始活动',status:'running'}}))
+      const members=Array.from({length:1000},(_,i)=>({teamId:`perf-${shape}`,id:`成员${i}`,name:`成员${i}`,description:`核对第${i}份资料`,status:'running',activity:{tool:'read_file',args:'初始活动',status:'running'}}))
       if(shape==='flat')step.subAgents=members.map(({activity,...m})=>({...m,steps:[activity]}))
-      else step.organization={total:1000,live:1000,members:members.map((m,i)=>({...m,...(i===0?{lead:true,role:'负责人'}:{parent:'成员0',team:`小组${i%101}`} )})),teams:Array.from({length:101},(_,i)=>({name:`小组${i}`,owner:'成员0',review:'none',messageCount:0}))}
+      else step.organization={teamId:`perf-${shape}`,total:1000,live:1000,members:members.map((m,i)=>({...m,...(i===0?{lead:true,role:'负责人'}:{parent:'成员0',team:`小组${i%101}`} )})),teams:Array.from({length:101},(_,i)=>({name:`小组${i}`,owner:'成员0',review:'none',messageCount:0}))}
       store.addAgentStep(id,step)
     },shape)
     await page.locator('.dock-team').waitFor()

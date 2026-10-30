@@ -92,11 +92,13 @@ function leadWithTeam(rosters: SubAgentRoster[], memberMs: number, rosterDeps: R
 }
 
 describe('组织全貌（给界面看的那一份）', () => {
-  it('没有组长：派出那一步不带 organization，伙计行为不变', () => {
+  it('没有组长也带独立团队全貌，成员执行规则不变', () => {
     const root = new SubAgentRoster({ knockSettleMs: 0 })
     const names = root.spawn([{ description: '甲', prompt: 'p' }], deps(() => worker(50)))
     const view = dispatchStepView(root, new Set(names))
-    expect(view.organization).toBeUndefined()
+    expect(view.organization?.total).toBe(1)
+    expect(view.organization?.teamId).toBeTruthy()
+    expect(view.organization?.teams).toEqual([])
     expect(view.subAgents).toHaveLength(1)
     root.abortAll()
   })
@@ -118,6 +120,7 @@ describe('组织全貌（给界面看的那一份）', () => {
     expect(byName['研发组'].parent).toBeUndefined()
     expect(byName['前端']).toMatchObject({ parent: '研发组', team: '项目团' })
     expect(byName['后端']).toMatchObject({ parent: '研发组', team: '项目团', reviewer: true })
+    expect(org.members.every(member => member.teamId === org.teamId)).toBe(true)
     expect(org.teams).toEqual([expect.objectContaining({ name: '项目团', owner: '研发组', review: 'pending', reviewers: ['后端'] })])
     expect(org.boardPath && fs.existsSync(org.boardPath)).toBe(true)
     expect(fs.readFileSync(org.boardPath!, 'utf8')).toContain('研发组')
@@ -132,7 +135,7 @@ describe('组织全貌（给界面看的那一份）', () => {
     expect(workspaceOf(rosters[0]).directory).toContain(`${path.sep}org${path.sep}`)
   })
 
-  it('人很多时只放前面一部分，合计是真实的', async () => {
+  it('人很多时保留完整团队，合计与尾部成员均真实', async () => {
     const root = new SubAgentRoster({ knockSettleMs: 0 })
     const rosters: SubAgentRoster[] = []
     const bigDeps = (): RosterSpawnDeps => deps(() => {
@@ -162,8 +165,8 @@ describe('组织全貌（给界面看的那一份）', () => {
     await tick(50)
     const org = dispatchStepView(root, new Set(names)).organization!
     expect(org.total).toBe(251)
-    expect(org.members.length).toBe(200)
-    expect(org.omitted).toBe(51)
+    expect(org.members.length).toBe(251)
+    expect(org.omitted).toBeUndefined()
     expect(org.members.some(m => m.lead)).toBe(true)
     root.abortAll()
   })

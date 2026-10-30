@@ -11,6 +11,7 @@ export const MAX_ORG_DEPTH = 3
 
 /** 一位组长的座位：他在账本里的位置，开跑时据此建出自己的花名册 */
 export interface LeadSeat {
+  readonly teamId?: string
   readonly ledger: OrgLedger
   readonly name: string
   /** 他名下的人在第几层团（秘书的花名册是第 0 层） */

@@ -1319,7 +1319,8 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
               },
               description: '每人各写一份指令'
             },
-            team: { type: 'string', description: `团名，几个字，最长 ${MAX_TEAM_NAME_CHARS} 个字` },
+            team: { type: 'string', description: `本团队内的协作小组名，最长 ${MAX_TEAM_NAME_CHARS} 个字` },
+            continue_team: { type: 'string', description: '继续已有团队时填写该团队任一成员的真名；秘书省略时新建独立团队，历史成员不自动加入。组长下派自动归入当前团队，不填写此项。给已有成员续交代不改变所属团队' },
             batch: {
               type: 'object',
               description: '一份共同指令加一批条目。交给每个伙计的指令是 instruction、换行、再接本条目的 input',

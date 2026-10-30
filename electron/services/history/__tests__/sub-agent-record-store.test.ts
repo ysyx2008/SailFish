@@ -74,11 +74,11 @@ describe('存放位置', () => {
 describe('样子和对话', () => {
   it('存下来的样子（状态、结果、错误）和对话都能读回来', () => {
     const recorder = store.recorderFor({ sessionId: 'sess_1', startedAt: AT, name: 'alice' })!
-    recorder.saveState(state('alice', { status: 'completed', result: '端口是 8848', role: '测试专家' }))
+    recorder.saveState(state('alice', { status: 'completed', result: '端口是 8848', role: '测试专家', teamId: 'team-isolated' }))
     recorder.saveRecord(record('alice', 4))
 
     const [child] = store.list('sess_1')
-    expect(child.state).toMatchObject({ name: 'alice', status: 'completed', result: '端口是 8848', role: '测试专家', description: 'alice 的活' })
+    expect(child.state).toMatchObject({ name: 'alice', status: 'completed', result: '端口是 8848', role: '测试专家', teamId: 'team-isolated', description: 'alice 的活' })
     const restored = store.readRecord(child)!
     expect(restored.messages).toHaveLength(4)
     expect(restored.steps).toHaveLength(4)

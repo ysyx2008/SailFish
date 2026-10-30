@@ -132,6 +132,7 @@ scenario('秘书指定组长，组长在自己名下派人，做完一层层交�
     }
     const savedOrg = orgSnapshots.find(o => ['研发组长', '甲', '乙'].every(n => o.members?.some(m => m.name === n)))
     check('组织快照存进了会话 meta，重开能看到组长派的人', savedOrg?.total === 3, JSON.stringify(savedOrg))
+    check('组长下派自动继承团队归属', !!savedOrg?.teamId && savedOrg.members.every(m => m.teamId === savedOrg.teamId) && Object.values(children).every(c => c.state.teamId === savedOrg.teamId))
     check('组长、甲、乙都记下了', ['研发组长', '甲', '乙'].every((n) => children[n]), Object.keys(children).join())
     check('组长标着是组长，是秘书直接派的', children['研发组长']?.state.lead === true && !children['研发组长']?.state.parent, JSON.stringify(children['研发组长']?.state))
     check('甲、乙是组长派的', children['甲']?.state.parent === '研发组长' && children['乙']?.state.parent === '研发组长',
@@ -164,8 +165,8 @@ scenario('秘书指定组长，组长在自己名下派人，做完一层层交�
       return hits
     }
     const boards = found('board.md')
-    check('组织看板写出来了', boards.length === 1, boards.join())
-    const board = boards[0] ? fs.readFileSync(boards[0], 'utf8') : ''
+    check('会话总览和所属团队的独立看板都写出来了', boards.length === 2 && !!savedOrg?.teamId && boards.includes(savedOrg.boardPath), boards.join())
+    const board = savedOrg?.boardPath ? fs.readFileSync(savedOrg.boardPath, 'utf8') : ''
     check('看板上有组长和他名下的人，状态是做完', ['研发组长', '甲', '乙'].every((n) => board.includes(n)) && !board.includes('没做完的人 -'), board.slice(0, 600))
     check('看板合计写着 0 人没做完', board.includes('0 人没做完'), board.slice(0, 200))
     const jia = found('甲.md')

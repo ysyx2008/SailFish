@@ -288,3 +288,25 @@ describe('从伙计记录重建组织', () => {
     })
   })
 })
+
+
+describe('按独立团队重建历史',()=>{
+  it('读取旧团队快照不能把同会话的其它团队补进来，旧无归属记录也不吸收新队',()=>{
+    const states=[child('旧1'),child('新1',{teamId:'new'}),child('新2',{teamId:'new'})]
+    const legacy:OrganizationView={members:[{id:'旧1',name:'旧1',description:'旧',status:'completed'}],teams:[],total:1,live:0}
+    expect(rebuildOrganization(legacy,states,[]).members.map(m=>m.name)).toEqual(['旧1'])
+    const current:OrganizationView={teamId:'new',members:[{id:'新1',name:'新1',description:'新',status:'running',teamId:'new'}],teams:[],total:1,live:1}
+    const restored=rebuildOrganization(current,states,[])
+    expect(restored.members.map(m=>m.name)).toEqual(['新1','新2'])
+    expect(restored.total).toBe(2)
+    expect(restored.members.every(m=>m.teamId==='new')).toBe(true)
+  })
+  it('按团队过滤根派出记录中的小组，不能借其它团队的群和验收',()=>{
+    const current:OrganizationView={teamId:'A',members:[],teams:[],total:0,live:0}
+    const record=leaderRecord('秘书','其它组',['乙'])
+    record.steps[0].subAgents![0].teamId='B'
+    const view=rebuildOrganization(current,[child('甲',{teamId:'A'}),child('乙',{teamId:'B',team:'其它组'})],[],record)
+    expect(view.members.map(m=>m.name)).toEqual(['甲'])
+    expect(view.teams).toEqual([])
+  })
+})

@@ -4,6 +4,8 @@
  * 这场会话以前几轮派出的伙计、已经停下的，作为「休眠」的名册外成员：不占名额、不进总览，
  * 点名再交代时从盘上叫醒，接着干。
  */
+import { randomUUID } from 'crypto'
+import { LEGACY_TEAM_ID } from '@shared/types'
 import type { AiMessage } from '../ai.service'
 import type { SubAgentResult, SubAgentToolStep, TeamReviewState, TeamVerdict, TokenUsage } from '@shared/types'
 import type { ChildRecorder, ChildState, ChildStateInput } from '../history/sub-agent-record-store'
@@ -17,6 +19,7 @@ import { MAX_ORG_DEPTH, OrgLedger, type LeadSeat } from './org-ledger'
 export type ChildStatus = 'pending' | 'running' | 'completed' | 'failed' | 'interrupted'
 
 export interface ChildSnapshot {
+  teamId?: string
   name: string
   /** 派的时候指定的名字没用上（已被占用、或带了不能当名字的符号）时，当时指定的那个 */
   askedName?: string
@@ -60,7 +63,7 @@ export interface ChildAgentHandle {
 
 /** 这场会话里以前派出的、已经停下的伙计（存在盘上，还没被叫起来） */
 export type DormantChild = Pick<ChildState,
-  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'lead' | 'reviewer' | 'parent' | 'team' | 'result' | 'error' | 'blockedReason' | 'interruptedCalls'>
+  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'lead' | 'reviewer' | 'parent' | 'team' | 'teamId' | 'result' | 'error' | 'blockedReason' | 'interruptedCalls'>
   & {
     status: 'completed' | 'failed' | 'interrupted'
     /** 盘上记的还是「在干」：程序没来得及收尾就没了，最后一轮的内容不明 */
@@ -227,6 +230,7 @@ function uniqueName(base: string, used: (name: string) => boolean): string {
 export function childToSubAgentResult(child: ChildSnapshot): SubAgentResult {
   return {
     id: child.name,
+    teamId: child.teamId,
     name: child.name,
     description: child.description,
     prompt: child.prompt,
@@ -260,6 +264,7 @@ export class SubAgentRoster {
   private ownerName?: string
   /** 这份花名册在第几层，秘书的是 0 */
   private depth = 0
+  private assignedTeamId?: string
   /** 盘上属于别的花名册的人，只占着名字 */
   /** 别的组长名下的人（盘上记着、不在这份名册里）：名字对应他们的组长 */
   private foreignNames = new Map<string, string | undefined>()
@@ -271,10 +276,11 @@ export class SubAgentRoster {
   }
 
   /** 挂进组长所在的账本：这份是他名下的花名册 */
-  attachLedger(ledger: OrgLedger, owner: string | undefined, depth: number): void {
+  attachLedger(ledger: OrgLedger, owner: string | undefined, depth: number, teamId?: string): void {
     this.ledger = ledger
     this.ownerName = owner
     this.depth = depth
+    this.assignedTeamId = teamId ?? (owner ? ledger.root()?.teamIdOf(owner) : undefined)
     ledger.register(this, owner, depth)
     const root = ledger.root()
     if (owner && root && root !== this && root.dormantIndex.size) {
@@ -330,6 +336,16 @@ export class SubAgentRoster {
   get owner(): string | undefined {
     return this.ownerName
   }
+
+  /** 团队归属不改变管理权限；深层成员只供秘书显式定位团队。 */
+  teamIdOf(name: string, deps?: Pick<RosterSpawnDeps, 'restoreDormant'>): string | undefined {
+    if (deps) this.ensureDormant(deps)
+    const holder = this.ledger?.rosterOf(name)
+    const child = this.children.get(name) ?? this.dormant.get(name) ?? this.dormantIndex.get(name) ?? (holder && holder !== this ? holder.get(name) : undefined)
+    return child ? child.teamId ?? LEGACY_TEAM_ID : undefined
+  }
+
+  get inheritedTeamId(): string | undefined { return this.assignedTeamId }
 
   /** 组织里秘书的花名册；没有组织时是 undefined */
   orgRoot(): SubAgentRoster | undefined {
@@ -568,7 +584,8 @@ export class SubAgentRoster {
   private ensureDormant(deps: Pick<RosterSpawnDeps, 'restoreDormant'>, refresh = false): void {
     if (this.dormantRestored && !refresh) return
     this.dormantRestored = true
-    for (const child of deps.restoreDormant?.() ?? []) {
+    for (const restored of deps.restoreDormant?.() ?? []) {
+      const child = { ...restored, teamId: restored.teamId ?? LEGACY_TEAM_ID }
       if (this.depth === 0) this.dormantIndex.set(child.name, child)
       if (child.parent !== this.ownerName) {
         this.foreignNames.set(child.name, child.parent)
@@ -600,7 +617,7 @@ export class SubAgentRoster {
       holder = ledger.rosterOwnedBy(parent.name)
       if (!holder) {
         holder = new SubAgentRoster({ knockSettleMs: this.knockSettleMs })
-        holder.attachLedger(ledger, parent.name, index + 1)
+        holder.attachLedger(ledger, parent.name, index + 1, parent.teamId)
         holder.restoredSeatOnly = true
       }
       if (!holder.lastDeps) {
@@ -635,7 +652,7 @@ export class SubAgentRoster {
    * 全部立刻开工。超过保险丝整批不收，调用方应先看 room()。
    * 给了 team 就让这一批组成专家团（每位都要带角色，人数在团的上下限之内）。
    */
-  spawn(tasks: SpawnTask[], deps: RosterSpawnDeps, options?: { team?: string }): string[] {
+  spawn(tasks: SpawnTask[], deps: RosterSpawnDeps, options?: { team?: string; teamId?: string }): string[] {
     if (tasks.length > this.room()) {
       throw new RangeError(`伙计超过上限：全组织没做完的 ${this.orgLiveCount()} 个，还能派 ${this.room()} 个，这次要 ${tasks.length} 个`)
     }
@@ -658,6 +675,7 @@ export class SubAgentRoster {
     }
     this.lastDeps = deps
     this.ensureDormant(deps)
+    const teamId = this.ownerName ? this.assignedTeamId ?? this.ledger?.root()?.teamIdOf(this.ownerName) ?? LEGACY_TEAM_ID : options?.teamId ?? `team-${randomUUID()}`
     // 老伙计的名字也占着：同名会把他盘上的对话盖掉
     const used = this.takenNames()
     // 「秘书」留给顶层：现在没有组织，后面也可能指定组长，别把顶层的名字占了
@@ -671,6 +689,7 @@ export class SubAgentRoster {
       const asked = task.name ? tidyLabel(task.name) : ''
       this.children.set(name, {
         name,
+        teamId,
         askedName: asked && asked !== name ? asked : undefined,
         description: task.description || name,
         prompt: task.prompt,
@@ -690,7 +709,7 @@ export class SubAgentRoster {
 
     let team: ExpertTeam | undefined
     if (teamName) {
-      const finalName = uniqueName(teamName, n => this.teams.has(n))
+      const finalName = uniqueName(teamName, n => this.teams.has(n) || [...this.dormant.values()].some(child => child.team === n))
       team = new ExpertTeam(finalName, names.map(n => {
         const slot = this.children.get(n)!
         return { name: n, askedName: slot.askedName, role: slot.role!, description: slot.description, ...(slot.reviewer ? { reviewer: true } : {}) }
@@ -855,6 +874,7 @@ export class SubAgentRoster {
     this.dormant.delete(name)
     const slot: ChildSlot = {
       name,
+      teamId: sleeper.teamId ?? LEGACY_TEAM_ID,
       askedName: sleeper.askedName,
       description: sleeper.description,
       prompt: sleeper.prompt,
@@ -877,7 +897,7 @@ export class SubAgentRoster {
       const team = this.getTeam(sleeper.team)
       if (team) this.bindTeamSeat(slot, team)
     }
-    if (slot.lead) revived.handle.becomeLead?.({ ledger: this.ensureLedger(), name, depth: this.depth + 1 })
+    if (slot.lead) revived.handle.becomeLead?.({ ledger: this.ensureLedger(), name, depth: this.depth + 1, teamId: slot.teamId })
     persistSlot(slot)
     deps.onProgress()
     const entry = this.entryOf(name)
@@ -1048,7 +1068,7 @@ export class SubAgentRoster {
     if (!slot) return
     const handle = deps.createChild(name)
     slot.handle = handle
-    if (slot.lead) handle.becomeLead?.({ ledger: this.ensureLedger(), name, depth: this.depth + 1 })
+    if (slot.lead) handle.becomeLead?.({ ledger: this.ensureLedger(), name, depth: this.depth + 1, teamId: slot.teamId })
     if (slot.remoteGrant && deps.remoteAccessFor) handle.setRemoteAccess?.(deps.remoteAccessFor(name, slot.remoteGrant))
     slot.status = 'running'
     if (team) this.bindTeamSeat(slot, team)
@@ -1139,6 +1159,7 @@ function persistSlot(slot: ChildSlot): void {
   if (!recorder) return
   const input: ChildStateInput = {
     name: slot.name,
+    teamId: slot.teamId,
     askedName: slot.askedName,
     description: slot.description,
     prompt: slot.prompt,
@@ -1159,6 +1180,7 @@ function persistSlot(slot: ChildSlot): void {
 function snapshotOf(slot: ChildSlot): ChildSnapshot {
   return {
     name: slot.name,
+    teamId: slot.teamId,
     askedName: slot.askedName,
     description: slot.description,
     prompt: slot.prompt,

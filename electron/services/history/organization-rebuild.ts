@@ -6,6 +6,7 @@
  * 组长的那一步带着团名、团里的成员、验收状态和群聊文件，可以据此补齐成员和团。
  * 按身份合并成员，按群消息进度更新团；补齐截断部分后同步扣除遗漏合计。
  */
+import { LEGACY_TEAM_ID } from '@shared/types'
 import type { AgentRecord, OrganizationMemberView, OrganizationTeamView, OrganizationView } from '@shared/types'
 import type { ChildState } from './sub-agent-record-store'
 
@@ -20,6 +21,18 @@ export function rebuildOrganization(
   leaders: readonly LeaderRecord[],
   rootRecord?: AgentRecord,
 ): OrganizationView {
+  const scope = org.teamId ?? LEGACY_TEAM_ID
+  const belongs = (teamId: string | undefined) => (teamId ?? LEGACY_TEAM_ID) === scope
+  const removed = org.members.filter(member => !belongs(member.teamId))
+  const kept = org.members.filter(member => belongs(member.teamId))
+  org = { ...org, members: kept,
+    teams: org.teams.filter(team => belongs(team.teamId ?? org.members.find(member => member.parent === team.owner && member.team === team.name)?.teamId)),
+    total: Math.max(0, org.total - removed.length),
+    live: Math.max(0, org.live - removed.filter(member => member.status === 'pending' || member.status === 'running').length),
+    ...(org.problems !== undefined ? { problems: Math.max(0, org.problems - removed.filter(member => member.status === 'failed' || member.status === 'interrupted').length) } : {}),
+  }
+  children = children.filter(child => belongs(child.teamId))
+  leaders = leaders.filter(({leader}) => belongs(leader.teamId))
   const byName = new Map(org.members.map(member => [member.name, { ...member }]))
   const members: OrganizationMemberView[] = [...byName.values()]
   const initialMembers = members.length
@@ -38,6 +51,7 @@ export function rebuildOrganization(
     const team = state.team ?? teamName
     const member: OrganizationMemberView = {
       id: state.name,
+      ...(state.teamId ? { teamId: state.teamId } : {}),
       name: state.name,
       description: state.description,
       status: state.status,
@@ -58,6 +72,7 @@ export function rebuildOrganization(
       addMember(state, teamName, reviewer)
       return
     }
+    if (state.teamId) existing.teamId = state.teamId
     if (!existing.parent && state.parent) existing.parent = state.parent
     const team = state.team ?? teamName
     if (!existing.team && team) existing.team = team
@@ -84,6 +99,8 @@ export function rebuildOrganization(
   ]
   for (const { owner, record } of teamRecords) {
     for (const step of record?.steps ?? []) {
+      const stepTeamId = step.organization?.teamId ?? step.subAgents?.find(member => member.teamId)?.teamId
+      if (!belongs(stepTeamId ?? (owner ? scope : undefined))) continue
       const team = step.expertTeam
       if (!team?.name) continue
       const existing = teams.find(t => t.name === team.name && t.owner === owner)
@@ -93,6 +110,7 @@ export function rebuildOrganization(
         const refreshed: OrganizationTeamView = {
           ...existing,
           name: team.name,
+          ...(org.teamId ? { teamId: org.teamId } : {}),
           owner,
           review: team.review ?? existing?.review ?? 'none',
           ...(team.reviewers ? { reviewers: [...team.reviewers] } : {}),
