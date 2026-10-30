@@ -17,10 +17,25 @@ const check = (label, pass, detail) => {
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sft-question-top-'))
 const shotDir = process.env.E2E_SHOT
 if (shotDir) fs.mkdirSync(shotDir, { recursive: true })
+let streamNext = false
+let finishStream = null
 const server = http.createServer((req, res) => {
   req.resume()
   req.on('end', () => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    if (streamNext) {
+      streamNext = false
+      const packet = content => 'data: ' + JSON.stringify({ choices: [{ delta: { content }, finish_reason: null }] }) + '\n\n'
+      res.write(packet('面板重排测试，模型正在输出'))
+      const timer = setInterval(() => res.write(packet('。')), 120)
+      finishStream = () => {
+        clearInterval(timer)
+        res.end('data: ' + JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] }) + '\n\ndata: [DONE]\n\n')
+        finishStream = null
+      }
+      res.once('close', () => clearInterval(timer))
+      return
+    }
     res.end('data: ' + JSON.stringify({ choices: [{ delta: { content: '测试回答。' }, finish_reason: null }] })
       + '\n\ndata: ' + JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] }) + '\n\ndata: [DONE]\n\n')
   })
@@ -168,10 +183,108 @@ try {
   await send('下一次追问仍置顶')
   m = await measure()
   check('连续追问置顶', m.top !== null && Math.abs(m.top - 12) < 5, JSON.stringify(m))
+  // 置顶后仍有一屏留白：离开滚动条底部不代表最新正文已经离开视口。
+  await box().evaluate(el => {
+    el.dispatchEvent(new WheelEvent('wheel', { deltaY: -140 }))
+    el.scrollTop -= 140
+  })
+  await sleep(250)
+  const visibleReading = (await measure()).scroll
+  await page.evaluate(() => {
+    window.__hintCount = 0
+    new MutationObserver(records => {
+      for (const record of records) for (const node of record.addedNodes) {
+        if (node instanceof Element && node.matches('.new-message-indicator')) window.__hintCount++
+      }
+    }).observe(document.body, { childList: true, subtree: true })
+  })
+  await grow('仍在可见范围内的新增回复。')
+  await sleep(1100)
+  const visibleLatest = await box().evaluate(el => {
+    const rows = el.querySelectorAll('[data-index]')
+    const last = rows[rows.length - 1]
+    return !!last && last.getBoundingClientRect().bottom <= el.getBoundingClientRect().bottom
+  })
+  check('置顶留白下离开滚动条底部但回复仍可见', visibleLatest && (await measure()).gap > 100)
+  check('可见回复增长不弹出新消息提示', await page.evaluate(() => window.__hintCount === 0)
+    && await page.locator('.new-message-indicator:visible').count() === 0)
+  check('可见回复增长不抢阅读位置', Math.abs((await measure()).scroll - visibleReading) < 5)
+  await grow('新增回复确实超出视口时应提示。\n\n'.repeat(65))
+  await sleep(1100)
+  check('新增正文超出视口才提示且不抢位置', await page.locator('.new-message-indicator:visible').count() === 1
+    && Math.abs((await measure()).scroll - visibleReading) < 5)
+  await page.locator('.new-message-indicator:visible').first().dispatchEvent('click')
+  await sleep(600)
+  check('点击提示后清除提示并恢复跟随', await page.locator('.new-message-indicator:visible').count() === 0
+    && (await measure()).gap < 5)
+  { // 产出物面板开合与持续输出的真实重排回归
+    await grow('这段历史内容用于触发窄栏与宽栏之间明显的换行高度差。'.repeat(100))
+    await sleep(500)
+    await page.evaluate(() => {
+      const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia
+      const artifacts = pinia._s.get('assistantArtifact')
+      artifacts.open(window.__e2eTab, { renderer: 'markdown', title: '重排测试', content: '# 临时产出物\n只用于隔离界面测试。' })
+    })
+    await page.locator('.canvas-panel:visible').waitFor({ state: 'visible' })
+    await sleep(800)
+    streamNext = true
+    const input = page.locator('[contenteditable="true"]:visible').first()
+    await input.fill('关闭产出物面板时，这条用户消息应该保持原来的可视高度。'.repeat(3))
+    await input.press('Enter')
+    await page.waitForFunction(() => {
+      const tab = window.__e2eStore.tabs.find(t => t.id === window.__e2eTab)
+      return tab.agentState.isRunning && tab.agentState.steps.some(s => s.type === 'message' && s.content.includes('面板重排测试'))
+    })
+    await sleep(500)
+    const position = () => box().evaluate(el => {
+      const rows = el.querySelectorAll('.message.user')
+      const rect = rows[rows.length - 1]?.getBoundingClientRect()
+      return { top: rect ? rect.top - el.getBoundingClientRect().top : null, right: rect?.right, width: el.clientWidth, scroll: el.scrollTop, min: el.lastElementChild?.style.minHeight }
+    })
+    const narrow = await position()
+    await box().evaluate(el => {
+      window.__reflowPositions = []
+      const start = performance.now()
+      const tick = () => {
+        const rows = el.querySelectorAll('.message.user')
+        const rect = rows[rows.length - 1]?.getBoundingClientRect()
+        window.__reflowPositions.push(rect ? rect.top - el.getBoundingClientRect().top : null)
+        if (performance.now() - start < 700) requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+    })
+    await page.locator('.artifact-chrome-btn[aria-expanded="true"]:visible').first().dispatchEvent('click')
+    await sleep(800)
+    const wide = await position()
+    check('流式输出中关闭产出物面板只拓宽对话', wide.width > narrow.width + 100 && wide.right > narrow.right, JSON.stringify({ narrow, wide }))
+    check('关闭面板后用户消息保持原来高度', narrow.top !== null && wide.top !== null && Math.abs(wide.top - narrow.top) < 5, JSON.stringify({ narrow, wide }))
+    const reflowPositions = await page.evaluate(() => window.__reflowPositions)
+    check('关闭过程中用户消息不发生纵向跳动', reflowPositions.length > 2 && reflowPositions.every(y => y !== null && Math.abs(y - narrow.top) < 5), JSON.stringify(reflowPositions))
+    await page.locator('.artifact-chrome-btn:has(.lucide-panel-right-open):visible').first().dispatchEvent('click')
+    await sleep(800)
+    await page.locator('.canvas-panel:visible').waitFor({ state: 'visible' })
+    const reopened = await position()
+    check('重新展开面板也保持用户消息高度', reopened.width < wide.width - 100 && Math.abs(reopened.top - narrow.top) < 5, JSON.stringify({ narrow, reopened }))
+    await box().evaluate(el => {
+      el.dispatchEvent(new WheelEvent('wheel', { deltaY: -140 }))
+      el.scrollTop -= 140
+    })
+    await sleep(250)
+    const readingBeforeClose = await position()
+    await page.locator('.artifact-chrome-btn:has(.lucide-panel-right-close):visible').first().dispatchEvent('click')
+    await sleep(800)
+    const readingAfterClose = await position()
+    check('上翻阅读时关闭面板也保持用户消息高度', readingBeforeClose.top > 20 && Math.abs(readingAfterClose.top - readingBeforeClose.top) < 5, JSON.stringify({ readingBeforeClose, readingAfterClose }))
+    check('重排后可见的回复不误弹新消息提示', await page.locator('.new-message-indicator:visible').count() === 0)
+    check('关闭面板后模型仍在并行输出', await page.evaluate(() => window.__e2eStore.tabs.find(t => t.id === window.__e2eTab).agentState.isRunning))
+    finishStream?.()
+    await page.waitForFunction(() => !window.__e2eStore.tabs.find(t => t.id === window.__e2eTab).agentState.isRunning)
+  }
   check('发送仅置顶，不创建飞行动画', await page.evaluate(() => window.__flightCount === 0))
   check('界面无未捕获异常', pageErrors.length === 0, pageErrors.join('\n'))
   if (failures.length) process.exitCode = 1
 } finally {
+  finishStream?.()
   try {
     // 产品退出确认可能被失败测试留下的任务拦住；兜底仅作用于本次隔离实例。
     await app.evaluate(({ app }) => { setTimeout(() => app.exit(0), 5000).unref() }).catch(() => {})
