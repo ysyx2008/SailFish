@@ -59,10 +59,11 @@ const orgTeam = computed(() => {
 const team = computed<ExpertTeamView | undefined>(() => {
   if (!props.teamName) return step.value?.expertTeam
   const o = orgTeam.value
+  const state = terminalStore.tabs.find(tab => tab.id === props.tabId)?.agentState
   // 组织里的团不带群消息，全文从群聊文件里读
   return o ? {
     name: o.name,
-    messages: props.teamOwner ? [] : teamSources(terminalStore.tabs.find(tab => tab.id === props.tabId)?.agentState?.steps ?? [], props.stepId).find(s => s.expertTeam?.name === props.teamName)?.expertTeam?.messages ?? [],
+    messages: props.teamOwner ? [] : teamSources(state?.steps ?? [], props.stepId, state?.sessionId).find(s => s.expertTeam?.name === props.teamName)?.expertTeam?.messages ?? [],
     review: o.review,
     reviewers: o.reviewers,
     wakes: 0,

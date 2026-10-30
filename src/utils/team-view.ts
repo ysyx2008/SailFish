@@ -5,40 +5,40 @@ const isTask = (step: AgentStep) => step.type === 'user_task' && !step.systemInj
 export const hasTeam = (step: AgentStep) => !!step.organization || !!step.subAgents?.length
 
 /** 有标识的团队跨轮次续用；旧记录沿用原任务边界，不猜测拆分历史。 */
-const sourceOf = (step: AgentStep): string | undefined => step.sourceSessionId ?? step.organization?.sessionId
+const sourceOf = (step: AgentStep, sessionId?: string): string | undefined => step.sourceSessionId ?? step.organization?.sessionId ?? sessionId
 const storedTeamId = (step: AgentStep): string | undefined => step.organization?.teamId ?? step.subAgents?.find(member => member.teamId)?.teamId
-export function teamIdOfStep(step: AgentStep, steps?: readonly AgentStep[]): string | undefined {
+export function teamIdOfStep(step: AgentStep, steps?: readonly AgentStep[], sessionId?: string): string | undefined {
   const direct = storedTeamId(step)
   if (direct || !steps || !hasTeam(step)) return direct
   // 老团队被明确续用后，原无字段快照和显式legacy必须共用入口；
   // 未续用的旧历史仍按原任务展示，不凭文字猜测拆分组织。
-  const session = sourceOf(step)
-  return steps.some(other => storedTeamId(other) === LEGACY_TEAM_ID && (!session || !sourceOf(other) || sourceOf(other) === session)) ? LEGACY_TEAM_ID : undefined
+  const session = sourceOf(step, sessionId)
+  return session && steps.some(other => storedTeamId(other) === LEGACY_TEAM_ID && sourceOf(other, sessionId) === session) ? LEGACY_TEAM_ID : undefined
 }
-export function teamSources(steps: readonly AgentStep[], stepId: string): readonly AgentStep[] {
+export function teamSources(steps: readonly AgentStep[], stepId: string, sessionId?: string): readonly AgentStep[] {
   const index = steps.findIndex(step => step.id === stepId)
   if (index < 0) return []
-  const teamId = teamIdOfStep(steps[index], steps)
-  const session = sourceOf(steps[index])
-  const sameSource = (step: AgentStep) => !session || !sourceOf(step) || sourceOf(step) === session
+  const teamId = teamIdOfStep(steps[index], steps, sessionId)
+  const session = sourceOf(steps[index], sessionId)
+  const sameSource = (step: AgentStep) => sourceOf(step, sessionId) === session
   let start = index
   let end = index + 1
-  const matching = teamId ? steps.map((step, i) => teamIdOfStep(step, steps) === teamId && sameSource(step) ? i : -1).filter(i => i >= 0) : []
+  const matching = teamId ? steps.map((step, i) => teamIdOfStep(step, steps, sessionId) === teamId && sameSource(step) ? i : -1).filter(i => i >= 0) : []
   // 辅助计划只取此团队最近一次参与的用户任务，避免借用后面另一任务的计划。
   if (matching.length) start = matching[matching.length - 1]
   end = start + 1
   while (start > 0 && !isTask(steps[start])) start--
   while (end < steps.length && !isTask(steps[end])) end++
   return steps.filter((step, i) => sameSource(step) && (teamId
-    ? teamIdOfStep(step, steps) === teamId || (!hasTeam(step) && !teamIdOfStep(step, steps) && i >= start && i < end)
-    : i >= start && i < end && !teamIdOfStep(step, steps)))
+    ? teamIdOfStep(step, steps, sessionId) === teamId || (!hasTeam(step) && !teamIdOfStep(step, steps, sessionId) && i >= start && i < end)
+    : i >= start && i < end && !teamIdOfStep(step, steps, sessionId)))
 }
 
 /** 已有组织快照是全貌；没有层级时，将真实成员/群适配到同一张图。 */
 export function teamViewForStep(steps: readonly AgentStep[], stepId: string, sessionId?: string): OrganizationView | undefined {
-  const sources = teamSources(steps, stepId)
+  const sources = teamSources(steps, stepId, sessionId)
   if (!sources.some(hasTeam)) return undefined
-  const teamId = teamIdOfStep(steps.find(step => step.id === stepId)!, steps)
+  const teamId = teamIdOfStep(steps.find(step => step.id === stepId)!, steps, sessionId)
   const snapshots = sources.filter(step => step.organization)
   const snapshot = teamId
     ? snapshots.reduce<AgentStep | undefined>((latest, step) => !latest || (step.organization?.updatedAt ?? step.snapshotAt ?? step.timestamp) >= (latest.organization?.updatedAt ?? latest.snapshotAt ?? latest.timestamp) ? step : latest, undefined)?.organization
@@ -87,11 +87,11 @@ export function teamCards(steps: readonly AgentStep[], sessionId?: string): Map<
   let seenLegacy = false
   let session: string | undefined
   for (const step of steps) {
-    const source = sourceOf(step)
+    const source = sourceOf(step, sessionId)
     if (isTask(step) || (source && session && source !== session)) seenLegacy = false
     if (source) session = source
     if (!hasTeam(step)) continue
-    const teamId = teamIdOfStep(step, steps)
+    const teamId = teamIdOfStep(step, steps, sessionId)
     const identity = teamId ? JSON.stringify([source ?? sessionId, teamId]) : undefined
     if (identity ? seenTeams.has(identity) : seenLegacy) continue
     const view = teamViewForStep(steps, step.id, sessionId)
@@ -103,10 +103,10 @@ export function teamCards(steps: readonly AgentStep[], sessionId?: string): Map<
 }
 
 /** 一次遍历建立本任务最新成员快照，供展开名单共用，避免逐行重复扫描千人。 */
-export function teamMemberSnapshots(steps: readonly AgentStep[], stepId: string): Map<string, SubAgentResult> {
+export function teamMemberSnapshots(steps: readonly AgentStep[], stepId: string, sessionId?: string): Map<string, SubAgentResult> {
   const found = new Map<string, SubAgentResult>()
   const updated = new Map<string, number>()
-  for (const step of teamSources(steps, stepId)) {
+  for (const step of teamSources(steps, stepId, sessionId)) {
     const at = step.snapshotAt ?? step.timestamp
     for (const member of step.subAgents ?? []) {
       const name = member.name ?? member.id
@@ -116,6 +116,6 @@ export function teamMemberSnapshots(steps: readonly AgentStep[], stepId: string)
   return found
 }
 
-export function teamMemberSnapshot(steps: readonly AgentStep[], stepId: string, name: string): SubAgentResult | undefined {
-  return teamMemberSnapshots(steps, stepId).get(name)
+export function teamMemberSnapshot(steps: readonly AgentStep[], stepId: string, name: string, sessionId?: string): SubAgentResult | undefined {
+  return teamMemberSnapshots(steps, stepId, sessionId).get(name)
 }

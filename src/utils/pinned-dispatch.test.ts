@@ -99,3 +99,10 @@ describe('挂在顶部的派出的人', () => {
   })
 
 })
+
+
+it('横幅按当前会话补齐缺失来源，旧legacy续派只有一个入口', () => {
+  const old=dispatch('old','running')
+  const continued={...dispatch('continued','running'),organization:{teamId:'legacy',sessionId:'current',members:[],teams:[],total:2,live:2}}
+  expect(ids(new PinnedDispatchTracker().update([old,continued],'current'))).toEqual(['old'])
+})

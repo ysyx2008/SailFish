@@ -41,7 +41,7 @@ const organization = useTeamSnapshot(() => currentOrganization.value, () => JSON
 provideTeamViewport(computed(() => (organization.value?.total ?? 0) > 200))
 const plan = computed(() => {
   let latest
-  for (const step of teamSources(state.value?.steps ?? [], props.stepId)) {
+  for (const step of teamSources(state.value?.steps ?? [], props.stepId, state.value?.sessionId)) {
     if (step.type === 'plan_archived') latest = undefined
     else if (step.plan) latest = step.plan
   }
@@ -72,7 +72,7 @@ function showOverview() {
   memberName.value = null
   emit('overview')
 }
-const memberSnapshot = computed(() => memberName.value ? teamMemberSnapshot(state.value?.steps ?? [], props.stepId, memberName.value) : undefined)
+const memberSnapshot = computed(() => memberName.value ? teamMemberSnapshot(state.value?.steps ?? [], props.stepId, memberName.value, state.value?.sessionId) : undefined)
 watch([() => props.tabId, () => props.stepId, () => props.entry], () => { artifactTeam.value = null; memberName.value = props.entry?.member ?? null })
 const bodyRef = ref<HTMLElement | null>(null)
 const rootRef = ref<HTMLElement | null>(null)

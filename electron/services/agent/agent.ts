@@ -6185,7 +6185,7 @@ export abstract class Agent {
       getSessionId: () => this.getSessionId(),
       getRootSessionId: () => this.rootSessionId(),
       getOrganizationHistory: () => {
-        const sessionId = this.getSessionId()
+        const sessionId = this.rootSessionId()
         return (this._conversation?.steps ?? []).flatMap(step => step.organization
           && (!step.sourceSessionId || step.sourceSessionId === sessionId)
           && (!step.organization.sessionId || step.organization.sessionId === sessionId) ? [step.organization] : [])

@@ -17,11 +17,11 @@ const opened = ref<string | null>(null)
 const items = computed(() => {
   const sources = props.teamSteps ?? props.steps
   return [...teamCards(sources, props.sessionId)]
-    .filter(([id]) => teamSources(sources, id).some(source => props.steps.some(step => step.id === source.id)))
+    .filter(([id]) => teamSources(sources, id, props.sessionId).some(source => props.steps.some(step => step.id === source.id)))
     .map(([id, org]) => ({ id, ...describeOrgDock(t, org), org }))
 })
 const selected = computed(() => items.value.find(item => item.id === opened.value))
-const snapshots = computed(() => selected.value ? teamMemberSnapshots(props.teamSteps ?? props.steps, selected.value.id) : undefined)
+const snapshots = computed(() => selected.value ? teamMemberSnapshots(props.teamSteps ?? props.steps, selected.value.id, props.sessionId) : undefined)
 const snapshotFor = (name: string) => snapshots.value?.get(name)
 const listSnapshot = useTeamSnapshot(() => selected.value?.org, () => opened.value)
 provideTeamViewport(computed(() => (listSnapshot.value?.total ?? 0) > 200))

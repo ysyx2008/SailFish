@@ -86,3 +86,12 @@ it('无归属的旧团队明确续用后只留一个入口，名单过程能读�
   expect(teamViewForStep(steps,'old')?.total).toBe(2)
   expect([...teamMemberSnapshots(steps,'old').keys()]).toEqual(['老甲','追加'])
 })
+
+
+it('缺来源的旧记录只按当前会话认领legacy，不与外来源归一', () => {
+  const steps=[step('unknown',{subAgents:[member('当前旧人')]}),step('foreign',{sourceSessionId:'foreign',organization:{teamId:'legacy',sessionId:'foreign',members:[member('外人')],teams:[],total:1,live:1}})]
+  expect([...teamCards(steps,'current').values()].map(view=>view.members.map(m=>m.name))).toEqual([['当前旧人'],['外人']])
+  const own=step('own',{organization:{teamId:'legacy',sessionId:'current',members:[member('当前旧人'),member('追加')],teams:[],total:2,live:1}})
+  expect([...teamCards([...steps,own],'current').keys()]).toEqual(['unknown','foreign'])
+  expect(teamViewForStep([...steps,own],'unknown','current')?.members.map(m=>m.name)).toEqual(['当前旧人','追加'])
+})

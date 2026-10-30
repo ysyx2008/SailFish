@@ -1113,7 +1113,7 @@ export function useAgentMode(
 
   // 该挂在对话顶部的几批派出去的人：还没干完的一直挂着，干完的挂到你下次说话
   const pinnedDispatchTracker = new PinnedDispatchTracker()
-  const pinnedDispatches = computed((): AgentStep[] => pinnedDispatchTracker.update(agentState.value?.steps ?? []))
+  const pinnedDispatches = computed((): AgentStep[] => pinnedDispatchTracker.update(agentState.value?.steps ?? [], agentState.value?.sessionId))
 
   // 切换任务步骤折叠状态
   const toggleStepsCollapse = (taskId: string) => {

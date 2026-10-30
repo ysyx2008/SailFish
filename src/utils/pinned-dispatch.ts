@@ -27,11 +27,11 @@ export class PinnedDispatchTracker {
   /** 看着干完的批次 → 当时你已经说过几句话 */
   private readonly finishedAt = new Map<string, number>()
 
-  update(steps: readonly AgentStep[]): AgentStep[] {
-    const cards = teamCards(steps)
+  update(steps: readonly AgentStep[], sessionId?: string): AgentStep[] {
+    const cards = teamCards(steps, sessionId)
     // 新团队取最新的整队状态，旧派出快照不能让已收工的队伍永久挂着。
     const dispatches = steps.flatMap(step => {
-      if (!teamIdOfStep(step, steps)) return step.organization || step.subAgents?.length ? [step] : []
+      if (!teamIdOfStep(step, steps, sessionId)) return step.organization || step.subAgents?.length ? [step] : []
       const organization = cards.get(step.id)
       return organization ? [{ ...step, organization }] : []
     })

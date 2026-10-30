@@ -3496,3 +3496,21 @@ describe('伙计的用量算进主人这场', () => {
     expect(goalShown).toBe(0)
   })
 })
+
+
+describe('组织历史按根会话过滤', () => {
+  it('保留当前会话两种来源，排除sourceSessionId或组织来源属于其它会话的记录', () => {
+    const a=new TestAgent(createMockServices())
+    vi.spyOn(a,'getSessionId').mockReturnValue('child-session')
+    vi.spyOn(a,'rootSessionId').mockReturnValue('root-session')
+    const view=(teamId:string,sessionId?:string)=>({teamId,sessionId,members:[],teams:[],total:0,live:0})
+    ;(a as any)._conversation={steps:[
+      {organization:view('own-without-source')},
+      {sourceSessionId:'root-session',organization:view('own-with-source','root-session')},
+      {sourceSessionId:'foreign',organization:view('foreign-step','root-session')},
+      {organization:view('foreign-org','foreign')},
+    ]}
+    const executor=a.testToolExecutorConfig({context:createMockContext(),pendingUserMessages:[]})
+    expect(executor.getOrganizationHistory().map((v:{teamId?:string})=>v.teamId)).toEqual(['own-without-source','own-with-source'])
+  })
+})
