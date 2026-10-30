@@ -2,8 +2,18 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import { launchApp } from './launch.mjs'
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sft-team-performance-'))
+// 真实历史记录包含长结果，验证重新加载时展开卡片不先缩成一行。
+for (const shape of ['flat','grouped']) {
+  const name='成员999'
+  const folder=path.join(directory,'history/sub-agents/2026-10-30',`perf-${shape}`,`${name}-${createHash('sha1').update(name).digest('hex').slice(0,8)}`)
+  fs.mkdirSync(folder,{recursive:true})
+  fs.writeFileSync(path.join(folder,'state.json'),JSON.stringify({name,description:'核对第999份资料',prompt:'核对文件',status:'completed',result:Array.from({length:40},(_,i)=>`真实长结果第${i}行`).join('\n'),updatedAt:Date.now()}))
+  fs.writeFileSync(path.join(folder,'meta.json'),JSON.stringify({id:name,timestamp:Date.now(),status:'completed',duration:1}))
+  fs.writeFileSync(path.join(folder,'steps.jsonl'),'')
+}
 const app = await launchApp(directory)
 const page = await app.firstWindow()
 page.setDefaultTimeout(20000)
@@ -21,7 +31,7 @@ try {
     await page.evaluate(shape => {
       const {store,id}=window.__perf
       store.addAgentStep(id,{id:`u-${shape}`,type:'user_task',content:'千人性能验证',timestamp:Date.now()})
-      const step={id:`perf-${shape}`,type:'tool_call',toolName:'dispatch_agents',content:'千人夹具',timestamp:Date.now(),success:true}
+      const step={id:`perf-${shape}`,sourceSessionId:`perf-${shape}`,type:'tool_call',toolName:'dispatch_agents',content:'千人夹具',timestamp:Date.now(),success:true}
       const members=Array.from({length:1000},(_,i)=>({id:`成员${i}`,name:`成员${i}`,description:`核对第${i}份资料`,status:'running',activity:{tool:'read_file',args:'初始活动',status:'running'}}))
       if(shape==='flat')step.subAgents=members.map(({activity,...m})=>({...m,steps:[activity]}))
       else step.organization={total:1000,live:1000,members:members.map((m,i)=>({...m,...(i===0?{lead:true,role:'负责人'}:{parent:'成员0',team:`小组${i%101}`} )})),teams:Array.from({length:101},(_,i)=>({name:`小组${i}`,owner:'成员0',review:'none',messageCount:0}))}
@@ -83,16 +93,40 @@ try {
     check(`${shape}：末尾成员可点击查看详情`,(await page.locator('.om-header .tph-title').innerText()).includes('成员999'))
     await page.locator('.om-header .tph-back').click()
     await page.locator('.oc-header .tph-close').click()
-    await page.evaluate(()=>{window.__listContentPeak=0;window.__listObserver=new MutationObserver(()=>{window.__listContentPeak=Math.max(window.__listContentPeak,document.querySelectorAll('.dock-panel .tmt-name').length)});window.__listObserver.observe(document.body,{childList:true,subtree:true})})
+    await page.evaluate(()=>{window.__listContentPeak=0;window.__listObserver=new MutationObserver(()=>{window.__listContentPeak=Math.max(window.__listContentPeak,document.querySelectorAll('.dock-panel .sub-agent-card').length)});window.__listObserver.observe(document.body,{childList:true,subtree:true})})
     await page.locator('.dock-toggle').click()
     await pause(250)
     const listFirstContentPeak=await page.evaluate(()=>{window.__listObserver.disconnect();return window.__listContentPeak})
     const list=await page.locator('.dock-panel').evaluate(async panel=>{
       panel.querySelector('[data-member="成员999"]').scrollIntoView({block:"center"})
       await new Promise(resolve=>setTimeout(resolve,100))
-      return {slots:panel.querySelectorAll('.tmt-member').length,painted:panel.querySelectorAll('.tmt-name').length,tail:panel.textContent.includes('成员999')}
+      return {slots:panel.querySelectorAll('.tmt-member').length,painted:panel.querySelectorAll('.sub-agent-card').length,tail:panel.textContent.includes('成员999')}
     })
     check(`${shape}：快捷名单也保留全量、按视口绘制且末尾可见`,list.slots===1000&&list.painted>0&&list.painted<200&&list.tail&&listFirstContentPeak<200)
+    const lastCard=page.locator('.dock-panel [data-member="成员999"]')
+    await lastCard.locator('.sub-agent-header').click()
+    await lastCard.locator('.sub-agent-detail').waitFor()
+    await lastCard.getByText('真实长结果第39行',{exact:false}).waitFor()
+    await pause(100)
+    const expandedHeight=await lastCard.evaluate(el=>el.getBoundingClientRect().height)
+    await page.locator('.dock-toggle').focus()
+    const listHeight=await page.locator('.dock-panel').evaluate(el=>{const height=el.scrollHeight;el.scrollTop=0;return height})
+    await pause(150)
+    await page.waitForFunction(()=>!document.querySelector('.dock-panel [data-member="成员999"] .sub-agent-card'))
+    const hiddenHeight=await lastCard.evaluate(el=>el.getBoundingClientRect().height)
+    check(`${shape}：展开卡片离开视口保留占位高度`,expandedHeight>56&&Math.abs(hiddenHeight-expandedHeight)<2)
+    await lastCard.evaluate(el=>el.scrollIntoView({block:'center'}))
+    await lastCard.locator('.sub-agent-card').waitFor()
+    const minimumReturnHeight=await lastCard.evaluate(async el=>{let min=Infinity;for(let i=0;i<12;i++){await new Promise(resolve=>requestAnimationFrame(resolve));min=Math.min(min,el.getBoundingClientRect().height)}return min})
+    check(`${shape}：长结果重新读取期间也不缩小占位`,minimumReturnHeight>=expandedHeight-2)
+    await lastCard.locator('.sub-agent-detail').waitFor()
+    check(`${shape}：滚回后保留原地展开及列表总高度`,Math.abs((await page.locator('.dock-panel').evaluate(el=>el.scrollHeight))-listHeight)<2)
+    await page.keyboard.press('Escape')
+    await page.locator('.dock-toggle').click()
+    await pause(150)
+    check(`${shape}：关闭再开也保留离屏展开占位`,Math.abs((await lastCard.evaluate(el=>el.getBoundingClientRect().height))-expandedHeight)<2&&Math.abs((await page.locator('.dock-panel').evaluate(el=>el.scrollHeight))-listHeight)<2)
+    await lastCard.evaluate(el=>el.scrollIntoView({block:'center'}))
+    await lastCard.locator('.sub-agent-detail').waitFor()
     if(process.env.E2E_SHOT){fs.mkdirSync(process.env.E2E_SHOT,{recursive:true});await page.screenshot({path:path.join(process.env.E2E_SHOT,`team-performance-${shape}.png`)})}
     await page.keyboard.press('Escape')
     await page.evaluate(shape=>{const{store,id}=window.__perf;const target=store.tabs.find(t=>t.id===id).agentState.steps.find(s=>s.id===`perf-${shape}`);if(target.organization){target.organization.live=0;target.organization.members.forEach(m=>m.status='completed')}else target.subAgents.forEach(m=>m.status='completed')},shape)

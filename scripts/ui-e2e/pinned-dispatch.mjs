@@ -154,7 +154,7 @@ try {
   await page.locator('.dock-toggle').first().click()
   await sleep(300)
   check('展开后有 8 位成员', await page.locator('.dock-panel .tmt-member').count() === 8, await page.locator('.dock-panel .tmt-member').count())
-  check('名单有角色、职责与状态', /专家1/.test(await page.locator('.dock-panel').innerText()) && /核对第 1 章/.test(await page.locator('.dock-panel').innerText()) && /在干/.test(await page.locator('.dock-panel').innerText()))
+  check('名单有角色、职责与状态', /专家1/.test(await page.locator('.dock-panel').innerText()) && /核对第 1 章/.test(await page.locator('.dock-panel').innerText()) && /执行中/.test(await page.locator('.dock-panel').innerText()))
   const msgBoxOpen = await page.locator('.ai-messages-wrapper:visible').first().boundingBox()
   check('展开不把对话往下挤', msgBox && msgBoxOpen && Math.abs(msgBox.y - msgBoxOpen.y) < 1 && Math.abs(msgBox.height - msgBoxOpen.height) < 1, JSON.stringify({ msgBox, msgBoxOpen }))
   await shot('2-open')

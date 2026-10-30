@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /** 快捷名单复用全景图层级；成员行按同一视口策略绘制。 */
 import { Users } from 'lucide-vue-next'
+import type { SubAgentResult } from '@shared/types'
 import type { OrgGroup } from '../../utils/organization-view'
 import TeamMemberRow from './TeamMemberRow.vue'
-defineProps<{ groups: OrgGroup[] }>()
+defineProps<{ groups: OrgGroup[]; stepId: string; sessionId?: string; snapshotFor?: (name: string) => SubAgentResult | undefined }>()
 const emit = defineEmits<{ open: [name: string] }>()
 </script>
 
@@ -13,8 +14,8 @@ const emit = defineEmits<{ open: [name: string] }>()
       <div v-if="group.team" class="tmt-group-title"><Users :size="12" aria-hidden="true" /><span>{{ group.team.name }}</span></div>
       <ul class="tmt-members">
         <li v-for="node in group.nodes" :key="node.member.id" class="tmt-node">
-          <TeamMemberRow :node="node" @open="emit('open', node.member.name)" />
-          <TeamMemberTree v-if="node.groups.length" :groups="node.groups" @open="emit('open', $event)" />
+          <TeamMemberRow :node="node" :step-id="stepId" :session-id="sessionId" :snapshot-for="snapshotFor" @open="emit('open', node.member.name)" />
+          <TeamMemberTree v-if="node.groups.length" :groups="node.groups" :step-id="stepId" :session-id="sessionId" :snapshot-for="snapshotFor" @open="emit('open', $event)" />
         </li>
       </ul>
     </li>

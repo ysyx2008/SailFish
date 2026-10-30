@@ -877,6 +877,7 @@ export default {
       secretary: 'Secretary',
     },
     organization: {
+      memberDetails: 'Details and artifacts',
       closeMember: 'Close member details',
       responsibility: 'Responsibility',
       memberLoadFailed: 'Could not load member activity',

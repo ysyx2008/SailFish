@@ -4,23 +4,25 @@ import { useI18n } from 'vue-i18n'
 import { Check, TriangleAlert, Network, ChevronDown } from 'lucide-vue-next'
 import type { AgentStep } from '@shared/types'
 import { buildOrgTree, describeOrgDock } from '../utils/organization-view'
-import { teamCards, teamSources } from '../utils/team-view'
+import { teamCards, teamSources, teamMemberSnapshots } from '../utils/team-view'
 import { provideTeamViewport } from './Organization/team-viewport'
 import { useTeamSnapshot } from './Organization/team-snapshot'
 import TeamMemberTree from './Organization/TeamMemberTree.vue'
 
-const props = defineProps<{ steps: readonly AgentStep[]; teamSteps?: readonly AgentStep[]; attached?: boolean }>()
+const props = defineProps<{ steps: readonly AgentStep[]; teamSteps?: readonly AgentStep[]; sessionId?: string; attached?: boolean }>()
 const emit = defineEmits<{ openOrganization: [stepId: string, member?: string] }>()
 const { t } = useI18n()
 const root = ref<HTMLElement | null>(null)
 const opened = ref<string | null>(null)
 const items = computed(() => {
   const sources = props.teamSteps ?? props.steps
-  return [...teamCards(sources)]
+  return [...teamCards(sources, props.sessionId)]
     .filter(([id]) => teamSources(sources, id).some(source => props.steps.some(step => step.id === source.id)))
     .map(([id, org]) => ({ id, ...describeOrgDock(t, org), org }))
 })
 const selected = computed(() => items.value.find(item => item.id === opened.value))
+const snapshots = computed(() => selected.value ? teamMemberSnapshots(props.teamSteps ?? props.steps, selected.value.id) : undefined)
+const snapshotFor = (name: string) => snapshots.value?.get(name)
 const listSnapshot = useTeamSnapshot(() => selected.value?.org, () => opened.value)
 provideTeamViewport(computed(() => (listSnapshot.value?.total ?? 0) > 200))
 const tree = computed(() => listSnapshot.value ? buildOrgTree(listSnapshot.value) : [])
@@ -62,7 +64,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <div v-if="selected" class="dock-panel">
-      <TeamMemberTree :groups="tree" @open="open(selected.id, $event)" />
+      <TeamMemberTree :groups="tree" :step-id="selected.id" :session-id="listSnapshot?.sessionId" :snapshot-for="snapshotFor" @open="open(selected.id, $event)" />
     </div>
   </div>
 </template>

@@ -127,7 +127,7 @@ onMounted(() => {
   <Teleport :disabled="!localFocus" :to="focusTarget || 'body'">
   <section ref="rootRef" class="organization-chart" :class="[`is-${mode}`, { 'is-focus': focused }]" :style="localFocus ? focusBounds : undefined">
     <OrganizationTeamArtifacts v-if="artifactTeam" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" :team="artifactTeam" :focus-active="focused" @close="artifactTeam = null" @toggle-focus="toggleFocus" />
-    <OrganizationMemberDetail v-else-if="member" :session-id="currentOrganization?.sessionId" :member="member" :snapshot="memberSnapshot" :focus-active="focused" @close="showOverview" @artifacts="artifactTeam = { member: member.name }" @toggle-focus="toggleFocus" />
+    <OrganizationMemberDetail v-else-if="member" :step-id="stepId" :session-id="currentOrganization?.sessionId" :member="member" :snapshot="memberSnapshot" :focus-active="focused" @close="showOverview" @artifacts="artifactTeam = { member: member.name }" @toggle-focus="toggleFocus" />
     <template v-else>
     <TeamPanelHeader class="oc-header" :title="t('ai.organization.title')" :close-label="t('ai.organization.close')" :meta="organization ? t('ai.organization.metaSimple', { total: organization.total, teams: organization.teams.length + (organization.omittedTeams ?? 0) }) : undefined" :focused="focused" :focus-label="focused ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="emit('close')" @toggle-focus="toggleFocus">
       <template #icon><Network :size="14" /></template>

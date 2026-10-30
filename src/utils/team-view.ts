@@ -75,13 +75,20 @@ export function teamCards(steps: readonly AgentStep[], sessionId?: string): Map<
   return cards
 }
 
-export function teamMemberSnapshot(steps: readonly AgentStep[], stepId: string, name: string): SubAgentResult | undefined {
-  let found: SubAgentResult | undefined
-  let at = -Infinity
+/** 一次遍历建立本任务最新成员快照，供展开名单共用，避免逐行重复扫描千人。 */
+export function teamMemberSnapshots(steps: readonly AgentStep[], stepId: string): Map<string, SubAgentResult> {
+  const found = new Map<string, SubAgentResult>()
+  const updated = new Map<string, number>()
   for (const step of teamSources(steps, stepId)) {
-    const candidate = step.subAgents?.find(member => (member.name ?? member.id) === name)
-    const updated = step.snapshotAt ?? step.timestamp
-    if (candidate && updated >= at) { found = candidate; at = updated }
+    const at = step.snapshotAt ?? step.timestamp
+    for (const member of step.subAgents ?? []) {
+      const name = member.name ?? member.id
+      if (at >= (updated.get(name) ?? -Infinity)) { updated.set(name, at); found.set(name, member) }
+    }
   }
   return found
+}
+
+export function teamMemberSnapshot(steps: readonly AgentStep[], stepId: string, name: string): SubAgentResult | undefined {
+  return teamMemberSnapshots(steps, stepId).get(name)
 }

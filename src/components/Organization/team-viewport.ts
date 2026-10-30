@@ -31,14 +31,14 @@ export function useTeamVisibility() {
     const owner = pool
     let inRange = false
     const focus = () => { visible.value = true }
-    const blur = () => { visible.value = inRange }
-    target.addEventListener('focus', focus)
-    target.addEventListener('blur', blur)
-    owner.targets.set(target, value => { inRange = value; visible.value = value || target === document.activeElement })
+    const blur = (event: FocusEvent) => { visible.value = inRange || event.relatedTarget instanceof Node && target.contains(event.relatedTarget) }
+    target.addEventListener('focusin', focus)
+    target.addEventListener('focusout', blur)
+    owner.targets.set(target, value => { inRange = value; visible.value = value || target.contains(document.activeElement) })
     owner.observer.observe(target)
     release = () => {
-      target.removeEventListener('focus', focus)
-      target.removeEventListener('blur', blur)
+      target.removeEventListener('focusin', focus)
+      target.removeEventListener('focusout', blur)
       owner.observer.unobserve(target)
       owner.targets.delete(target)
       if (!owner.targets.size) { owner.observer.disconnect(); pools.delete(root) }

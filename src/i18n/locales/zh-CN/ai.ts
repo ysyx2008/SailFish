@@ -878,6 +878,7 @@ export default {
       secretary: '秘书',
     },
     organization: {
+      memberDetails: '详情与产出物',
       closeMember: '关闭成员详情',
       responsibility: '职责',
       memberLoadFailed: '成员过程读取失败',

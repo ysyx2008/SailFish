@@ -2686,6 +2686,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         v-if="pinnedDispatches.length > 0 && !peek"
         :steps="pinnedDispatches"
         :team-steps="agentState?.steps ?? []"
+        :session-id="agentState?.sessionId"
         :attached="!!currentPlan"
         @open-organization="openOrganization"
       />

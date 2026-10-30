@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentStep, OrganizationView } from '@shared/types'
-import { teamCards, teamViewForStep, teamMemberSnapshot } from './team-view'
+import { teamCards, teamViewForStep, teamMemberSnapshot, teamMemberSnapshots } from './team-view'
 const step = (id: string, extra: Partial<AgentStep> = {}): AgentStep => ({ id, type: 'tool_call', content: '', timestamp: 1, ...extra })
 const member = (name: string, status: 'running' | 'completed' = 'running') => ({ id: name, name, description: `${name}的职责`, status })
 
@@ -11,6 +11,8 @@ describe('统一团队视图', () => {
     expect([...teamCards(steps).keys()]).toEqual(['a'])
     expect(teamViewForStep(steps, 'a')).toMatchObject({ total: 2, live: 2 })
     expect(teamMemberSnapshot(steps, 'a', '甲')?.status).toBe('running')
+    expect([...teamMemberSnapshots(steps, 'a').keys()]).toEqual(['甲', '乙'])
+    expect(teamMemberSnapshots(steps, 'a').get('甲')?.status).toBe('running')
   })
   it('独立成员不伪造小组或群，真实小组保留归属与验收', () => {
     const steps = [step('a', { subAgents: [member('散人')] }), step('b', { subAgents: [member('开发'), member('测试')],

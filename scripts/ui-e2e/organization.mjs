@@ -228,7 +228,7 @@ try {
   await page.locator('.dock-panel .tmt-member').nth(7).waitFor()
   check('快速名单默认完整展示八位成员', await page.locator('.dock-panel .tmt-member').count() === 8)
   check('树状名单保留三层负责人关系', await page.locator('.dock-panel .tmt-node > .team-member-tree .tmt-node > .team-member-tree .tmt-member').count() > 0)
-  const leadTree = page.locator('.dock-panel .tmt-node').filter({ has: page.locator(':scope > .tmt-member .tmt-name', { hasText: '研发组' }) }).first()
+  const leadTree = page.locator('.dock-panel .tmt-node').filter({ has: page.locator(':scope > .tmt-member .sub-agent-desc', { hasText: '研发组' }) }).first()
   check('成员置于所属负责人下面', (await leadTree.innerText()).includes('前端') && !(await leadTree.innerText()).includes('小营'))
   if (process.env.E2E_SHOT) await shot('2-tree-list')
   await page.keyboard.press('Escape')

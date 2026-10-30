@@ -16,7 +16,7 @@ describe('团队视口绘制', () => {
       show(target: Element, visible: boolean) { this.callback([{ target, isIntersecting: visible } as IntersectionObserverEntry], this as unknown as IntersectionObserver) }
     }
     vi.stubGlobal('IntersectionObserver', FakeObserver)
-    const Cell = defineComponent({ setup() { const {element,visible}=useTeamVisibility();return () => h('div',{ref:element,tabindex:0,class:'cell'},visible.value?h('span',{class:'content'},'成员'):null) } })
+    const Cell = defineComponent({ setup() { const {element,visible}=useTeamVisibility();return () => h('div',{ref:element,tabindex:0,class:'cell'},visible.value?h('span',{class:'content'},[h('button',{class:'inner'},'详情')]):null) } })
     const App = defineComponent({ setup() {provideTeamViewport(ref(true));return () => h('div',{class:'oc-body'},[h(Cell),h(Cell)])} })
     const host=document.createElement('div');document.body.append(host)
     const app=createApp(App);app.mount(host)
@@ -29,6 +29,10 @@ describe('团队视口绘制', () => {
       await nextTick()
       expect(host.querySelectorAll('.content')).toHaveLength(1)
       cells[1].focus()
+      observers[0].show(cells[1],false)
+      await nextTick()
+      expect(host.querySelectorAll('.content')).toHaveLength(2)
+      cells[1].querySelector<HTMLButtonElement>('.inner')!.focus()
       observers[0].show(cells[1],false)
       await nextTick()
       expect(host.querySelectorAll('.content')).toHaveLength(2)
