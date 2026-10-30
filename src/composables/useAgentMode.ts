@@ -403,11 +403,20 @@ export function useAgentMode(
     }
     setIsUserNearBottom(checkIsNearBottom() || stickyFollowBottom)
 
-    // 锚定复原：记"视口顶部那条 item 的 id + 距视口顶的 offset"。
+    // 重排尚未测量完时保留原阅读锚点，避免用布局收缩后的临时位置覆盖它。
+    if (el.clientWidth !== prevContainerWidth || isInContainerReflow()) return
+
+    // 锚定复原：优先记可见的本轮提问，否则记视口顶部那条 item。
     // findItemIndex 是 O(log n) 二分，每次 scroll 调用代价可忽略。
     const scroller = scrollerRef?.value
     if (scroller?.findItemIndex && scroller?.getItemOffset) {
-      const idx = scroller.findItemIndex(el.scrollTop)
+      let idx = scroller.findItemIndex(el.scrollTop)
+      let taskIndex = flattenedItems.value.length - 1
+      while (taskIndex >= 0 && flattenedItems.value[taskIndex].type !== 'user_task') taskIndex--
+      if (taskIndex >= 0) {
+        const taskTop = scroller.getItemOffset(taskIndex) - el.scrollTop
+        if (taskTop >= -1 && taskTop < el.clientHeight) idx = taskIndex
+      }
       const itemTop = scroller.getItemOffset(idx)
       const item = flattenedItems.value[idx]
       if (item?.id != null) {
@@ -654,6 +663,8 @@ export function useAgentMode(
     const el = messagesRef.value
     if (!el) return
 
+    // 宽度刚变化、ResizeObserver 尚未接管时的 clamp 不是用户滚动。
+    if (el.clientWidth !== prevContainerWidth) return
     const { scrollTop, scrollHeight } = el
     if (hasNewMessage.value && !hasContentBelowViewport()) hasNewMessage.value = false
 
@@ -821,6 +832,54 @@ export function useAgentMode(
     requestAnimationFrame(() => saveScrollTop())
   }
 
+  const updateTurnMinHeight = (index: number) => {
+    const el = messagesRef.value
+    const scroller = scrollerRef?.value
+    if (!el || !scroller) return false
+    const padding = getComputedStyle(el)
+    const height = scroller.getItemOffset(index) + el.clientHeight
+      - parseFloat(padding.paddingTop) - parseFloat(padding.paddingBottom)
+    if (Math.abs(height - turnMinHeight.value) < 0.5) return false
+    turnMinHeight.value = height
+    return true
+  }
+
+  // virtua 的 resize 表示列表项已重新测量；根节点 min-height 会掩盖内容收缩，
+  // 因此不能只靠根 ResizeObserver 的「变高」回调更新置顶留白。
+  const onMessageListResize = async () => {
+    if (!turnMinHeight.value || tabActive?.value === false) return
+    let index = flattenedItems.value.length - 1
+    while (index >= 0 && flattenedItems.value[index].type !== 'user_task') index--
+    if (index < 0) return
+    const id = currentTabId.value
+    const anchor = id ? terminalStore.getAiScrollAnchor(id) : undefined
+    const keepUserAnchor = isInContainerReflow() && anchor?.id === flattenedItems.value[index].id
+    const changed = updateTurnMinHeight(index)
+    if (!changed && !keepUserAnchor) return
+    await nextTick()
+    if (currentTabId.value !== id) return
+    if (keepUserAnchor && applyAnchorScrollTop()) {
+      // 复用保存的锚点（可带负 offset），阅读态也保持原来的提问高度。
+      const el = messagesRef.value
+      if (el) {
+        lastKnownScrollTop = el.scrollTop
+        lastKnownScrollHeight = el.scrollHeight
+      }
+      return
+    }
+    if (!shouldFollowBottom()) return
+    const scroller = scrollerRef?.value
+    if (scroller && scroller.scrollSize <= turnMinHeight.value) {
+      // 仍在置顶留白阶段时，让虚拟列表保持这条提问的锚点，
+      // 避免与它尚未收口的高度修正同时争抢「滚到底部」。
+      scroller.scrollToIndex(index, { align: 'start' })
+    } else {
+      pinFollowBottom()
+    }
+    guardAfterAutoScroll()
+    saveScrollTop()
+  }
+
   const scrollNewTurnToTop = async (tabId: string) => {
     guardAfterAutoScroll()
     cancelFollowScrollAnimation()
@@ -836,9 +895,7 @@ export function useAgentMode(
     scroller.scrollToIndex(index, { align: 'start' })
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     if (currentTabId.value !== tabId || messagesRef.value !== el) return
-    const padding = getComputedStyle(el)
-    turnMinHeight.value = scroller.getItemOffset(index) + el.clientHeight
-      - parseFloat(padding.paddingTop) - parseFloat(padding.paddingBottom)
+    updateTurnMinHeight(index)
     await nextTick()
     if (currentTabId.value !== tabId) return
     pinFollowBottom()
@@ -951,6 +1008,10 @@ export function useAgentMode(
 
       containerReflowGuardUntil = Date.now() + CONTAINER_REFLOW_GUARD_MS
 
+      if (turnMinHeight.value) {
+        void onMessageListResize()
+        return
+      }
       if (!shouldFollowBottom()) return
 
       guardAfterAutoScroll()
@@ -3169,6 +3230,7 @@ export function useAgentMode(
     // 滚动相关
     hasNewMessage,
     turnMinHeight,
+    onMessageListResize,
     isUserNearBottom,
     isHistoryScrollPending,
     updateScrollPosition,

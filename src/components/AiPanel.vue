@@ -700,6 +700,7 @@ const {
   // 滚动相关
   hasNewMessage,
   turnMinHeight,
+  onMessageListResize,
   isUserNearBottom,
   isHistoryScrollPending,
   updateScrollPosition,
@@ -3111,6 +3112,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
           <Virtualizer
             :style="{ minHeight: turnMinHeight ? `${turnMinHeight}px` : undefined }"
             ref="virtuaRef"
+            @resize="onMessageListResize"
             :data="displayItems"
             :item-size="48"
             :buffer-size="400"
