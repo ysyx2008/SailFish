@@ -3658,7 +3658,7 @@ const handleSendClick = (event: MouseEvent) => {
 .session-water-level { transition: transform 0.8s ease; }
 .session-wave-back, .session-wave-front { fill: currentColor; }
 .session-wave-back { opacity: 0.16; animation: session-water-drift 10s linear infinite reverse; }
-.session-wave-front { opacity: 0.2; animation: session-water-drift 10s linear infinite; }
+.session-wave-front { opacity: 0.15; animation: session-water-drift 10s linear infinite; }
 @keyframes session-water-drift {
   from { transform: translateX(0); }
   to { transform: translateX(-200px); }
