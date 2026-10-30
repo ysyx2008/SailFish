@@ -242,11 +242,10 @@ try {
       return { top: rect ? rect.top - el.getBoundingClientRect().top : null, right: rect?.right, width: el.clientWidth, scroll: el.scrollTop, min: el.lastElementChild?.style.minHeight }
     })
     const narrow = await position()
-    await page.evaluate(() => {
+    await box().evaluate(el => {
       window.__reflowPositions = []
       const start = performance.now()
       const tick = () => {
-        const el = document.querySelector('.ai-messages')
         const rows = el.querySelectorAll('.message.user')
         const rect = rows[rows.length - 1]?.getBoundingClientRect()
         window.__reflowPositions.push(rect ? rect.top - el.getBoundingClientRect().top : null)
