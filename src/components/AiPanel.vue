@@ -699,6 +699,7 @@ const {
   lastError,
   // 滚动相关
   hasNewMessage,
+  turnMinHeight,
   isUserNearBottom,
   isHistoryScrollPending,
   updateScrollPosition,
@@ -3114,6 +3115,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
           </DefineSecureRow>
 
           <Virtualizer
+            :style="{ minHeight: turnMinHeight ? `${turnMinHeight}px` : undefined }"
             ref="virtuaRef"
             :data="displayItems"
             :item-size="48"
