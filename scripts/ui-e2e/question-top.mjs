@@ -168,6 +168,40 @@ try {
   await send('下一次追问仍置顶')
   m = await measure()
   check('连续追问置顶', m.top !== null && Math.abs(m.top - 12) < 5, JSON.stringify(m))
+  // 置顶后仍有一屏留白：离开滚动条底部不代表最新正文已经离开视口。
+  await box().evaluate(el => {
+    el.dispatchEvent(new WheelEvent('wheel', { deltaY: -140 }))
+    el.scrollTop -= 140
+  })
+  await sleep(250)
+  const visibleReading = (await measure()).scroll
+  await page.evaluate(() => {
+    window.__hintCount = 0
+    new MutationObserver(records => {
+      for (const record of records) for (const node of record.addedNodes) {
+        if (node instanceof Element && node.matches('.new-message-indicator')) window.__hintCount++
+      }
+    }).observe(document.body, { childList: true, subtree: true })
+  })
+  await grow('仍在可见范围内的新增回复。')
+  await sleep(1100)
+  const visibleLatest = await box().evaluate(el => {
+    const rows = el.querySelectorAll('[data-index]')
+    const last = rows[rows.length - 1]
+    return !!last && last.getBoundingClientRect().bottom <= el.getBoundingClientRect().bottom
+  })
+  check('置顶留白下离开滚动条底部但回复仍可见', visibleLatest && (await measure()).gap > 100)
+  check('可见回复增长不弹出新消息提示', await page.evaluate(() => window.__hintCount === 0)
+    && await page.locator('.new-message-indicator:visible').count() === 0)
+  check('可见回复增长不抢阅读位置', Math.abs((await measure()).scroll - visibleReading) < 5)
+  await grow('新增回复确实超出视口时应提示。\n\n'.repeat(65))
+  await sleep(1100)
+  check('新增正文超出视口才提示且不抢位置', await page.locator('.new-message-indicator:visible').count() === 1
+    && Math.abs((await measure()).scroll - visibleReading) < 5)
+  await page.locator('.new-message-indicator:visible').first().dispatchEvent('click')
+  await sleep(600)
+  check('点击提示后清除提示并恢复跟随', await page.locator('.new-message-indicator:visible').count() === 0
+    && (await measure()).gap < 5)
   check('发送仅置顶，不创建飞行动画', await page.evaluate(() => window.__flightCount === 0))
   check('界面无未捕获异常', pageErrors.length === 0, pageErrors.join('\n'))
   if (failures.length) process.exitCode = 1

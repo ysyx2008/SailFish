@@ -355,6 +355,18 @@ export function useAgentMode(
     return scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD
   }
 
+  /** 置顶留白不算未读内容：按最后一项的真实位置判断，而非滚动条离底距离。 */
+  const hasContentBelowViewport = () => {
+    const el = messagesRef.value
+    const lastIndex = flattenedItems.value.length - 1
+    if (!el || lastIndex < 0) return false
+    const lastRow = el.querySelector<HTMLElement>(`[data-index="${lastIndex}"]`)
+    // 最后一项未挂载时仍在虚拟列表的视区之外，不能把它当作已读。
+    if (!lastRow) return true
+    const viewportBottom = el.getBoundingClientRect().top + el.clientTop + el.clientHeight
+    return lastRow.getBoundingClientRect().bottom > viewportBottom + 1
+  }
+
   /**
    * scrollTop 下降是否由布局收缩/虚拟列表重测引起（浏览器 clamp scrollTop），
    * 而非用户主动上滚。ThinkingBlock 折叠、图片 reflow、item 估算→实测修正时常见。
@@ -643,6 +655,7 @@ export function useAgentMode(
     if (!el) return
 
     const { scrollTop, scrollHeight } = el
+    if (hasNewMessage.value && !hasContentBelowViewport()) hasNewMessage.value = false
 
     // 不在底部且 scrollTop 减小 → 用户上滚阅读，须优先于 skipScrollUpdate 早退
     // （拖滚动条上滚不会触发 wheel，但会触发 scroll；grace 期内早退会漏判）
@@ -856,7 +869,7 @@ export function useAgentMode(
         })
       }
     } else {
-      hasNewMessage.value = true
+      hasNewMessage.value = hasContentBelowViewport()
     }
   }
 
