@@ -380,7 +380,7 @@ export class GatewayService {
         source: `webhook:${token}`,
         timestamp: Date.now(),
         watchId: watch.id,
-        payload: body || {},
+        payload: (body || {}) as Record<string, unknown>,
         priority: watch.priority
       })
 

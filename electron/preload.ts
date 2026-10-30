@@ -1085,7 +1085,7 @@ const electronAPI = {
       ipcRenderer.invoke('agent:adoptPane', agentKey, ptyId) as Promise<boolean>,
 
     // 更新 Agent 配置（如执行模式、超时时间、模型配置，使用 ptyId）
-    updateConfig: (ptyId: string, config: { executionMode?: ExecutionMode; commandTimeout?: number; profileId?: string }) =>
+    updateConfig: (ptyId: string, config: { executionMode?: ExecutionMode; autoApprovalReview?: boolean; commandTimeout?: number; profileId?: string }) =>
       ipcRenderer.invoke('agent:updateConfig', ptyId, config) as Promise<boolean>,
 
     // 添加用户补充消息（Agent 执行过程中，使用 ptyId）

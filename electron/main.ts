@@ -4725,7 +4725,7 @@ ipcMain.handle('agent:extractTaskFromCompanion', async (event, opts: {
   })
 })
 
-ipcMain.handle('agent:updateConfig', async (_event, ptyId: string, config: { executionMode?: ExecutionMode; commandTimeout?: number; profileId?: string }) => {
+ipcMain.handle('agent:updateConfig', async (_event, ptyId: string, config: { executionMode?: ExecutionMode; autoApprovalReview?: boolean; commandTimeout?: number; profileId?: string }) => {
   const { agentService } = await rt()
   return agentService.updateConfig(ptyId, config)
 })

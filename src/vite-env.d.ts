@@ -757,7 +757,7 @@ interface Window {
       } | null>
       /** 创建任务等待时，模型正在想的最新几句 */
       onExtractTaskThinking: (callback: (data: { text: string; anchorTaskStepId?: string }) => void) => () => void
-      updateConfig: (ptyId: string, config: { executionMode?: ExecutionMode; commandTimeout?: number; profileId?: string }) => Promise<boolean>
+      updateConfig: (ptyId: string, config: { executionMode?: ExecutionMode; autoApprovalReview?: boolean; commandTimeout?: number; profileId?: string }) => Promise<boolean>
       addMessage: (
         ptyId: string,
         message: string,
