@@ -78,7 +78,6 @@ const props = defineProps<{
   currentTabId: string
   visible?: boolean
   contextStats: ContextStats
-  cacheBarWidth: number
   uploadedDocs: UploadedDoc[]
   parsingDocs: ParsingDocument[]
   pendingImages: PendingImage[]
@@ -211,10 +210,8 @@ const showContextTip = ref(false)
 const contextTipStyle = ref<Record<string, string>>({})
 let tipHideTimer: ReturnType<typeof setTimeout> | null = null
 let tipShowTimer: ReturnType<typeof setTimeout> | null = null
-/** tip 水平锚点（clientX），随进度条上鼠标移动 */
-let tipAnchorX = 0
 let tipRepositionBound = false
-/** 避免路过进度条就弹出；与系统 title 延迟接近 */
+/** 避免路过用量数字就弹出；与系统 title 延迟接近 */
 const CONTEXT_TIP_SHOW_DELAY_MS = 450
 
 function clearTipHideTimer() {
@@ -253,7 +250,7 @@ function updateContextTipPosition() {
   const gap = 2
   const spaceAbove = rect.top
   const spaceBelow = window.innerHeight - rect.bottom
-  // 进度条在输入区顶部、面板底部附近：优先向上展开
+  // 用量数字在输入区底部：优先向上展开
   const placeAbove = spaceAbove >= 200 || spaceAbove >= spaceBelow
 
   // 按内容收缩，避免第一行被裁切；上限夹视口
@@ -267,10 +264,8 @@ function updateContextTipPosition() {
     tipWidth = Math.min(360, maxW)
   }
 
-  // 水平跟随鼠标；夹在进度条范围内再夹视口
-  const anchorX = tipAnchorX || rect.left + rect.width / 2
-  const clampedAnchor = Math.max(rect.left, Math.min(anchorX, rect.right))
-  let left = clampedAnchor - tipWidth / 2
+  // 锚定数字中心，方便移入阅读。
+  let left = rect.left + rect.width / 2 - tipWidth / 2
   left = Math.max(8, Math.min(left, window.innerWidth - tipWidth - 8))
 
   const base: Record<string, string> = {
@@ -299,24 +294,14 @@ function updateContextTipPosition() {
   }
 }
 
-function onContextMiniEnter(e: MouseEvent) {
-  tipAnchorX = e.clientX
-  openContextTip()
-}
-
-function onContextMiniMove(e: MouseEvent) {
-  // 仅在尚未显示时更新锚点，保证延迟弹出时贴着鼠标；显示后固定不动
-  if (showContextTip.value) return
-  tipAnchorX = e.clientX
-}
-
 function openContextTip() {
   clearTipHideTimer()
   clearTipShowTimer()
-  // 弹层已打开时只续命（进度条 ↔ tip 桥接）
+  // 弹层已打开时只续命（用量数字 ↔ tip 桥接）
   if (showContextTip.value) return
   tipShowTimer = setTimeout(() => {
     tipShowTimer = null
+    if (!contextMiniEl.value || props.visible === false) return
     updateContextTipPosition()
     showContextTip.value = true
     bindTipRepositionListeners()
@@ -327,12 +312,17 @@ function openContextTip() {
 function scheduleCloseContextTip() {
   clearTipShowTimer()
   clearTipHideTimer()
-  // 进度条与弹层之间有缝隙，稍长延迟便于鼠标移入弹层
+  // 用量数字与弹层之间有缝隙，稍长延迟便于鼠标移入弹层
   tipHideTimer = setTimeout(() => {
-    showContextTip.value = false
-    unbindTipRepositionListeners()
-    tipHideTimer = null
+    closeContextTip()
   }, 280)
+}
+
+function closeContextTip() {
+  clearTipShowTimer()
+  clearTipHideTimer()
+  showContextTip.value = false
+  unbindTipRepositionListeners()
 }
 
 function keepContextTip() {
@@ -1848,65 +1838,32 @@ const consumedTokenTitle = computed(() =>
     .join(' · ')
 )
 
-const showConsumedDetail = ref(false)
-const consumedTipStyle = ref<Record<string, string>>({})
-const consumedTipEl = ref<HTMLElement | null>(null)
-let consumedTipAnchor: HTMLElement | null = null
-let consumedTipTimer: ReturnType<typeof setTimeout> | null = null
-
-function clearConsumedTipTimer() {
-  if (consumedTipTimer) {
-    clearTimeout(consumedTipTimer)
-    consumedTipTimer = null
-  }
-}
-
-function placeConsumedTip(anchor: HTMLElement) {
-  const rect = anchor.getBoundingClientRect()
-  const margin = 8
-  let x = rect.left + rect.width / 2
-  const y = rect.top - 6
-  consumedTipStyle.value = { left: `${x}px`, top: `${y}px` }
-  nextTick(() => {
-    const node = consumedTipEl.value
-    if (!node || !showConsumedDetail.value) return
-    const box = node.getBoundingClientRect()
-    let dx = 0
-    if (box.left < margin) dx = margin - box.left
-    else if (box.right > window.innerWidth - margin) dx = window.innerWidth - margin - box.right
-    if (dx) consumedTipStyle.value = { left: `${x + dx}px`, top: `${y}px` }
-  })
-}
-
-function showConsumedDetailTip(event: MouseEvent) {
-  const anchor = event.currentTarget as HTMLElement | null
-  if (!anchor || consumedTokenLines.value.length === 0) return
-  consumedTipAnchor = anchor
-  clearConsumedTipTimer()
-  consumedTipTimer = setTimeout(() => {
-    consumedTipTimer = null
-    showConsumedDetail.value = true
-    placeConsumedTip(anchor)
-  }, 200)
-}
-
-function hideConsumedDetailTip() {
-  clearConsumedTipTimer()
-  showConsumedDetail.value = false
-  consumedTipAnchor = null
-}
-
-watch(consumedTokenLines, (lines) => {
-  if (!lines.length) {
-    hideConsumedDetailTip()
-    return
-  }
-  if (showConsumedDetail.value && consumedTipAnchor) placeConsumedTip(consumedTipAnchor)
+const contextUsageTitle = computed(() => {
+  const stats = props.contextStats
+  if (stats.tokenEstimate <= 0) return ''
+  const model = stats.effectiveModel ? `${stats.effectiveModel} · ` : ''
+  const cache = stats.cacheHitRate !== undefined ? ` · ${t('ai.sessionConsumedCache')} ${stats.cacheHitRate}%` : ''
+  return `${model}${t('ai.context')}: ${stats.tokenEstimate.toLocaleString()} / ${(stats.maxTokens / 1000).toFixed(0)}K (${stats.percentage}%)${cache}`
 })
+const usageTokenTitle = computed(() => [contextUsageTitle.value, consumedTokenTitle.value].filter(Boolean).join(' · '))
+
+const contextWaterOffset = computed(() => {
+  const raw = props.contextStats.percentage
+  const percentage = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 0
+  // 极值时让波峰/波谷也完全离开边界，保持真正的空/满。
+  return percentage === 0 ? 108 : percentage === 100 ? -8 : 100 - percentage
+})
+
+watch([consumedTokenLabel, () => props.visible, () => props.overlay, isTwoRow], () => {
+  if (!consumedTokenLabel.value || props.visible === false || props.overlay || !isTwoRow.value) closeContextTip()
+})
+
+watch(() => props.contextStats, () => {
+  if (showContextTip.value) void nextTick(updateContextTipPosition)
+}, { deep: true })
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(consumedAnimRaf)
-  clearConsumedTipTimer()
 })
 
 /** 面板快捷指令当场发送：不改输入框里已有的字，选区仍走 consumeWorkbenchContext */
@@ -2095,73 +2052,106 @@ const handleSendClick = (event: MouseEvent) => {
 
   <div class="ai-input" :class="{ 'ai-input-embedded': embedded, 'ai-input-overlay': overlay, 'ai-input-editing-follow-up': isEditingFollowUp }">
     <slot name="goal" />
-    <div
-      v-if="!overlay && contextStats.tokenEstimate > 0"
-      ref="contextMiniEl"
-      class="context-mini"
-      @mouseenter="onContextMiniEnter"
-      @mousemove="onContextMiniMove"
-      @mouseleave="scheduleCloseContextTip"
-    >
-      <template v-if="cacheBarWidth > 0">
-        <div class="context-mini-bar cached" :style="{ width: cacheBarWidth + '%' }"></div>
-        <div
-          class="context-mini-bar"
-          :class="{ warning: contextStats.percentage > 60, danger: contextStats.percentage > 85 }"
-          :style="{ left: cacheBarWidth + '%', width: (contextStats.percentage - cacheBarWidth) + '%' }"
-        ></div>
-      </template>
-      <div
-        v-else
-        class="context-mini-bar"
-        :class="{ warning: contextStats.percentage > 60, danger: contextStats.percentage > 85 }"
-        :style="{ width: contextStats.percentage + '%' }"
-      ></div>
-    </div>
-
     <Teleport to="body">
       <div
-        v-if="showContextTip && contextStats.tokenEstimate > 0"
+        v-if="showContextTip && consumedTokenLabel"
         ref="contextTipEl"
-        class="context-mini-tip"
-        :class="{ 'is-detail': topLevelComposition.length > 0 }"
+        class="context-mini-tip is-detail session-usage-tip"
+        role="tooltip"
+        :id="`session-usage-${currentTabId}`"
+        @keydown.esc.stop="closeContextTip"
         :style="contextTipStyle"
         @mouseenter="keepContextTip"
         @mouseleave="scheduleCloseContextTip"
         @mousedown.stop
       >
-        <div class="ctx-usage-simple">
-          <span class="ctx-usage-simple-line">
-            <template v-if="contextStats.effectiveModel">{{ contextStats.effectiveModel }} · </template>{{ t('ai.context') }}: {{ contextStats.tokenEstimate.toLocaleString() }} / {{ (contextStats.maxTokens / 1000).toFixed(0) }}K ({{ contextStats.percentage }}%)<template v-if="contextStats.cacheHitRate !== undefined"> · Cache {{ contextStats.cacheHitRate }}%</template>
-          </span>
-        </div>
-        <div v-if="topLevelComposition.length > 0" class="ctx-usage-detail">
-          <div class="ctx-usage-segments">
+        <section v-if="contextStats.tokenEstimate > 0" class="context-usage-section">
+          <div class="ctx-usage-simple">
+            <span class="ctx-usage-simple-line">
+              {{ contextUsageTitle }}
+            </span>
+          </div>
+          <div v-if="topLevelComposition.length > 0" class="ctx-usage-detail">
+            <div class="ctx-usage-segments">
+              <div
+                v-for="node in topLevelComposition"
+                :key="node.id"
+                class="ctx-usage-seg"
+                :style="{ flexGrow: Math.max(node.chars, 1), flexBasis: '0px', background: compositionColor(node.id) }"
+                :title="compositionLabel(node.id)"
+              ></div>
+            </div>
+            <ul class="ctx-usage-list">
+              <li v-for="node in topLevelComposition" :key="node.id" class="ctx-usage-item">
+                <div class="ctx-usage-row">
+                  <span class="ctx-usage-swatch" :style="{ background: compositionColor(node.id) }"></span>
+                  <span class="ctx-usage-name">{{ compositionLabel(node.id) }}</span>
+                  <span class="ctx-usage-pct-col">{{ formatCompositionPercent(node.chars) }}</span>
+                </div>
+                <ul v-if="node.children?.length" class="ctx-usage-children">
+                  <li v-for="child in node.children" :key="child.id" class="ctx-usage-row child">
+                    <span class="ctx-usage-swatch" :style="{ background: compositionColor(child.id) }"></span>
+                    <span class="ctx-usage-name">{{ compositionLabel(child.id) }}</span>
+                    <span class="ctx-usage-pct-col">{{ formatCompositionPercent(child.chars) }}</span>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </div>
+        </section>
+        <section v-if="consumedBreakdown" class="session-token-tip" :class="{ 'has-context': contextStats.tokenEstimate > 0 }">
+          <div class="ctx-usage-simple">
+            <span class="ctx-usage-simple-line">{{ consumedBreakdown.totalText }}</span>
+          </div>
+          <div v-if="consumedBreakdown.bar.length" class="ctx-usage-segments">
             <div
-              v-for="node in topLevelComposition"
-              :key="node.id"
+              v-for="part in consumedBreakdown.bar"
+              :key="part.key"
               class="ctx-usage-seg"
-              :style="{ flexGrow: Math.max(node.chars, 1), flexBasis: '0px', background: compositionColor(node.id) }"
-              :title="compositionLabel(node.id)"
+              :style="{ flexGrow: part.tokens, flexBasis: '0px', background: part.color }"
             ></div>
           </div>
           <ul class="ctx-usage-list">
-            <li v-for="node in topLevelComposition" :key="node.id" class="ctx-usage-item">
+            <li class="ctx-usage-item">
               <div class="ctx-usage-row">
-                <span class="ctx-usage-swatch" :style="{ background: compositionColor(node.id) }"></span>
-                <span class="ctx-usage-name">{{ compositionLabel(node.id) }}</span>
-                <span class="ctx-usage-pct-col">{{ formatCompositionPercent(node.chars) }}</span>
+                <span
+                  class="ctx-usage-swatch"
+                  :class="{ 'session-token-swatch-group': !!consumedBreakdown.cache }"
+                  :style="consumedBreakdown.cache ? undefined : { background: consumedBreakdown.input.color }"
+                ></span>
+                <span class="ctx-usage-name">{{ consumedBreakdown.input.label }}</span>
+                <span class="ctx-usage-pct-col">{{ consumedBreakdown.input.value }}</span>
+                <span class="session-token-share"></span>
               </div>
-              <ul v-if="node.children?.length" class="ctx-usage-children">
-                <li v-for="child in node.children" :key="child.id" class="ctx-usage-row child">
-                  <span class="ctx-usage-swatch" :style="{ background: compositionColor(child.id) }"></span>
-                  <span class="ctx-usage-name">{{ compositionLabel(child.id) }}</span>
-                  <span class="ctx-usage-pct-col">{{ formatCompositionPercent(child.chars) }}</span>
+              <ul v-if="consumedBreakdown.cache" class="ctx-usage-children">
+                <li class="ctx-usage-row child">
+                  <span class="ctx-usage-swatch" :style="{ background: consumedBreakdown.cache.color }"></span>
+                  <span class="ctx-usage-name">{{ consumedBreakdown.cache.label }}</span>
+                  <span class="ctx-usage-pct-col">{{ consumedBreakdown.cache.value }}</span>
+                  <span class="session-token-share">{{ consumedBreakdown.cache.note }}</span>
+                </li>
+                <li v-if="consumedBreakdown.miss" class="ctx-usage-row child">
+                  <span class="ctx-usage-swatch" :style="{ background: consumedBreakdown.miss.color }"></span>
+                  <span class="ctx-usage-name">{{ consumedBreakdown.miss.label }}</span>
+                  <span class="ctx-usage-pct-col">{{ consumedBreakdown.miss.value }}</span>
+                  <span class="session-token-share">{{ consumedBreakdown.miss.note }}</span>
                 </li>
               </ul>
             </li>
+            <li class="ctx-usage-item">
+              <div class="ctx-usage-row">
+                <span class="ctx-usage-swatch" :style="{ background: consumedBreakdown.output.color }"></span>
+                <span class="ctx-usage-name">{{ consumedBreakdown.output.label }}</span>
+                <span class="ctx-usage-pct-col">{{ consumedBreakdown.output.value }}</span>
+                <span class="session-token-share"></span>
+              </div>
+            </li>
           </ul>
-        </div>
+          <div v-if="consumedBreakdown.rate" class="session-token-rate">
+            <span>{{ consumedBreakdown.rate.label }}</span>
+            <span>{{ consumedBreakdown.rate.value }}</span>
+          </div>
+        </section>
       </div>
     </Teleport>
 
@@ -2479,13 +2469,36 @@ const handleSendClick = (event: MouseEvent) => {
             <Plus v-else :size="18" />
           </button>
           <slot name="footer-left" />
-          <span
+          <button
             v-if="consumedTokenLabel"
+            ref="contextMiniEl"
+            type="button"
             class="session-token-chip"
-            :aria-label="consumedTokenTitle"
-            @mouseenter="showConsumedDetailTip"
-            @mouseleave="hideConsumedDetailTip"
-          >{{ consumedTokenLabel }}</span>
+            :aria-label="usageTokenTitle"
+            :aria-describedby="showContextTip ? `session-usage-${currentTabId}` : undefined"
+            :aria-expanded="showContextTip"
+            @mouseenter="openContextTip"
+            @mouseleave="scheduleCloseContextTip"
+            @focus="openContextTip"
+            @blur="scheduleCloseContextTip"
+            @click="openContextTip"
+            @keydown.esc.stop="closeContextTip"
+          >
+            <svg
+              v-if="contextStats.tokenEstimate > 0 && contextStats.maxTokens > 0"
+              class="session-context-water"
+              :class="{ warning: contextStats.percentage > 60, danger: contextStats.percentage > 85 }"
+              viewBox="0 0 200 100"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <g class="session-water-level" :style="{ transform: `translateY(${contextWaterOffset}px)` }">
+                <path class="session-wave-back" d="M0 0 Q25 -10 50 0 T100 0 T150 0 T200 0 T250 0 T300 0 T350 0 T400 0 V130 H0Z" />
+                <path class="session-wave-front" d="M0 3 Q25 14 50 3 T100 3 T150 3 T200 3 T250 3 T300 3 T350 3 T400 3 V130 H0Z" />
+              </g>
+            </svg>
+            <span class="session-token-label">{{ consumedTokenLabel }}</span>
+          </button>
         </div>
         <div class="input-footer-right">
           <slot name="footer-right" />
@@ -2619,67 +2632,6 @@ const handleSendClick = (event: MouseEvent) => {
     </div>
   </div>
   </div>
-  <Teleport to="body">
-    <div
-      v-if="showConsumedDetail && consumedBreakdown"
-      ref="consumedTipEl"
-      class="context-mini-tip is-detail session-token-tip"
-      role="tooltip"
-      :style="consumedTipStyle"
-    >
-      <div class="ctx-usage-simple">
-        <span class="ctx-usage-simple-line">{{ consumedBreakdown.totalText }}</span>
-      </div>
-      <div v-if="consumedBreakdown.bar.length" class="ctx-usage-segments">
-        <div
-          v-for="part in consumedBreakdown.bar"
-          :key="part.key"
-          class="ctx-usage-seg"
-          :style="{ flexGrow: part.tokens, flexBasis: '0px', background: part.color }"
-        ></div>
-      </div>
-      <ul class="ctx-usage-list">
-        <li class="ctx-usage-item">
-          <div class="ctx-usage-row">
-            <span
-              class="ctx-usage-swatch"
-              :class="{ 'session-token-swatch-group': !!consumedBreakdown.cache }"
-              :style="consumedBreakdown.cache ? undefined : { background: consumedBreakdown.input.color }"
-            ></span>
-            <span class="ctx-usage-name">{{ consumedBreakdown.input.label }}</span>
-            <span class="ctx-usage-pct-col">{{ consumedBreakdown.input.value }}</span>
-            <span class="session-token-share"></span>
-          </div>
-          <ul v-if="consumedBreakdown.cache" class="ctx-usage-children">
-            <li class="ctx-usage-row child">
-              <span class="ctx-usage-swatch" :style="{ background: consumedBreakdown.cache.color }"></span>
-              <span class="ctx-usage-name">{{ consumedBreakdown.cache.label }}</span>
-              <span class="ctx-usage-pct-col">{{ consumedBreakdown.cache.value }}</span>
-              <span class="session-token-share">{{ consumedBreakdown.cache.note }}</span>
-            </li>
-            <li v-if="consumedBreakdown.miss" class="ctx-usage-row child">
-              <span class="ctx-usage-swatch" :style="{ background: consumedBreakdown.miss.color }"></span>
-              <span class="ctx-usage-name">{{ consumedBreakdown.miss.label }}</span>
-              <span class="ctx-usage-pct-col">{{ consumedBreakdown.miss.value }}</span>
-              <span class="session-token-share">{{ consumedBreakdown.miss.note }}</span>
-            </li>
-          </ul>
-        </li>
-        <li class="ctx-usage-item">
-          <div class="ctx-usage-row">
-            <span class="ctx-usage-swatch" :style="{ background: consumedBreakdown.output.color }"></span>
-            <span class="ctx-usage-name">{{ consumedBreakdown.output.label }}</span>
-            <span class="ctx-usage-pct-col">{{ consumedBreakdown.output.value }}</span>
-            <span class="session-token-share"></span>
-          </div>
-        </li>
-      </ul>
-      <div v-if="consumedBreakdown.rate" class="session-token-rate">
-        <span>{{ consumedBreakdown.rate.label }}</span>
-        <span>{{ consumedBreakdown.rate.value }}</span>
-      </div>
-    </div>
-  </Teleport>
   <HoverTipOverlay :tip="skillChipHoverTip" />
   <AttachmentContextMenu
     :show="chipMenu.show"
@@ -2692,40 +2644,6 @@ const handleSendClick = (event: MouseEvent) => {
 </template>
 
 <style scoped>
-.context-mini {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 8px;
-  cursor: help;
-}
-
-.context-mini::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: var(--bg-tertiary);
-  border-radius: 1px;
-}
-
-.context-mini-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 1px;
-  background: var(--accent-primary);
-  border-radius: 1px;
-  transition: width 0.3s ease, left 0.3s ease, background 0.3s ease;
-}
-
-.context-mini-bar.cached { background: #2dd4bf; }
-.context-mini-bar.warning { background: var(--color-warning); }
-.context-mini-bar.danger { background: var(--color-error); }
-
 .context-mini-tip {
   z-index: 10050;
   box-sizing: border-box;
@@ -2756,12 +2674,13 @@ const handleSendClick = (event: MouseEvent) => {
   align-items: center;
   gap: 4px;
   width: max-content;
-  max-width: none;
+  max-width: 100%;
 }
 
 .ctx-usage-simple-line {
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .ctx-usage-detail {
@@ -3709,24 +3628,50 @@ const handleSendClick = (event: MouseEvent) => {
 }
 
 .session-token-chip {
+  position: relative;
+  isolation: isolate;
   flex-shrink: 0;
-  padding: 2px 4px;
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  background: transparent;
+  font: inherit;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   cursor: help;
   user-select: none;
   white-space: nowrap;
 }
-
-.session-token-tip {
-  position: fixed;
-  z-index: 10050;
-  transform: translate(-50%, -100%);
-  min-width: 240px;
-  width: max-content;
-  max-width: calc(100vw - 16px);
+.session-token-label { position: relative; z-index: 1; }
+.session-context-water {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--accent-primary);
   pointer-events: none;
+}
+.session-context-water.warning { color: var(--color-warning); }
+.session-context-water.danger { color: var(--color-error); }
+.session-water-level { transition: transform 0.8s ease; }
+.session-wave-back, .session-wave-front { fill: currentColor; }
+.session-wave-back { opacity: 0.16; animation: session-water-drift 4s linear infinite reverse; }
+.session-wave-front { opacity: 0.3; animation: session-water-drift 4s linear infinite; }
+@keyframes session-water-drift {
+  from { transform: translateX(0); }
+  to { transform: translateX(-200px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-water-level { transition: none; }
+  .session-wave-back, .session-wave-front { animation: none; }
+}
+.session-usage-tip { min-width: min(240px, calc(100vw - 16px)); }
+.session-token-tip.has-context {
+  border-top: 1px solid var(--border-color);
+  margin-top: 10px;
+  padding-top: 8px;
 }
 
 .session-token-tip .ctx-usage-row,

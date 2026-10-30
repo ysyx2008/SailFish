@@ -221,7 +221,7 @@ export default {
     composerImageShrinkFallback: 'Shrinking failed. Only the original path was attached.',
     context: 'Context',
     contextUsed: 'used',
-    sessionConsumedTotal: 'Total',
+    sessionConsumedTotal: 'Session total',
     sessionConsumedIn: 'Input',
     sessionConsumedCache: 'Cache hit',
     sessionConsumedCacheMiss: 'Uncached',
