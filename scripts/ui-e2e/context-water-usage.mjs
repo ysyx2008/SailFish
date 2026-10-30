@@ -73,7 +73,7 @@ try {
     const wave = el.querySelector('.session-wave-front')
     return { bg: getComputedStyle(el).backgroundColor, duration: getComputedStyle(wave).animationDuration, opacity: getComputedStyle(wave).opacity }
   })
-  check('数字背景透明，波浪周期4秒、浓度30%', styles.bg === 'rgba(0, 0, 0, 0)' && styles.duration === '4s' && styles.opacity === '0.3')
+  check('数字背景透明，波浪周期12秒、浓度30%', styles.bg === 'rgba(0, 0, 0, 0)' && styles.duration === '12s' && styles.opacity === '0.3')
   const beforeWave = await chip().locator('.session-wave-front').evaluate(el => getComputedStyle(el).transform)
   await pause(150)
   check('水面确实持续流动', await chip().locator('.session-wave-front').evaluate(el => getComputedStyle(el).transform) !== beforeWave)
