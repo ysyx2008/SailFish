@@ -45,7 +45,7 @@ vi.mock('../../web-search/index', () => ({
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, parseDispatchTasks, seedOrganizationBoard, SubAgentWorkspace, viewStepsPerAgent } from '../tools/sub-agent'
+import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, parseDispatchTasks, seedOrganizationBoard, SubAgentWorkspace, viewStepsPerAgent, workspaceOf } from '../tools/sub-agent'
 import { getAgentTools } from '../tools'
 import { MAX_LIVE_CHILDREN, SubAgentRoster, type ChildAgentHandle } from '../sub-agent-roster'
 import { OrgLedger } from '../org-ledger'
@@ -925,4 +925,14 @@ describe('独立团队边界', () => {
     expect(view.members.every(m=>m.teamId==='team-old')).toBe(true)
     await roster.settled()
   })
+  it('分叉对话不能把来源会话的团队铺进当前看板',async()=>{
+    const roster=new SubAgentRoster()
+    const executor=createExecutor(roster,()=>stubChild('ok',1))
+    executor.getRootSessionId=()=> 'fork-session'
+    executor.getOrganizationHistory=()=>[{teamId:'source-team',sessionId:'source-session',members:[{id:'来源成员',name:'来源成员',description:'历史',status:'completed',teamId:'source-team'}],teams:[],total:1,live:0}]
+    expect((await dispatchSubAgents({tasks:[{name:'当前成员',description:'核对',prompt:'核对'}]},defaultConfig,executor)).success).toBe(true)
+    expect(workspaceOf(roster).organizationView().members.map(member=>member.name)).toEqual(['当前成员'])
+    await roster.settled()
+  })
+
 })

@@ -66,6 +66,15 @@ try {
   await card.click()
   await page.locator('.organization-chart .org-node').nth(3).waitFor()
   check('重开历史后组织图归属不变',await page.locator('.organization-chart .org-node').count()===4)
+  await page.locator('.oc-header .tph-close').click()
+  const legacySteps=[task('旧版团队'),dispatch('legacy-original',members('原成员',2)),task('旧版续派'),dispatch('legacy-continue',members('原成员',3,'legacy'),'legacy')]
+  await page.evaluate(({steps,stamp})=>{const {store,id}=window.__boundaryFixture;store.restoreAgentHistory(id,{id:'boundary-source',timestamp:stamp,userTask:'旧版续派',steps,duration:10,status:'completed'})},{steps:legacySteps,stamp})
+  await pause(400)
+  const legacyCard=page.locator('.ai-messages:visible .organization-card')
+  check('旧无字段团队续派只保留一个入口',await legacyCard.count()===1 && /3/.test(await legacyCard.innerText()))
+  await legacyCard.click()
+  await page.locator('.organization-chart .org-node').nth(2).waitFor()
+  check('旧版续派图含原成员与新增成员',await page.locator('.organization-chart .org-node').count()===3)
   if(process.env.E2E_SHOT){fs.mkdirSync(process.env.E2E_SHOT,{recursive:true});await page.screenshot({path:path.join(process.env.E2E_SHOT,'team-boundaries.png')})}
 } catch(error){failures.push(String(error));console.error(error)}
 finally { const timer=setTimeout(()=>app.process()?.kill('SIGKILL'),5000);try{await app.close().catch(()=>{})}finally{clearTimeout(timer)};fs.rmSync(directory,{recursive:true,force:true}) }

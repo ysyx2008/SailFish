@@ -6184,7 +6184,12 @@ export abstract class Agent {
       inReceiptTurn: run.internalNotice && run.noticeKind === 'task_receipt',
       getSessionId: () => this.getSessionId(),
       getRootSessionId: () => this.rootSessionId(),
-      getOrganizationHistory: () => (this._conversation?.steps ?? []).flatMap(step => step.organization ? [step.organization] : []),
+      getOrganizationHistory: () => {
+        const sessionId = this.getSessionId()
+        return (this._conversation?.steps ?? []).flatMap(step => step.organization
+          && (!step.sourceSessionId || step.sourceSessionId === sessionId)
+          && (!step.organization.sessionId || step.organization.sessionId === sessionId) ? [step.organization] : [])
+      },
       getCurrentOrganization: () => {
         const steps = this._conversation?.steps ?? []
         let start = 0

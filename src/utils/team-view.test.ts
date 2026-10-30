@@ -75,3 +75,14 @@ describe('明确的团队归属',()=>{
     expect([...teamCards(steps).values()].map(view=>view.total)).toEqual([1,1,1])
   })
 })
+
+
+it('无归属的旧团队明确续用后只留一个入口，名单过程能读取原成员', () => {
+  const old = step('old', {sourceSessionId:'sid',subAgents:[member('老甲')]})
+  const next = step('next',{type:'user_task'})
+  const continued = step('continued',{sourceSessionId:'sid',subAgents:[{...member('追加'),teamId:'legacy'}],organization:{teamId:'legacy',sessionId:'sid',members:[member('老甲'),{...member('追加'),teamId:'legacy'}],teams:[],total:2,live:2}})
+  const steps=[old,next,continued]
+  expect([...teamCards(steps,'sid').keys()]).toEqual(['old'])
+  expect(teamViewForStep(steps,'old')?.total).toBe(2)
+  expect([...teamMemberSnapshots(steps,'old').keys()]).toEqual(['老甲','追加'])
+})

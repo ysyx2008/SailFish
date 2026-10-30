@@ -966,6 +966,7 @@ export function spawnDeps(
     const saved = executor.getOrganizationHistory?.() ?? [executor.getCurrentOrganization?.()].filter((view): view is OrganizationView => !!view)
     const latest = new Map<string, OrganizationView>()
     for (const view of saved) {
+      if (view.sessionId && sessionId && view.sessionId !== sessionId) continue
       const id = view.teamId ?? LEGACY_TEAM_ID
       if (!latest.has(id) || (view.updatedAt ?? 0) >= (latest.get(id)?.updatedAt ?? 0)) latest.set(id, view)
     }
