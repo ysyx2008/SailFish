@@ -97,12 +97,30 @@ try {
     await page.locator('.dock-toggle').click()
     await pause(250)
     const listFirstContentPeak=await page.evaluate(()=>{window.__listObserver.disconnect();return window.__listContentPeak})
+    check(`${shape}：快捷名单首次只显示40人，并提示剩余960人`,await page.locator('.dock-panel .tmt-member').count()===40 && (await page.locator('.dock-more').innerText()).includes('960'))
+    for(let pageIndex=1;pageIndex<25;pageIndex++)await page.locator('.dock-more').click()
+    check(`${shape}：显示更多后全部1000人可达`,await page.locator('.dock-panel .tmt-member').count()===1000 && await page.locator('.dock-more').count()===0)
+    // 已恢复自然行高；未知行的初始估计值不能当作展开占位基准。
+    // 像实际阅读一样滚过已加载名单，收集行高，再验证展开/回收的稳定性。
+    const visited=await page.locator('.dock-panel').evaluate(async panel=>{
+      const seen=new Set();const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));panel.scrollTop=0
+      for(let i=0;i<500;i++){
+        await frame();await frame()
+        panel.querySelectorAll('.tmt-content').forEach(el=>seen.add(el.parentElement.dataset.member))
+        if(panel.scrollTop+panel.clientHeight>=panel.scrollHeight-1)break
+        panel.scrollTop=Math.min(panel.scrollHeight-panel.clientHeight,panel.scrollTop+panel.clientHeight*.6)
+      }
+      return seen.size
+    })
+    check(`${shape}：滚过各段后1000人成员内容均可实际访问`,visited===1000)
+
+
     const list=await page.locator('.dock-panel').evaluate(async panel=>{
       panel.querySelector('[data-member="成员999"]').scrollIntoView({block:"center"})
       await new Promise(resolve=>setTimeout(resolve,100))
       return {slots:panel.querySelectorAll('.tmt-member').length,painted:panel.querySelectorAll('.sub-agent-card').length,tail:panel.textContent.includes('成员999')}
     })
-    check(`${shape}：快捷名单也保留全量、按视口绘制且末尾可见`,list.slots===1000&&list.painted>0&&list.painted<200&&list.tail&&listFirstContentPeak<200)
+    check(`${shape}：完整加载的快捷名单按视口绘制且末尾可见`,list.slots===1000&&list.painted>0&&list.painted<200&&list.tail&&listFirstContentPeak<200)
     const lastCard=page.locator('.dock-panel [data-member="成员999"]')
     await lastCard.locator('.sub-agent-header').click()
     await lastCard.locator('.sub-agent-detail').waitFor()

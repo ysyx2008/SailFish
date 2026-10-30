@@ -10,7 +10,7 @@ const emit = defineEmits<{ open: [name: string] }>()
 
 <template>
   <ul class="team-member-tree">
-    <li v-for="(group, index) in groups" :key="group.team?.name ?? index" class="tmt-group">
+    <li v-for="group in groups" :key="JSON.stringify([group.team?.teamId, group.team?.owner, group.team?.name])" class="tmt-group">
       <div v-if="group.team" class="tmt-group-title"><Users :size="12" aria-hidden="true" /><span>{{ group.team.name }}</span></div>
       <ul class="tmt-members">
         <li v-for="node in group.nodes" :key="node.member.id" class="tmt-node">

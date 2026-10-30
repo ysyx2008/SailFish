@@ -941,6 +941,7 @@ export default {
         reject: 'Review: rejected',
       },
       omitted: '{count} more people not shown; the full list is on the organization board: {path}',
+      listUnavailable: 'Details for {count} additional members are currently unavailable',
       omittedTeams: '{count} more teams not shown; the full list is on the organization board: {path}',
     },
     subAgentCount: {

@@ -942,6 +942,7 @@ export default {
         reject: '验收打回',
       },
       omitted: '还有 {count} 人没放进来，完整名单在组织看板：{path}',
+      listUnavailable: '另有 {count} 人的名单资料暂不可用',
       omittedTeams: '还有 {count} 个团没放进来，完整名单在组织看板：{path}',
     },
     subAgentCount: {

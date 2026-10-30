@@ -53,6 +53,7 @@ try {
   await page.locator('.dock-toggle').click()
   await page.locator('.dock-panel .tmt-member').nth(1).waitFor()
   const messageAfter = await page.locator('.ai-messages-wrapper:visible').boundingBox()
+  check('小团队不出现多余分页按钮', await page.locator('.dock-more').count() === 0)
   check('横幅展开两位成员，不伪造小组', await page.locator('.dock-panel .tmt-member').count() === 2 && await page.locator('.tmt-group-title').count() === 0)
   check('名单展开不挤动对话', messageBefore.y === messageAfter.y && messageBefore.height === messageAfter.height)
   check('成员名单保留角色、职责和状态', /校对/.test(await page.locator('.dock-panel').innerText()) && /成员甲的具体职责/.test(await page.locator('.dock-panel').innerText()))

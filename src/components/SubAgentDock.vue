@@ -1,13 +1,21 @@
+<script lang="ts">
+import { reactive } from 'vue'
+// 和早期名单一样，关闭浮层后保留“显示更多”的范围；不同来源团队各自记。
+const memberPages = reactive(new Map<string, number>())
+</script>
+
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, TriangleAlert, Network, ChevronDown } from 'lucide-vue-next'
 import type { AgentStep } from '@shared/types'
-import { buildOrgTree, describeOrgDock } from '../utils/organization-view'
+import { describeOrgDock } from '../utils/organization-view'
 import { teamCards, teamSources, teamMemberSnapshots } from '../utils/team-view'
 import { provideTeamViewport } from './Organization/team-viewport'
 import { useTeamSnapshot } from './Organization/team-snapshot'
 import TeamMemberTree from './Organization/TeamMemberTree.vue'
+import { teamMemberList } from '../utils/team-member-list'
+import { SUB_AGENT_PAGE_SIZE } from '../utils/sub-agent-summary'
 
 const props = defineProps<{ steps: readonly AgentStep[]; teamSteps?: readonly AgentStep[]; sessionId?: string; attached?: boolean }>()
 const emit = defineEmits<{ openOrganization: [stepId: string, member?: string] }>()
@@ -25,7 +33,9 @@ const snapshots = computed(() => selected.value ? teamMemberSnapshots(props.team
 const snapshotFor = (name: string) => snapshots.value?.get(name)
 const listSnapshot = useTeamSnapshot(() => selected.value?.org, () => opened.value)
 provideTeamViewport(computed(() => (listSnapshot.value?.total ?? 0) > 200))
-const tree = computed(() => listSnapshot.value ? buildOrgTree(listSnapshot.value) : [])
+const listKey = computed(() => JSON.stringify([listSnapshot.value?.sessionId ?? props.sessionId, listSnapshot.value?.teamId ?? selected.value?.id]))
+const list = computed(() => listSnapshot.value ? teamMemberList(listSnapshot.value, (memberPages.get(listKey.value) ?? 1) * SUB_AGENT_PAGE_SIZE) : { groups: [], shown: 0, hidden: 0, unavailable: 0 })
+function showMore() { memberPages.set(listKey.value, (memberPages.get(listKey.value) ?? 1) + 1) }
 watch(items, () => { if (!selected.value) opened.value = null })
 function open(stepId: string, member?: string) {
   opened.value = null
@@ -55,7 +65,7 @@ onBeforeUnmount(() => {
   <div v-if="items.length" ref="root" class="sub-agent-dock" :class="{ attached }">
     <div v-for="item in items" :key="item.id" class="dock-row">
       <div class="dock-bar" :class="[item.kind, { open: opened === item.id }]">
-        <button type="button" class="dock-toggle" :aria-expanded="opened === item.id" @click="opened = opened === item.id ? null : item.id">
+        <button type="button" class="dock-toggle" :aria-expanded="opened === item.id" :title="opened === item.id ? t('ai.subAgentDock.collapse') : t('ai.subAgentDock.expand')" @click="opened = opened === item.id ? null : item.id">
           <span class="dock-icon"><span v-if="item.kind === 'working'" class="dock-spinner" /><Check v-else-if="item.kind === 'done'" :size="13" /><TriangleAlert v-else :size="13" /></span>
           <span class="dock-headline">{{ item.headline }}</span>
           <ChevronDown :size="13" class="dock-chevron" :class="{ open: opened === item.id }" />
@@ -64,7 +74,9 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <div v-if="selected" class="dock-panel">
-      <TeamMemberTree :groups="tree" :step-id="selected.id" :session-id="listSnapshot?.sessionId" :snapshot-for="snapshotFor" @open="open(selected.id, $event)" />
+      <TeamMemberTree :groups="list.groups" :step-id="selected.id" :session-id="listSnapshot?.sessionId" :snapshot-for="snapshotFor" @open="open(selected.id, $event)" />
+      <button v-if="list.hidden > 0" type="button" class="dock-more" @click="showMore">{{ t('ai.subAgentShowMore', { count: Math.min(SUB_AGENT_PAGE_SIZE, list.hidden), rest: list.hidden }) }}</button>
+      <p v-if="list.unavailable > 0" class="dock-unavailable">{{ t('ai.organization.listUnavailable', { count: list.unavailable }) }}</p>
     </div>
   </div>
 </template>
@@ -216,4 +228,8 @@ onBeforeUnmount(() => {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   z-index: 20;
 }
+.dock-unavailable { margin: 6px 10px; color: var(--text-muted); font-size: 11px; }
+.dock-more { display: block; margin: 4px 0 0; padding: 4px 10px; font: inherit; font-size: 12px; color: var(--text-secondary); background: transparent; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; cursor: pointer; }
+.dock-more:hover { background: rgba(255,255,255,0.04); }
+.dock-more:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -2px; }
 </style>
