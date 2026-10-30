@@ -29,6 +29,8 @@ await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
 const modelUrl = `http://127.0.0.1:${server.address().port}/v1`
 const app = await launchApp(dataDir)
 const page = await app.firstWindow()
+const pageErrors = []
+page.on('pageerror', error => pageErrors.push(error.message))
 const shot = async (name) => { if (shotDir) await page.screenshot({ path: path.join(shotDir, `${name}.png`) }) }
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -84,7 +86,11 @@ async function send(text) {
   const input = page.locator('[contenteditable="true"]:visible').first()
   await input.fill(text)
   await input.press('Enter')
-  await sleep(1800)
+  await page.waitForFunction(() => {
+    const tab = window.__e2eStore.tabs.find(t => t.id === window.__e2eTab)
+    return !tab.agentState.isRunning && tab.agentState.steps.some(step => step.type === 'message' && step.content.includes('测试回答。'))
+  }, undefined, { timeout: 15000 })
+  await sleep(300)
 }
 async function measure() {
   return box().evaluate(el => {
@@ -108,7 +114,22 @@ async function grow(text) {
 }
 
 try {
+  const isolated = await app.evaluate(({ app, BrowserWindow }) => ({
+    data: app.getPath('userData'), appData: app.getPath('appData'),
+    muted: BrowserWindow.getAllWindows().every(window => window.webContents.isAudioMuted()),
+  }))
+  if (isolated.data !== dataDir || isolated.appData !== path.join(dataDir, 'app-data')) throw new Error('测试资料未隔离')
+  check('用户数据及迁移指针均已隔离', true)
+  check('测试窗口已静音', isolated.muted)
   await ready()
+  await page.evaluate(() => {
+    window.__flightCount = 0
+    new MutationObserver(records => {
+      for (const record of records) for (const node of record.addedNodes) {
+        if (node instanceof Element && node.matches('.message-send-transition')) window.__flightCount++
+      }
+    }).observe(document.body, { childList: true })
+  })
   await openAssistant()
   await sleep(700)
   for (const button of await page.locator('.confirm-overlay button:visible').all()) await button.dispatchEvent('click')
@@ -147,9 +168,17 @@ try {
   await send('下一次追问仍置顶')
   m = await measure()
   check('连续追问置顶', m.top !== null && Math.abs(m.top - 12) < 5, JSON.stringify(m))
+  check('发送仅置顶，不创建飞行动画', await page.evaluate(() => window.__flightCount === 0))
+  check('界面无未捕获异常', pageErrors.length === 0, pageErrors.join('\n'))
   if (failures.length) process.exitCode = 1
 } finally {
-  await app.close()
-  server.close()
-  if (!process.env.E2E_KEEP) fs.rmSync(dataDir, { recursive: true, force: true })
+  try {
+    // 产品退出确认可能被失败测试留下的任务拦住；兜底仅作用于本次隔离实例。
+    await app.evaluate(({ app }) => { setTimeout(() => app.exit(0), 5000).unref() }).catch(() => {})
+    await app.close()
+  } finally {
+    server.closeAllConnections()
+    await new Promise(resolve => server.close(resolve))
+    if (!process.env.E2E_KEEP) fs.rmSync(dataDir, { recursive: true, force: true })
+  }
 }
