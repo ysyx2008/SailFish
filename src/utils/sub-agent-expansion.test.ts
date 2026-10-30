@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { memberDetailStepId, subAgentExpansionKey, isSubAgentExpanded, toggleSubAgentExpansion, rememberSubAgentHeight, subAgentExpansionHeight } from './sub-agent-expansion'
+import { memberDetailStepId, subAgentExpansionKey, isSubAgentExpanded, toggleSubAgentExpansion, rememberSubAgentHeight, subAgentExpansionHeight, subAgentCollapsedHeight, rememberSubAgentCollapsedHeight } from './sub-agent-expansion'
 describe('共用成员展开状态',()=>{
   it('任务、会话和名字有分隔符时也不串键',()=>{
     expect(memberDetailStepId('a:b','c','d')).not.toBe(memberDetailStepId('a','b:c','d'))
@@ -14,4 +14,14 @@ describe('共用成员展开状态',()=>{
     expect(isSubAgentExpanded(key)).toBe(false)
     expect(subAgentExpansionHeight(key)).toBe(56)
   })
+  it('收起的自然高度跨浮层重挂载保留，与展开占位互不覆盖',()=>{
+    const key=subAgentExpansionKey(memberDetailStepId('compact','step','成员'),'id')
+    rememberSubAgentCollapsedHeight(key,33.5)
+    toggleSubAgentExpansion(key);rememberSubAgentHeight(key,640)
+    expect(subAgentCollapsedHeight(key)).toBe(33.5)
+    toggleSubAgentExpansion(key)
+    expect(subAgentCollapsedHeight(key)).toBe(33.5)
+    expect(subAgentExpansionHeight(key)).toBe(56)
+  })
+
 })

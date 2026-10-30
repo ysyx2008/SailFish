@@ -24,6 +24,7 @@ const emit = defineEmits<{ open: [name: string] }>()
 
 <style scoped>
 ul { list-style: none; margin: 0; padding: 0; }
+.tmt-node + .tmt-node { border-top: 1px solid rgba(255, 255, 255, 0.05); }
 .tmt-group + .tmt-group { margin-top: 4px; }
 .tmt-group-title { display: flex; align-items: center; gap: 5px; padding: 6px 8px 3px; color: var(--text-muted); font-size: 11px; }
 .tmt-group-title span { overflow-wrap: anywhere; }

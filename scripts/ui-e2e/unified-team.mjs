@@ -68,6 +68,16 @@ try {
   if(process.env.E2E_SHOT){fs.mkdirSync(process.env.E2E_SHOT,{recursive:true});await page.screenshot({path:path.join(process.env.E2E_SHOT,'member-cards-inline.png')})}
   await inlineA.locator('.sub-agent-header').click()
   check('再次点击原地收起', await inlineA.locator('.sub-agent-detail').count() === 0)
+  const compactRow = () => inlineA.evaluate(el => ({ row: el.getBoundingClientRect().height, header: el.querySelector('.sub-agent-header').getBoundingClientRect().height }))
+  const runningRow = await compactRow()
+  check('收起行按旧卡片自然高度排列，没有额外空白', Math.abs(runningRow.row-runningRow.header)<1, JSON.stringify(runningRow))
+  await page.evaluate(()=>{const {store,id}=window.__teamFixture;store.tabs.find(t=>t.id===id).agentState.steps.find(s=>s.id==='flat1').subAgents[0].status='completed'})
+  await pause(250)
+  const completedRow = await compactRow()
+  check('收工后活动行消失，成员行随内容缩短', completedRow.row<runningRow.row && Math.abs(completedRow.row-completedRow.header)<1, JSON.stringify({runningRow,completedRow}))
+  check('最后一项不再叠加一条底部分隔线', await page.locator('.dock-panel .tmt-member').last().evaluate(el=>getComputedStyle(el).borderBottomWidth==='0px'))
+  if(process.env.E2E_SHOT){fs.mkdirSync(process.env.E2E_SHOT,{recursive:true});await page.screenshot({path:path.join(process.env.E2E_SHOT,'member-cards-compact.png')});await page.locator('.dock-panel').screenshot({path:path.join(process.env.E2E_SHOT,'member-list.png')})}
+
   await inlineA.locator('.sub-agent-header').click()
   await inlineA.locator('.tmt-details').click()
   await page.locator('.organization-chart .org-member-detail').getByText('flat-session-成员甲已核对', {exact:false}).waitFor()
