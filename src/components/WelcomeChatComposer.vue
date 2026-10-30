@@ -463,7 +463,6 @@ onUnmounted(() => {
       :current-tab-id="composerTabId"
       :visible="true"
       :context-stats="contextStats"
-      :cache-bar-width="0"
       :uploaded-docs="uploadedDocs"
       :parsing-docs="parsingDocs"
       :pending-images="pendingImages"

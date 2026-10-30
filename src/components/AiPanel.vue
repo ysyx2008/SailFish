@@ -966,12 +966,6 @@ const {
   computed(() => activeAiProfile.value)
 )
 
-const cacheBarWidth = computed(() => {
-  const { percentage, cacheHitRate } = contextStats.value
-  if (cacheHitRate === undefined || cacheHitRate <= 0) return 0
-  return Math.round(cacheHitRate / 100 * percentage * 100) / 100
-})
-
 /** 这场已经停住时，均速的终点用最后一条的时间，不再把人留在屏幕前的时间算进去 */
 const sessionOutputEndedAt = computed(() => {
   if (isAgentRunning.value) return undefined
@@ -3355,7 +3349,6 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
         :current-tab-id="currentTabId"
         :visible="props.visible"
         :context-stats="contextStats"
-        :cache-bar-width="cacheBarWidth"
         :uploaded-docs="uploadedDocs"
         :parsing-docs="parsingDocs"
         :pending-images="pendingImages"

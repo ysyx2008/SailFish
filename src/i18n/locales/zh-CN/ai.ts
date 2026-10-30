@@ -221,7 +221,7 @@ export default {
     composerImageShrinkFallback: '缩小失败，只附上了原图的路径',
     context: '上下文',
     contextUsed: '已使用',
-    sessionConsumedTotal: '合计',
+    sessionConsumedTotal: '本场累计',
     sessionConsumedIn: '输入',
     sessionConsumedCache: '缓存命中',
     sessionConsumedCacheMiss: '未命中',
