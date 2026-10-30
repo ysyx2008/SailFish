@@ -12,12 +12,12 @@
 
 
 验证记录：
-- 14文件263项定向单测通过，覆盖新队、指定续派、下级继承、共享保险丝、历史重建与横幅最新状态。
+- 15文件415项定向单测通过，覆盖新队、指定续派、下级继承、共享保险丝、历史重建与横幅最新状态。
 - 真实CLI多进程同会话：2人旧队→默认新3人→指定旧成员追加→给新队原成员续交代，归属持久化与图人数正确；组织7场景通过，含分层成员归属与独立看板。
 - 基础CLI：104通过、0失败、3项AI测试按 --no-ai 跳过。
 - 后台真实窗口：历史100人→新队3人，名单、组织图隔离；同轮另派新队独立，跨轮续派4人复用原入口，历史恢复后仍4人。
 - 原有统一团队/组织面板回归通过，群聊与成果入口、旧卡片原地展开与层级保留。千人模拟平铺/分组均保留1000槽位，首屏4/22张实际内容，未运行1000个真实模型。
-- Vite构建通过；全量类型检查仍有既有 gateway.service.ts:383 与 useAgentMode.ts:1056 两处错误，本轮没有新增类型错误。
+- Vite构建、前后端全量类型检查和受影响文件ESLint通过。已变基包含主线的审批配置/Webhook类型修复；此前两处既有类型错误已随主线修复。
 
 工具说明变更：dispatch_agents 新增可选 continue_team，填原团队任一成员真名则续派，省略默认新建；组长继承归属。team仍表示本团队内的协作小组，不增加用户设置。回执保留原首行并附客观归属说明。
 
@@ -28,3 +28,11 @@
 - 审查另外提到旧计划跨任务不沿用、秘书指定深层成员续派仍归秘书管理：这是本轮的保守边界。计划没有可靠团队归属时仅取最近任务，避免借用另一任务；continue_team只决定团队归属，不更改隶属或跨枝权限。
 
 - 第二轮复核后进一步固定来源口径：无来源字段只回退到当前会话，不与其它已知来源通配；横幅、全图、名单、群聊均传递当前会话。Agent读取历史与写看板同用rootSessionId，并直接在Agent配置入口验证当前无source、当前有source、外source、外organization.sessionId四种情况。
+
+
+最终证据：
+- `/tmp/team-boundaries-delivery-units.log`：15文件415项通过。
+- `/tmp/team-boundaries-delivery-cli.log`：默认新队/明确续派/成员续跑/旧版历史兼容通过；`/tmp/team-boundaries-delivery-org-cli.log`：组织7场景。
+- `/tmp/team-boundaries-delivery-ui.log`：新3人与历史100人隔离，跨轮追加、历史重开和旧legacy单入口通过。
+- `/tmp/team-boundaries-delivery-unified.log`、`/tmp/team-boundaries-delivery-org.log`、`/tmp/team-boundaries-delivery-perf.log`：原卡片、群聊/成果/铺满及千人视口回归。
+- 独立审查完整报告位于临时文件 `/tmp/team-boundaries-review.jsonl` 与 `/tmp/team-boundaries-review-fix.jsonl`，仅最终result用于结论。最后来源口径修补另做结构化自审及Agent入口/缺来源回归。
