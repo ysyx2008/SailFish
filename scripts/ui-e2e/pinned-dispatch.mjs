@@ -148,6 +148,7 @@ try {
   await shot('1-working')
 
   console.log('\n[2] 点开 / 收起')
+  await sleep(1500)
   await dismissDialogs()
   const msgBox = await page.locator('.ai-messages-wrapper:visible').first().boundingBox()
   await page.locator('.dock-toggle').first().click()

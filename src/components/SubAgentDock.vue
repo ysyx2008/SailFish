@@ -5,6 +5,8 @@ import { Check, TriangleAlert, Network, ChevronDown } from 'lucide-vue-next'
 import type { AgentStep } from '@shared/types'
 import { buildOrgTree, describeOrgDock } from '../utils/organization-view'
 import { teamCards, teamSources } from '../utils/team-view'
+import { provideTeamViewport } from './Organization/team-viewport'
+import { useTeamSnapshot } from './Organization/team-snapshot'
 import TeamMemberTree from './Organization/TeamMemberTree.vue'
 
 const props = defineProps<{ steps: readonly AgentStep[]; teamSteps?: readonly AgentStep[]; attached?: boolean }>()
@@ -19,7 +21,9 @@ const items = computed(() => {
     .map(([id, org]) => ({ id, ...describeOrgDock(t, org), org }))
 })
 const selected = computed(() => items.value.find(item => item.id === opened.value))
-const tree = computed(() => selected.value ? buildOrgTree(selected.value.org) : [])
+const listSnapshot = useTeamSnapshot(() => selected.value?.org, () => opened.value)
+provideTeamViewport(computed(() => (listSnapshot.value?.total ?? 0) > 200))
+const tree = computed(() => listSnapshot.value ? buildOrgTree(listSnapshot.value) : [])
 watch(items, () => { if (!selected.value) opened.value = null })
 function open(stepId: string, member?: string) {
   opened.value = null

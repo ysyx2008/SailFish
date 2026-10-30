@@ -14,6 +14,8 @@ import OrganizationBranch from './OrganizationBranch.vue'
 import OrganizationTeamArtifacts from './OrganizationTeamArtifacts.vue'
 import type { TeamArtifactSource } from '@shared/types'
 import OrganizationMemberDetail from './OrganizationMemberDetail.vue'
+import { provideTeamViewport } from './team-viewport'
+import { useTeamSnapshot } from './team-snapshot'
 import TeamPanelHeader from './TeamPanelHeader.vue'
 import OrganizationStatusBadge from './OrganizationStatusBadge.vue'
 
@@ -34,7 +36,9 @@ const { t } = useI18n()
 const terminalStore = useTerminalStore()
 
 const state = computed(() => terminalStore.tabs.find(tab => tab.id === props.tabId)?.agentState)
-const organization = computed(() => teamViewForStep(state.value?.steps ?? [], props.stepId, state.value?.sessionId))
+const currentOrganization = computed(() => teamViewForStep(state.value?.steps ?? [], props.stepId, state.value?.sessionId))
+const organization = useTeamSnapshot(() => currentOrganization.value, () => JSON.stringify([props.tabId, props.stepId, currentOrganization.value?.sessionId]))
+provideTeamViewport(computed(() => (organization.value?.total ?? 0) > 200))
 const plan = computed(() => {
   let latest
   for (const step of teamSources(state.value?.steps ?? [], props.stepId)) {
@@ -63,7 +67,7 @@ const stats = computed(() => {
 
 const artifactTeam = ref<TeamArtifactSource | null>(null)
 const memberName = ref<string | null>(props.entry?.member ?? null)
-const member = computed(() => organization.value?.members.find(member => member.name === memberName.value))
+const member = computed(() => currentOrganization.value?.members.find(member => member.name === memberName.value))
 function showOverview() {
   memberName.value = null
   emit('overview')
@@ -123,7 +127,7 @@ onMounted(() => {
   <Teleport :disabled="!localFocus" :to="focusTarget || 'body'">
   <section ref="rootRef" class="organization-chart" :class="[`is-${mode}`, { 'is-focus': focused }]" :style="localFocus ? focusBounds : undefined">
     <OrganizationTeamArtifacts v-if="artifactTeam" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" :team="artifactTeam" :focus-active="focused" @close="artifactTeam = null" @toggle-focus="toggleFocus" />
-    <OrganizationMemberDetail v-else-if="member" :session-id="organization?.sessionId" :member="member" :snapshot="memberSnapshot" :focus-active="focused" @close="showOverview" @artifacts="artifactTeam = { member: member.name }" @toggle-focus="toggleFocus" />
+    <OrganizationMemberDetail v-else-if="member" :session-id="currentOrganization?.sessionId" :member="member" :snapshot="memberSnapshot" :focus-active="focused" @close="showOverview" @artifacts="artifactTeam = { member: member.name }" @toggle-focus="toggleFocus" />
     <template v-else>
     <TeamPanelHeader class="oc-header" :title="t('ai.organization.title')" :close-label="t('ai.organization.close')" :meta="organization ? t('ai.organization.metaSimple', { total: organization.total, teams: organization.teams.length + (organization.omittedTeams ?? 0) }) : undefined" :focused="focused" :focus-label="focused ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="emit('close')" @toggle-focus="toggleFocus">
       <template #icon><Network :size="14" /></template>

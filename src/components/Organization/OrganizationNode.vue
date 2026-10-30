@@ -9,11 +9,13 @@ import { Crown, ShieldCheck } from 'lucide-vue-next'
 import type { OrgNode } from '../../utils/organization-view'
 import { toolDisplayName } from '../../utils/tool-display'
 import { avatarInitial } from '../../utils/expert-team-view'
+import { useTeamVisibility } from './team-viewport'
 import OrganizationStatusBadge from './OrganizationStatusBadge.vue'
 
 const props = defineProps<{ node: OrgNode }>()
 const emit = defineEmits<{ open: [] }>()
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const { element, visible } = useTeamVisibility()
 const activity = computed(() => {
   const step = props.node.member.activity
   return step ? [toolDisplayName(t, step.tool), step.args].filter(Boolean).join(' ') : ''
@@ -32,9 +34,12 @@ const tip = computed(() => [
 
 <template>
   <div
+    ref="element"
+    v-memo="[visible, visible ? node : null, locale]"
     class="org-node"
     :class="[`is-${node.bucket}`, { 'is-lead': node.member.lead }]"
     :data-status="node.bucket"
+    :data-member="node.member.name"
     :title="tip"
     :aria-label="tip"
     role="button"
@@ -43,6 +48,7 @@ const tip = computed(() => [
     @keydown.enter.stop.prevent="emit('open')"
     @keydown.space.stop.prevent="emit('open')"
   >
+    <template v-if="visible">
     <span v-if="node.member.lead" class="org-node-rank">
       <Crown :size="11" aria-hidden="true" />
       {{ t('ai.organization.lead') }}
@@ -60,6 +66,7 @@ const tip = computed(() => [
       <span v-if="activity" class="org-node-activity" :title="activity">{{ activity }}</span>
     </span>
     <OrganizationStatusBadge :bucket="node.bucket" :label="statusLabel" compact />
+    </template>
   </div>
 </template>
 
@@ -72,8 +79,10 @@ const tip = computed(() => [
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  min-width: 190px;
-  max-width: 240px;
+  width: 240px;
+  min-width: 240px;
+  height: 96px;
+  flex-shrink: 0;
   padding: 10px;
   border: 1px solid var(--border-color);
   border-radius: 7px;
@@ -95,8 +104,9 @@ const tip = computed(() => [
 
 /* 组长始终有独立身份栏和双层框，完成变绿后仍认得身份。 */
 .org-node.is-lead {
-  min-width: 220px;
-  max-width: 260px;
+  width: 260px;
+  min-width: 260px;
+  height: 120px;
   padding: 30px 12px 12px;
   border-width: 2px;
   border-radius: 10px;
