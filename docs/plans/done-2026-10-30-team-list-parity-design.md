@@ -26,3 +26,6 @@
 - 统一团队真实窗口：旧卡片自然尺寸、角色/活动、原地展开、详情/个人成果、群聊/团队成果、返回路径通过；已查看真实窗口截图。
 - 本机Claude CLI独立审查完成，采纳缺失人数另列、按原成员顺序选择、团队身份键的建议；修补后针对性单测与真实UI回归通过。本轮无后端、权限、落盘变更，不重复CLI。
 - 千人自然高度测试先实际滚过加载的各段，再比较展开占位，不把未访问行的估计高度当成实测基准；仍严格检查全部可访问与视口内容数量。
+
+
+最终回归日志：`/tmp/team-list-delivery-unit.log`、`/tmp/team-list-delivery-types.log`、`/tmp/team-list-delivery-lint.log`、`/tmp/team-list-delivery-build.log`、`/tmp/team-list-delivery-ui.log`、`/tmp/team-list-delivery-perf.log`、`/tmp/team-list-delivery-unified.log`。对照分支最初的快捷名单，已恢复约定的分页/排序/记忆/提示；保留层级、全图、群聊及成果这些已确认的新行为，无未处理的已知旧交互遗漏。
