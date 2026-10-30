@@ -538,13 +538,24 @@ export interface AiMessage {
   /** @internal Anthropic prompt cache: 标记此消息为缓存断点（跨任务复用的消息边界） */
   _cacheBreakpoint?: boolean
   /**
-   * @internal 系统在 task 内部主动注入的 user/assistant 消息（非用户真实输入），
-   * 例如「工具读取图片占位」「上下文压力警告」等。这种消息：
+   * @internal 不构成新 task 边界的 user/assistant 消息（系统注入或 task 内用户补充），
+   * 例如「工具读取图片占位」「上下文压力警告」等；真实用户部分另由 _userContextParts 表达。这种消息：
    * - 不应被 splitMessagesIntoTasks 当作任务边界（否则会把同一个 task 切碎，
    *   产生「孤儿 tool」之类的违规序列）。
    * - 仍然会原样发给 API（formatMessageForApi 会忽略未知字段）。
    */
   _systemInjected?: boolean
+  /** @internal 用户输入对应的正文位置范围；[]表示没有用户输入。与任务边界独立，不发给模型API。 */
+  _userContextParts?: Array<{ start: number; end: number }>
+}
+
+/** 本地来源片段不进入普通聊天或插件provider参数；保留原正文和图片形式。 */
+function withoutUserContextParts(messages: readonly AiMessage[]): AiMessage[] {
+  return messages.map(message => {
+    const copy = { ...message }
+    delete copy._userContextParts
+    return copy
+  })
 }
 
 interface ToolParameterSchema {
@@ -1524,7 +1535,7 @@ export class AiService {
 
     const requestBody = {
       model: profile.model,
-      messages,
+      messages: withoutUserContextParts(messages),
       temperature: resolveTemperature(profile),
       max_tokens: 2048
     }
@@ -1934,7 +1945,7 @@ export class AiService {
 
     const requestBody = {
       model: profile.model,
-      messages,
+      messages: withoutUserContextParts(messages),
       temperature: resolveTemperature(profile),
       max_tokens: 2048,
       stream: true
@@ -2272,7 +2283,7 @@ export class AiService {
     for (const provider of this.pluginProviders) {
       if (provider.match(profile)) {
         log.info(`Delegating to plugin provider "${provider.id}" for model=${profile.model}`)
-        const result = await provider.chatWithTools({ messages: messages as ProviderChatParams['messages'], tools, model: profile.model, apiUrl: profile.apiUrl, apiKey: profile.apiKey })
+        const result = await provider.chatWithTools({ messages: withoutUserContextParts(messages) as ProviderChatParams['messages'], tools, model: profile.model, apiUrl: profile.apiUrl, apiKey: profile.apiKey })
         return result as ChatWithToolsResult
       }
     }

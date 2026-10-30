@@ -30,7 +30,7 @@ vi.mock('../../utils/logger', () => ({
   })
 }))
 
-import { formatMessageForApi, type AiMessage } from '../ai.service'
+import { AiService, formatMessageForApi, type AiMessage } from '../ai.service'
 
 /**
  * DeepSeek V3.2+/V4 思考模式合规性回归测试。
@@ -208,4 +208,22 @@ describe('formatMessageForApi - DeepSeek thinking mode compliance', () => {
       expect(out.reasoning_content).toBe('')
     })
   })
+})
+
+
+it('内部用户上下文来源片段不发给模型API，主消息正文保持原样',()=>{
+  const out=formatMessageForApi({role:'user',content:'主模型完整正文',_systemInjected:true,_userContextParts:[{start:0,end:3}]})
+  expect(out).toEqual({role:'user',content:'主模型完整正文'})
+})
+
+
+it('插件provider也不接收本地来源元数据，正文和图片保持，原消息不被改写',async()=>{
+  const profile={id:'fixture',name:'fixture',apiUrl:'http://fixture',apiKey:'x',model:'fixture'}
+  const ai=new AiService({getAiProfiles:()=>[profile],getActiveAiProfile:()=>profile.id} as never)
+  const provider=vi.fn(async(_params:unknown)=>({content:'ok'}))
+  ai.setPluginProviders([{id:'fixture',name:'fixture',match:()=>true,chatWithTools:provider}])
+  const original:AiMessage={role:'user',content:'完整正文',images:['image-original'],_systemInjected:true,_userContextParts:[{start:0,end:3}]}
+  await ai.chatWithTools([original],[])
+  expect(provider).toHaveBeenCalledWith(expect.objectContaining({messages:[{role:'user',content:'完整正文',images:['image-original'],_systemInjected:true}]}))
+  expect(original._userContextParts).toEqual([{start:0,end:3}])
 })

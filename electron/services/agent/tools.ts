@@ -35,7 +35,7 @@ import { REMOTE_OUTPUT_INLINE_CHARS, REMOTE_TIMEOUT_DEFAULT_SECONDS, REMOTE_TIME
 const SUB_AGENT_NAME_DESCRIPTION = '能反映出他在干什么的短名字，让用户一眼看懂（如「读 nginx 配置」）。不要用人名、编号或跟任务无关的代号。可选，不填则从任务简述生成'
 const HOSTS_DESCRIPTION = '这个伙计能连的已存主机（sessionId）。不写就碰不到远程。'
 const OWN_REMOTE_COMMANDS_DESCRIPTION = '只属于这个伙计的远程命令，每条一项，要同时写了 hosts。他能跑的是整批共有的 remote_commands 加这些，别的伙计碰不到这些。'
-const FORK_TURNS_DESCRIPTION = '带多少对话。默认 all。none=不带，all=全带，正整数字符串（如 1、3）=只带最近几轮。'
+const FORK_TURNS_DESCRIPTION = '带多少对话。默认 all。none=不带，all=全带，正整数字符串（如 1、3）=最近几次用户交代及其后答复；敲门、后台通知和任务回执不占轮次。写在 tasks 每项或 batch 整体，顶层和 batch 条目内不支持。'
 
 /** @deprecated Use TerminalType from @shared/types */
 export type AgentMode = TerminalType

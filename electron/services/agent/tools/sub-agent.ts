@@ -784,11 +784,14 @@ function formatExpertKnock(child: ChildSnapshot, role: string): string {
 }
 
 function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubAgentRoster, team?: string): string {
-  const list = snapshots
-    .map(c => c.role
+  const list = snapshots.map(c => {
+    const identity = c.role
       ? t(c.lead ? 'expert.list_item_lead' : 'expert.list_item', { name: c.name, role: c.role, description: c.description })
-      : `- ${c.name}：${c.description}`)
-    .join('\n')
+      : `- ${c.name}：${c.description}`
+    const fork = c.forkTurns ?? { kind: 'all' }
+    const mode = t(`dispatch.context_${fork.kind}`, fork.kind === 'last' ? { n: fork.n } : {})
+    return identity + (c.reviewer ? t('expert.reviewer_mark') : '') + t('dispatch.context_mode', { mode })
+  }).join('\n')
   const count = names.length
   const head = team
     ? t('expert.spawned_team', { team, count, list, limit: WAKES_PER_CHECKPOINT })
@@ -1112,6 +1115,11 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
   const problems: string[] = []
   const rawTasks = args.tasks
   const rawBatch = args.batch
+  if (Object.prototype.hasOwnProperty.call(args, 'fork_turns')) {
+    return { error: 'fork_turns 不能放在顶层；每人的设置写在 tasks[].fork_turns，批量共用设置写在 batch.fork_turns。本次未派出。' }
+  }
+  const team = teamNameFrom(args.team)
+  if (team && rawBatch !== undefined) return { error: '带 team 时只用 tasks 写每位专家，不能用 batch。本次未派出。' }
   if (rawTasks !== undefined && !Array.isArray(rawTasks)) {
     return { error: 'tasks 必须是数组，每项包含 description 和 prompt' }
   }
@@ -1176,6 +1184,7 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
     if ('error' in forkTurns) return { error: `batch：${forkTurns.error}` }
     for (let i = 0; i < batch.items.length; i++) {
       const item = batch.items[i] as Record<string, unknown> | undefined
+      if (item && Object.prototype.hasOwnProperty.call(item, 'fork_turns')) return { error: `batch 第 ${i + 1} 条的 fork_turns 应写在 batch.fork_turns，由整批共用。本次未派出。` }
       if (typeof item?.input !== 'string' || item.input.trim() === '') {
         return { error: `batch 第 ${i + 1} 条缺少 input` }
       }
@@ -1198,13 +1207,11 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
   if (tasks.length === 0) {
     return { error: 'tasks 和 batch 至少给一个，且不能为空' }
   }
-  const team = teamNameFrom(args.team)
   if (!team && tasks.some(task => task.reviewer)) problems.push('reviewer（验收人）只在带 team 组专家团时才有意义。')
   if (!team) return problems.length ? { error: `没派：${problems.join('')}` } : { tasks }
   if (labelLength(team) > MAX_TEAM_NAME_CHARS) {
     problems.push(`团名最长 ${MAX_TEAM_NAME_CHARS} 个字，这次 ${labelLength(team)} 个字。`)
   }
-  if (rawBatch !== undefined) problems.push('带 team 时只用 tasks 写每位专家，不能用 batch。')
   if (tasks.every(task => task.reviewer)) problems.push('团里不能人人都是验收人，总得有人做事。')
   const noRole = tasks.findIndex(task => !task.role)
   if (noRole >= 0) problems.push(`带 team 时每位都要有 role（专家角色），第 ${noRole + 1} 位没有。`)

@@ -141,6 +141,8 @@ export interface TaskReceiptText {
 
 // 用户补充消息（Agent 运行中追加的对话）
 export interface PendingUserMessage {
+  /** 通过用户输入入口接收；通知不设置。silent点选回复仍可为用户输入。 */
+  userInput?: true
   message: string
   attachments?: AttachmentInfo[]
   documentContext?: string

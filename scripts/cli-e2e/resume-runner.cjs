@@ -78,10 +78,19 @@ async function main() {
     sessionId,
     sessionStartTime: record.timestamp,
   }
+  let supplemented = false
   await agent.say(ptyId, line, context, {
     surface: 'terminal',
     config: { executionMode: 'free' },
-    callbacks: {},
+    callbacks: {
+      onStep: (_runId, step) => {
+        // 可选：在真实派出期间插话，用于验证来源片段随检查点保存和恢复。
+        if (!supplemented && process.env.RESUME_SUPPLEMENT && step.subAgents?.length) {
+          supplemented = true
+          agent.addUserMessage(ptyId, process.env.RESUME_SUPPLEMENT)
+        }
+      },
+    },
   })
   console.log('RESUME_DONE')
 }

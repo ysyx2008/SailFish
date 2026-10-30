@@ -19,6 +19,7 @@ import { MAX_ORG_DEPTH, OrgLedger, type LeadSeat } from './org-ledger'
 export type ChildStatus = 'pending' | 'running' | 'completed' | 'failed' | 'interrupted'
 
 export interface ChildSnapshot {
+  forkTurns?: ForkTurns
   teamId?: string
   name: string
   /** 派的时候指定的名字没用上（已被占用、或带了不能当名字的符号）时，当时指定的那个 */
@@ -1179,6 +1180,7 @@ function persistSlot(slot: ChildSlot): void {
 
 function snapshotOf(slot: ChildSlot): ChildSnapshot {
   return {
+    forkTurns: slot.forkTurns,
     name: slot.name,
     teamId: slot.teamId,
     askedName: slot.askedName,

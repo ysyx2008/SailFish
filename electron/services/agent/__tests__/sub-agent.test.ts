@@ -936,3 +936,52 @@ describe('独立团队边界', () => {
   })
 
 })
+
+
+describe('派工参数层级与回执',()=>{
+  it('顶层及batch条目错位fork_turns均在派出前拒绝，不静默改成全带',async()=>{
+    const roster=new SubAgentRoster()
+    const create=vi.fn(()=>stubChild('ok',1))
+    const executor=createExecutor(roster,create)
+    const tasks=[{name:'不应派出',description:'任务',prompt:'核对'}]
+    for(const value of ['none','all','1',undefined]){
+      const result=await dispatchSubAgents({fork_turns:value,tasks},defaultConfig,executor)
+      expect(result.success).toBe(false);expect(result.error).toContain('顶层')
+    }
+    const misplaced=await dispatchSubAgents({batch:{instruction:'共同指令',items:[{input:'任务',fork_turns:'none'}]}},defaultConfig,executor)
+    expect(misplaced.success).toBe(false);expect(misplaced.error).toContain('batch.fork_turns')
+    expect(create).not.toHaveBeenCalled();expect(roster.list()).toEqual([])
+    expect((executor as any)._steps).toEqual([])
+  })
+  it('team+batch只报组合不支持，不混报batch的角色或人数',()=>{
+    const parsed=parseDispatchTasks({team:'团',tasks:[{description:'专家甲',prompt:'核对',role:'甲'},{description:'专家乙',prompt:'核对',role:'乙'}],batch:{instruction:'共同指令',items:[{description:'条目',input:'核对'}]}})
+    expect(parsed).toHaveProperty('error')
+    if('error' in parsed){expect(parsed.error).toContain('不能用 batch');expect(parsed.error).not.toContain('第 3 位');expect(parsed.error).not.toContain('role')}
+  })
+  it('混合派工回执逐人显示实际none/最近n轮/默认all，开局吻合',async()=>{
+    const roster=new SubAgentRoster()
+    const children=new Map<string,ReturnType<typeof stubChild>>()
+    const executor=createExecutor(roster,(name)=>{const child=stubChild('ok',1);children.set(name,child);return child})
+    executor.getParentMessages=()=>[{role:'user',content:'第一轮'},{role:'assistant',content:'第一答'},{role:'user',content:'第二轮'},{role:'assistant',content:'第二答'},{role:'user',content:'敲门',_userContextParts:[]}]
+    const result=await dispatchSubAgents({tasks:[{name:'不带者',description:'任务',prompt:'核对',fork_turns:'none'},{name:'最近者',description:'任务',prompt:'核对',fork_turns:'1'},{name:'全带者',description:'任务',prompt:'核对'}],batch:{instruction:'共同',fork_turns:'none',items:[{name:'批量者',input:'核对'}]}},defaultConfig,executor)
+    expect(result.success).toBe(true)
+    expect(result.output).toContain('不带者：任务（上下文：不带）')
+    expect(result.output).toContain('最近者：任务（上下文：最近 1 轮用户交代）')
+    expect(result.output).toContain('全带者：任务（上下文：全带）')
+    expect(children.get('不带者')!.seeded).toEqual([])
+    expect(children.get('批量者')!.seeded).toEqual([])
+    expect(children.get('最近者')!.seeded).toEqual([{role:'user',content:'第二轮'},{role:'assistant',content:'第二答'}])
+    expect(children.get('全带者')!.seeded).toHaveLength(4)
+    await roster.settled()
+  })
+  it('派出回执明确标注登记的验收人，普通成员不冒名',async()=>{
+    const roster=new SubAgentRoster()
+    const executor=createExecutor(roster,()=>stubChild('ok',1))
+    const result=await dispatchSubAgents({team:'验收小组',tasks:[{name:'实施',role:'实施专家',description:'实施任务',prompt:'实施'},{name:'复核',role:'复核专家',description:'核对任务',prompt:'核对',reviewer:true}]},defaultConfig,executor)
+    expect(result.success).toBe(true)
+    expect(result.output.split('\n').find(line=>line.startsWith('- 复核'))).toContain('（验收人）')
+    expect(result.output.split('\n').find(line=>line.startsWith('- 实施'))).not.toContain('（验收人）')
+    expect(roster.listTeams()[0].reviewerNames()).toEqual(['复核'])
+    await roster.settled()
+  })
+})

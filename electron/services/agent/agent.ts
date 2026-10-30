@@ -1519,6 +1519,7 @@ export abstract class Agent {
     display?: { previewImages?: string[]; docPreviewImages?: string[] }
   ): boolean {
     const pending: PendingUserMessage = {
+      userInput: true,
       message,
       attachments: attachments?.length ? attachments : undefined,
       documentContext: documentContext || undefined,
@@ -6480,6 +6481,7 @@ export abstract class Agent {
     if (run.pendingUserMessages.length === 0) return
 
     let combinedText = ''
+    const userContextParts: NonNullable<AiMessage['_userContextParts']> = []
     const allImages: string[] = []
     const visionAvailable = this.currentProfileHasVision()
 
@@ -6518,10 +6520,12 @@ export abstract class Agent {
         uploadedDocs: pending.documentContext,
         imageNote: imageNote || undefined,
       })
+      const start = combinedText.length + (combinedText ? 2 : 0)
       combinedText += (combinedText ? '\n\n' : '') + msgPart
+      if (pending.userInput) userContextParts.push({ start, end: combinedText.length })
     }
 
-    const userSupplementMsg: AiMessage = { role: 'user', content: combinedText }
+    const userSupplementMsg: AiMessage = { role: 'user', content: combinedText, _userContextParts: userContextParts }
     if (allImages.length > 0) {
       userSupplementMsg.images = allImages
     }
@@ -6529,7 +6533,7 @@ export abstract class Agent {
     // _systemInjected: supplement 是任务中途的追加消息，不是新 task 的起点。
     // 不加此标记会让 splitMessagesIntoTasks（../conversation/messages）把它误计为
     // 新 task 边界，使 message task 数 > step chunk 数，fork 截断时丢失最近 task 的上下文。
-    run.taskMessageLog.push({ role: 'user', content: combinedText, _systemInjected: true })
+    run.taskMessageLog.push({ role: 'user', content: combinedText, _systemInjected: true, _userContextParts: userContextParts })
 
     const heardFromUser = run.pendingUserMessages.some(pending => !pending.silent)
     if (heardFromUser) this._userSpokeThisGoalRun = true

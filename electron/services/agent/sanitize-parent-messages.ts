@@ -48,6 +48,15 @@ export function sanitizeParentMessages(messages: readonly AiMessage[]): AiMessag
       continue
     }
     if (msg.role === 'user') {
+      // 同批合并的通知不混入用户交代；落盘的插话虽不是task边界，仍保留用户部分。
+      if (Array.isArray(msg._userContextParts)) {
+        for (const part of msg._userContextParts) {
+          if (!part || !Number.isInteger(part.start) || !Number.isInteger(part.end) || part.start < 0 || part.end <= part.start || part.end > msg.content.length) continue
+          const content = msg.content.slice(part.start, part.end).trim()
+          if (content) out.push({ role: 'user', content })
+        }
+        continue
+      }
       if (msg._systemInjected) continue
       const content = (msg.content || '').trim()
       if (!content) continue

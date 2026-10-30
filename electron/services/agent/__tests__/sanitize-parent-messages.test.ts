@@ -75,3 +75,25 @@ describe('fork_turns', () => {
     ])
   })
 })
+
+describe('通知不占用户上下文轮次', () => {
+  it('只有通知的合并消息不进入用户上下文，也不挤掉最近一次交代', () => {
+    const messages: AiMessage[] = [
+      {role:'user',content:'用户真正交代'},
+      {role:'assistant',content:'已安排'},
+      {role:'user',content:'系统敲门与任务回执',_userContextParts:[]},
+    ]
+    expect(applyForkTurns(sanitizeParentMessages(messages),{kind:'last',n:1})).toEqual(messages.slice(0,2))
+  })
+  it('同批用户插话和通知只带用户部分，落盘任务边界标记不吞掉插话', () => {
+    const combined: AiMessage = {role:'user',content:'通知A 用户一 通知B 用户二',_systemInjected:true,_userContextParts:[{start:4,end:7},{start:12,end:15}]}
+    const cleaned=sanitizeParentMessages([{role:'user',content:'旧任务'},combined,{role:'assistant',content:'新答复'}])
+    expect(cleaned).toEqual([{role:'user',content:'旧任务'},{role:'user',content:'用户一'},{role:'user',content:'用户二'},{role:'assistant',content:'新答复'}])
+    expect(applyForkTurns(cleaned,{kind:'last',n:1})).toEqual([{role:'user',content:'用户二'},{role:'assistant',content:'新答复'}])
+    expect(JSON.stringify(cleaned)).not.toContain('通知')
+  })
+  it('JSON重开后保留来源；旧记录没有新字段时仍按旧标记处理', () => {
+    const saved=JSON.parse(JSON.stringify([{role:'user',content:'通知 用户回答',_systemInjected:true,_userContextParts:[{start:3,end:7}]},{role:'user',content:'旧通知',_systemInjected:true},{role:'user',content:'旧用户原话'}]))
+    expect(sanitizeParentMessages(saved)).toEqual([{role:'user',content:'用户回答'},{role:'user',content:'旧用户原话'}])
+  })
+})
