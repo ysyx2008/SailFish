@@ -130,12 +130,15 @@ try {
     fs.mkdirSync(process.env.E2E_SHOT, { recursive: true })
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1200, 900))
     await pause(200)
+    await chip().hover()
+    await tip().waitFor()
+    await tip().hover()
     await tip().evaluate(el => { el.scrollTop = 0 })
     await page.screenshot({ path: path.join(process.env.E2E_SHOT, 'usage-dark.png') })
     await page.emulateMedia({ colorScheme: 'light' })
     await page.evaluate(() => {
-      document.documentElement.setAttribute('data-ui-theme', 'light')
-      document.body.setAttribute('data-ui-theme', 'light')
+      window.__usageConfig.uiThemeMode = 'manual'
+      window.__usageConfig.uiTheme = 'light'
     })
     await pause(150)
     check('浅色主题沿用原面板背景', await tip().evaluate(el => getComputedStyle(el).backgroundColor) === 'rgb(255, 255, 255)')
