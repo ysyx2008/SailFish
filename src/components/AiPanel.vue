@@ -4308,7 +4308,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 1px;
   background: var(--bg-tertiary);
   border-radius: 1px;
 }
@@ -4317,7 +4317,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
   position: absolute;
   top: 0;
   left: 0;
-  height: 2px;
+  height: 1px;
   background: var(--accent-primary);
   border-radius: 1px;
   transition: width 0.3s ease, left 0.3s ease, background 0.3s ease;
