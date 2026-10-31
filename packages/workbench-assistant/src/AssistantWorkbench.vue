@@ -115,6 +115,9 @@ watch(seat, (now, before) => {
 })
 /** 文件在座时的看法：铺满只活在这一次入座。跨页签能保住，是因为工作台用 v-show 常驻、不卸载。 */
 const focusMode = ref(false)
+/** 收起团队辅助区时保留组件与当前位置，重新展开无需重新导航。 */
+const teamPanelMinimized = ref(false)
+const teamPanelSeated = computed(() => orgSeated.value || teamSeated.value)
 
 const terminalSeated = computed(() => hasHostedTerminal.value && seat.value === 'terminal')
 const artifactSeated = computed(() =>
@@ -152,6 +155,7 @@ watch(focusActive, async (active) => {
 }, { flush: 'post', immediate: true })
 
 watch(seat, () => {
+  teamPanelMinimized.value = false
   focusMode.value = false
 })
 
@@ -169,8 +173,10 @@ const showArtifactFold = computed(() =>
     artifactStore.isVisible(props.tab.id) || artifactStore.isPanelMinimized(props.tab.id)
   )
 )
+const panelExpanded = computed(() => teamPanelSeated.value ? !teamPanelMinimized.value : docExpanded.value)
+const showPanelFold = computed(() => teamPanelSeated.value || showArtifactFold.value)
 const showDeskChrome = computed(() =>
-  showDeskList.value || (showArtifactFold.value && !docExpanded.value)
+  showDeskList.value || (showPanelFold.value && !panelExpanded.value)
 )
 const ratio = computed({
   get: () => artifactStore.splitRatio,
@@ -178,7 +184,7 @@ const ratio = computed({
 })
 
 const panelToggleTitle = computed(() =>
-  docExpanded.value ? t('canvas.minimizePanel') : t('canvas.expandPanel')
+  panelExpanded.value ? t('canvas.minimizePanel') : t('canvas.expandPanel')
 )
 const listOpen = ref(false)
 /** 清单按钮所在槽位；清单浮层挂在 body 上，靠它定位 */
@@ -361,6 +367,7 @@ function seatTerminal() {
 }
 
 function openExpertTeam(stepId: string) {
+  teamPanelMinimized.value = false
   if (seat.value !== 'team') seatBeforeTeam = seat.value
   teamStepId.value = stepId
   seat.value = 'team'
@@ -378,6 +385,7 @@ function closeExpertTeam() {
 }
 
 function openOrganization(stepId: string, member?: string) {
+  teamPanelMinimized.value = false
   if (seat.value !== 'org') {
     seatBeforeOrg = seat.value
     artifactBeforeOrg = seat.value === 'artifact' ? artifactStore.getActiveArtifact(props.tab.id)?.id ?? null : null
@@ -415,6 +423,11 @@ function closeOrgTeam() {
 function togglePanel() {
   if (terminalSeated.value) return
   listOpen.value = false
+  if (teamPanelSeated.value) {
+    focusMode.value = false
+    teamPanelMinimized.value = !teamPanelMinimized.value
+    return
+  }
   if (docExpanded.value) {
     if (artifactPanelRef.value) {
       artifactPanelRef.value.minimizePanel()
@@ -468,7 +481,7 @@ defineExpose({
       'is-chat-collapsed': terminalSeated && !chatVisible,
       'is-stage-resizing': stageResizing,
       'has-desk-list': showDeskList,
-      'has-artifact-fold': showArtifactFold && !docExpanded
+      'has-artifact-fold': showPanelFold && !panelExpanded
     }"
   >
     <div v-if="hasHostedTerminal" v-show="terminalSeated" class="assistant-terminal">
@@ -488,6 +501,8 @@ defineExpose({
       <WorkbenchShell
         class="assistant-shell"
         :toggle-visible="(docExpanded && hasArtifacts) || teamSeated || orgSeated"
+        :toggle-collapsed="teamPanelSeated && teamPanelMinimized"
+        :collapsed-width="0"
         v-model:toggle-ratio="ratio"
         toggle-side="right"
       >
@@ -549,12 +564,12 @@ defineExpose({
                     </Teleport>
                   </div>
                   <button
-                    v-if="showArtifactFold && !docExpanded"
+                    v-if="showPanelFold && !panelExpanded"
                     type="button"
                     class="artifact-chrome-btn"
                     :title="panelToggleTitle"
                     :aria-label="panelToggleTitle"
-                    :aria-expanded="docExpanded"
+                    :aria-expanded="panelExpanded"
                     @click="togglePanel"
                   >
                     <PanelRightOpen :size="14" />
@@ -628,7 +643,7 @@ defineExpose({
       <div ref="artifactFocusEl" class="assistant-focus-doc" />
       <div ref="chatFocusEl" class="assistant-focus-chat" />
     </div>
-    <div v-if="(showArtifactFold && docExpanded && !focusActive) || (focusActive && showDeskList)" class="artifact-chrome artifact-chrome--fold">
+    <div v-if="(showPanelFold && panelExpanded && !focusActive) || (focusActive && showDeskList)" class="artifact-chrome artifact-chrome--fold">
       <div
         v-if="focusActive && showDeskList"
         ref="listSlotRef"
@@ -670,12 +685,12 @@ defineExpose({
         </Teleport>
       </div>
       <button
-        v-if="showArtifactFold && !focusActive"
+        v-if="showPanelFold && !focusActive"
         type="button"
         class="artifact-chrome-btn"
         :title="panelToggleTitle"
         :aria-label="panelToggleTitle"
-        :aria-expanded="docExpanded"
+        :aria-expanded="panelExpanded"
         @click="togglePanel"
       >
         <PanelRightClose :size="14" />
