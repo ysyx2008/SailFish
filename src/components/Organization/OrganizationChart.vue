@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
- * 项目组织图：秘书在最上面，名下按团分组，组长名下再分组，一层层缩进。
+ * 项目组织图：直属成员直接展示，负责人名下分区，一层层缩进。
  * 点某个团的「群聊」打开那个团的完整群聊。内容随派出组长的那一步实时更新。
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Network, UserRound } from 'lucide-vue-next'
+import { Network } from 'lucide-vue-next'
 import { useTerminalStore } from '../../stores/terminal'
 import { teamViewForStep, teamMemberSnapshot, teamSources } from '../../utils/team-view'
 import { buildOrgTree, organizationAttention } from '../../utils/organization-view'
@@ -74,7 +74,6 @@ function showOverview() {
 }
 const memberSnapshot = computed(() => memberName.value ? teamMemberSnapshot(state.value?.steps ?? [], props.stepId, memberName.value, state.value?.sessionId) : undefined)
 watch([() => props.tabId, () => props.stepId, () => props.entry], () => { artifactTeam.value = null; memberName.value = props.entry?.member ?? null })
-const bodyRef = ref<HTMLElement | null>(null)
 const rootRef = ref<HTMLElement | null>(null)
 const localFocus = ref(false)
 const focusTarget = ref<HTMLElement | null>(null)
@@ -105,22 +104,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', syncFocusBounds)
 })
 
-/** 树比面板宽时，把初始横向滚动放到中间，根节点不会一打开就在视口外 */
-const centerTree = () => {
-  const body = bodyRef.value
-  if (!body) return
-  const overflow = body.scrollWidth - body.clientWidth
-  body.scrollLeft = overflow > 0 ? overflow / 2 : 0
-}
-watch(focused, async () => {
-  await nextTick()
-  centerTree()
-})
-
-onMounted(() => {
-  // 各层分支在自己 mounted 里已经自底向上量完并撑好；这里量的是最终宽度
-  centerTree()
-})
 </script>
 
 <template>
@@ -158,14 +141,10 @@ onMounted(() => {
       <OrganizationStatusBadge v-if="attention?.waiting" bucket="waiting" :label="t('ai.organization.summaryWaiting', { count: attention.waiting })" compact />
     </div>
 
-    <div ref="bodyRef" class="oc-body">
+    <div class="oc-body">
       <div v-if="!organization" class="oc-empty">{{ t('ai.organization.empty') }}</div>
       <template v-else>
         <div class="oc-tree">
-          <div class="oc-secretary">
-            <span class="oc-secretary-avatar" aria-hidden="true"><UserRound :size="15" /></span>
-            <span class="oc-secretary-name">{{ t('ai.organization.secretary') }}</span>
-          </div>
           <OrganizationBranch :groups="tree" @open-team="emit('openTeam', $event)" @open-artifacts="artifactTeam = $event" @open-member="memberName = $event" />
         </div>
         <p v-if="organization.omitted" class="oc-omitted">
@@ -229,36 +208,11 @@ onMounted(() => {
 }
 .oc-empty { padding: 24px 0; text-align: center; color: var(--text-secondary); font-size: 12px; }
 
-/* 整棵树按内容宽度居中；比面板宽时横向滚动，不换行，连线才不会跨行断开 */
+/* 用可用面板宽度排布，铺满和恢复分栏时由网格自然重排。 */
 .oc-tree {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: max-content;
-  margin: 0 auto;
+  width: 100%;
+  min-width: 280px;
 }
 
-.oc-secretary {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 24px 10px 12px;
-  border-radius: 14px 4px;
-  border: 2px solid color-mix(in srgb, var(--accent-primary) 65%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-primary) 9%, var(--bg-primary));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-primary) 8%, transparent);
-  font-size: 13px;
-  font-weight: 600;
-}
-.oc-secretary-avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px 2px;
-  color: var(--accent-primary);
-  background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
-}
 .oc-omitted { margin-top: 14px; font-size: 11px; color: var(--text-secondary); word-break: break-all; text-align: center; }
 </style>

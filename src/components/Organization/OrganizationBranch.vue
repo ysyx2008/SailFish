@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
- * 组织图的一层子分支：父亲下面横着排开的几个分支，父到子用直角连线接起来。
- * 团是一个纵向列（团头 + 成员自上而下）；散人是独立分支，和团平级，自己可以再往下长。
+ * 一层真实归属：同级成员网格换行，有下级的负责人和小组各占完整分区。
+ * 缩进与分区边线表达管理关系，不把换行后的成员连接成虚假的新层级。
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessagesSquare, Files } from 'lucide-vue-next'
 import type { OrganizationTeamView } from '@shared/types'
@@ -89,7 +89,7 @@ function summarize(team: OrganizationTeamView, nodes: OrgNode[]): TeamSummary {
 
 const openTeam = (team: OrganizationTeamView) => emit('openTeam', { name: team.name, owner: team.owner })
 
-/** 散人拆成平级的兄弟分支；团整体是一个纵向列 */
+/** 散人保留真实同级关系；团保留自己的成员集合与群聊入口。 */
 const cells = computed<Cell[]>(() => {
   const out: Cell[] = []
   for (const group of props.groups) {
@@ -111,59 +111,11 @@ const cells = computed<Cell[]>(() => {
   return out
 })
 
-/**
- * 父节点要压在最左、最右两个子级中心连线的中点上。左右子树宽度不等时，
- * 包围盒中心会偏离这个中点：给窄的一侧补一半差值，包围盒就对称了，
- * 父节点和它下来的竖干自然落在总线中点。补的是可伸缩的空白，不会把行撑得像等宽那么大。
- * 只量分支本身（不含补出来的空白），内容变了能重新量。
- */
-const rowRef = ref<HTMLElement | null>(null)
-let balanceLeft = 0
-let balanceRight = 0
-
-const branchWidth = (cell: HTMLElement): number =>
-  cell.firstElementChild?.getBoundingClientRect().width ?? 0
-
-/** 直接写行内 padding：子组件先 mounted，父组件量的时候子级已经补好，一次成型，不跨帧跳 */
-const applyBalance = (left: number, right: number) => {
-  if (Math.abs(left - balanceLeft) <= 0.5 && Math.abs(right - balanceRight) <= 0.5) return
-  balanceLeft = left
-  balanceRight = right
-  const el = rowRef.value
-  if (!el) return
-  el.style.paddingLeft = left > 0 ? `${left}px` : ''
-  el.style.paddingRight = right > 0 ? `${right}px` : ''
-}
-
-const measure = () => {
-  const el = rowRef.value
-  if (!el) return
-  const items = Array.from(el.children) as HTMLElement[]
-  const diff = items.length < 2 ? 0 : branchWidth(items[0]) - branchWidth(items[items.length - 1])
-  applyBalance(diff < 0 ? -diff / 2 : 0, diff > 0 ? diff / 2 : 0)
-}
-
-let rowObserver: ResizeObserver | null = null
-onMounted(() => {
-  if (rowRef.value) {
-    rowObserver = new ResizeObserver(measure)
-    rowObserver.observe(rowRef.value)
-  }
-  measure()
-})
-onBeforeUnmount(() => {
-  rowObserver?.disconnect()
-  rowObserver = null
-})
-watch(cells, async () => {
-  await nextTick()
-  measure()
-})
 </script>
 
 <template>
-  <div ref="rowRef" class="org-children" :data-depth="depth">
-    <div v-for="cell in cells" :key="cell.key" class="org-cell" :class="{ 'is-team': cell.kind === 'team' }">
+  <div class="org-children" :data-depth="depth">
+    <div v-for="cell in cells" :key="cell.key" class="org-cell" :class="{ 'is-team': cell.kind === 'team', 'has-children': cell.kind === 'node' && cell.node.groups.length > 0 }">
       <div
         v-if="cell.kind === 'team'"
         class="org-team"
@@ -212,7 +164,7 @@ watch(cells, async () => {
           />
         </div>
         <div class="org-team-members">
-          <div v-for="node in cell.nodes" :key="node.member.id" class="org-member">
+          <div v-for="node in cell.nodes" :key="node.member.id" class="org-member" :class="{ 'has-children': node.groups.length > 0 }">
             <OrganizationNode :node="node" @open="emit('openMember', node.member.name)" />
             <OrganizationBranch
               v-if="node.groups.length"
@@ -241,71 +193,39 @@ watch(cells, async () => {
 </template>
 
 <style scoped>
-/* 一层分支：横着排；每个分支自己带「总线—短竖线—子节点」的连线 */
+/* 同级换行；实际负责人分区占整行，避免窄列递归挤压下级。 */
 .org-children {
-  --org-gap: 20px;
-  --org-stem: 22px;
-  position: relative;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  gap: var(--org-gap);
-  /* 补出来的左右 padding 不算进内容宽度，分支排布不受影响 */
-  box-sizing: content-box;
-  width: max-content;
-  padding-top: var(--org-stem);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: start;
+  gap: 14px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 260px;
 }
-
-/* 父节点往下到横总线的竖干 */
-.org-children::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 2px;
-  height: var(--org-stem);
-  margin-left: -1px;
-  background: var(--org-line, var(--border-color));
-}
-
 .org-cell {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding-top: var(--org-stem);
+  min-width: 0;
 }
-
-/* 横总线到子节点的短竖线 */
-.org-cell::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 2px;
-  height: var(--org-stem);
-  margin-left: -1px;
-  background: var(--org-line, var(--border-color));
-}
-
-/* 横总线：相邻分支各画一半，在间距中间接上 */
-.org-cell::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: calc(var(--org-gap) / -2);
-  right: calc(var(--org-gap) / -2);
-  height: 2px;
-  background: var(--org-line, var(--border-color));
-}
-.org-cell:first-child::after { left: 50%; }
-.org-cell:last-child::after { right: 50%; }
-.org-cell:only-child::after { display: none; }
+.org-cell.is-team, .org-cell.has-children { grid-column: 1 / -1; }
 
 .org-branch {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+}
+.org-branch > .org-node { width: 100%; }
+.org-cell.has-children > .org-branch {
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-secondary) 25%, var(--bg-primary));
+}
+.org-cell.has-children > .org-branch > .org-node { max-width: 320px; }
+.org-branch > .org-children, .org-member > .org-children {
+  padding-left: 16px;
+  border-left: 2px solid var(--org-line, var(--border-color));
 }
 
 /* 团是中性的队伍底板，状态色留给成员；验收结论独立强调。 */
@@ -421,20 +341,21 @@ watch(cells, async () => {
 .org-team-artifacts:hover, .org-team-chat:hover { color: var(--text-primary); border-color: rgba(var(--accent-rgb, 137, 180, 250), 0.45); }
 
 .org-team-members {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: start;
+  gap: 12px;
 }
 .org-team-members > .org-member {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
+  gap: 14px;
   width: 100%;
 }
 /* 只把本团成员卡片拉满列宽，团成员自己带的下级分支不受影响 */
 .org-team-members > .org-member > .org-node {
   width: 100%;
-  max-width: 260px;
 }
+.org-member.has-children { grid-column: 1 / -1; }
 </style>
