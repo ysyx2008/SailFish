@@ -12,8 +12,8 @@ import { teamViewForStep } from '../../utils/team-view'
 import TeamPanelHeader from './TeamPanelHeader.vue'
 import { useTerminalStore } from '../../stores/terminal'
 
-const props = defineProps<{ tabId: string; stepId: string; team: TeamArtifactSource; focusActive: boolean; artifactBindings?: ArtifactPanelBindings }>()
-const emit = defineEmits<{ close: []; toggleFocus: [] }>()
+const props = defineProps<{ tabId: string; stepId: string; team: TeamArtifactSource; focusActive: boolean; artifactBindings?: ArtifactPanelBindings; backLabel?: string }>()
+const emit = defineEmits<{ close: []; back: []; toggleFocus: [] }>()
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
 const artifactStore = useAssistantArtifactStore()
@@ -76,7 +76,7 @@ function back() {
   openRequest++
   panel.value?.flushDraft()
   if (preview.value) preview.value = false
-  else emit('close')
+  else emit('back')
 }
 function close() { openRequest++; panel.value?.flushDraft(); emit('close') }
 function toggleFocus() { panel.value?.flushDraft(); emit('toggleFocus') }
@@ -125,7 +125,7 @@ const titleOf = (item: OrganizationArtifactView) => item.kind === 'result'
 
 <template>
   <section class="org-artifacts" :class="{ 'is-focus': focusActive }">
-    <TeamPanelHeader class="oa-header" :title="`${sourceName} · ${t('ai.organization.teamArtifacts')}`" :close-label="t('ai.organization.closeArtifacts')" :back-label="t(preview ? 'ai.organization.backToArtifacts' : 'ai.organization.backToChart')" :meta="'name' in team ? sourceOwner || t('ai.organization.secretary') : undefined" :focused="focusActive" :hide-focus="preview" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="close" @back="back" @toggle-focus="toggleFocus">
+    <TeamPanelHeader class="oa-header" :title="`${sourceName} · ${t('ai.organization.teamArtifacts')}`" :close-label="t('ai.organization.closeArtifacts')" :back-label="preview ? t('ai.organization.backToArtifacts') : backLabel ?? t('ai.organization.backToChart')" :meta="'name' in team ? sourceOwner || t('ai.organization.secretary') : undefined" :focused="focusActive" :hide-focus="preview" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="close" @back="back" @toggle-focus="toggleFocus">
       <template #icon><Files :size="14" /></template>
       <template v-if="!preview" #actions><button type="button" class="btn-icon btn-icon-header oa-refresh" :disabled="loading" :title="t('ai.organization.refreshArtifacts')" @click="refresh(true)"><RefreshCw :size="14" /></button></template>
     </TeamPanelHeader>

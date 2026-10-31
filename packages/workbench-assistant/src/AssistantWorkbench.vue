@@ -105,7 +105,6 @@ const teamSeated = computed(() => seat.value === 'team' && !!teamStepId.value)
 /** 右侧在看哪个项目组织（派出组织的那一步），以及从图里点开的团 */
 const orgStepId = ref<string | null>(null)
 const orgEntry = ref<{ member?: string }>({})
-const orgTeamName = ref<{ name: string; owner?: string } | null>(null)
 /** 打开组织图前坐的是谁，关掉组织图回到它 */
 let seatBeforeOrg: DeskSeat = 'none'
 let artifactBeforeOrg: string | null = null
@@ -157,7 +156,7 @@ watch(focusActive, async (active) => {
 watch(seat, () => {
   teamPanelMinimized.value = false
   focusMode.value = false
-})
+}, { flush: 'sync' })
 
 function toggleFocus() {
   if (!artifactSeated.value && !orgSeated.value) return
@@ -392,14 +391,14 @@ function openOrganization(stepId: string, member?: string) {
   }
   orgStepId.value = stepId
   orgEntry.value = { member }
-  orgTeamName.value = null
   seat.value = 'org'
+  // 切座会同步清除上一工作面的铺满态，随后为这次团队入口建立默认铺满。
+  focusMode.value = true
   listOpen.value = false
   chatVisible.value = true
 }
 
 function closeOrganization() {
-  orgTeamName.value = null
   orgStepId.value = null
   if (seat.value !== 'org') return
   if (seatBeforeOrg === 'terminal' && hasHostedTerminal.value) seat.value = 'terminal'
@@ -408,16 +407,6 @@ function closeOrganization() {
     seat.value = 'artifact'
   }
   else seat.value = 'none'
-}
-
-/** 组织图里点某个团：右侧面板换成那个团的群聊，关掉群聊回到图上 */
-function openOrgTeam(team: { name: string; owner?: string }) {
-  orgEntry.value = {}
-  orgTeamName.value = team
-}
-
-function closeOrgTeam() {
-  orgTeamName.value = null
 }
 
 function togglePanel() {
@@ -583,19 +572,7 @@ defineExpose({
           <div class="assistant-teleport-slot">
             <Teleport :disabled="!focusActive || !orgSeated" :to="artifactFocusEl || 'body'">
             <template v-if="orgSeated">
-              <ExpertTeamChat
-                v-if="orgTeamName"
-                mode="panel"
-                :tab-id="tab.id"
-                :step-id="orgStepId!"
-                :team-name="orgTeamName.name"
-                :team-owner="orgTeamName.owner"
-                :focus-active="focusActive"
-                @toggle-focus="toggleFocus"
-                @close="closeOrgTeam"
-              />
               <OrganizationChart
-                v-else
                 :artifact-bindings="{ scrollToAgentStep, addComposerQuote, addComposerImage, setComposerDraft, submitComposerMessage }"
                 mode="panel"
                 :tab-id="tab.id"
@@ -605,7 +582,6 @@ defineExpose({
                 :focus-active="focusActive"
                 @toggle-focus="toggleFocus"
                 @close="closeOrganization"
-                @open-team="openOrgTeam"
               />
             </template>
             </Teleport>

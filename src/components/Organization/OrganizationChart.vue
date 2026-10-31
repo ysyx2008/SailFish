@@ -3,7 +3,7 @@
  * 项目组织图：直属成员直接展示，负责人名下分区，一层层缩进。
  * 点某个团的「群聊」打开那个团的完整群聊。内容随派出组长的那一步实时更新。
  */
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Network } from 'lucide-vue-next'
 import { useTerminalStore } from '../../stores/terminal'
@@ -14,6 +14,7 @@ import OrganizationBranch from './OrganizationBranch.vue'
 import OrganizationTeamArtifacts from './OrganizationTeamArtifacts.vue'
 import type { TeamArtifactSource } from '@shared/types'
 import OrganizationMemberDetail from './OrganizationMemberDetail.vue'
+import ExpertTeamChat from '../ExpertTeam/ExpertTeamChat.vue'
 import { provideTeamViewport } from './team-viewport'
 import { useTeamSnapshot } from './team-snapshot'
 import TeamPanelHeader from './TeamPanelHeader.vue'
@@ -30,7 +31,7 @@ const props = withDefaults(defineProps<{
   entry?: { member?: string }
   artifactBindings?: ArtifactPanelBindings
 }>(), { mode: 'overlay', focusActive: undefined })
-const emit = defineEmits<{ close: []; toggleFocus: []; overview: []; openTeam: [team: { name: string; owner?: string }] }>()
+const emit = defineEmits<{ close: []; toggleFocus: []; overview: [] }>()
 
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
@@ -65,15 +66,40 @@ const stats = computed(() => {
   }
 })
 
-const artifactTeam = ref<TeamArtifactSource | null>(null)
-const memberName = ref<string | null>(props.entry?.member ?? null)
+type Detail = { kind: 'member'; name: string } | { kind: 'team'; name: string; owner?: string } | { kind: 'artifacts'; source: TeamArtifactSource; returnToMember?: string }
+const detail = ref<Detail | null>(props.entry?.member ? { kind: 'member', name: props.entry.member } : null)
+const detailFocused = ref(false)
+let restoreSplitAfterDetail = false
+let detailTrigger: HTMLElement | null = null
+const memberName = computed(() => detail.value?.kind === 'member' ? detail.value.name : null)
 const member = computed(() => currentOrganization.value?.members.find(member => member.name === memberName.value))
 function showOverview() {
-  memberName.value = null
+  restoreDetailFocus()
+  detail.value = null
   emit('overview')
+  void nextTick(() => { if (detailTrigger?.isConnected) detailTrigger.focus({ preventScroll: true }) })
+}
+function openDetail(next: Detail, preserveFocus = false) {
+  if (!preserveFocus) restoreDetailFocus()
+  const active = document.activeElement
+  if (active instanceof HTMLElement && active.closest('.oc-overview')) detailTrigger = active
+  detail.value = next
+}
+function closeArtifacts() {
+  if (detail.value?.kind === 'artifacts' && detail.value.returnToMember) {
+    openDetail({ kind: 'member', name: detail.value.returnToMember }, true)
+  } else showOverview()
 }
 const memberSnapshot = computed(() => memberName.value ? teamMemberSnapshot(state.value?.steps ?? [], props.stepId, memberName.value, state.value?.sessionId) : undefined)
-watch([() => props.tabId, () => props.stepId, () => props.entry], () => { artifactTeam.value = null; memberName.value = props.entry?.member ?? null })
+watch([() => props.tabId, () => props.stepId, () => props.entry], () => {
+  detail.value = props.entry?.member ? { kind: 'member', name: props.entry.member } : null
+  detailFocused.value = false
+  restoreSplitAfterDetail = false
+  detailTrigger = null
+})
+watch([memberName, member], () => {
+  if (memberName.value && !member.value) showOverview()
+}, { immediate: true, flush: 'post' })
 const rootRef = ref<HTMLElement | null>(null)
 const localFocus = ref(false)
 const focusTarget = ref<HTMLElement | null>(null)
@@ -99,6 +125,23 @@ const toggleFocus = () => {
   }
   localFocus.value = !localFocus.value
 }
+function restoreDetailFocus() {
+  detailFocused.value = false
+  if (restoreSplitAfterDetail) {
+    restoreSplitAfterDetail = false
+    toggleFocus()
+  }
+}
+function toggleDetailFocus() {
+  if (detailFocused.value) { restoreDetailFocus(); return }
+  restoreSplitAfterDetail = !focused.value
+  if (restoreSplitAfterDetail) toggleFocus()
+  detailFocused.value = true
+}
+onMounted(() => {
+  // 无工作台宿主的终端/联络覆盖层也默认铺满自己的工作区。
+  if (props.focusActive === undefined) toggleFocus()
+})
 onBeforeUnmount(() => {
   focusObserver?.disconnect()
   window.removeEventListener('resize', syncFocusBounds)
@@ -109,9 +152,8 @@ onBeforeUnmount(() => {
 <template>
   <Teleport :disabled="!localFocus" :to="focusTarget || 'body'">
   <section ref="rootRef" class="organization-chart" :class="[`is-${mode}`, { 'is-focus': focused }]" :style="localFocus ? focusBounds : undefined">
-    <OrganizationTeamArtifacts v-if="artifactTeam" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" :team="artifactTeam" :focus-active="focused" @close="artifactTeam = null" @toggle-focus="toggleFocus" />
-    <OrganizationMemberDetail v-else-if="member" :step-id="stepId" :session-id="currentOrganization?.sessionId" :member="member" :snapshot="memberSnapshot" :focus-active="focused" @close="showOverview" @artifacts="artifactTeam = { member: member.name }" @toggle-focus="toggleFocus" />
-    <template v-else>
+    <div class="oc-workspace">
+    <div class="oc-overview" :inert="detailFocused || undefined" :aria-hidden="detailFocused || undefined">
     <TeamPanelHeader class="oc-header" :title="t('ai.organization.title')" :close-label="t('ai.organization.close')" :meta="organization ? t('ai.organization.metaSimple', { total: organization.total, teams: organization.teams.length + (organization.omittedTeams ?? 0) }) : undefined" :focused="focused" :focus-label="focused ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="emit('close')" @toggle-focus="toggleFocus">
       <template #icon><Network :size="14" /></template>
     </TeamPanelHeader>
@@ -145,7 +187,7 @@ onBeforeUnmount(() => {
       <div v-if="!organization" class="oc-empty">{{ t('ai.organization.empty') }}</div>
       <template v-else>
         <div class="oc-tree">
-          <OrganizationBranch :groups="tree" @open-team="emit('openTeam', $event)" @open-artifacts="artifactTeam = $event" @open-member="memberName = $event" />
+          <OrganizationBranch :groups="tree" @open-team="openDetail({ kind: 'team', ...$event })" @open-artifacts="openDetail({ kind: 'artifacts', source: $event })" @open-member="openDetail({ kind: 'member', name: $event })" />
         </div>
         <p v-if="organization.omitted" class="oc-omitted">
           {{ t('ai.organization.omitted', { count: organization.omitted, path: organization.boardPath ?? '' }) }}
@@ -155,7 +197,13 @@ onBeforeUnmount(() => {
         </p>
       </template>
     </div>
-    </template>
+    </div>
+    <aside v-if="detail" class="oc-detail" :class="{ 'is-focus': detailFocused }" :style="!focused || mode === 'overlay' ? { '--assistant-focus-overlay': '0px' } : undefined">
+      <OrganizationMemberDetail v-if="detail.kind === 'member' && member" :key="member.name" :step-id="stepId" :session-id="currentOrganization?.sessionId" :member="member" :snapshot="memberSnapshot" :focus-active="detailFocused" @close="showOverview" @artifacts="openDetail({ kind: 'artifacts', source: { member: member.name }, returnToMember: member.name }, true)" @toggle-focus="toggleDetailFocus" />
+      <ExpertTeamChat v-else-if="detail.kind === 'team'" :key="JSON.stringify([detail.owner, detail.name])" mode="panel" :tab-id="tabId" :step-id="stepId" :team-name="detail.name" :team-owner="detail.owner" :focus-active="detailFocused" @close="showOverview" @toggle-focus="toggleDetailFocus" />
+      <OrganizationTeamArtifacts v-else-if="detail.kind === 'artifacts'" :key="JSON.stringify(detail.source)" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" :team="detail.source" :back-label="detail.returnToMember ? t('common.back') : undefined" :focus-active="detailFocused" @back="closeArtifacts" @close="showOverview" @toggle-focus="toggleDetailFocus" />
+    </aside>
+    </div>
   </section>
   </Teleport>
 </template>
@@ -187,6 +235,12 @@ onBeforeUnmount(() => {
 }
 .organization-chart.is-focus { border-left: none; }
 .organization-chart.is-focus .oc-body { padding-bottom: var(--assistant-focus-overlay, 22px); }
+.oc-workspace { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.oc-overview { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.oc-detail { display: flex; flex-direction: column; flex: 0 0 clamp(300px, 42%, 560px); max-width: 65%; min-width: 0; min-height: 0; border-left: 1px solid var(--border-color); background: var(--bg-primary); }
+.oc-detail.is-focus { position: absolute; inset: 0; z-index: 1; max-width: none; border-left: none; }
+.organization-chart.is-focus .oc-detail:not(.is-focus) { padding-bottom: var(--assistant-focus-overlay, 22px); }
+.oc-detail:not(.is-focus) :deep(.etc-list), .oc-detail:not(.is-focus) :deep(.oa-list), .oc-detail:not(.is-focus) :deep(.om-body) { padding-bottom: 14px; }
 
 .oc-progress { flex-shrink: 0; padding: 10px 14px; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .oc-progress span { color: var(--text-secondary); }

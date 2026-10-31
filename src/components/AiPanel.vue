@@ -559,7 +559,6 @@ const overlayTeamStepId = ref<string | null>(null)
 /** 盖在对话栏上的项目组织图，和从图里点开的某个团的群聊（再盖在组织图上） */
 const overlayOrgStepId = ref<string | null>(null)
 const overlayOrgEntry = ref<{ member?: string }>({})
-const overlayOrgTeam = ref<{ name: string; owner?: string } | null>(null)
 const openOrganization = (stepId: string, member?: string) => {
   if (props.openOrganizationSeat) {
     props.openOrganizationSeat(stepId, member)
@@ -567,14 +566,12 @@ const openOrganization = (stepId: string, member?: string) => {
   }
   overlayOrgStepId.value = stepId
   overlayOrgEntry.value = { member }
-  overlayOrgTeam.value = null
 }
 /** 同一份组织可能挂在多个派出步骤上：每个任务只认第一份，对话里每个任务也只挂一张卡片 */
 const teamCardViews = computed(() => teamCards(agentState.value?.steps ?? [], agentState.value?.sessionId))
 watch(() => props.tabId, () => {
   overlayTeamStepId.value = null
   overlayOrgStepId.value = null
-  overlayOrgTeam.value = null
 })
 // ==================== 初始化 Composables ====================
 
@@ -3511,18 +3508,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
       :step-id="overlayOrgStepId"
       :entry="overlayOrgEntry"
       @overview="overlayOrgEntry = {}"
-      @close="overlayOrgStepId = null; overlayOrgTeam = null"
-      @open-team="overlayOrgTeam = $event"
-    />
-    <ExpertTeamChat
-      v-if="overlayOrgStepId && overlayOrgTeam && !openOrganizationSeat"
-      class="expert-team-overlay"
-      mode="overlay"
-      :tab-id="tabId"
-      :step-id="overlayOrgStepId"
-      :team-name="overlayOrgTeam.name"
-      :team-owner="overlayOrgTeam.owner"
-      @close="overlayOrgTeam = null"
+      @close="overlayOrgStepId = null"
     />
     <ExpertTeamChat
       v-if="overlayTeamStepId"

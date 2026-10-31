@@ -47,6 +47,20 @@ beforeEach(() => {
 afterEach(() => { app?.unmount(); app = undefined; container?.remove(); vi.useRealTimers(); delete (window as unknown as { electronAPI?: unknown }).electronAPI })
 
 describe('团队产出物的实时边界', () => {
+  it('右侧查看成果和关闭时保留同一团队图，不卸载总览', async () => {
+    mount(true); await settle()
+    const overview = container.querySelector('.oc-body')
+    container.querySelector<HTMLButtonElement>('.open-team-artifacts')!.click(); await settle()
+    expect(container.querySelector('.oc-detail .org-artifacts')).not.toBeNull()
+    expect(container.querySelector('.oc-overview .oc-body')).toBe(overview)
+    container.querySelector<HTMLButtonElement>('.oa-header .tph-focus')!.click(); await settle()
+    expect(container.querySelector('.oc-detail.is-focus')).not.toBeNull()
+    expect(container.querySelector('.oc-overview')?.hasAttribute('inert')).toBe(true)
+    container.querySelector<HTMLButtonElement>('.oa-header .tph-close')!.click(); await settle()
+    expect(container.querySelector('.oc-detail')).toBeNull()
+    expect(container.querySelector('.oc-overview .oc-body')).toBe(overview)
+    expect(container.querySelector('.oc-overview')?.hasAttribute('inert')).toBe(false)
+  })
   it('切换原会话后，不让旧的文件存在性检查重新打开旧成果', async () => {
     let finish!: (exists: boolean) => void
     fixture.exists.mockReturnValue(new Promise<boolean>(resolve => { finish = resolve }))
