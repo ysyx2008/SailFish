@@ -534,7 +534,7 @@ defineExpose({
                   >
                     <button
                       type="button"
-                      class="artifact-chrome-btn"
+                      class="btn-icon btn-icon-header artifact-chrome-btn"
                       :class="{ 'is-open': listOpen }"
                       :aria-label="t('canvas.artifactList')"
                       :aria-expanded="listOpen"
@@ -566,7 +566,7 @@ defineExpose({
                   <button
                     v-if="showPanelFold && !panelExpanded"
                     type="button"
-                    class="artifact-chrome-btn"
+                    class="btn-icon btn-icon-header artifact-chrome-btn"
                     :title="panelToggleTitle"
                     :aria-label="panelToggleTitle"
                     :aria-expanded="panelExpanded"
@@ -655,7 +655,7 @@ defineExpose({
       >
         <button
           type="button"
-          class="artifact-chrome-btn"
+          class="btn-icon btn-icon-header artifact-chrome-btn"
           :class="{ 'is-open': listOpen }"
           :aria-label="t('canvas.artifactList')"
           :aria-expanded="listOpen"
@@ -687,7 +687,7 @@ defineExpose({
       <button
         v-if="showPanelFold && !focusActive"
         type="button"
-        class="artifact-chrome-btn"
+        class="btn-icon btn-icon-header artifact-chrome-btn"
         :title="panelToggleTitle"
         :aria-label="panelToggleTitle"
         :aria-expanded="panelExpanded"
@@ -901,32 +901,6 @@ defineExpose({
   position: relative;
   display: flex;
   align-items: center;
-}
-
-.artifact-chrome-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: 5px;
-  line-height: 0;
-  background: transparent;
-  color: var(--text-secondary, #aaa);
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-
-.artifact-chrome-btn svg {
-  display: block;
-}
-
-.artifact-chrome-btn:hover,
-.artifact-chrome-btn.is-open {
-  background: var(--hover-bg, rgba(255, 255, 255, 0.08));
-  color: var(--text-primary);
 }
 
 .artifact-list-pop-enter-active {

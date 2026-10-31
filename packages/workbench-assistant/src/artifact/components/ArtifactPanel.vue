@@ -967,8 +967,8 @@ defineExpose({ minimizePanel, flushDraft: flushActiveDraft })
       <div v-if="tabsOverflow" ref="tabPickerRef" class="artifact-tab-picker">
         <button
           type="button"
-          class="artifact-tab-nav-btn"
-          :class="{ 'artifact-tab-nav-btn--open': showTabPicker }"
+          class="btn-icon btn-icon-header artifact-tab-nav-btn"
+          :class="{ 'is-open': showTabPicker }"
           :aria-expanded="showTabPicker"
           :title="t('canvas.openTabsMenu')"
           @click="toggleTabPicker"
@@ -980,7 +980,7 @@ defineExpose({ minimizePanel, flushDraft: flushActiveDraft })
         <button
           v-if="isActiveEditable"
           type="button"
-          class="canvas-text-btn canvas-save-text-btn"
+          class="btn-header canvas-text-btn canvas-save-text-btn"
           :disabled="saving || !canSaveActive"
           :title="saveActiveTitle"
           @click="runSaveActive"
@@ -991,7 +991,7 @@ defineExpose({ minimizePanel, flushDraft: flushActiveDraft })
           <button
             v-if="showOpenButton"
             type="button"
-            class="canvas-text-btn canvas-open-btn"
+            class="btn-header canvas-text-btn canvas-open-btn"
             :class="{ 'canvas-open-btn--with-menu': showFileOverflowMenu }"
             :disabled="!canOpenActive"
             :title="t('canvas.openFile')"
@@ -1002,7 +1002,7 @@ defineExpose({ minimizePanel, flushDraft: flushActiveDraft })
           <div v-if="showFileOverflowMenu" ref="fileMenuRef" class="canvas-file-menu-wrap">
             <button
               type="button"
-              class="canvas-text-btn canvas-file-overflow-btn"
+              class="btn-header canvas-text-btn canvas-file-overflow-btn"
               :class="{ 'canvas-file-overflow-btn--solo': !showOpenButton }"
               :aria-expanded="showFileMenuDropdown"
               :title="t('canvas.openMenu')"
@@ -1046,7 +1046,7 @@ defineExpose({ minimizePanel, flushDraft: flushActiveDraft })
         <div v-if="canSendActive" ref="sendMenuRef" class="canvas-file-menu-wrap">
           <button
             type="button"
-            class="canvas-text-btn canvas-icon-btn"
+            class="btn-icon btn-icon-header canvas-text-btn canvas-icon-btn"
             :aria-expanded="showSendMenu"
             :aria-label="t('canvas.sendToPhone')"
             :title="t('canvas.sendToPhone')"
@@ -1057,7 +1057,7 @@ defineExpose({ minimizePanel, flushDraft: flushActiveDraft })
         </div>
         <button
           type="button"
-          class="canvas-text-btn canvas-icon-btn"
+          class="btn-icon btn-icon-header canvas-text-btn canvas-icon-btn"
           :aria-pressed="focusActive"
           :aria-label="focusActive ? t('canvas.splitDocument') : t('canvas.focusDocument')"
           :title="focusActive ? t('canvas.splitDocument') : t('canvas.focusDocument')"
@@ -1503,26 +1503,6 @@ defineExpose({ minimizePanel, flushDraft: flushActiveDraft })
   margin-left: -6px;
 }
 
-.artifact-tab-nav-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary, #aaa);
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-
-.artifact-tab-nav-btn:hover,
-.artifact-tab-nav-btn--open {
-  background: color-mix(in srgb, var(--text-primary, #eee) 10%, transparent);
-  color: var(--text-primary, #eee);
-}
-
 .artifact-tab-picker-menu {
   position: fixed;
   z-index: 10000;
@@ -1636,47 +1616,9 @@ defineExpose({ minimizePanel, flushDraft: flushActiveDraft })
   margin-left: auto;
 }
 
-.canvas-text-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  box-sizing: border-box;
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
-  border-radius: 5px;
-  background: transparent;
-  color: var(--text-primary, #eee);
-  font-size: 11px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.12s, border-color 0.12s;
-}
-
-.canvas-icon-btn {
-  width: 22px;
-  padding: 0;
-  justify-content: center;
-  border-radius: 5px;
-  color: var(--text-secondary, #aaa);
-}
-
-.canvas-icon-btn:hover:not(:disabled) {
-  color: var(--text-primary, #eee);
-}
-
-.canvas-text-btn:hover:not(:disabled) {
-  background: var(--hover-bg, rgba(255, 255, 255, 0.08));
-}
-
 .canvas-header-actions .canvas-save-text-btn:hover:not(:disabled) {
   color: var(--accent-primary, #4d9eff);
   border-color: rgba(var(--accent-rgb, 77, 158, 255), 0.35);
-}
-
-.canvas-text-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .canvas-save-text-btn:not(:disabled) {

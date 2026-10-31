@@ -124,7 +124,7 @@ onUnmounted(() => {
           :profiles="aiProfiles"
           :disabled="isRunning"
         />
-        <button class="btn-icon" @click="clearMessages" :title="t('common.clear')">
+        <button class="btn-icon btn-icon-header" @click="clearMessages" :title="t('common.clear')">
           <Trash2 :size="18" />
         </button>
       </div>
@@ -329,25 +329,6 @@ onUnmounted(() => {
 .model-select:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.btn-icon {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.btn-icon:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
 }
 
 /* 主体内容 */

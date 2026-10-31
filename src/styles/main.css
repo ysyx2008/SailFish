@@ -942,34 +942,7 @@ html, body {
   transform: scale(0.95);
 }
 
-/* header 按钮变体：用于 32px 高的顶部栏（app-header / panel-header / settings-header 等）
-   hover 背景若按默认 26x26 会几乎顶到 header 边界，这里统一收紧到 22x22，
-   并削弱 hover 放大比例，保证软件各处顶部栏按钮视觉一致。
-   颜色采用次级文本色（默认弱化），hover 时回到主文本色——降低 header 图标整体视觉权重，
-   尤其在 Windows 上与系统标题栏按钮（细线条）并排时更协调。 */
-.btn-icon.btn-icon-header {
-  width: 22px;
-  height: 22px;
-  padding: 2px;
-  border-radius: 5px;
-  color: var(--text-secondary);
-  /* 顶栏贴窗口上沿：macOS hiddenInset / 自绘 drag 区会吃掉未声明 no-drag 的点击 */
-  -webkit-app-region: no-drag;
-}
-
-.btn-icon.btn-icon-header:hover {
-  transform: scale(1.04);
-  color: var(--text-primary);
-}
-
-/* header 图标 hover 不再发光：避免顶栏一排按钮在 hover 时各自亮起彩色光晕，
-   交互反馈仅靠背景 + 颜色提亮，跟 Windows 自绘按钮的素净 hover 风格一致。 */
-.btn-icon.btn-icon-header:hover svg {
-  filter: none;
-}
-
-/* 去掉按钮的默认焦点轮廓：按 ESC 等键盘操作后不残留黄框；
-   视觉反馈由 :hover / :active 提供，输入框焦点样式不受影响 */
+/* 常规按钮保留原焦点处理；顶栏操作在公共变体中提供明确的focus-visible。 */
 button:focus,
 button:focus-visible {
   outline: none;
@@ -1118,6 +1091,64 @@ button:focus-visible {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* 顶部标题栏操作的唯一视觉来源。导航、页签关闭和系统窗口键不接入。 */
+.btn-header,
+.btn-icon.btn-icon-header {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 8px;
+  gap: 4px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transform: none;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  -webkit-app-region: no-drag;
+}
+.btn-icon.btn-icon-header { width: 22px; padding: 0; }
+.btn-header:hover:not(:disabled),
+.btn-icon.btn-icon-header:hover:not(:disabled),
+.btn-icon.btn-icon-header.is-open:not(:disabled) {
+  background: var(--hover-bg, var(--bg-hover, rgba(255,255,255,.08)));
+  color: var(--text-primary);
+  transform: none;
+}
+.btn-header:active:not(:disabled),
+.btn-icon.btn-icon-header:active:not(:disabled) {
+  background: var(--bg-active, var(--bg-hover));
+  transform: none;
+}
+.btn-header:focus-visible,
+.btn-icon.btn-icon-header:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+.btn-header:disabled,
+.btn-icon.btn-icon-header:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.btn-header:disabled:hover,
+.btn-icon.btn-icon-header:disabled:hover {
+  background: transparent;
+  color: var(--text-secondary);
+  transform: none;
+}
+.btn-icon.btn-icon-header svg { display: block; width: 16px; height: 16px; }
+.btn-icon.btn-icon-header:hover svg,
+.btn-icon.btn-icon-header:active svg { filter: none; transform: none; }
 
 /* ==================================================================
    Settings 模块内容区规范（卡片 / 行 / 文字层级 / 行内控件）

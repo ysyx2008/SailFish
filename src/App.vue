@@ -1795,7 +1795,7 @@ onUnmounted(() => {
       >
         <div class="sidebar-header">
           <span>{{ t('header.hostManager') }}</span>
-          <button class="btn-icon btn-sm" @click="showSidebar = false" :title="t('header.closeSidebar')">
+          <button class="btn-icon btn-icon-header" @click="showSidebar = false" :title="t('header.closeSidebar')">
             <X :size="14" />
           </button>
         </div>
@@ -1884,7 +1884,7 @@ onUnmounted(() => {
         <button
           v-if="showAiPanelToggle"
           type="button"
-          class="btn-icon ai-panel-toggle-btn"
+          class="btn-icon btn-icon-header ai-panel-toggle-btn"
           :class="{ 'is-collapsed': !aiPanelVisible }"
           :title="t('shell.toggleAiPanel')"
           :aria-expanded="aiPanelVisible"
@@ -1895,7 +1895,7 @@ onUnmounted(() => {
         </button>
         <button
           v-if="authStore.showSoftEntry && !authStore.isAuthenticated"
-          class="btn-icon btn-icon-header sso-soft-btn"
+          class="btn-header sso-soft-btn"
           :disabled="authStore.loading"
           :title="t('header.ssoLogin')"
           @click="onSsoSoftLogin"
@@ -1904,7 +1904,7 @@ onUnmounted(() => {
         </button>
         <button
           v-else-if="authStore.face && recallSidebarCollapsed"
-          class="btn-icon btn-icon-header sso-soft-btn"
+          class="btn-header sso-soft-btn"
           :title="t('header.ssoLogout')"
           @click="onSsoSoftLogout"
         >
@@ -1939,7 +1939,7 @@ onUnmounted(() => {
           <MenuIcon :size="18" />
         </button>
         <button
-          class="btn-icon sidebar-toggle-btn"
+          class="btn-icon btn-icon-header sidebar-toggle-btn"
           :class="{ 'is-collapsed': !showRecallSidebar, 'has-attention': sidebarToggleAttention }"
           :title="showRecallSidebar ? t('shell.toggleSidebar') : t('shell.expandSidebar')"
           :aria-expanded="showRecallSidebar"
@@ -2314,34 +2314,17 @@ onUnmounted(() => {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-/* header 按钮尺寸与 hover scale 统一由 main.css 的 .btn-icon-header 变体提供 */
+/* 顶栏按钮尺寸、描边和交互状态由 main.css 的 .btn-icon-header 变体提供 */
 
-/* 侧栏开关：紧邻红绿灯，做成"轻触感"而非工具栏图标——
-   静默时只是一枚淡淡的线条图标（不抢红绿灯的注意力），hover 才浮出底板。
-   图标随开合换向（收起时朝外推、展开时朝内收），点之前就知道会发生什么。 */
-.sidebar-toggle-btn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border-radius: 5px;
-  line-height: 0;
-  color: var(--text-tertiary, var(--text-secondary));
-  background: transparent;
-  transition: background 0.18s ease, color 0.18s ease;
-}
+/* 壳层操作按钮的视觉由公共btn-icon-header提供，此处只管定位。 */
+.sidebar-toggle-btn { position: relative; pointer-events: auto; -webkit-app-region: no-drag; }
 
 .sidebar-toggle-btn svg {
   display: block;
 }
 
 /* 与红绿灯之间留出一档呼吸，避免圆形彩色按钮紧挨着方形线框图标 */
-.app-container.is-mac .shell-chrome .sidebar-toggle-btn {
-  margin-left: 2px;
-}
+.app-container.is-mac .shell-chrome .sidebar-toggle-btn { margin-left: 2px; }
 
 .shell-nav-btn {
   display: inline-flex;
@@ -2388,67 +2371,11 @@ onUnmounted(() => {
   cursor: default;
 }
 
-.sidebar-toggle-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover, rgba(127, 127, 127, 0.14));
-  /* 顶栏高度有限，这里不做放大，避免顶到 header 边界 */
-  transform: none;
-}
-
-.sidebar-toggle-btn:active {
-  background: var(--bg-active, rgba(127, 127, 127, 0.2));
-}
-
-/* 收起态：侧栏不在眼前，图标稍微提一点存在感，提示"这里还能展开" */
-.sidebar-toggle-btn.is-collapsed {
-  color: var(--text-secondary);
-}
-
 /* 对话栏开关：与左边那枚侧栏开关同一套轻触感，方向相反，钉在窗口右上 */
-.ai-panel-toggle-btn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  /* 与产出物顶栏「打开 / 发送到手机」同一尺寸，并排才齐 */
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border-radius: 5px;
-  line-height: 0;
-  color: var(--text-tertiary, var(--text-secondary));
-  background: transparent;
-  transition: background 0.18s ease, color 0.18s ease;
-  pointer-events: auto;
-  -webkit-app-region: no-drag;
-}
+.ai-panel-toggle-btn { position: relative; pointer-events: auto; -webkit-app-region: no-drag; }
 
 .ai-panel-toggle-btn svg {
   display: block;
-}
-
-.ai-panel-toggle-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover, rgba(127, 127, 127, 0.14));
-  transform: none;
-}
-
-.ai-panel-toggle-btn:hover svg {
-  filter: none;
-}
-
-.ai-panel-toggle-btn:active {
-  background: var(--bg-active, rgba(127, 127, 127, 0.2));
-}
-
-.ai-panel-toggle-btn.is-collapsed {
-  color: var(--text-secondary);
-}
-
-/* header 图标不发光（与 btn-icon-header 同一取向），避免顶栏出现彩色光晕 */
-.sidebar-toggle-btn:hover svg {
-  filter: none;
 }
 
 /* 收起时侧栏里的动静打到这枚按钮上。描边取 header 底色，
@@ -2469,8 +2396,8 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   max-width: 140px;
-  padding: 0 10px !important;
-  width: auto !important;
+  padding: 0 10px;
+  width: auto;
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
@@ -2586,16 +2513,6 @@ onUnmounted(() => {
 
 .app-container.is-win .sidebar-header {
   padding-left: 68px;
-}
-
-.sidebar-header .btn-icon {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 5px;
 }
 
 .sidebar-content {

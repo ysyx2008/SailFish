@@ -855,7 +855,7 @@ const loadMore = () => {
     <div v-if="props.collapsed" class="panel-header panel-header--collapsed">
       <button
         type="button"
-        class="panel-action-btn"
+        class="btn-icon btn-icon-header panel-action-btn"
         :title="t('welcome.conversations.expandSidebar')"
         @click="emit('toggle-collapse')"
       >
@@ -880,14 +880,14 @@ const loadMore = () => {
           />
           <button
             type="button"
-            class="search-toggle search-submit"
+            class="btn-icon btn-icon-header search-toggle search-submit"
             :title="t('welcome.conversations.searchSubmit')"
             :disabled="isFullTextSearching || !searchText.trim()"
             @click="flushFullTextSearch"
           >
             <Search :size="14" />
           </button>
-          <button type="button" class="search-toggle" :title="t('welcome.conversations.searchClose')" @click="toggleSearch">
+          <button type="button" class="btn-icon btn-icon-header search-toggle" :title="t('welcome.conversations.searchClose')" @click="toggleSearch">
             <X :size="14" />
           </button>
         </template>
@@ -896,7 +896,7 @@ const loadMore = () => {
           <button
             v-if="!props.embedded"
             type="button"
-            class="panel-action-btn"
+            class="btn-icon btn-icon-header panel-action-btn"
             :title="t('welcome.conversations.collapseSidebar')"
             @click="emit('toggle-collapse')"
           >
@@ -913,7 +913,7 @@ const loadMore = () => {
             <Plus :size="13" />
             <span>{{ t('welcome.conversations.newConversation') }}</span>
           </button>
-          <button type="button" class="search-toggle" :title="t('welcome.conversations.searchOpen')" @click="toggleSearch">
+          <button type="button" class="btn-icon btn-icon-header search-toggle" :title="t('welcome.conversations.searchOpen')" @click="toggleSearch">
             <Search :size="14" />
           </button>
         </template>
@@ -1110,27 +1110,6 @@ const loadMore = () => {
   border-color: color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
 }
 
-.panel-action-btn {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  color: var(--text-muted);
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: color 0.12s ease, background 0.12s ease;
-}
-
-.panel-action-btn:hover {
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--bg-surface) 75%, transparent);
-}
-
 .conversation-panel.is-collapsed .conversation-list {
   display: none;
 }
@@ -1163,32 +1142,6 @@ const loadMore = () => {
 .search-input::placeholder {
   color: var(--text-muted);
   opacity: 0.85;
-}
-
-.search-toggle {
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  color: var(--text-muted);
-  background: transparent;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: color 0.12s ease, background 0.12s ease;
-}
-
-.search-toggle:hover {
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--bg-surface) 75%, transparent);
-}
-
-.search-toggle:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .search-submit:not(:disabled) {

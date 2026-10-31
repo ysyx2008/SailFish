@@ -66,7 +66,7 @@ onBeforeUnmount(() => { request++; clearInterval(timer) })
   <section class="org-member-detail" :class="{ 'is-inline': inline }">
     <TeamPanelHeader v-if="!inline" class="om-header" :title="member.name" :close-label="t('ai.organization.closeMember')" :back-label="t('ai.organization.backToChart')" :focused="focusActive" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="emit('close')" @back="emit('close')" @toggle-focus="emit('toggleFocus')">
       <template #icon><UserRound :size="14" /></template>
-      <template #actions><button type="button" class="om-artifacts" @click="emit('artifacts')"><Files :size="14" />{{ t('ai.organization.teamArtifacts') }}</button></template>
+      <template #actions><button type="button" class="btn-header om-artifacts" @click="emit('artifacts')"><Files :size="14" />{{ t('ai.organization.teamArtifacts') }}</button></template>
     </TeamPanelHeader>
     <div class="om-body">
       <p v-if="!inline" class="om-responsibility"><span>{{ t('ai.organization.responsibility') }}</span>{{ member.description }}</p>

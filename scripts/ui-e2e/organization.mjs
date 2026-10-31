@@ -301,6 +301,23 @@ try {
   const unfoldButton = page.locator('.artifact-chrome--cluster > button[aria-expanded="false"]')
   const foldBounds = await foldButton.boundingBox()
   const focusBounds = await page.locator('.oc-header .tph-focus').boundingBox()
+  const buttonStyle = el => {
+    const css = getComputedStyle(el)
+    const box = el.getBoundingClientRect()
+    return { width: box.width, height: box.height, borderWidth: css.borderTopWidth, borderStyle: css.borderTopStyle, borderColor: css.borderTopColor, radius: css.borderTopLeftRadius }
+  }
+  const fullButtonStyle = await page.locator('.oc-header .tph-focus').evaluate(buttonStyle)
+  const collapseButtonStyle = await foldButton.evaluate(buttonStyle)
+  check('铺满与收起使用相同尺寸圆角和细描边', fullButtonStyle.borderWidth === '1px' && JSON.stringify(fullButtonStyle) === JSON.stringify(collapseButtonStyle), JSON.stringify({ fullButtonStyle, collapseButtonStyle }))
+  await page.locator('.oc-header .tph-focus').hover()
+  await sleep(160)
+  const focusHover = await page.locator('.oc-header .tph-focus').evaluate(el => getComputedStyle(el).backgroundColor)
+  await foldButton.hover()
+  await sleep(160)
+  const foldHover = await foldButton.evaluate(el => getComputedStyle(el).backgroundColor)
+  check('铺满与收起悬停底色一致', focusHover === foldHover, `${focusHover} / ${foldHover}`)
+  await page.mouse.move(10, 200)
+
   check('无产出物时团队仍有收起按钮，紧邻铺满且不重叠', !!foldBounds && !!focusBounds && foldBounds.x >= focusBounds.x + focusBounds.width && Math.abs(foldBounds.y - focusBounds.y) < 1)
   await page.locator('.oc-body').evaluate(el => { el.scrollLeft = 220; el.scrollTop = 60; window.__e2eChartBody = el })
   const scrollBefore = await page.locator('.oc-body').evaluate(el => [el.scrollLeft, el.scrollTop])
@@ -308,6 +325,7 @@ try {
   await sleep(450)
   check('收起团队后对话铺开，隐藏区域不可聚焦', await page.locator('.workbench-region.region-collapsed[inert]').count() === 1 && await page.locator('.workbench-region').evaluate(el => el.getBoundingClientRect().width) < 1)
   await shot('3a-collapsed')
+  check('重新展开按钮延续同一细描边样式', JSON.stringify(await unfoldButton.evaluate(buttonStyle)) === JSON.stringify(fullButtonStyle))
   await unfoldButton.click()
   await sleep(450)
   check('展开恢复同一组织图及滚动位置', await page.locator('.oc-body').evaluate((el, before) => el === window.__e2eChartBody && el.scrollLeft === before[0] && el.scrollTop === before[1], scrollBefore))

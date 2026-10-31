@@ -127,7 +127,7 @@ const titleOf = (item: OrganizationArtifactView) => item.kind === 'result'
   <section class="org-artifacts" :class="{ 'is-focus': focusActive }">
     <TeamPanelHeader class="oa-header" :title="`${sourceName} · ${t('ai.organization.teamArtifacts')}`" :close-label="t('ai.organization.closeArtifacts')" :back-label="t(preview ? 'ai.organization.backToArtifacts' : 'ai.organization.backToChart')" :meta="'name' in team ? sourceOwner || t('ai.organization.secretary') : undefined" :focused="focusActive" :hide-focus="preview" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="close" @back="back" @toggle-focus="toggleFocus">
       <template #icon><Files :size="14" /></template>
-      <template v-if="!preview" #actions><button type="button" class="oa-refresh" :disabled="loading" :title="t('ai.organization.refreshArtifacts')" @click="refresh(true)"><RefreshCw :size="14" /></button></template>
+      <template v-if="!preview" #actions><button type="button" class="btn-icon btn-icon-header oa-refresh" :disabled="loading" :title="t('ai.organization.refreshArtifacts')" @click="refresh(true)"><RefreshCw :size="14" /></button></template>
     </TeamPanelHeader>
     <ArtifactPanel v-if="preview" ref="panel" v-bind="artifactBindings" :tab-id="tabId" :artifact-ids="ids" :focus-active="focusActive" @toggle-focus="toggleFocus" />
     <div v-else class="oa-list">

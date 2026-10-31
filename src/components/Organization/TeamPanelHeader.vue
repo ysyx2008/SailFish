@@ -16,7 +16,7 @@ const emit = defineEmits<{ close: []; back: []; toggleFocus: [] }>()
     <span v-if="meta" class="tph-meta" :title="meta">{{ meta }}</span>
     <div class="tph-fill" />
     <div v-if="$slots.actions" class="tph-actions"><slot name="actions" /></div>
-    <button v-if="focused !== undefined && !hideFocus" type="button" class="tph-icon tph-focus" :aria-pressed="focused" :title="focusLabel" :aria-label="focusLabel" @click="emit('toggleFocus')"><Minimize2 v-if="focused" :size="14" /><Maximize2 v-else :size="14" /></button>
+    <button v-if="focused !== undefined && !hideFocus" type="button" class="btn-icon btn-icon-header tph-focus" :aria-pressed="focused" :title="focusLabel" :aria-label="focusLabel" @click="emit('toggleFocus')"><Minimize2 v-if="focused" :size="14" /><Maximize2 v-else :size="14" /></button>
   </header>
 </template>
 
@@ -30,11 +30,7 @@ const emit = defineEmits<{ close: []; back: []; toggleFocus: [] }>()
 .tph-fill { flex: 1 1 auto; min-width: 0; align-self: stretch; }
 .tph-icon { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 22px; height: 22px; flex-shrink: 0; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-secondary); cursor: pointer; -webkit-app-region: no-drag; }
 .tph-icon:hover { background: var(--bg-hover, rgba(255,255,255,.08)); color: var(--text-primary); }
-.tph-icon:focus-visible, .tph-actions :deep(button:focus-visible) { outline: 2px solid var(--accent-primary); outline-offset: 1px; }
+.tph-icon:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 1px; }
 .tph-close { width: 18px; height: 18px; border-radius: 6px; color: inherit; }
-.tph-focus { border: 1px solid var(--border-color); }
 .tph-actions { display: flex; align-items: center; flex-shrink: 0; gap: 4px; -webkit-app-region: no-drag; }
-.tph-actions :deep(button) { display: inline-flex; align-items: center; gap: 4px; min-height: 22px; padding: 0 6px; border: 0; border-radius: 5px; color: var(--text-secondary); background: transparent; font: inherit; font-size: 12px; cursor: pointer; -webkit-app-region: no-drag; }
-.tph-actions :deep(button:hover:not(:disabled)) { color: var(--text-primary); background: var(--bg-hover, rgba(255,255,255,.08)); }
-.tph-actions :deep(button:disabled) { opacity: .5; cursor: default; }
 </style>
