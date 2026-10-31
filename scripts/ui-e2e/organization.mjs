@@ -238,6 +238,8 @@ try {
   check('详情铺满只预留一次浮动输入空间', detailPadding.outer === 0 && Math.abs(detailPadding.inner - detailPadding.overlay) < 1, JSON.stringify(detailPadding))
   await page.locator('.om-header .tph-focus').click()
   await page.locator('.om-header .tph-close').click()
+  await page.waitForFunction(() => document.activeElement?.getAttribute('data-member') === '运营组')
+  check('关闭详情后键盘焦点回到原成员卡片', true)
   check('关闭详情后同一团队图仍在', await page.locator('.oc-body').evaluate(el => el === window.__overviewBody) && await page.locator('.oc-detail').count() === 0)
   // 后续保留手动分栏/收起的兼容回归。
   await page.locator('.oc-header .tph-focus').click()

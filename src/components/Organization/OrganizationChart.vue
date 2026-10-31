@@ -74,10 +74,12 @@ let detailTrigger: HTMLElement | null = null
 const memberName = computed(() => detail.value?.kind === 'member' ? detail.value.name : null)
 const member = computed(() => currentOrganization.value?.members.find(member => member.name === memberName.value))
 function showOverview() {
+  const trigger = detailTrigger
+  detailTrigger = null
   restoreDetailFocus()
   detail.value = null
   emit('overview')
-  void nextTick(() => { if (detailTrigger?.isConnected) detailTrigger.focus({ preventScroll: true }) })
+  void nextTick(() => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }) })
 }
 function openDetail(next: Detail, preserveFocus = false) {
   if (!preserveFocus) restoreDetailFocus()
