@@ -6,7 +6,6 @@ export async function checkTeamHeader(page, selector, label, check) {
     const focus = header.querySelector('.tph-focus')
     const style = getComputedStyle(header)
     const box = header.getBoundingClientRect()
-    const titleBox = title.getBoundingClientRect()
     const closeBox = close.getBoundingClientRect()
     const focusBox = focus?.getBoundingClientRect()
     const originalStyle = header.getAttribute('style')
@@ -27,8 +26,10 @@ export async function checkTeamHeader(page, selector, label, check) {
       const narrow = header.getBoundingClientRect()
       const narrowClose = close.getBoundingClientRect()
       const narrowFocus = focus?.getBoundingClientRect()
-      narrowFits = narrowClose.left >= narrow.left && narrowClose.right <= (narrowFocus?.left ?? narrow.right)
-        && (!narrowFocus || narrowFocus.right <= narrow.right)
+      const narrowTitle = title.getBoundingClientRect()
+      narrowFits = narrowClose.left >= narrow.left && narrowClose.right <= narrow.right
+        && (!narrowFocus || narrowFocus.right <= narrowClose.left)
+        && narrowTitle.right <= (narrowFocus?.left ?? narrowClose.left)
     } finally {
       title.textContent = originalText
       if (originalStyle === null) header.removeAttribute('style')
@@ -36,17 +37,18 @@ export async function checkTeamHeader(page, selector, label, check) {
     }
     return {
       height: box.height, expectedHeight: parseFloat(style.getPropertyValue('--workbench-panel-header-height')) || 38,
-      titleFont: getComputedStyle(title).fontSize, tabClose: close.closest('.tph-tab') !== null,
-      closeGap: closeBox.left - titleBox.right,
-      focusInset: focusBox ? box.right - focusBox.right : null,
+      titleFont: getComputedStyle(title).fontSize,
+      plainTitle: header.querySelector('.tph-tab') === null && getComputedStyle(header.querySelector('.tph-heading')).backgroundColor === 'rgba(0, 0, 0, 0)',
+      closeInset: box.right - closeBox.right,
+      focusBeforeClose: !focusBox || focusBox.right <= closeBox.left,
       expectedInset: parseFloat(style.paddingRight),
       focusCentered: focusBox ? Math.abs((focusBox.top + focusBox.bottom) / 2 - (box.top + box.bottom) / 2) < 1 : true,
       narrowFits, safeInsets,
     }
   })
   check(`${label}：高度与产出物栏一致`, Math.abs(metrics.height - metrics.expectedHeight) < 1, JSON.stringify(metrics))
-  check(`${label}：关闭紧邻页签标题`, metrics.tabClose && metrics.closeGap >= 0 && metrics.closeGap <= 9 && metrics.titleFont === '12px', JSON.stringify(metrics))
-  check(`${label}：铺满按钮位于右侧同一对齐线`, metrics.focusInset === null || Math.abs(metrics.focusInset - metrics.expectedInset) < 1.5 && metrics.focusCentered, JSON.stringify(metrics))
+  check(`${label}：普通页面标题，没有胶囊标签底色`, metrics.plainTitle && metrics.titleFont === '12px', JSON.stringify(metrics))
+  check(`${label}：关闭位于标题栏最右侧，操作按钮不重叠`, Math.abs(metrics.closeInset - metrics.expectedInset) < 1.5 && metrics.focusBeforeClose && metrics.focusCentered, JSON.stringify(metrics))
   check(`${label}：系统控件安全边距生效`, metrics.safeInsets, JSON.stringify(metrics))
   check(`${label}：长标题窄面板仍能关闭`, metrics.narrowFits, JSON.stringify(metrics))
 }
