@@ -72,11 +72,11 @@ onBeforeUnmount(() => {
         </button>
         <button type="button" class="dock-team" @click="open(item.id)"><Network :size="12" /><span>{{ t('ai.organization.openChart') }}</span></button>
       </div>
-    </div>
-    <div v-if="selected" class="dock-panel">
-      <TeamMemberTree :groups="list.groups" :step-id="selected.id" :session-id="listSnapshot?.sessionId" :snapshot-for="snapshotFor" @open="open(selected.id, $event)" />
-      <button v-if="list.hidden > 0" type="button" class="dock-more" @click="showMore">{{ t('ai.subAgentShowMore', { count: Math.min(SUB_AGENT_PAGE_SIZE, list.hidden), rest: list.hidden }) }}</button>
-      <p v-if="list.unavailable > 0" class="dock-unavailable">{{ t('ai.organization.listUnavailable', { count: list.unavailable }) }}</p>
+      <div v-if="opened === item.id" class="dock-panel">
+        <TeamMemberTree :groups="list.groups" :step-id="item.id" :session-id="listSnapshot?.sessionId" :snapshot-for="snapshotFor" @open="open(item.id, $event)" />
+        <button v-if="list.hidden > 0" type="button" class="dock-more" @click="showMore">{{ t('ai.subAgentShowMore', { count: Math.min(SUB_AGENT_PAGE_SIZE, list.hidden), rest: list.hidden }) }}</button>
+        <p v-if="list.unavailable > 0" class="dock-unavailable">{{ t('ai.organization.listUnavailable', { count: list.unavailable }) }}</p>
+      </div>
     </div>
   </div>
 </template>
@@ -101,6 +101,7 @@ onBeforeUnmount(() => {
 }
 
 .dock-row {
+  position: relative;
   min-width: 0;
 }
 
@@ -213,11 +214,11 @@ onBeforeUnmount(() => {
   background: rgba(var(--accent-rgb, 137, 180, 250), 0.2);
 }
 
-/* 展开的内容盖在对话上面（栏的下沿开始），不把对话往下挤，也不盖住栏里别的行 */
+/* 名单紧贴所属团队横幅，浮在下方内容上，不把对话往下挤。 */
 .dock-panel {
   position: absolute;
-  left: 12px;
-  right: 12px;
+  left: 0;
+  right: 0;
   top: calc(100% + 4px);
   max-height: min(60vh, 520px);
   overflow-y: auto;
