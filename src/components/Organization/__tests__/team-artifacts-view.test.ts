@@ -40,12 +40,14 @@ function mount(chart = false) {
 }
 beforeEach(() => {
   vi.useFakeTimers(); vi.clearAllMocks(); view.stepId = 'dispatch'; fixture.openTabs = []
+  // jsdom 不测布局，实际尺寸与拖动由隔离 Electron 回归覆盖。
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
   fixture.exists.mockResolvedValue(true)
   fixture.terminal = reactive({ tabs: [{ id: 'tab', agentState: { sessionId: 'current', steps: [{ id: 'dispatch', organization: { sessionId: 'old', teams: [], total: 1, live: 1, members: [{ name: '甲员', parent: '甲', team: '团', status: 'running' }] } }] } }] })
   readArtifacts = vi.fn(async (session: string) => session === 'old' ? [artifact] : [])
   Object.defineProperty(window, 'electronAPI', { configurable: true, value: { history: { readTeamArtifacts: readArtifacts } } })
 })
-afterEach(() => { app?.unmount(); app = undefined; container?.remove(); vi.useRealTimers(); delete (window as unknown as { electronAPI?: unknown }).electronAPI })
+afterEach(() => { app?.unmount(); app = undefined; container?.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); delete (window as unknown as { electronAPI?: unknown }).electronAPI })
 
 describe('团队产出物的实时边界', () => {
   it('文件关闭只回成果列表，保持当前对象标题和右侧详情', async () => {

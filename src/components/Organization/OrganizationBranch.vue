@@ -7,7 +7,7 @@ import type { OrgGroup } from '../../utils/organization-view'
 import { layoutOrganization, visibleOrgLines, type OrgViewport } from '../../utils/organization-layout'
 import OrganizationNode from './OrganizationNode.vue'
 import OrganizationTeamHeader from './OrganizationTeamHeader.vue'
-const props = defineProps<{ groups: readonly OrgGroup[]; selected?: string | null }>()
+const props = defineProps<{ groups: readonly OrgGroup[]; selected?: string | null; layoutViewportWidth?: number }>()
 const emit = defineEmits<{ openMember: [name: string]; openTeam: [team: { name: string; owner?: string }]; openArtifacts: [team: { name: string; owner?: string }] }>()
 const { t } = useI18n()
 const root = ref<HTMLElement | null>(null)
@@ -15,7 +15,8 @@ const width = ref(1000)
 const zoom = ref(1)
 const height = ref(800)
 const viewport = ref<OrgViewport>({ left: 0, top: 0, right: 1200, bottom: 900 })
-const layout = computed(() => layoutOrganization(props.groups, width.value))
+// 布局用完整工作区，详情只缩小可视窗口，不能把数百张卡片重新换列。
+const layout = computed(() => layoutOrganization(props.groups, props.layoutViewportWidth ? Math.max(1, props.layoutViewportWidth - 32) : width.value))
 const fitZoom = computed(() => Math.min(1, Math.max(1, width.value - 16) / Math.max(1, layout.value.width), height.value / Math.max(1, layout.value.height)))
 const minZoom = computed(() => Math.min(0.1, fitZoom.value))
 const lines = computed(() => visibleOrgLines(layout.value.lines, viewport.value))
@@ -77,6 +78,12 @@ function endDrag(event: PointerEvent) {
 function stopDraggedClick(event: MouseEvent) {
   if (moved) { moved = false; event.preventDefault(); event.stopImmediatePropagation() }
 }
+function revealSelected() {
+  if (!props.selected || !scroller) return
+  root.value?.querySelector<HTMLElement>(`[data-member="${CSS.escape(props.selected)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  scheduleViewport()
+}
+watch([() => props.selected, width, height], () => { void nextTick(revealSelected) }, { flush: 'post' })
 watch(layout, () => { void nextTick(scheduleViewport) })
 onMounted(() => {
   scroller = root.value?.closest<HTMLElement>('.oc-body') ?? null
@@ -91,6 +98,7 @@ onMounted(() => {
   scroller.addEventListener('lostpointercapture', endDrag)
   scroller.addEventListener('click', stopDraggedClick, true)
   updateViewport()
+  void nextTick(revealSelected)
 })
 onBeforeUnmount(() => {
   observer?.disconnect()

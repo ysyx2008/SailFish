@@ -18,6 +18,7 @@ import { provideTeamViewport } from './team-viewport'
 import { useTeamSnapshot } from './team-snapshot'
 import TeamPanelHeader from './TeamPanelHeader.vue'
 import OrganizationStatusBadge from './OrganizationStatusBadge.vue'
+import WorkbenchShell from '../workbench/WorkbenchShell.vue'
 
 const props = withDefaults(defineProps<{
   tabId: string
@@ -69,6 +70,22 @@ const detail = ref<TeamArtifactSource | null>(props.entry?.member ? { member: pr
 const selectedMember = ref<string | null>(props.entry?.member ?? null)
 const detailTab = ref<'activity' | 'artifacts'>('activity')
 const detailPanel = ref<InstanceType<typeof OrganizationDetailPanel> | null>(null)
+const workspaceShell = ref<InstanceType<typeof WorkbenchShell> | null>(null)
+const workspaceWidth = ref(0)
+const requestedDetailWidth = ref<number | null>(null)
+const detailLimits = computed(() => ({
+  min: Math.min(280, workspaceWidth.value / 2),
+  max: workspaceWidth.value - Math.min(300, workspaceWidth.value / 2),
+}))
+const detailRatio = computed({
+  get: () => {
+    const width = workspaceWidth.value
+    if (width <= 0) return 0.42
+    const preferred = requestedDetailWidth.value ?? Math.min(560, width * 0.42)
+    return Math.max(detailLimits.value.min, Math.min(detailLimits.value.max, preferred)) / width
+  },
+  set: (ratio: number) => { requestedDetailWidth.value = ratio * workspaceWidth.value },
+})
 let detailTrigger: HTMLElement | null = null
 const memberName = computed(() => detail.value && 'member' in detail.value ? detail.value.member : null)
 const member = computed(() => currentOrganization.value?.members.find(member => member.name === memberName.value))
@@ -111,6 +128,7 @@ const focused = computed(() => props.focusActive ?? localFocus.value)
 function closeLayer(): boolean {
   if (!rootRef.value?.getClientRects().length) return false
   if (document.activeElement?.closest('[aria-modal="true"], dialog[open]')) return false
+  if (workspaceShell.value?.cancelResize()) return true
   if (detail.value) detailPanel.value?.closeLayer()
   else emit('close')
   return true
@@ -125,6 +143,13 @@ function onCloseKey(event: KeyboardEvent) {
 }
 let releaseCloser: (() => void) | undefined
 let focusObserver: ResizeObserver | undefined
+let workspaceObserver: ResizeObserver | undefined
+function syncWorkspaceWidth() {
+  const next = rootRef.value?.clientWidth ?? 0
+  if (workspaceWidth.value === next) return
+  workspaceWidth.value = next
+  void nextTick(() => workspaceShell.value?.refreshLayout())
+}
 const syncFocusBounds = () => {
   const box = focusTarget.value?.getBoundingClientRect()
   if (box) focusBounds.value = { position: 'fixed', inset: 'auto', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` }
@@ -132,6 +157,9 @@ const syncFocusBounds = () => {
 onMounted(() => {
   releaseCloser = registerFocusedArtifactCloser(closeLayer)
   document.addEventListener('keydown', onCloseKey, true)
+  syncWorkspaceWidth()
+  workspaceObserver = new ResizeObserver(syncWorkspaceWidth)
+  if (rootRef.value) workspaceObserver.observe(rootRef.value)
   // 无工作台宿主的覆盖层固定铺满所属工作区，关闭时由卸载清理。
   if (props.focusActive === undefined) {
     focusTarget.value = rootRef.value?.closest<HTMLElement>('.tab-view') ?? rootRef.value?.parentElement ?? null
@@ -147,6 +175,7 @@ onBeforeUnmount(() => {
   releaseCloser?.()
   document.removeEventListener('keydown', onCloseKey, true)
   focusObserver?.disconnect()
+  workspaceObserver?.disconnect()
   window.removeEventListener('resize', syncFocusBounds)
 })
 
@@ -155,7 +184,9 @@ onBeforeUnmount(() => {
 <template>
   <Teleport :disabled="!localFocus" :to="focusTarget || 'body'">
   <section ref="rootRef" class="organization-chart" :class="[`is-${mode}`, { 'is-focus': focused }]" :style="localFocus ? focusBounds : undefined">
-    <div class="oc-workspace">
+    <WorkbenchShell ref="workspaceShell" class="oc-workspace" :toggle-visible="!!detail" v-model:toggle-ratio="detailRatio"
+      :min-ratio="workspaceWidth > 0 ? detailLimits.min / workspaceWidth : 0.2" :max-ratio="workspaceWidth > 0 ? detailLimits.max / workspaceWidth : 0.8">
+    <template #anchor>
     <div class="oc-overview">
     <TeamPanelHeader class="oc-header" :title="t('ai.organization.title')" :close-label="t('ai.organization.close')" :meta="organization ? t('ai.organization.metaSimple', { total: organization.total, teams: organization.teams.length + (organization.omittedTeams ?? 0) }) : undefined" :focused="focused" hide-focus @close="emit('close')">
       <template #icon><Network :size="14" /></template>
@@ -190,7 +221,7 @@ onBeforeUnmount(() => {
       <div v-if="!organization" class="oc-empty">{{ t('ai.organization.empty') }}</div>
       <template v-else>
         <div class="oc-tree">
-          <OrganizationBranch :groups="tree" :selected="selectedMember" @open-team="openDetail($event)" @open-artifacts="openDetail($event, 'artifacts')" @open-member="openDetail({ member: $event })" />
+          <OrganizationBranch :groups="tree" :selected="selectedMember" :layout-viewport-width="workspaceWidth || undefined" @open-team="openDetail($event)" @open-artifacts="openDetail($event, 'artifacts')" @open-member="openDetail({ member: $event })" />
         </div>
         <p v-if="organization.omitted" class="oc-omitted">
           {{ t('ai.organization.omitted', { count: organization.omitted, path: organization.boardPath ?? '' }) }}
@@ -201,10 +232,13 @@ onBeforeUnmount(() => {
       </template>
     </div>
     </div>
+    </template>
+    <template #toggle>
     <aside v-if="detail" class="oc-detail">
       <OrganizationDetailPanel :key="JSON.stringify([currentOrganization?.sessionId, stepId, detail])" ref="detailPanel" v-model:active-tab="detailTab" :source="detail" :member="member" :snapshot="memberSnapshot" :session-id="currentOrganization?.sessionId" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" @close="showOverview" />
     </aside>
-    </div>
+    </template>
+    </WorkbenchShell>
   </section>
   </Teleport>
 </template>
@@ -239,8 +273,11 @@ onBeforeUnmount(() => {
 }
 .organization-chart.is-focus { border-left: none; }
 .oc-workspace { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.oc-workspace > :deep(.workbench-anchor) { min-width: 0; }
+/* 团队画布保留坐标，详情开合不使用挤压过渡。 */
+.oc-workspace.workbench-shell.is-animating > :deep(.workbench-region) { transition: none; }
 .oc-overview { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
-.oc-detail { display: flex; flex-direction: column; flex: 0 0 clamp(300px, 42%, 560px); max-width: 65%; min-width: 0; min-height: 0; border-left: 1px solid var(--border-color); background: var(--bg-primary); }
+.oc-detail { display: flex; flex-direction: column; flex: 1; width: 100%; height: 100%; min-width: 0; min-height: 0; box-sizing: border-box; border-left: 1px solid var(--border-color); background: var(--bg-primary); }
 
 .oc-progress { flex-shrink: 0; padding: 10px 14px; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .oc-progress span { color: var(--text-secondary); }
