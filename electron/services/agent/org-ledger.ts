@@ -6,8 +6,8 @@
  */
 import type { SubAgentRoster } from './sub-agent-roster'
 
-/** 秘书下面最多这么多层团：秘书派出的组长是第 1 层，他派出的组长是第 2 层，再往下第 3 层，到此为止 */
-export const MAX_ORG_DEPTH = 3
+/** 秘书下面最多连续这么多层组长；最底层仍可派执行成员，不能再指定组长。 */
+export const MAX_ORG_DEPTH = 10
 
 /** 一位组长的座位：他在账本里的位置，开跑时据此建出自己的花名册 */
 export interface LeadSeat {

@@ -167,7 +167,7 @@ describe('组长与账本', () => {
     const bottom = new SubAgentRoster({ knockSettleMs: 0 })
     const ledgerHolder: LeadSeat[] = []
     root.spawn([{ description: '一层', prompt: 'p', role: '组长', lead: true }], deps(() => lead({ members: [], seats: ledgerHolder })))
-    bottom.attachLedger(ledgerHolder[0].ledger, '三层', MAX_ORG_DEPTH)
+    bottom.attachLedger(ledgerHolder[0].ledger, '最底层', MAX_ORG_DEPTH)
     expect(bottom.canAppointLeads()).toBe(false)
     expect(() => bottom.spawn([{ description: '再往下', prompt: 'p', role: '组长', lead: true }], deps(() => worker()))).toThrow(RangeError)
     root.abortAll()
@@ -545,31 +545,32 @@ describe('组织的存盘', () => {
 })
 
 describe('只恢复管理链，不启动中间负责人', () => {
-  it('四层人员直接叫醒叶子，祖先可接管且根停止仍能覆盖它', async () => {
+  it('十层组长链直接叫醒叶子，祖先可接管且根停止仍能覆盖它', async () => {
     const revived: string[] = []
     const make = (name: string, parent?: string, lead = false) => ({
       name, parent, lead, role: lead ? '组长' : undefined, description: name, prompt: 'p', status: 'completed' as const,
       revive: () => { revived.push(name); return { handle: worker(30), steps: [] } },
     })
-    const saved = [make('一层', undefined, true), make('二层', '一层', true), make('三层', '二层', true), make('叶子', '三层'), make('另组', undefined, true), make('旁人', '另组')]
+    const leads = Array.from({ length: 10 }, (_, i) => `组长${i + 1}`)
+    const saved = [...leads.map((name, i) => make(name, leads[i - 1], true)), make('叶子', leads.at(-1)), make('另组', undefined, true), make('旁人', '另组')]
     const root = new SubAgentRoster({ knockSettleMs: 0 })
     const d = { ...deps(() => worker(5)), restoreDormant: () => saved }
     expect(root.followup('叶子', '继续', d).ok).toBe(true)
     expect(revived).toEqual(['叶子'])
     const entries = () => root.orgEntries()
-    const first = entries().find(entry => entry.owner === '一层')!.roster
-    const third = entries().find(entry => entry.owner === '三层')!.roster
-    expect(entries().map(entry => entry.depth)).toEqual([0, 1, 2, 3])
-    expect(third.get('叶子')?.status).toBe('running')
+    const first = entries().find(entry => entry.owner === leads[0])!.roster
+    const bottom = entries().find(entry => entry.owner === leads.at(-1))!.roster
+    expect(entries().map(entry => entry.depth)).toEqual(Array.from({ length: 11 }, (_, i) => i))
+    expect(bottom.get('叶子')?.status).toBe('running')
     expect(first.hasLive()).toBe(true)
     expect(first.followup('旁人', '越枝', d).ok).toBe(false)
     const knocks: string[] = []
     first.bindOwner(text => knocks.push(text))
-    expect(third.deliverToOwner('叶子进度')).toBe(true)
+    expect(bottom.deliverToOwner('叶子进度')).toBe(true)
     expect(knocks).toEqual(['叶子进度'])
-    expect(entries().find(entry => entry.owner === '一层')?.roster).toBe(first)
+    expect(entries().find(entry => entry.owner === leads[0])?.roster).toBe(first)
     root.abortAll(); await root.settled()
-    expect(third.get('叶子')?.status).toBe('interrupted')
+    expect(bottom.get('叶子')?.status).toBe('interrupted')
     expect(root.hasLive()).toBe(false)
     expect(revived).toEqual(['叶子'])
     first.release(); root.release()

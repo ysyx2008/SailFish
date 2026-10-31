@@ -6,7 +6,7 @@
  *   E2E_KEEP=1 …                                 # 跑完保留临时目录（看日志、落盘记录）
  *
  * 1. 秘书指定一位组长，组长在自己名下派两位伙计，全部做完后一层层交差
- * 2. 组织最多三层：第三层的组长不能再指定组长，组长也不能给手下指定远程主机
+ * 2. 组织最多十层组长：第十层不能再指定组长，但能派执行成员；组长不能给手下指定远程主机
  * 3. 组长名下的专家团里有人点名秘书：话直达秘书，秘书点名回应，记进那个群、送到那位专家
  * 4. 进程被 kill -9：新进程接着同一场会话，秘书再交代组长，组长再把他名下的人叫起来
  * 5. 团里有验收人：先打回、改完再通过，结论记进群聊，团停下时交给组长的话里带着最近一次结论
@@ -186,11 +186,12 @@ scenario('秘书指定组长，组长在自己名下派人，做完一层层交�
 })
 
 // ───────────────────────────────────────────────────────────── 2
-scenario('组织最多三层，组长不能给手下指定远程主机', async () => {
-  const names = ['组长一', '组长二', '组长三']
+scenario('十层组长边界及逐级交差，组长不能给手下指定远程主机', async () => {
+  const leads = Array.from({ length: 10 }, (_, i) => `组长${i + 1}`)
+  const names = [...leads, '执行成员']
   const env = sandbox(0, 'sft-org-2', tempDirs)
   const seen = { depthError: '', remoteError: '' }
-  const next = { 组长一: '组长二', 组长二: '组长三' }
+  const next = Object.fromEntries(leads.slice(0, -1).map((name, i) => [name, leads[i + 1]]))
   const llm = await startMockLlm({
     onUser: (text, _n, entry) => {
       const who = whoAsks(entry, names)
@@ -198,18 +199,19 @@ scenario('组织最多三层，组长不能给手下指定远程主机', async (
       if (who === 'main') {
         if (text.includes('[专家') || text.includes('[伙计')) return say('秘书收到：一路做完了')
         return callTool('dispatch_agents', {
-          tasks: [{ name: '组长一', role: '一层组长', lead: true, description: '第一层', prompt: '我是组长一，再指定一位组长' }],
+          tasks: [{ name: leads[0], role: '一层组长', lead: true, description: '第一层', prompt: `我是${leads[0]}，再指定一位组长` }],
         })
       }
+      if (who === '执行成员') return say('执行成员：核对完成')
       if (text.includes(`我是${who}，`)) {
         if (next[who]) {
           return callTool('dispatch_agents', {
             tasks: [{ name: next[who], role: `${next[who]}负责人`, lead: true, description: `下一层 ${next[who]}`, prompt: `我是${next[who]}，再指定一位组长` }],
           })
         }
-        // 第三层：先试着再指定组长，再试着给手下指定远程主机
+        // 第十层：先试着再指定组长，再试远程主机，最后正常派出执行成员。
         return callTool('dispatch_agents', {
-          tasks: [{ name: '第四层', role: '四层负责人', lead: true, description: '超出层数', prompt: '我是第四层，随便' }],
+          tasks: [{ name: '第十一层', role: '负责人', lead: true, description: '超出层数', prompt: '我是第十一层，随便' }],
         })
       }
       return say(`${who}：做完了`)
@@ -218,8 +220,8 @@ scenario('组织最多三层，组长不能给手下指定远程主机', async (
       const who = whoAsks(entry, names)
       entry.who = who
       const content = typeof last.content === 'string' ? last.content : JSON.stringify(last.content)
-      if (who === '组长三') {
-        if (content.includes('最多 3 层')) {
+      if (who === leads.at(-1)) {
+        if (content.includes('最多 10 层')) {
           seen.depthError = content
           return callTool('dispatch_agents', {
             tasks: [{ name: '干活的', description: '连主机', prompt: '我是干活的，随便', hosts: ['sess-1'], remote_commands: ['ls'] }],
@@ -227,8 +229,11 @@ scenario('组织最多三层，组长不能给手下指定远程主机', async (
         }
         if (content.includes('不能给名下的人指定远程主机')) {
           seen.remoteError = content
-          return say('组长三：两个都被拒了')
+          return callTool('dispatch_agents', {
+            tasks: [{ name: '执行成员', description: '底层执行', prompt: '我是执行成员，核对后汇报' }],
+          })
         }
+        return say('已派出执行成员，等他')
       }
       if (who === 'main' || next[who]) return say('已派出，等他们')
       return say(`${who}：做完了`)
@@ -236,14 +241,19 @@ scenario('组织最多三层，组长不能给手下指定远程主机', async (
   })
   env.env.SFT_API_URL = `http://127.0.0.1:${llm.port}/v1`
   try {
-    const result = await runPlain(['搭三层组织', '--free'], env, 120_000)
+    const result = await runPlain(['搭十层组长组织', '--free'], env, 120_000)
     check('正常退出', result.code === 0, `exit ${result.code} ${result.err.slice(0, 300)}`)
-    check('第三层的组长再指定组长被退回，说明是层数', seen.depthError.includes('最多 3 层'), seen.depthError)
+    check('第十层的组长再指定组长被退回，说明是十层上限', seen.depthError.includes('最多 10 层'), seen.depthError)
     check('组长指定远程主机被退回，说明由秘书授权', seen.remoteError.includes('只有秘书能给'), seen.remoteError)
     const { children } = readOrg(env.dataDir)
-    check('三位组长按层挂着', children['组长二']?.state.parent === '组长一' && children['组长三']?.state.parent === '组长二' && !children['组长一']?.state.parent,
+    check('十位组长按真实上下级挂着', leads.every((name, i) => children[name]?.state.lead === true && children[name]?.state.parent === leads[i - 1]),
       JSON.stringify(Object.values(children).map((c) => [c.state.name, c.state.parent])))
-    check('被退回的没有进名册', !children['第四层'] && !children['干活的'], Object.keys(children).join())
+    check('第十层仍可派执行成员并收到结果', children['执行成员']?.state.parent === leads.at(-1) && children['执行成员']?.state.result?.includes('核对完成'))
+    check('被退回的没有进名册', !children['第十一层'] && !children['干活的'], Object.keys(children).join())
+    const mainSystem = llm.requests.find(r => r.who === 'main')?.body.messages.filter(m => m.role === 'system').map(m => String(m.content)).join('\n') ?? ''
+    const bottomRequest = llm.requests.find(r => r.who === leads.at(-1) && r.hasTools)
+    const dispatchSchema = bottomRequest?.body.tools.find(tool => tool.function?.name === 'dispatch_agents')?.function
+    check('秘书提示词与工具说明使用同一十层上限', mainSystem.includes('最多10层') && JSON.stringify(dispatchSchema ?? {}).includes('组织最多 10 层'))
     check('全部做完，秘书收到交差', Object.values(children).every((c) => c.state.status === 'completed') && result.out.includes('秘书收到'),
       Object.values(children).map((c) => `${c.state.name}:${c.state.status}`).join(' ') + ' | ' + result.out.slice(-300))
     const warnings = logWarnings(env.dataDir)

@@ -20,6 +20,7 @@ import { wrapCompositionSection } from './context-composition'
 import { t } from './i18n'
 import { formatRecalledConversations, type RecalledConversation } from '../knowledge/conversation-index'
 import { buildGoalSystemSection } from './goal/goal-prompts'
+import { MAX_ORG_DEPTH } from './org-ledger'
 const log = createLogger('PromptBuilder')
 const IDENTITY_FILENAME = 'IDENTITY.md'
 const SOUL_FILENAME = 'SOUL.md'
@@ -925,7 +926,7 @@ export class PromptBuilder {
       '  - 专家：带 role（几个字，如「测试专家」「数据库性能专家」）。role 显示给用户（名字前的角色标签），也写进专家的开场「你是 名字（role）」；除此之外专家和伙计一样（同样的模型和权限，工具也一样，团里的专家多一个在群里说话的），他按什么专长、什么标准做，取决于你写给他的指令。不带 team 的专家各干各的，干完敲门，和伙计一样；再带 team（2 到 15 位）组成专家团：专家在群里点名交接，你当组长，用户点开能看到完整群聊',
       '- 先让几个人各自独立判断、之后再组团对撞，这种安排里，独立判断那一步派不带 team 的专家，一样有角色标签',
       '- 带 team 时 tasks 里每一位都要带 role，主持、协调这类位置也一样',
-      '- 活大、要分几组各管一块时，可以指定组长（lead，不带 team）：秘书只派组长，组长自己用 team 组人，最多三层。团里的人怎么分、怎么验收由组长管，不要替他们安排。组织里以文件为准：结论和细节写进结果文件，群里只传交接，不贴大段内容',
+      `- 活大、要分几组各管一块时，可以指定组长（lead，不带 team）：秘书只派组长，组长自己用 team 组人，最多${MAX_ORG_DEPTH}层。团里的人怎么分、怎么验收由组长管，不要替他们安排。组织里以文件为准：结论和细节写进结果文件，群里只传交接，不贴大段内容`,
       '- 给每个人起的名字要能反映出他在干什么，让用户一眼看懂。用人名、编号或跟任务无关的代号不行。不填则从任务简述生成',
       '- 把活分清楚，一个人一块，别交叉。一起派几个人时，科学、精确安排每个人的分工，也跟每个人简要说一声这次还有谁、各干什么',
       '- fork_turns 位于 tasks 每项或 batch 整体：all（默认）全带，none 不带，正整数带最近几次用户交代及其后答复；敲门、后台通知和任务回执不占轮次。顶层及 batch 条目内的设置会被拒绝，派出回执标明实际生效档位',
