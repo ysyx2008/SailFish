@@ -1368,11 +1368,6 @@ defineExpose({ minimizePanel })
   border-left: none;
 }
 
-/* 铺满后这排贴着窗口右沿。36px 只够清单按钮，Windows 三个窗口按钮还要另让开，否则会盖住保存/打开 */
-.canvas-panel.is-focus .canvas-header {
-  padding-right: calc(max(8px, var(--shell-inset-right, 0px)) + 36px);
-}
-
 .canvas-focus-spacer {
   position: absolute;
   left: 0;
@@ -1390,7 +1385,12 @@ defineExpose({ minimizePanel })
   box-sizing: border-box;
   height: var(--workbench-panel-header-height, 38px);
   min-height: var(--workbench-panel-header-height, 38px);
-  padding: 0 38px 0 12px;
+  /*
+   * 右侧始终给工作台的悬浮控件（清单 / 收起）留出同一个槽位。
+   * 这样「铺满 / 分栏」是同一颗按钮，切换前后横向位置不会漂移；Windows
+   * 还会叠加壳层为窗口控制按钮提供的安全边距。
+   */
+  padding: 0 calc(max(8px, var(--shell-inset-right, 0px)) + 36px) 0 12px;
   background: var(--bg-tertiary, var(--bg-secondary, #252525));
   border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
   flex-shrink: 0;
