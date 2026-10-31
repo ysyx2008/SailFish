@@ -27,6 +27,7 @@ interface ProbeState {
   lastStatus: number | null
   lastBodyHash: string
   lastBody: string
+  checkFailed?: boolean
 }
 
 const MIN_INTERVAL = 10
@@ -154,6 +155,9 @@ export class HttpProbeSensor implements Sensor {
     this.active.delete(watchId)
     if (!this._running) return
     if (failure) {
+      const previous = this.states.get(watchId)
+      if (previous) previous.checkFailed = true
+      else this.states.set(watchId, { lastStatus: null, lastBodyHash: '', lastBody: '', checkFailed: true })
       this.eventBus.emit({
         id: `hp-failed-${watchId}-${Date.now()}`, type: 'http_probe', source: this.id,
         timestamp: Date.now(), watchId, priority: 'normal',
@@ -181,9 +185,9 @@ export class HttpProbeSensor implements Sensor {
 
     switch (target.triggerOn) {
       case 'status_changed':
-        if (prev.lastStatus !== status) {
+        if (prev.checkFailed || prev.lastStatus !== status) {
           shouldTrigger = true
-          reason = `status changed: ${prev.lastStatus} → ${status ?? 'error'}`
+          reason = prev.checkFailed ? `probe recovered: HTTP ${status}` : `status changed: ${prev.lastStatus} → ${status ?? 'error'}`
         }
         break
 
@@ -197,7 +201,7 @@ export class HttpProbeSensor implements Sensor {
         break
 
       case 'body_changed':
-        if (prev.lastBodyHash !== bodyHash) {
+        if (prev.lastBodyHash && prev.lastBodyHash !== bodyHash) {
           shouldTrigger = true
           reason = 'response body changed'
         }

@@ -30,7 +30,7 @@ import type {
 const log = createLogger('WatchService')
 import { WatchStore, getWatchStore } from './store'
 import { WatchState } from './state'
-import { externalizeToolOutput } from '../agent/tool-output-externalize'
+import { watchContextSnapshots, type WatchContextLease } from './context-snapshots'
 import {
   DEFAULT_WATCH_TIMEOUT_SECONDS,
   WatchWallClockTimeout,
@@ -118,13 +118,21 @@ export interface WatchExecutionResult {
   interruptedBySleep?: boolean
 }
 
+interface WatchExecutionState {
+  watchId: string
+  startTime: number
+  agentId: string
+  cancelled: boolean
+}
+
 // ==================== Watch Service ====================
 
 export class WatchService {
   private store: WatchStore
   private config: WatchServiceConfig | null = null
   private timers: Map<string, NodeJS.Timeout> = new Map()
-  private runningWatches: Map<string, { watchId: string; startTime: number; agentId: string }> = new Map()
+  private runningWatches = new Map<string, WatchExecutionState>()
+  private latestExecutions = new Map<string, WatchExecutionState>()
   /** 已入队/待槽位的 watchId，防止同 Watch 在排队期间被重复调度 */
   private scheduledWatches: Set<string> = new Set()
   private activeCount = 0
@@ -305,6 +313,7 @@ export class WatchService {
   }
 
   delete(id: string): boolean {
+    this.latestExecutions.delete(id)
     this.cancelTimers(id)
     this.unregisterSensorTargets(id)
     return this.store.delete(id)
@@ -499,6 +508,7 @@ export class WatchService {
   cancelRunningWatch(id: string): boolean {
     const info = this.runningWatches.get(id)
     if (!info || !this.config) return false
+    info.cancelled = true
 
     try {
       this.config.agentService.abort(info.agentId)
@@ -625,6 +635,9 @@ export class WatchService {
 
     const startTime = Date.now()
     const isWakeup = watch.id === WatchService.WAKEUP_ID
+    const agentId = isWakeup ? WatchService.WAKEUP_AGENT_ID : watchAgentKeyFor(watch.id)
+    const execution: WatchExecutionState = { watchId: watch.id, startTime, agentId, cancelled: false }
+    this.latestExecutions.set(watch.id, execution)
 
     // Circuit breaker：熔断窗口内直接 skip
     const circuitSkip = this.checkCircuitOpen(watch.id)
@@ -691,10 +704,6 @@ export class WatchService {
         && !event.payload?.fromManualCheck)
 
     const agentSessionId = `watch_${watch.id}_${Date.now()}`
-    const agentId = isWakeup
-      ? WatchService.WAKEUP_AGENT_ID
-      : watchAgentKeyFor(watch.id)
-
     if (watch.execution.type === 'ssh') {
       log.warn(
         `Watch "${watch.name}" (${watch.id}) has execution.type=ssh; ` +
@@ -707,24 +716,12 @@ export class WatchService {
     const awake = createAwakeTrack()
     let awakeTick = Date.now()
 
+    const snapshots = watchContextSnapshots.open()
+    let active = true
+    const canExecute = () => active && !execution.cancelled && this.isRunning && this.runningWatches.get(watch.id) === execution
     try {
-      const enhancedPrompt = await this.buildEnhancedPrompt(watch, event)
-      // 手动 desktop：确保联络 tab 存在（talk_to_user / 兜底通知可落点）
-      if (!isWakeup && watch.output.type === 'desktop' && !isSilent) {
-        this.ensureDesktopTab()
-      }
-
-      this.notifyFrontend('watch:task-started', {
-        watchId: watch.id,
-        ptyId: null,
-        watchName: watch.name,
-        prompt: enhancedPrompt,
-        triggerType: event.type,
-        executionType: 'assistant'
-      })
-
-      this.runningWatches.set(watch.id, { watchId: watch.id, startTime, agentId })
-      // 总览「已运行」只认 status=running 的 lastRun.at；失败记录不得冒充本次开始时间
+      this.runningWatches.set(watch.id, execution)
+      // 准备上下文也属于本轮执行，受同一停止和超时边界约束。
       this.store.updateLastRun(watch.id, {
         at: startTime,
         status: 'running',
@@ -741,18 +738,33 @@ export class WatchService {
       awakeTimer.unref?.()
       try {
         result = await raceWithTimeout(
-          this.executeWithAssistantAgent(
-            watch, enhancedPrompt, isSilent, isWakeup, agentSessionId
-          ),
+          (async () => {
+            const enhancedPrompt = await this.buildEnhancedPrompt(watch, event, snapshots)
+            if (!canExecute()) {
+              return { success: false, output: '', error: t('error.watch_stopped'),
+                duration: Date.now() - startTime, skipped: true, skipReason: 'stopped' }
+            }
+            if (!isWakeup && watch.output.type === 'desktop' && !isSilent) this.ensureDesktopTab()
+            this.notifyFrontend('watch:task-started', {
+              watchId: watch.id, ptyId: null, watchName: watch.name,
+              prompt: enhancedPrompt, triggerType: event.type, executionType: 'assistant'
+            })
+            return this.executeWithAssistantAgent(
+              watch, enhancedPrompt, isSilent, isWakeup, agentSessionId, canExecute
+            )
+          })(),
           timeoutMs,
           t('error.watch_timeout', { minutes: timeoutSec / 60 }),
         )
       } finally {
+        active = false
         noteAwakeGap(awake, Date.now() - awakeTick)
         clearInterval(awakeTimer)
       }
     } catch (error) {
-      try { this.config.agentService.abort(agentId) } catch { /* ignore */ }
+      if (this.runningWatches.get(watch.id) === execution) {
+        try { this.config.agentService.abort(agentId) } catch { /* ignore */ }
+      }
       const slept = error instanceof WatchWallClockTimeout
         && !isWakeup
         && timeoutWasSleep(awake, timeoutMs)
@@ -777,11 +789,18 @@ export class WatchService {
         }
       }
     } finally {
-      const cur = this.runningWatches.get(watch.id)
-      if (cur?.startTime === startTime) this.runningWatches.delete(watch.id)
+      snapshots.close()
+      if (this.runningWatches.get(watch.id) === execution) this.runningWatches.delete(watch.id)
     }
 
-    this.recordExecution(watch, event, result, agentSessionId)
+    if (execution.cancelled) {
+      result = { success: false, output: '', error: t('error.operation_aborted'),
+        duration: Date.now() - startTime, skipped: true, skipReason: 'cancelled' }
+    }
+    const latest = this.latestExecutions.get(watch.id) === execution
+    this.recordExecution(watch, event, result, agentSessionId, latest)
+    // 旧一轮仍记入审计历史，但不能覆盖新一轮状态、熔断或完成通知。
+    if (!latest) return result
     // 只有「睡了、等醒来再做」留着这笔账。做成了、或是别的失败，都不再自动重跑。
     if (!result.interruptedBySleep) {
       this.store.clearContinueWhenAwake(watch.id)
@@ -799,6 +818,7 @@ export class WatchService {
       this.maybeNotifyCircuit(watch, result)
     }
 
+    if (this.latestExecutions.get(watch.id) !== execution) return result
     this.notifyFrontend('watch:task-completed', {
       watchId: watch.id,
       result: {
@@ -822,7 +842,8 @@ export class WatchService {
     prompt: string,
     silent: boolean = false,
     wakeupMode: boolean = false,
-    agentSessionId?: string
+    agentSessionId?: string,
+    canExecute: () => boolean = () => this.isRunning
   ): Promise<WatchExecutionResult> {
     if (!this.config?.agentService) {
       return { success: false, output: '', error: t('error.watch_no_agent'), duration: 0 }
@@ -849,6 +870,12 @@ export class WatchService {
       } catch (e) {
         log.warn('Failed to preload watch skills:', e)
       }
+    }
+
+    // 技能预加载可能跨过 stop / timeout；旧的一轮不能重新启动 Agent。
+    if (!canExecute()) {
+      return { success: false, output: '', error: t('error.watch_stopped'),
+        duration: Date.now() - startTime, skipped: true, skipReason: 'stopped' }
     }
 
     // 过程透明：一律推 agent:step 到关切面板
@@ -932,12 +959,12 @@ export class WatchService {
 
   // ==================== Prompt 构建 ====================
 
-  private async buildEnhancedPrompt(watch: WatchDefinition, event: SensorEvent): Promise<string> {
+  private async buildEnhancedPrompt(watch: WatchDefinition, event: SensorEvent, snapshots: WatchContextLease): Promise<string> {
     // 唤醒 Watch：HEARTBEAT.md 模板 + 最近联络上下文（与「其它 Watch」同源，避免心跳看不到联络 tab 对话）
     if (watch.id === WatchService.WAKEUP_ID) {
       const template = this.readWorkspaceFile(WatchService.HEARTBEAT_FILENAME)
         || WatchService.DEFAULT_HEARTBEAT_TEMPLATE
-      const parts = [await this.resolveHeartbeatVariables(template, watch, event)]
+      const parts = [await this.resolveHeartbeatVariables(template, watch, event, snapshots)]
       const recentContext = this.buildRecentCompanionContext()
       if (recentContext) {
         parts.push(recentContext)
@@ -950,7 +977,7 @@ export class WatchService {
 
     parts.push(`[当前时间：${new Date().toLocaleString()}]`)
 
-    const eventLines = await this.formatEventLines(event)
+    const eventLines = await this.formatEventLines(event, snapshots)
     if (eventLines.length) {
       parts.push(`触发事件：\n${eventLines.join('\n')}`)
       if (eventLines.length > 1) {
@@ -960,7 +987,7 @@ export class WatchService {
 
     const hasState = watch.state && Object.keys(watch.state).length > 0
     if (hasState) {
-      parts.push(`当前 Watch 状态：\n${await this.completeContext(JSON.stringify(watch.state, null, 2), 'watch-state')}`)
+      parts.push(`当前 Watch 状态：\n${await snapshots.format(JSON.stringify(watch.state, null, 2), 'watch-state')}`)
       parts.push('[需要更新状态时，调用 watch_state_update 工具。]')
     }
 
@@ -1021,12 +1048,12 @@ export class WatchService {
   }
 
   /** 解析心跳模板变量，缺失的必要变量自动追加到开头 */
-  private async resolveHeartbeatVariables(template: string, watch: WatchDefinition, event: SensorEvent): Promise<string> {
+  private async resolveHeartbeatVariables(template: string, watch: WatchDefinition, event: SensorEvent, snapshots: WatchContextLease): Promise<string> {
     let result = template
 
     const timeValue = `[当前时间：${new Date().toLocaleString()}]`
 
-    const eventLines = await this.formatEventLines(event)
+    const eventLines = await this.formatEventLines(event, snapshots)
     let eventsValue = ''
     if (eventLines.length) {
       eventsValue = `# 触发事件\n${eventLines.join('\n')}`
@@ -1135,14 +1162,7 @@ export class WatchService {
     }
   }
 
-  /** 直接注入不超预算；超预算交接全文指针，写盘失败由执行失败路径处理。 */
-  private async completeContext(text: string, name: string): Promise<string> {
-    if (text.length <= 4000) return text
-    const full = await externalizeToolOutput({ output: text, maxChars: 512, toolName: name, excerpt: 'head' })
-    return full!.text
-  }
-
-  private async formatEventLines(event: SensorEvent): Promise<string[]> {
+  private async formatEventLines(event: SensorEvent, snapshots: WatchContextLease): Promise<string[]> {
     if (event.type === 'heartbeat' && event.payload.isBatch) {
       const events = event.payload.events as Array<{ type: string; payload: Record<string, unknown> }> | undefined
       if (!events?.length) return ['- 例行检查（传感器未检测到新的邮件、日历或文件变化）']
@@ -1150,12 +1170,12 @@ export class WatchService {
       const lines = events.map((e, i) => `  ${i + 1}. ${this.truncate(this.describeEvent(e.type, e.payload), 200)}`)
       if (full.length <= 4000) return [`共 ${events.length} 条事件，完整内容：`, full]
       return [`共 ${events.length} 条事件，以下为前 ${Math.min(events.length, 20)} 条摘要；完整事件在快照中。`,
-        ...lines.slice(0, 20), await this.completeContext(full, 'watch-events')]
+        ...lines.slice(0, 20), await snapshots.format(full, 'watch-events')]
     }
     if (event.type === 'heartbeat') return ['- 例行检查']
     const brief = `- ${this.describeEvent(event.type, event.payload)}`
     if (['webhook', 'command_probe', 'http_probe'].includes(event.type)) {
-      return [brief, await this.completeContext(JSON.stringify(event.payload, null, 2), 'watch-event')]
+      return [brief, await snapshots.format(JSON.stringify(event.payload, null, 2), 'watch-event')]
     }
     return [brief]
   }
@@ -1465,7 +1485,7 @@ export class WatchService {
 
   // ==================== 记录执行 ====================
 
-  private recordExecution(watch: WatchDefinition, event: SensorEvent, result: WatchExecutionResult, agentSessionId?: string): void {
+  private recordExecution(watch: WatchDefinition, event: SensorEvent, result: WatchExecutionResult, agentSessionId?: string, updateCurrent = true): void {
     let status: WatchRunStatus = 'completed'
     if (result.skipped) status = 'skipped'
     else if (!result.success) status = 'failed'
@@ -1481,7 +1501,7 @@ export class WatchService {
       agentSessionId
     }
 
-    this.store.updateLastRun(watch.id, runRecord)
+    if (updateCurrent) this.store.updateLastRun(watch.id, runRecord)
     this.store.addHistory({
       watchId: watch.id,
       watchName: watch.name,

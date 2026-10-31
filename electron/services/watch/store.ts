@@ -311,7 +311,10 @@ export class WatchStore {
   }
 
   importData(data: Partial<WatchStoreSchema>): void {
-    if (data.watches) this.store.set('watches', data.watches)
+    if (data.watches) {
+      const watches = data.watches.map(watch => watch.state === undefined ? watch : { ...watch, state: WatchState.validate(watch.state) })
+      this.store.set('watches', watches)
+    }
     if (data.history) this.store.set('history', data.history)
     if (Array.isArray(data.continueWhenAwake)) {
       this.store.set('continueWhenAwake', data.continueWhenAwake.filter(id => typeof id === 'string'))

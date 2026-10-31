@@ -59,6 +59,6 @@ export interface EventBus {
   off(handler: EventHandler): void
   /** 获取队列中待处理的事件数 */
   pending(): number
-  /** 获取历史事件（用于调试） */
+  /** 获取历史事件（用于调试）；大正文返回明确标记的摘要，订阅者仍收到全文。 */
   recentEvents(limit?: number): SensorEvent[]
 }

@@ -86,7 +86,7 @@ export class CommandProbeSensor implements Sensor {
   }
 
   addTarget(watchId: string, target: Omit<CommandProbeTarget, 'watchId'>): void {
-    if (this.targets.size >= MAX_TARGETS) {
+    if (!this.targets.has(watchId) && this.targets.size >= MAX_TARGETS) {
       log.warn(`Target limit reached (${MAX_TARGETS}), rejecting: ${watchId}`)
       return
     }
@@ -156,6 +156,7 @@ export class CommandProbeSensor implements Sensor {
     let stderr = ''
     let exitCode: number | null = null
     let timeoutId: NodeJS.Timeout | null = null
+    let forceFinalizeTimer: NodeJS.Timeout | null = null
     let done = false
     let captureFailure: Error | undefined
 
@@ -163,8 +164,11 @@ export class CommandProbeSensor implements Sensor {
       if (done) return
       done = true
       if (timeoutId) clearTimeout(timeoutId)
+      if (forceFinalizeTimer) clearTimeout(forceFinalizeTimer)
+      // 被移除/替换的旧进程不能污染新目标基线或产生伪失败事件。
+      if (this.runningProcesses.get(watchId) !== child) return
       this.runningProcesses.delete(watchId)
-      if (!this._running) return
+      if (!this._running || this.targets.get(watchId) !== target) return
 
       if (captureFailure) {
         this.eventBus.emit({
@@ -283,6 +287,11 @@ export class CommandProbeSensor implements Sensor {
       const limitExceeded = () => {
         captureFailure = new ProbeOutputLimitError()
         try { child.kill('SIGKILL') } catch { /* 已退出 */ }
+        forceFinalizeTimer = setTimeout(() => {
+          child.stdout?.destroy()
+          child.stderr?.destroy()
+          finalize()
+        }, 500)
       }
       const takeOutput = () => {
         if (!captureFailure) {
@@ -319,8 +328,10 @@ export class CommandProbeSensor implements Sensor {
       timeoutId = setTimeout(() => {
         captureFailure = new Error('命令探针执行超时，本次检查失败，未更新比较基线。')
         try { child.kill('SIGTERM') } catch { /* 已退出 */ }
-        setTimeout(() => {
+        forceFinalizeTimer = setTimeout(() => {
           try { child.kill('SIGKILL') } catch { /* 已退出 */ }
+          child.stdout?.destroy()
+          child.stderr?.destroy()
           takeOutput()
           finalize()
         }, 500)
