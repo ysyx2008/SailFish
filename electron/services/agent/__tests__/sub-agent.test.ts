@@ -879,6 +879,27 @@ describe('进度推给界面', () => {
     expect((step.toolArgs as { batch?: { instruction: string } }).batch?.instruction).toBe('很长的共同指令'.repeat(50))
   })
 
+  it('200人成批收工不绕过节流，交差完整且最后状态立即可见', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, () => stubChild('编号=1001\n结果=3010', 1))
+    let pushes = 0
+    const update = executor.updateStep
+    executor.updateStep = (id, updates) => {
+      if (updates.subAgents) pushes++
+      update(id, updates)
+    }
+    const knocks: string[] = []
+    executor.knockParent = message => { knocks.push(message) }
+    await dispatchSubAgents({ batch: { instruction: '计算', items: Array.from({ length: 200 }, (_, i) => ({ description: '压测', input: String(i) })) } }, defaultConfig, executor)
+    await roster.settled()
+    const step = (executor as any)._steps.find((s: AgentStep) => s.toolName === 'dispatch_agents') as AgentStep
+    expect(knocks).toHaveLength(200)
+    expect(step.subAgents).toHaveLength(200)
+    expect(step.subAgents!.every(member => member.status === 'completed')).toBe(true)
+    expect(step.organization).toMatchObject({ total: 200, live: 0 })
+    expect(pushes).toBeLessThan(10)
+  })
+
   it('总览随进展重写：还在干的写做到第几步、最近的工具，不用等有人做完', async () => {
     const writes = new Map<string, string>()
     vi.mocked(fs.writeFileSync).mockImplementation((file, data) => { writes.set(String(file), String(data)) })

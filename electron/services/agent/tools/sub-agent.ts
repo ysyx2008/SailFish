@@ -20,7 +20,7 @@ import { getAgentTools, filterSubAgentTools, dispatchTitle } from '../tools'
 import { truncateFromEnd, truncateFromEndWithNotice } from './utils'
 import { getScratchPath } from './file'
 import { createLogger } from '../../../utils/logger'
-import { t } from '../i18n'
+import { t, createTranslator } from '../i18n'
 import {
   labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER,
   teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT, type ExpertTeam
@@ -64,25 +64,25 @@ function safeDirPart(value: string): string {
   return value.replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'session'
 }
 
-function statusLabel(status: ChildSnapshot['status']): string {
+function statusLabel(status: ChildSnapshot['status'], translate = t): string {
   switch (status) {
-    case 'completed': return t('dispatch.status_completed')
-    case 'interrupted': return t('dispatch.status_interrupted')
-    case 'failed': return t('dispatch.status_failed')
-    case 'pending': return t('dispatch.status_pending')
-    default: return t('dispatch.status_running')
+    case 'completed': return translate('dispatch.status_completed')
+    case 'interrupted': return translate('dispatch.status_interrupted')
+    case 'failed': return translate('dispatch.status_failed')
+    case 'pending': return translate('dispatch.status_pending')
+    default: return translate('dispatch.status_running')
   }
 }
 
 /** 总览里的状态一格：还在干的写做到第几步、最近用了什么工具，看得出是在忙还是停住了 */
-function statusCell(c: ChildSnapshot): string {
-  if (c.status !== 'running' && c.status !== 'pending') return statusLabel(c.status)
+function statusCell(c: ChildSnapshot, translate: typeof t): string {
+  if (c.status !== 'running' && c.status !== 'pending') return statusLabel(c.status, translate)
   const last = c.steps[c.steps.length - 1]
   const detail = [
-    last && t('dispatch.overview_steps', { steps: c.steps.length, tool: last.tool }),
-    c.waitingForModel && t('dispatch.overview_queued'),
+    last && translate('dispatch.overview_steps', { steps: c.steps.length, tool: last.tool }),
+    c.waitingForModel && translate('dispatch.overview_queued'),
   ].filter(Boolean).join('；')
-  return detail ? t('dispatch.overview_live', { status: statusLabel(c.status), detail }) : statusLabel(c.status)
+  return detail ? translate('dispatch.overview_live', { status: statusLabel(c.status, translate), detail }) : statusLabel(c.status, translate)
 }
 
 /** 做完 / 在干 / 失败 / 已打断各几个 */
@@ -201,11 +201,12 @@ export class SubAgentWorkspace {
 
   /** 一人一行：名字、状态、结果字数、结果文件、任务 */
   rowsOf(children: ChildSnapshot[]): string[] {
+    const translate = createTranslator()
     return children.map(c => {
       const kept = this.results.get(c.name)
-      const who = [c.lead ? t('org.lead_mark') : '', c.role, c.team && `「${c.team}」`].filter(Boolean).join(' ')
+      const who = [c.lead ? translate('org.lead_mark') : '', c.role, c.team && `「${c.team}」`].filter(Boolean).join(' ')
       const task = who ? `[${who}] ${c.description}` : c.description
-      return [c.name, statusCell(c), kept ? String(kept.chars) : '-', kept?.file ?? '-', task].join(' | ')
+      return [c.name, statusCell(c, translate), kept ? String(kept.chars) : '-', kept?.file ?? '-', task].join(' | ')
     })
   }
 
@@ -1004,9 +1005,15 @@ export function spawnDeps(
     getParentMessages: () => executor.getParentMessages?.() ?? [],
     getParentContext: () => toSubAgentContext(executor.getAgentContext?.() ?? agentContext),
     knock: (message) => {
-      progress.flush()
-      workspace.writeOverview(roster.list())
-      refreshOrgBoard(roster)
+      // 每位的交差立即送达；整队进度与看板沿用合并窗口，全部停止才强制落最后一帧。
+      // 否则200人相继收工会重建200次完整名单、看板和IPC快照。
+      if (roster.hasLive()) {
+        progress.schedule()
+        overviewProgress.schedule()
+      } else {
+        progress.flush()
+        overviewProgress.flush()
+      }
       for (const team of roster.listTeams()) {
         workspace.writeTeamChat(team)
         workspace.writeTeamTranscript(team)

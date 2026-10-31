@@ -3,7 +3,7 @@
  * 只拼文字，数据由调用方从账本和各份花名册里取来。
  */
 import type { TeamReviewState } from '@shared/types'
-import { t } from '../i18n'
+import { t, createTranslator } from '../i18n'
 
 export interface BoardTeam {
   name: string
@@ -27,19 +27,20 @@ export interface BoardTotals {
   total: number
 }
 
-function reviewText(team: BoardTeam): string {
-  return t(`org.board_review_${team.review}`, { reviewers: team.reviewers.join('、') })
+function reviewText(team: BoardTeam, translate: typeof t): string {
+  return translate(`org.board_review_${team.review}`, { reviewers: team.reviewers.join('、') })
 }
 
 export function renderBoard(sections: BoardSection[], totals: BoardTotals): string {
-  const secretary = t('org.secretary')
-  const lines = [t('org.board_title'), t('org.board_totals', { live: totals.live, total: totals.total }), '']
+  const translate = createTranslator()
+  const secretary = translate('org.secretary')
+  const lines = [translate('org.board_title'), translate('org.board_totals', { live: totals.live, total: totals.total }), '']
   for (const section of sections) {
     lines.push(section.owner
-      ? t('org.board_section', { owner: section.owner, depth: section.depth, reportsTo: section.reportsTo ?? secretary })
-      : t('org.board_section_root'))
-    for (const team of section.teams) lines.push(t('org.board_team', { team: team.name, review: reviewText(team) }))
-    lines.push(t('dispatch.overview_header'), ...(section.rows.length ? section.rows : ['-']), '')
+      ? translate('org.board_section', { owner: section.owner, depth: section.depth, reportsTo: section.reportsTo ?? secretary })
+      : translate('org.board_section_root'))
+    for (const team of section.teams) lines.push(translate('org.board_team', { team: team.name, review: reviewText(team, translate) }))
+    lines.push(translate('dispatch.overview_header'), ...(section.rows.length ? section.rows : ['-']), '')
   }
   return lines.join('\n')
 }

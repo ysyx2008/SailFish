@@ -4278,8 +4278,7 @@ export function builtinSkillDisplayName(id: string, fallback?: string): string {
   return table[id] || fallback || id
 }
 
-export function t(key: TranslationKey, params?: Record<string, string | number>): string {
-  const locale = getLocale()
+function translate(locale: 'zh-CN' | 'en-US', key: TranslationKey, params?: Record<string, string | number>): string {
   let text: string = translations[locale][key] || translations['zh-CN'][key] || key
   
   // 替换参数
@@ -4289,6 +4288,16 @@ export function t(key: TranslationKey, params?: Record<string, string | number>)
   }
   
   return text
+}
+
+/** 一次同步批量排版共用同一语言，避免每个表格单元都经配置服务读盘；下一次排版重新读取。 */
+export function createTranslator(): typeof t {
+  const locale = getLocale()
+  return (key, params) => translate(locale, key, params)
+}
+
+export function t(key: TranslationKey, params?: Record<string, string | number>): string {
+  return translate(getLocale(), key, params)
 }
 
 /**
