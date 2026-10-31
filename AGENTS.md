@@ -24,7 +24,7 @@
 | 动作 | 正文 |
 |---|---|
 | 工作树、初始化、用户验收 | `.agents/project.md` |
-| 交付、变基、合入、标签、清理、盘点 | `.agents/workflow.md` |
+| 开始或恢复工作时更新状态；交付、变基、合入、标签、清理、盘点 | `.agents/workflow.md` |
 | 写需求、SPEC、Plan | `.agents/rules/spec-driven.md` |
 | 查代码结构 | `.agents/rules/codegraph.md` |
 | 改提示词、工具描述或模型可见文案 | `.agents/rules/agent-prompt-principles.md` |
