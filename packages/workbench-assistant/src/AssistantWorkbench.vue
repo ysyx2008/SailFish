@@ -123,7 +123,8 @@ const artifactSeated = computed(() =>
   seat.value === 'artifact' && artifactStore.isVisible(props.tab.id)
 )
 // 团队图只有铺满这一种看法；文档仍可独立切换铺满/分栏。
-const focusActive = computed(() => orgSeated.value || (focusMode.value && artifactSeated.value))
+const artifactFocusActive = computed(() => focusMode.value && artifactSeated.value)
+const focusActive = computed(() => orgSeated.value || artifactFocusActive.value)
 
 const chatFocusEl = ref<HTMLElement | null>(null)
 const artifactFocusEl = ref<HTMLElement | null>(null)
@@ -142,7 +143,7 @@ function stopOverlaySpaceObserver() {
   overlaySpaceObserver = null
 }
 
-watch(focusActive, async (active) => {
+watch(artifactFocusActive, async (active) => {
   stopOverlaySpaceObserver()
   if (!active) return
   await nextTick()
@@ -496,14 +497,15 @@ defineExpose({
       >
         <template #anchor>
           <div class="assistant-teleport-slot">
-            <Teleport :disabled="!focusActive" :to="chatFocusEl || 'body'">
+            <Teleport :disabled="!artifactFocusActive" :to="chatFocusEl || 'body'">
               <div class="assistant-chat">
                 <AiPanel
                   ref="aiPanelRef"
                   :tab-id="tab.id"
+                  :visible="!orgSeated"
                   :tab-active="isActive"
-                  :hide-avatar="terminalSeated || focusActive"
-                  :peek="focusActive"
+                  :hide-avatar="terminalSeated || artifactFocusActive"
+                  :peek="artifactFocusActive"
                   :consume-workbench-context="consumeWorkbenchContext"
                   :open-expert-team="openExpertTeam"
                   :opened-expert-team-step-id="teamSeated ? teamStepId : null"
@@ -612,10 +614,10 @@ defineExpose({
     <div
       v-show="focusActive"
       class="assistant-focus-stage"
-      :style="{ '--assistant-focus-overlay': overlaySpacePx + 'px' }"
+      :style="{ '--assistant-focus-overlay': orgSeated ? '0px' : overlaySpacePx + 'px' }"
     >
       <div ref="artifactFocusEl" class="assistant-focus-doc" />
-      <div ref="chatFocusEl" class="assistant-focus-chat" />
+      <div v-show="artifactFocusActive" ref="chatFocusEl" class="assistant-focus-chat" />
     </div>
     <div v-if="(showPanelFold && panelExpanded && !focusActive) || (focusActive && showDeskList)" class="artifact-chrome artifact-chrome--fold">
       <div

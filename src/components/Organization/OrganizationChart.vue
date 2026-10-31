@@ -66,20 +66,17 @@ const stats = computed(() => {
 
 const detail = ref<TeamArtifactSource | null>(props.entry?.member ? { member: props.entry.member } : null)
 const detailTab = ref<'activity' | 'artifacts'>('activity')
-const detailFocused = ref(false)
 let detailTrigger: HTMLElement | null = null
 const memberName = computed(() => detail.value && 'member' in detail.value ? detail.value.member : null)
 const member = computed(() => currentOrganization.value?.members.find(member => member.name === memberName.value))
 function showOverview() {
   const trigger = detailTrigger
   detailTrigger = null
-  detailFocused.value = false
   detail.value = null
   emit('overview')
   void nextTick(() => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }) })
 }
 function openDetail(next: TeamArtifactSource, tab: 'activity' | 'artifacts' = 'activity') {
-  detailFocused.value = false
   const active = document.activeElement
   if (active instanceof HTMLElement && active.closest('.oc-overview')) detailTrigger = active
   detail.value = next
@@ -89,7 +86,6 @@ const memberSnapshot = computed(() => memberName.value ? teamMemberSnapshot(stat
 watch([() => props.tabId, () => props.stepId, () => props.entry], () => {
   detail.value = props.entry?.member ? { member: props.entry.member } : null
   detailTab.value = 'activity'
-  detailFocused.value = false
   detailTrigger = null
 })
 watch([memberName, member], () => {
@@ -117,9 +113,6 @@ onMounted(() => {
     localFocus.value = true
   }
 })
-function toggleDetailFocus() {
-  detailFocused.value = !detailFocused.value
-}
 onBeforeUnmount(() => {
   focusObserver?.disconnect()
   window.removeEventListener('resize', syncFocusBounds)
@@ -131,7 +124,7 @@ onBeforeUnmount(() => {
   <Teleport :disabled="!localFocus" :to="focusTarget || 'body'">
   <section ref="rootRef" class="organization-chart" :class="[`is-${mode}`, { 'is-focus': focused }]" :style="localFocus ? focusBounds : undefined">
     <div class="oc-workspace">
-    <div class="oc-overview" :inert="detailFocused || undefined" :aria-hidden="detailFocused || undefined">
+    <div class="oc-overview">
     <TeamPanelHeader class="oc-header" :title="t('ai.organization.title')" :close-label="t('ai.organization.close')" :meta="organization ? t('ai.organization.metaSimple', { total: organization.total, teams: organization.teams.length + (organization.omittedTeams ?? 0) }) : undefined" :focused="focused" hide-focus @close="emit('close')">
       <template #icon><Network :size="14" /></template>
     </TeamPanelHeader>
@@ -176,8 +169,8 @@ onBeforeUnmount(() => {
       </template>
     </div>
     </div>
-    <aside v-if="detail" class="oc-detail" :class="{ 'is-focus': detailFocused }" :style="!focused || mode === 'overlay' ? { '--assistant-focus-overlay': '0px' } : undefined">
-      <OrganizationDetailPanel :key="JSON.stringify([currentOrganization?.sessionId, stepId, detail])" v-model:active-tab="detailTab" :source="detail" :member="member" :snapshot="memberSnapshot" :session-id="currentOrganization?.sessionId" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" :focus-active="detailFocused" @close="showOverview" @toggle-focus="toggleDetailFocus" />
+    <aside v-if="detail" class="oc-detail">
+      <OrganizationDetailPanel :key="JSON.stringify([currentOrganization?.sessionId, stepId, detail])" v-model:active-tab="detailTab" :source="detail" :member="member" :snapshot="memberSnapshot" :session-id="currentOrganization?.sessionId" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" @close="showOverview" />
     </aside>
     </div>
   </section>
@@ -210,11 +203,9 @@ onBeforeUnmount(() => {
   border-left: 1px solid var(--border-color);
 }
 .organization-chart.is-focus { border-left: none; }
-.organization-chart.is-focus .oc-body { padding-bottom: var(--assistant-focus-overlay, 22px); }
 .oc-workspace { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .oc-overview { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .oc-detail { display: flex; flex-direction: column; flex: 0 0 clamp(300px, 42%, 560px); max-width: 65%; min-width: 0; min-height: 0; border-left: 1px solid var(--border-color); background: var(--bg-primary); }
-.oc-detail.is-focus { position: absolute; inset: 0; z-index: 1; max-width: none; border-left: none; }
 
 .oc-progress { flex-shrink: 0; padding: 10px 14px; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .oc-progress span { color: var(--text-secondary); }

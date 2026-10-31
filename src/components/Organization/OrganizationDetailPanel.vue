@@ -13,9 +13,9 @@ import ExpertTeamChat from '../ExpertTeam/ExpertTeamChat.vue'
 const props = defineProps<{
   tabId: string; stepId: string; source: TeamArtifactSource; sessionId?: string
   member?: OrganizationMemberView; snapshot?: SubAgentResult
-  focusActive: boolean; activeTab: 'activity' | 'artifacts'; artifactBindings?: ArtifactPanelBindings
+  activeTab: 'activity' | 'artifacts'; artifactBindings?: ArtifactPanelBindings
 }>()
-const emit = defineEmits<{ close: []; toggleFocus: []; 'update:activeTab': [tab: 'activity' | 'artifacts'] }>()
+const emit = defineEmits<{ close: []; 'update:activeTab': [tab: 'activity' | 'artifacts'] }>()
 const { t } = useI18n()
 const viewId = useId()
 const tab = computed(() => props.activeTab)
@@ -37,7 +37,7 @@ function stepTab(event: KeyboardEvent) {
 
 <template>
   <section class="org-object-detail">
-    <TeamPanelHeader class="od-header" :title="title" :close-label="t(memberView ? 'ai.organization.closeMember' : 'ai.expertTeam.close')" :meta="'name' in source ? source.owner : undefined" :focused="focusActive" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="emit('close')" @toggle-focus="emit('toggleFocus')">
+    <TeamPanelHeader class="od-header" :title="title" :close-label="t(memberView ? 'ai.organization.closeMember' : 'ai.expertTeam.close')" :meta="'name' in source ? source.owner : undefined" hide-focus @close="emit('close')">
       <template #icon><UserRound v-if="memberView" :size="14" /><MessagesSquare v-else :size="14" /></template>
     </TeamPanelHeader>
     <div class="od-tabs" role="tablist" :aria-label="t('ai.organization.detailTabs')" @keydown.left.prevent="stepTab" @keydown.right.prevent="stepTab">
@@ -62,7 +62,7 @@ function stepTab(event: KeyboardEvent) {
 .od-tabs button { padding: 10px 0 8px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; }
 .od-tabs button[aria-selected="true"] { border-bottom-color: var(--accent-primary); color: var(--text-primary); }
 .od-tabs button:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -2px; }
-.od-content { display: flex; flex: 1; min-height: 0; min-width: 0; box-sizing: border-box; padding-bottom: var(--assistant-focus-overlay, 0px); }
+.od-content { display: flex; flex: 1; min-height: 0; min-width: 0; box-sizing: border-box; }
 .od-pane { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .od-pane :deep(.om-body) { padding-bottom: 14px; }
 </style>

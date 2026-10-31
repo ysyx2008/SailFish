@@ -85,12 +85,13 @@ describe('团队产出物的实时边界', () => {
     expect(container.querySelector('.artifact-preview-stub')).toBe(preview)
     expect(container.querySelector('.od-header')).toBe(header)
   })
-  it('总览只提供关闭，右侧详情仍保留自己的铺满入口', async () => {
+  it('总览与右侧详情都只提供关闭，不再有铺满入口', async () => {
     mount(true); await settle()
     expect(container.querySelector('.oc-header .tph-close')).not.toBeNull()
     expect(container.querySelector('.oc-header .tph-focus')).toBeNull()
     container.querySelector<HTMLButtonElement>('.open-team-artifacts')!.click(); await settle()
-    expect(container.querySelector('.od-header .tph-focus')).not.toBeNull()
+    expect(container.querySelector('.od-header .tph-close')).not.toBeNull()
+    expect(container.querySelector('.od-header .tph-focus')).toBeNull()
     expect(container.querySelector('.oc-header .tph-focus')).toBeNull()
   })
   it('文件检查尚未返回时切走成果，不让迟到请求打开隐藏预览', async () => {
@@ -113,9 +114,8 @@ describe('团队产出物的实时边界', () => {
     container.querySelector<HTMLButtonElement>('.open-team-artifacts')!.click(); await settle()
     expect(container.querySelector('.oc-detail .org-artifacts')).not.toBeNull()
     expect(container.querySelector('.oc-overview .oc-body')).toBe(overview)
-    container.querySelector<HTMLButtonElement>('.od-header .tph-focus')!.click(); await settle()
-    expect(container.querySelector('.oc-detail.is-focus')).not.toBeNull()
-    expect(container.querySelector('.oc-overview')?.hasAttribute('inert')).toBe(true)
+    expect(container.querySelector('.oc-detail.is-focus')).toBeNull()
+    expect(container.querySelector('.oc-overview')?.hasAttribute('inert')).toBe(false)
     container.querySelector<HTMLButtonElement>('.od-header .tph-close')!.click(); await settle()
     expect(container.querySelector('.oc-detail')).toBeNull()
     expect(container.querySelector('.oc-overview .oc-body')).toBe(overview)
