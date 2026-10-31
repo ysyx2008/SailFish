@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 项目组织图：直属成员直接展示，负责人名下分区，一层层缩进。
+ * 项目组织图：真实管理关系从左到右展开，成员详情固定右侧。
  * 点某个团的「群聊」打开那个团的完整群聊。内容随派出组长的那一步实时更新。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -66,6 +66,7 @@ const stats = computed(() => {
 })
 
 const detail = ref<TeamArtifactSource | null>(props.entry?.member ? { member: props.entry.member } : null)
+const selectedMember = ref<string | null>(props.entry?.member ?? null)
 const detailTab = ref<'activity' | 'artifacts'>('activity')
 const detailPanel = ref<InstanceType<typeof OrganizationDetailPanel> | null>(null)
 let detailTrigger: HTMLElement | null = null
@@ -75,6 +76,7 @@ function showOverview() {
   const trigger = detailTrigger
   detailTrigger = null
   detail.value = null
+  selectedMember.value = null
   emit('overview')
   void nextTick(() => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }) })
 }
@@ -82,11 +84,13 @@ function openDetail(next: TeamArtifactSource, tab: 'activity' | 'artifacts' = 'a
   const active = document.activeElement
   if (active instanceof HTMLElement && active.closest('.oc-overview')) detailTrigger = active
   detail.value = next
+  selectedMember.value = 'member' in next ? next.member : null
   detailTab.value = tab
 }
 const memberSnapshot = computed(() => memberName.value ? teamMemberSnapshot(state.value?.steps ?? [], props.stepId, memberName.value, state.value?.sessionId) : undefined)
 watch([() => props.tabId, () => props.stepId, () => props.entry], () => {
   detail.value = props.entry?.member ? { member: props.entry.member } : null
+  selectedMember.value = props.entry?.member ?? null
   detailTab.value = 'activity'
   detailTrigger = null
 })
@@ -94,6 +98,12 @@ watch([memberName, member], () => {
   if (memberName.value && !member.value) showOverview()
 }, { immediate: true, flush: 'post' })
 const rootRef = ref<HTMLElement | null>(null)
+function clearSelection(event: MouseEvent) {
+  if (event.target instanceof Element && event.target.closest('.org-node, .org-team, button')) return
+  selectedMember.value = null
+  const active = document.activeElement
+  if (active instanceof HTMLElement && active.closest('.oc-tree .org-node')) active.blur()
+}
 const localFocus = ref(false)
 const focusTarget = ref<HTMLElement | null>(null)
 const focusBounds = ref<Record<string, string>>({})
@@ -176,11 +186,11 @@ onBeforeUnmount(() => {
       <OrganizationStatusBadge v-if="attention?.waiting" bucket="waiting" :label="t('ai.organization.summaryWaiting', { count: attention.waiting })" compact />
     </div>
 
-    <div class="oc-body">
+    <div class="oc-body" @click="clearSelection">
       <div v-if="!organization" class="oc-empty">{{ t('ai.organization.empty') }}</div>
       <template v-else>
         <div class="oc-tree">
-          <OrganizationBranch :groups="tree" @open-team="openDetail($event)" @open-artifacts="openDetail($event, 'artifacts')" @open-member="openDetail({ member: $event })" />
+          <OrganizationBranch :groups="tree" :selected="selectedMember" @open-team="openDetail($event)" @open-artifacts="openDetail($event, 'artifacts')" @open-member="openDetail({ member: $event })" />
         </div>
         <p v-if="organization.omitted" class="oc-omitted">
           {{ t('ai.organization.omitted', { count: organization.omitted, path: organization.boardPath ?? '' }) }}
@@ -228,7 +238,7 @@ onBeforeUnmount(() => {
 }
 .organization-chart.is-focus { border-left: none; }
 .oc-workspace { display: flex; flex: 1; min-width: 0; min-height: 0; }
-.oc-overview { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.oc-overview { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .oc-detail { display: flex; flex-direction: column; flex: 0 0 clamp(300px, 42%, 560px); max-width: 65%; min-width: 0; min-height: 0; border-left: 1px solid var(--border-color); background: var(--bg-primary); }
 
 .oc-progress { flex-shrink: 0; padding: 10px 14px; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
@@ -248,13 +258,14 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: auto;
   padding: 14px 12px 22px;
+  cursor: grab;
 }
+.oc-body.is-panning { cursor: grabbing; user-select: none; }
 .oc-empty { padding: 24px 0; text-align: center; color: var(--text-secondary); font-size: 12px; }
 
-/* 用可用面板宽度排布，铺满和恢复分栏时由网格自然重排。 */
 .oc-tree {
   width: 100%;
-  min-width: 280px;
+  min-height: 100%;
 }
 
 .oc-omitted { margin-top: 14px; font-size: 11px; color: var(--text-secondary); word-break: break-all; text-align: center; }

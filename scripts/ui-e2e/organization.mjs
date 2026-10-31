@@ -9,7 +9,7 @@
  *
  * 1. 对话里那一步下面有组织小卡片：几个人、几个团、几个在干
  * 2. 顶部挂着的一行按全组织计数，有「查看团队」的入口
- * 3. 组织图：直属成员自动换行，组长名下按真实归属分区，组长名下的组长再往下长一层；团头上有验收状态
+ * 3. 组织图：平面团队自动换行，层级从左到右按真实归属连线；小组标题有验收状态
  * 4. 点团的「群聊」打开那个团的完整群聊（从群聊文件读），成员栏是这个团的人，组长一栏写着是哪位组长，秘书的话显示为「秘书」
  * 4b. 两个组长名下各有一个同名团：点开哪个看哪个的成员
  * 5. 返回后回到组织图，再返回回到对话
@@ -68,6 +68,8 @@ saveArtifactMember('小营', '运营组', opsPath)
 
 const app = await launchApp(dataDir)
 const page = await app.firstWindow()
+const pageErrors = []
+page.on('pageerror', error => pageErrors.push(error.message))
 const shot = async (name) => { if (shotDir) await page.screenshot({ path: path.join(shotDir, `${name}.png`) }) }
 // 布局随视口自适应，截图不改变视口，避免重排干扰后续几何检查。
 async function shotChart(name) {
@@ -241,11 +243,18 @@ try {
   await page.waitForFunction(() => document.activeElement?.getAttribute('data-member') === '运营组')
   check('关闭详情后键盘焦点回到原成员卡片', true)
   check('关闭详情后同一团队图仍在', await page.locator('.oc-body').evaluate(el => el === window.__overviewBody) && await page.locator('.oc-detail').count() === 0)
+  await page.locator('[data-member="研发组"]').click()
+  check('选中只突出当前成员', await page.locator('.org-node.is-selected').count() === 1 && await page.locator('[data-member="研发组"]').getAttribute('aria-pressed') === 'true')
+  await page.locator('.oc-body').click({ position: { x: 3, y: 3 } })
+  check('点击空白取消高亮但保留详情', await page.locator('.org-node.is-selected').count() === 0 && await page.locator('.oc-detail').count() === 1)
+  await page.locator('[data-member="运营组"]').click()
+  check('取消后仍可切换选中', await page.locator('.org-node.is-selected').count() === 1 && (await text('.od-header')).includes('运营组'))
+  await page.locator('.od-header .tph-close').click()
   const chart = await text('.organization-chart')
   const compactCards = await page.locator('.org-node').evaluateAll(nodes => nodes.map(node => ({ height: node.offsetHeight, width: node.offsetWidth, aligned: Math.abs(node.querySelector('.org-node-name').getBoundingClientRect().top - node.querySelector('.org-status-badge').getBoundingClientRect().top) < 5 })))
   check('成员和负责人卡片同为紧凑76px高度，姓名状态同行', compactCards.every(card => card.height === 76 && card.width <= 280 && card.aligned), JSON.stringify(compactCards))
   check('角色不再单占卡片一行，悬停仍保留完整信息', await page.locator('.org-node-sub').count() === 0 && (await page.locator('[data-member="前端"]').getAttribute('title')).includes('前端专家'))
-  check('图从真实成员分区开始，没有额外根节点', await page.locator('.oc-tree > *').count() === 1 && await page.locator('.oc-tree > .org-children').count() === 1 && await page.locator('.oc-tree .org-node').count() === 8)
+  check('图从真实成员开始，没有秘书根节点或嵌套大框', await page.locator('.oc-tree .org-map').count() === 1 && await page.locator('.org-branch, .org-cell').count() === 0 && await page.locator('.oc-tree .org-node').count() === 8)
   check('两位组长都在', chart.includes('研发组') && chart.includes('运营组'), chart)
   check('组长名下的人都在，组长的组长也在', ['前端', '后端', '文档', '投放组', '小投', '小营'].every((n) => chart.includes(n)), chart)
   check('团头：团名和验收状态', chart.includes('小组「项目团」') && chart.includes('待验收'), chart)
@@ -258,30 +267,27 @@ try {
   check('团框里写着还有人在干', chart.includes('1 人在干'), chart)
   check('团框有做完与在干两段进度', await page.locator('.organization-chart .org-meter-part.is-completed').count() === 1
     && await page.locator('.organization-chart .org-meter-part.is-running').count() === 2)
-  const nested = await page.locator('.organization-chart .org-children[data-depth="2"]').count()
-  check('组长名下的组长再往下长一层', nested >= 1, nested)
-  const teamMembers = await page.locator('.organization-chart .org-team').first().locator('.org-team-members > .org-member').count()
-  check('本团成员完整保留在自己的团分区里', teamMembers === 2, teamMembers)
-  const teamCells = await page.locator('.organization-chart .org-cell.is-team').count()
-  const looseDoc = await page.locator('.organization-chart .org-cell:not(.is-team) > .org-branch > .org-node', { hasText: '文档' }).count()
-  check('散人和团是平级分支', teamCells === 2 && looseDoc === 1, `team=${teamCells} looseDoc=${looseDoc}`)
-  // 窄面板不再横向拉长；归属由负责人分区表达。
+  check('组长名下的组长再往右长一层', await page.locator('.org-node[data-depth="2"]').count() === 1)
+  check('小组成员保持真实归属', await page.locator('.org-node[data-parent="研发组"][data-team="项目团"]').count() === 2)
   const layout = await page.evaluate(() => {
-    const row = document.querySelector('.organization-chart .org-children[data-depth="1"]')
-    if (!row) return null
-    const parentEl = row.parentElement?.querySelector(':scope > .org-node')
-    if (!parentEl) return null
-    const branch = row.parentElement.getBoundingClientRect()
-    const child = row.getBoundingClientRect()
-    const body = document.querySelector('.oc-body')
-    return {
-      contained: child.left >= branch.left && child.right <= branch.right + 1,
-      parentAbove: parentEl.getBoundingClientRect().bottom < child.top,
-      fits: body.scrollWidth <= body.clientWidth + 1,
-    }
+    const rect = name => document.querySelector('[data-member="' + name + '"]').getBoundingClientRect()
+    const parent = rect('运营组'), loose = rect('文档'), grouped = rect('前端'), lead = rect('投放组'), leaf = rect('小投')
+    return { siblings: Math.abs(loose.left - grouped.left) < 1 && Math.abs(grouped.left - lead.left) < 1, childRight: leaf.left > lead.right && lead.left > parent.right, links: document.querySelectorAll('.org-links line').length }
   })
-  check('下级位于所属负责人的分区内', layout?.contained === true && layout?.parentAbove === true, JSON.stringify(layout))
-  check('分层组织适配侧栏宽度', layout?.fits === true, JSON.stringify(layout))
+  check('散人、带下级的负责人及小组成员同级列对齐', layout.siblings, JSON.stringify(layout))
+  check('真实下级位于负责人右侧，使用中性连线', layout.childRight && layout.links > 0, JSON.stringify(layout))
+  await page.getByRole('button', { name: '查看全图', exact: true }).click()
+  await shot('3-fit-overview')
+  const fitBounds = await page.locator('.oc-body').evaluate(body => ({ fits: body.scrollWidth <= body.clientWidth + 1 && body.scrollHeight <= body.clientHeight + 1, width: [body.scrollWidth, body.clientWidth], height: [body.scrollHeight, body.clientHeight] }))
+  check('查看全图可将当前结构放入视口', fitBounds.fits, JSON.stringify(fitBounds))
+  await page.locator('.oc-overview').evaluate(el => { el.style.maxWidth = '220px' })
+  await page.waitForFunction(() => document.querySelector('.oc-body').clientWidth <= 220)
+  await sleep(50)
+  await page.getByRole('button', { name: '查看全图', exact: true }).click()
+  const narrowFit = await page.locator('.oc-body').evaluate(body => body.scrollWidth <= body.clientWidth + 1 && body.scrollHeight <= body.clientHeight + 1)
+  check('比卡片更窄的视口也能正确适应全图', narrowFit)
+  await page.locator('.oc-overview').evaluate(el => el.style.removeProperty('max-width'))
+  await page.getByRole('button', { name: '恢复原始大小', exact: true }).click()
   // 组织图和团聊一样坐右侧面板；等抽屉动画走完再截图
   await sleep(450)
   const seated = await page.evaluate(() => {
@@ -565,7 +571,7 @@ try {
   thirteen.organization = { total: 13, live: 11, teams: [{ name: '知识库测绘团', review: 'pending', messageCount: 5 }], members: Array.from({ length: 13 }, (_, i) => member(`目录测绘${i + 1}`, i < 11 ? 'running' : 'completed', { team: '知识库测绘团', role: '知识库编目专家', description: `测绘第${i + 1}个目录并交回内容地图`, activity: { tool: 'write_file', args: '编目结果.md', status: 'running' } })) }
   await updateStep(thirteen)
   await page.waitForFunction(() => document.querySelectorAll('.organization-chart .org-node').length === 13)
-  const thirteenGrid = await page.locator('.org-team-members').evaluate(el => {
+  const thirteenGrid = await page.locator('.oc-body').evaluate(el => {
     const nodes = [...el.querySelectorAll('.org-node')].map(node => node.getBoundingClientRect())
     return { columns: nodes.filter(node => Math.abs(node.top - nodes[0].top) < 1).length, fits: el.scrollWidth <= el.clientWidth + 1 }
   })
@@ -612,9 +618,46 @@ try {
   mixedRoots.organization.live++
   await updateStep(mixedRoots)
   await page.waitForFunction(() => document.querySelectorAll('.organization-chart .org-node').length === 9)
-  check('负责人和直属成员混排时，直属成员仍在根层', await page.locator('.oc-tree > .org-children > .org-cell > .org-branch > [data-member="直属顾问"]').count() === 1)
-  check('直属顾问没有误入任一负责人的下级分区', await page.locator('.org-cell.has-children [data-member="直属顾问"]').count() === 0)
+  check('负责人和直属成员混排时，直属成员仍在根层', await page.locator('.org-node[data-depth="0"][data-member="直属顾问"]').count() === 1)
+  check('直属顾问没有误入任一负责人的下级分区', await page.locator('.org-node[data-depth="1"][data-member="直属顾问"]').count() === 0)
   await shot('9a-mixed-roots')
+
+  console.log('\n[9a-横向树] 复现用户示意的七人管理链')
+  const horizontal = dispatchStep(false)
+  horizontal.organization = { total: 7, live: 4, teams: [], members: [
+    member('治理统稿组长', 'running', { lead: true }),
+    member('文档域组长', 'running', { lead: true, parent: '治理统稿组长' }),
+    member('脚本数据域组长', 'running', { lead: true, parent: '治理统稿组长' }),
+    member('文档域组长-2', 'running', { lead: true, parent: '脚本数据域组长' }),
+    member('脚本数据域组长-2', 'completed', { lead: true, parent: '脚本数据域组长' }),
+    member('json与快照统计', 'completed', { parent: '脚本数据域组长-2' }),
+    member('脚本页面与事项统计', 'completed', { parent: '脚本数据域组长-2' }),
+  ] }
+  await updateStep(horizontal)
+  await page.waitForFunction(() => document.querySelectorAll('.org-node').length === 7)
+  await page.getByRole('button', { name: '查看全图', exact: true }).click()
+  const siblingColumns = await page.locator('.org-node').evaluateAll(nodes => {
+    const at = name => nodes.find(node => node.dataset.member === name).getBoundingClientRect()
+    return Math.abs(at('文档域组长').left - at('脚本数据域组长').left) < 1 && Math.abs(at('文档域组长-2').left - at('脚本数据域组长-2').left) < 1 && at('json与快照统计').left > at('脚本数据域组长-2').right
+  })
+  check('复现图中有下级的负责人仍与同级对齐，下级另起一列', siblingColumns)
+  await shot('horizontal-tree')
+  await page.locator('[data-member="脚本数据域组长-2"]').click()
+  check('完成卡片选中时仍保留绿色状态边框', await page.locator('.org-node.is-selected.is-completed').count() === 1)
+  await page.locator('.oc-body').click({ position: { x: 3, y: 3 } })
+  check('空白取消后详情仍是刚才的成员', await page.locator('.org-node.is-selected').count() === 0 && (await text('.od-header')).includes('脚本数据域组长-2'))
+  await page.locator('.od-header .tph-close').click()
+  await page.getByRole('button', { name: '放大团队图', exact: true }).click()
+  await page.getByRole('button', { name: '恢复原始大小', exact: true }).click()
+  await page.getByRole('button', { name: '放大团队图', exact: true }).click()
+  await page.locator('.oc-body').evaluate(body => { body.scrollLeft = 0; body.scrollTop = 0 })
+  const panBox = await page.locator('.oc-body').boundingBox()
+  await page.mouse.move(panBox.x + 180, panBox.y + 4)
+  await page.mouse.down()
+  await page.mouse.move(panBox.x + 60, panBox.y + 4, { steps: 8 })
+  await page.mouse.up()
+  check('拖动画布可以水平移动视图', await page.locator('.oc-body').evaluate(body => body.scrollLeft > 20))
+  await page.getByRole('button', { name: '恢复原始大小', exact: true }).click()
 
   console.log('\n[9b] 完整展示 1000 人、101 团与异常汇总')
   const large = dispatchStep(true)
@@ -635,7 +678,15 @@ try {
   const summary = await text('.oc-summary')
   check('汇总同时列出执行异常、打回、待验收、等负责人', /1 人出问题/.test(summary) && /1 个小组验收打回/.test(summary) && /1 个小组待验收/.test(summary) && /1 个小组等负责人/.test(summary), summary)
   const scroll = await page.locator('.oc-body').evaluate(el => ({ width: el.scrollWidth, clientWidth: el.clientWidth, height: el.scrollHeight, clientHeight: el.clientHeight }))
-  check('大组织按面板宽度换行并保留纵向滚动空间', scroll.width <= scroll.clientWidth + 1 && scroll.height > scroll.clientHeight, JSON.stringify(scroll))
+  check('大组织保留完整纵向滚动空间', scroll.height > scroll.clientHeight, JSON.stringify(scroll))
+  await page.getByRole('button', { name: '查看全图', exact: true }).click()
+  await page.waitForFunction(() => {
+    const body = document.querySelector('.oc-body')
+    return body.scrollWidth <= body.clientWidth + 1 && body.scrollHeight <= body.clientHeight + 1
+  })
+  check('千人全图适应不被最小10%缩放截断', true)
+  await page.getByRole('button', { name: '恢复原始大小', exact: true }).click()
+  check('千人缩放后可回原始比例，结构仍完整', await page.locator('.organization-chart .org-node').count() === 1000)
   await page.locator('.oc-header .tph-close').click()
   await updateStep(mixed)
 
@@ -690,6 +741,7 @@ try {
   console.error(`  FAIL 脚本出错：${error?.stack || error}`)
   await shot('error')
 } finally {
+  check('页面没有未捕获的运行错误', pageErrors.length === 0, pageErrors.join('\n'))
   // 应用可能因隔离夹具中的运行状态/未保存草稿拦关闭；仅清理 launchApp 返回的测试进程。
   const closeTimeout = setTimeout(() => app.process()?.kill('SIGKILL'), 5000)
   try { await app.close().catch(() => undefined) } finally { clearTimeout(closeTimeout) }

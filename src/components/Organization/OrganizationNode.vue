@@ -12,7 +12,7 @@ import { avatarInitial } from '../../utils/expert-team-view'
 import { useTeamVisibility } from './team-viewport'
 import OrganizationStatusBadge from './OrganizationStatusBadge.vue'
 
-const props = defineProps<{ node: OrgNode }>()
+const props = defineProps<{ node: OrgNode; selected?: boolean }>()
 const emit = defineEmits<{ open: [] }>()
 const { t, locale } = useI18n()
 const { element, visible } = useTeamVisibility()
@@ -36,13 +36,16 @@ const tip = computed(() => [
 <template>
   <div
     ref="element"
-    v-memo="[visible, visible ? node : null, locale]"
+    v-memo="[visible, visible ? node : null, locale, selected]"
     class="org-node"
-    :class="[`is-${node.bucket}`, { 'is-lead': node.member.lead }]"
+    :class="[`is-${node.bucket}`, { 'is-lead': node.member.lead, 'is-selected': selected }]"
     :data-status="node.bucket"
     :data-member="node.member.name"
+    :data-parent="node.member.parent ?? ''"
+    :data-team="node.member.team ?? ''"
     :title="tip"
     :aria-label="tip"
+    :aria-pressed="!!selected"
     role="button"
     tabindex="0"
     @click.stop="emit('open')"
@@ -92,6 +95,7 @@ const tip = computed(() => [
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 .org-node:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; }
+.org-node.is-selected { outline: 2px solid var(--accent-primary); outline-offset: 3px; }
 .org-node:hover { filter: brightness(1.08); }
 .org-node.is-running { --node-tone: var(--accent-primary); }
 .org-node.is-waiting { --node-tone: var(--color-warning, #e5c07b); }

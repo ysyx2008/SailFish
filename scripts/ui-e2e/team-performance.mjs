@@ -61,6 +61,7 @@ try {
       const dimensions=()=>[body.scrollWidth,body.scrollHeight]
       const before=dimensions()
       const painted=document.querySelectorAll('.organization-chart .org-avatar').length
+      const paintedLines=document.querySelectorAll('.organization-chart .org-links line').length
       // 访问两个轴的四角，最后将真正的末尾节点滚进视口。
       const frames=[];let prev=performance.now()
       for(let i=0;i<40;i++){body.scrollLeft=(body.scrollWidth-body.clientWidth)*i/39;body.scrollTop=(body.scrollHeight-body.clientHeight)*i/39;await frame();const now=performance.now();frames.push(now-prev);prev=now}
@@ -96,10 +97,11 @@ try {
       const offscreenStable=activeHeight===reservedHeight&&reservedHeight===offscreen.offsetHeight
       tail.scrollIntoView({block:'center'});await until(()=>tail.querySelector('.org-node-name-text'));await settle()
       const p95=a=>[...a].sort((x,y)=>x-y)[Math.ceil(a.length*.95)-1]
-      return {shape,openMs:Math.round(openMs),slots:document.querySelectorAll('.organization-chart .org-node').length,painted,firstContentPeak,domNodes:document.querySelector('.organization-chart').querySelectorAll('*').length,scrollP95Ms:Math.round(p95(frames)),updateVisibleP95Ms:Math.round(p95(delays)),delays:delays.map(Math.round),stableLayout:before.join()===after.join(),statusStable,offscreenStable,tailLoaded:tail.textContent.includes('成员999')}
+      return {shape,openMs:Math.round(openMs),slots:document.querySelectorAll('.organization-chart .org-node').length,painted,paintedLines,firstContentPeak,domNodes:document.querySelector('.organization-chart').querySelectorAll('*').length,scrollP95Ms:Math.round(p95(frames)),updateVisibleP95Ms:Math.round(p95(delays)),delays:delays.map(Math.round),stableLayout:before.join()===after.join(),statusStable,offscreenStable,tailLoaded:tail.textContent.includes('成员999')}
     },shape)
     console.log('PERF '+JSON.stringify(result))
     check(`${shape}：保留1000个完整槽位，实际绘制内容少于200`,result.slots===1000&&result.painted>0&&result.painted<200&&result.firstContentPeak<200)
+    check(`${shape}：屏外连线不绘制，视口内线段少于100`, result.paintedLines < 100)
     check(`${shape}：双向滚动访问末尾成员，不改变结构尺寸`,result.tailLoaded&&result.stableLayout)
     check(`${shape}：千人成员交替运行和完成，卡片及滚动范围保持稳定`,result.statusStable)
     check(`${shape}：屏外成员收工后滚回，占位与实际卡片等高`,result.offscreenStable)

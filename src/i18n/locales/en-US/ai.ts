@@ -877,6 +877,10 @@ export default {
       secretary: 'Secretary',
     },
     organization: {
+      zoomOut: 'Zoom out',
+      zoomIn: 'Zoom in',
+      resetZoom: 'Reset zoom',
+      fitView: 'Fit team in view',
       memberDetails: 'Details and artifacts',
       closeMember: 'Close member details',
       responsibility: 'Responsibility',

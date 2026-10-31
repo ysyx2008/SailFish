@@ -878,6 +878,10 @@ export default {
       secretary: '秘书',
     },
     organization: {
+      zoomOut: '缩小团队图',
+      zoomIn: '放大团队图',
+      resetZoom: '恢复原始大小',
+      fitView: '查看全图',
       memberDetails: '详情与产出物',
       closeMember: '关闭成员详情',
       responsibility: '职责',
