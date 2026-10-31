@@ -24,14 +24,14 @@ const props = withDefaults(defineProps<{
   tabId: string
   /** 派出组长的那一步 */
   stepId: string
-  /** panel：右侧面板；overlay：覆盖对话。两种模式共用标题旁关闭和铺满入口。 */
+  /** panel：工作台宿主；overlay：终端/联络覆盖层。总览固定铺满，关闭返回原工作面。 */
   mode?: 'panel' | 'overlay'
   focusActive?: boolean
   /** 每次从横幅进入都会给新请求，可直达同一成员或回到总览。 */
   entry?: { member?: string }
   artifactBindings?: ArtifactPanelBindings
 }>(), { mode: 'overlay', focusActive: undefined })
-const emit = defineEmits<{ close: []; toggleFocus: []; overview: [] }>()
+const emit = defineEmits<{ close: []; overview: [] }>()
 
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
@@ -69,20 +69,19 @@ const stats = computed(() => {
 type Detail = { kind: 'member'; name: string } | { kind: 'team'; name: string; owner?: string } | { kind: 'artifacts'; source: TeamArtifactSource; returnToMember?: string }
 const detail = ref<Detail | null>(props.entry?.member ? { kind: 'member', name: props.entry.member } : null)
 const detailFocused = ref(false)
-let restoreSplitAfterDetail = false
 let detailTrigger: HTMLElement | null = null
 const memberName = computed(() => detail.value?.kind === 'member' ? detail.value.name : null)
 const member = computed(() => currentOrganization.value?.members.find(member => member.name === memberName.value))
 function showOverview() {
   const trigger = detailTrigger
   detailTrigger = null
-  restoreDetailFocus()
+  detailFocused.value = false
   detail.value = null
   emit('overview')
   void nextTick(() => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }) })
 }
 function openDetail(next: Detail, preserveFocus = false) {
-  if (!preserveFocus) restoreDetailFocus()
+  if (!preserveFocus) detailFocused.value = false
   const active = document.activeElement
   if (active instanceof HTMLElement && active.closest('.oc-overview')) detailTrigger = active
   detail.value = next
@@ -96,7 +95,6 @@ const memberSnapshot = computed(() => memberName.value ? teamMemberSnapshot(stat
 watch([() => props.tabId, () => props.stepId, () => props.entry], () => {
   detail.value = props.entry?.member ? { kind: 'member', name: props.entry.member } : null
   detailFocused.value = false
-  restoreSplitAfterDetail = false
   detailTrigger = null
 })
 watch([memberName, member], () => {
@@ -112,38 +110,21 @@ const syncFocusBounds = () => {
   const box = focusTarget.value?.getBoundingClientRect()
   if (box) focusBounds.value = { position: 'fixed', inset: 'auto', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` }
 }
-const toggleFocus = () => {
-  if (props.focusActive !== undefined) { emit('toggleFocus'); return }
-  if (!localFocus.value) {
+onMounted(() => {
+  // 无工作台宿主的覆盖层固定铺满所属工作区，关闭时由卸载清理。
+  if (props.focusActive === undefined) {
     focusTarget.value = rootRef.value?.closest<HTMLElement>('.tab-view') ?? rootRef.value?.parentElement ?? null
     if (!focusTarget.value) return
     syncFocusBounds()
     focusObserver = new ResizeObserver(syncFocusBounds)
     focusObserver.observe(focusTarget.value)
     window.addEventListener('resize', syncFocusBounds)
-  } else {
-    focusObserver?.disconnect()
-    window.removeEventListener('resize', syncFocusBounds)
+    localFocus.value = true
   }
-  localFocus.value = !localFocus.value
-}
-function restoreDetailFocus() {
-  detailFocused.value = false
-  if (restoreSplitAfterDetail) {
-    restoreSplitAfterDetail = false
-    toggleFocus()
-  }
-}
-function toggleDetailFocus() {
-  if (detailFocused.value) { restoreDetailFocus(); return }
-  restoreSplitAfterDetail = !focused.value
-  if (restoreSplitAfterDetail) toggleFocus()
-  detailFocused.value = true
-}
-onMounted(() => {
-  // 无工作台宿主的终端/联络覆盖层也默认铺满自己的工作区。
-  if (props.focusActive === undefined) toggleFocus()
 })
+function toggleDetailFocus() {
+  detailFocused.value = !detailFocused.value
+}
 onBeforeUnmount(() => {
   focusObserver?.disconnect()
   window.removeEventListener('resize', syncFocusBounds)
@@ -156,7 +137,7 @@ onBeforeUnmount(() => {
   <section ref="rootRef" class="organization-chart" :class="[`is-${mode}`, { 'is-focus': focused }]" :style="localFocus ? focusBounds : undefined">
     <div class="oc-workspace">
     <div class="oc-overview" :inert="detailFocused || undefined" :aria-hidden="detailFocused || undefined">
-    <TeamPanelHeader class="oc-header" :title="t('ai.organization.title')" :close-label="t('ai.organization.close')" :meta="organization ? t('ai.organization.metaSimple', { total: organization.total, teams: organization.teams.length + (organization.omittedTeams ?? 0) }) : undefined" :focused="focused" :focus-label="focused ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="emit('close')" @toggle-focus="toggleFocus">
+    <TeamPanelHeader class="oc-header" :title="t('ai.organization.title')" :close-label="t('ai.organization.close')" :meta="organization ? t('ai.organization.metaSimple', { total: organization.total, teams: organization.teams.length + (organization.omittedTeams ?? 0) }) : undefined" :focused="focused" hide-focus @close="emit('close')">
       <template #icon><Network :size="14" /></template>
     </TeamPanelHeader>
 

@@ -241,9 +241,6 @@ try {
   await page.waitForFunction(() => document.activeElement?.getAttribute('data-member') === '运营组')
   check('关闭详情后键盘焦点回到原成员卡片', true)
   check('关闭详情后同一团队图仍在', await page.locator('.oc-body').evaluate(el => el === window.__overviewBody) && await page.locator('.oc-detail').count() === 0)
-  // 后续保留手动分栏/收起的兼容回归。
-  await page.locator('.oc-header .tph-focus').click()
-  await sleep(350)
   const chart = await text('.organization-chart')
   check('图从真实成员分区开始，没有额外根节点', await page.locator('.oc-tree > *').count() === 1 && await page.locator('.oc-tree > .org-children').count() === 1 && await page.locator('.oc-tree .org-node').count() === 8)
   check('两位组长都在', chart.includes('研发组') && chart.includes('运营组'), chart)
@@ -285,76 +282,21 @@ try {
   // 组织图和团聊一样坐右侧面板；等抽屉动画走完再截图
   await sleep(450)
   const seated = await page.evaluate(() => {
-    const region = document.querySelector('.assistant-shell .workbench-region')
+    const region = document.querySelector('.assistant-focus-doc')
     const chart = document.querySelector('.organization-chart')
     return {
       inRegion: !!(region && chart && region.contains(chart)),
       width: region?.getBoundingClientRect().width ?? 0,
     }
   })
-  check('组织图在右侧面板里，不是盖在对话上', seated.inRegion === true, JSON.stringify(seated))
+  check('组织图固定在铺满的工作区内', seated.inRegion === true, JSON.stringify(seated))
   await shot('3-chart')
   await shotChart('3-chart-full')
 
-  console.log('\n[3b] 与产出物一致的铺满与标题栏')
-  await checkTeamHeader(page, '.oc-header', '团队图分栏', check)
-  const splitWidth = await page.locator('.organization-chart').evaluate(el => el.getBoundingClientRect().width)
-  const foldButton = page.locator('.artifact-chrome--fold > button[aria-expanded="true"]')
-  const unfoldButton = page.locator('.artifact-chrome--cluster > button[aria-expanded="false"]')
-  const foldBounds = await foldButton.boundingBox()
-  const focusBounds = await page.locator('.oc-header .tph-focus').boundingBox()
-  const buttonStyle = el => {
-    const css = getComputedStyle(el)
-    const box = el.getBoundingClientRect()
-    return { width: box.width, height: box.height, borderWidth: css.borderTopWidth, borderStyle: css.borderTopStyle, borderColor: css.borderTopColor, radius: css.borderTopLeftRadius }
-  }
-  const fullButtonStyle = await page.locator('.oc-header .tph-focus').evaluate(buttonStyle)
-  const collapseButtonStyle = await foldButton.evaluate(buttonStyle)
-  check('铺满与收起统一无常驻描边', fullButtonStyle.borderColor === 'rgba(0, 0, 0, 0)' && JSON.stringify(fullButtonStyle) === JSON.stringify(collapseButtonStyle), JSON.stringify({ fullButtonStyle, collapseButtonStyle }))
-  await page.locator('.oc-header .tph-focus').hover()
-  await sleep(160)
-  const focusHover = await page.locator('.oc-header .tph-focus').evaluate(el => getComputedStyle(el).backgroundColor)
-  await foldButton.hover()
-  await sleep(160)
-  const foldHover = await foldButton.evaluate(el => getComputedStyle(el).backgroundColor)
-  check('铺满与收起悬停底色一致', focusHover === foldHover, `${focusHover} / ${foldHover}`)
-  await page.mouse.move(10, 200)
-
-  check('无产出物时团队仍有收起按钮，紧邻铺满且不重叠', !!foldBounds && !!focusBounds && foldBounds.x >= focusBounds.x + focusBounds.width && Math.abs(foldBounds.y - focusBounds.y) < 1)
-  await page.locator('.oc-body').evaluate(el => { el.scrollLeft = 220; el.scrollTop = 60; window.__e2eChartBody = el })
-  const scrollBefore = await page.locator('.oc-body').evaluate(el => [el.scrollLeft, el.scrollTop])
-  await foldButton.click()
-  await sleep(450)
-  check('收起团队后对话铺开，隐藏区域不可聚焦', await page.locator('.workbench-region.region-collapsed[inert]').count() === 1 && await page.locator('.workbench-region').evaluate(el => el.getBoundingClientRect().width) < 1)
-  await shot('3a-collapsed')
-  check('重新展开按钮延续无常驻描边样式', JSON.stringify(await unfoldButton.evaluate(buttonStyle)) === JSON.stringify(fullButtonStyle))
-  await unfoldButton.click()
-  await sleep(450)
-  check('展开恢复同一组织图及滚动位置', await page.locator('.oc-body').evaluate((el, before) => el === window.__e2eChartBody && el.scrollLeft === before[0] && el.scrollTop === before[1], scrollBefore))
-  await shot('3a-fold-button')
-  await page.locator('.organization-chart .org-node[data-member="研发组"]').click()
-  await page.locator('.om-header').waitFor()
-  const detailTitle = await text('.om-header')
-  await page.locator('.om-header .tph-focus').click()
-  check('手动分栏时铺满详情也覆盖整个工作区', await page.locator('.assistant-focus-doc .oc-detail.is-focus').isVisible())
-  await page.locator('.om-header .tph-focus').click()
-  check('详情还原恢复此前手动分栏状态', await page.locator('.organization-chart.is-focus').count() === 0)
-  await foldButton.click()
-  await sleep(450)
-  await unfoldButton.click()
-  await sleep(450)
-  check('成员详情收起重开保留当前成员', detailTitle.length > 0 && await text('.om-header') === detailTitle)
-  await page.locator('.om-header .tph-back').click()
-
-
-  check('关闭按钮紧邻标题', await page.locator('.oc-header .tph-tab .tph-close').count() === 1)
-  await page.locator('.oc-header .tph-focus').click()
-  await sleep(350)
+  console.log('\n[3b] 固定铺满与标题栏')
   await checkTeamHeader(page, '.oc-header', '团队图铺满', check)
+  check('组织图不再提供切回分栏按钮', await page.locator('.oc-header .tph-focus').count() === 0)
   check('组织图使用现有铺满工作区', await page.locator('.assistant-focus-doc .organization-chart.is-focus').isVisible())
-  check('铺满时与产出物一致不另显收起按钮', await foldButton.count() === 0)
-  const focusWidth = await page.locator('.organization-chart').evaluate(el => el.getBoundingClientRect().width)
-  check('铺满比右侧分栏宽', focusWidth > splitWidth + 100, `${splitWidth} -> ${focusWidth}`)
   check('铺满后保留浮动输入', await page.locator('.assistant-focus-chat .assistant-chat').isVisible())
   const focusInput = page.locator('.assistant-focus-chat [contenteditable="true"]').first()
   await focusInput.fill('检查铺满输入')
@@ -385,26 +327,10 @@ try {
   await page.locator('.expert-team-chat .tph-back').first().click()
   await page.locator('.assistant-focus-doc .organization-chart.is-focus').waitFor({ state: 'visible' })
   check('群聊返回仍在铺满组织图', await page.locator('.assistant-focus-doc .organization-chart.is-focus').isVisible())
-  await page.locator('.oc-header .tph-focus').click()
-  await sleep(350)
-  const restoredWidth = await page.locator('.organization-chart').evaluate(el => el.getBoundingClientRect().width)
-  check('退出铺满恢复原分栏宽度', Math.abs(restoredWidth - splitWidth) < 2, `${splitWidth} -> ${restoredWidth}`)
-  await page.locator('.organization-chart .org-team-chat').first().click()
-  const chatTitleBefore = await text('.etc-header')
-  await foldButton.click()
-  await sleep(450)
-  await unfoldButton.click()
-  await sleep(450)
-  check('小组群聊收起重开仍在原小组', (await text('.etc-header')) === chatTitleBefore && await page.locator('.expert-team-chat').isVisible())
-  await page.locator('.etc-header .tph-back').first().click()
-
-  await page.locator('.oc-header .tph-focus').click()
   await page.locator('.oc-header .tph-close').click()
   await page.locator('.sub-agent-dock .dock-team', { hasText: '查看团队' }).click()
-  await page.locator('.organization-chart').waitFor({ state: 'visible' })
-  check('关闭再打开仍默认铺满', await page.locator('.organization-chart.is-focus').count() === 1)
-  await page.locator('.oc-header .tph-focus').click()
-  await sleep(350)
+  await page.locator('.organization-chart.is-focus').waitFor({ state: 'visible' })
+  check('关闭再打开仍固定铺满且无还原入口', await page.locator('.oc-header .tph-focus').count() === 0)
 
   console.log('\n[3b] 团队产出物：真实历史读取、隔离、预览、铺满与返回')
   await page.evaluate(session => {
@@ -427,13 +353,6 @@ try {
   await page.locator('.oa-item').filter({ hasText: '研发组交付' }).click()
   await page.waitForFunction(() => document.querySelector('.org-artifacts .canvas-panel')?.innerText.includes('团队成果正文'), { timeout: 15_000 })
   check('文件在现有产出物面板中预览，只有本团文件页签', await page.locator('.org-artifacts .artifact-tab').count() === 1)
-  await foldButton.click()
-  await sleep(450)
-  check('已有产出物时收起团队不会意外切到另一份文档', await page.locator('.workbench-region.region-collapsed').count() === 1)
-  await unfoldButton.click()
-  await sleep(450)
-  check('团队成果收起重开仍是原文件', (await text('.org-artifacts .canvas-panel')).includes('团队成果正文'))
-
   await page.evaluate(() => {
     const tab = window.__e2eStore.tabs.find(tab => tab.id === window.__e2eTab)
     tab.agentState = { ...tab.agentState, steps: [...tab.agentState.steps] }
@@ -484,7 +403,6 @@ try {
   check('关闭组织图恢复进入前的主文档', await page.evaluate(() => window.__e2eArtifactStore.getActiveArtifact(window.__e2eTab)?.id === 'unrelated-artifact'))
   check('团队打开的成果仍保留在本场清单', await page.evaluate(() => window.__e2eArtifactStore.getArtifacts(window.__e2eTab).some(a => a.title === '研发组交付')))
   await page.locator('.sub-agent-dock .dock-team', { hasText: '查看团队' }).click()
-  await page.locator('.oc-header .tph-focus').click()
   // 一个没有落盘成果的会话，明确显示空状态。
   await page.evaluate(() => {
     delete window.__e2eStore.tabs.find(tab => tab.id === window.__e2eTab).agentState.steps.find(step => step.id === 'org-1').organization.sessionId
@@ -494,7 +412,7 @@ try {
   await page.locator('.oa-empty', { hasText: '暂无产出物' }).waitFor({ state: 'visible' })
   check('没有成果时显示明确空状态', (await text('.oa-list')).includes('暂无产出物'))
   await page.locator('.oa-header .tph-back').first().click()
-  check('关闭团队成果不改变手动选择的分栏状态', await page.locator('.organization-chart.is-focus').count() === 0)
+  check('关闭团队成果后组织图仍固定铺满', await page.locator('.organization-chart.is-focus').count() === 1)
 
   console.log('\n[4] 团的完整群聊')
   await page.locator('.organization-chart .org-team-chat').first().click()
@@ -643,7 +561,6 @@ try {
   })
   await page.locator('.oc-detail').waitFor({ state: 'detached' })
   check('选中成员从数据消失时关闭详情，不留空白侧栏', true)
-  await page.locator('.oc-header .tph-focus').click()
   await sleep(350)
   const flat = dispatchStep(true)
   flat.organization = { total: 12, live: 0, teams: [], members: Array.from({ length: 12 }, (_, i) => member(`直属成员${i + 1}`, 'completed')) }
@@ -655,17 +572,9 @@ try {
     const box = body.getBoundingClientRect()
     return { fits: body.scrollWidth <= body.clientWidth + 1, columns: nodes.filter(node => Math.abs(node.top - nodes[0].top) < 1).length, rows: new Set(nodes.map(node => Math.round(node.top))).size, allVisible: nodes.every(node => node.left >= box.left && node.right <= box.right && node.top >= box.top && node.bottom <= box.bottom) }
   })
-  const splitGrid = await gridBounds()
-  check('直属12人全部保留，侧栏无横向长条并自动换行', splitGrid.fits && splitGrid.rows > 1, JSON.stringify(splitGrid))
-  await shot('9a-direct-split')
-  await page.locator('.oc-header .tph-focus').click()
-  await sleep(450)
   const fullGrid = await gridBounds()
-  check('铺满后增加列数，12位成员一屏可见', fullGrid.fits && fullGrid.columns > splitGrid.columns && fullGrid.allVisible, JSON.stringify(fullGrid))
+  check('直属12人按工作区宽度多列排列且一屏可见', fullGrid.fits && fullGrid.columns >= 3 && fullGrid.allVisible, JSON.stringify(fullGrid))
   await shot('9a-direct-focus')
-  await page.locator('.oc-header .tph-focus').click()
-  await sleep(450)
-  check('恢复分栏后按原宽度排回', (await gridBounds()).columns === splitGrid.columns)
 
   const mixedRoots = dispatchStep(false)
   mixedRoots.organization.members.push(member('直属顾问', 'running'))
@@ -686,7 +595,8 @@ try {
     members: large.organization.members.map((m, i) => i === 999 ? { ...m, status: 'running' } : m),
   } }
   await updateStep(recovering)
-  await page.locator('.sub-agent-dock').filter({ hasText: '1 人在干，共 1000 人' }).waitFor({ state: 'visible' })
+  await page.locator('.oc-summary').filter({ hasText: '1 人在干' }).waitFor({ state: 'visible' })
+  await page.locator('.oc-header').filter({ hasText: /共\s*1000\s*人/ }).waitFor({ state: 'visible' })
   check('没有直属运行成员时仍展示深层成员的组织进度', true)
   await updateStep(large)
   await page.locator('.organization-chart .org-node').nth(999).waitFor({ state: 'attached', timeout: 15000 })
@@ -730,8 +640,7 @@ try {
     return { position: getComputedStyle(el).position, width: chart.width - tab.width, left: chart.left - tab.left }
   })
   check('覆盖层铺满本工作台而不覆盖侧栏', overlayBounds.position === 'fixed' && Math.abs(overlayBounds.width) < 2 && Math.abs(overlayBounds.left) < 2, JSON.stringify(overlayBounds))
-  await page.locator('.oc-header .tph-focus').click()
-  check('覆盖层退出铺满恢复原位置', await page.locator('.organization-chart').evaluate(el => getComputedStyle(el).position) === 'absolute')
+  check('终端覆盖层同样没有还原组织图的入口', await page.locator('.oc-header .tph-focus').count() === 0)
   await page.evaluate(session => window.__e2eStore.setAgentSession(window.__e2eTab, session, Date.now()), artifactSession)
   await page.locator('.org-team-artifacts').first().click()
   await page.locator('.oa-item').first().waitFor({ state: 'visible' })

@@ -122,7 +122,8 @@ const terminalSeated = computed(() => hasHostedTerminal.value && seat.value === 
 const artifactSeated = computed(() =>
   seat.value === 'artifact' && artifactStore.isVisible(props.tab.id)
 )
-const focusActive = computed(() => focusMode.value && (artifactSeated.value || orgSeated.value))
+// 团队图只有铺满这一种看法；文档仍可独立切换铺满/分栏。
+const focusActive = computed(() => orgSeated.value || (focusMode.value && artifactSeated.value))
 
 const chatFocusEl = ref<HTMLElement | null>(null)
 const artifactFocusEl = ref<HTMLElement | null>(null)
@@ -156,10 +157,10 @@ watch(focusActive, async (active) => {
 watch(seat, () => {
   teamPanelMinimized.value = false
   focusMode.value = false
-}, { flush: 'sync' })
+})
 
 function toggleFocus() {
-  if (!artifactSeated.value && !orgSeated.value) return
+  if (!artifactSeated.value) return
   focusMode.value = !focusMode.value
 }
 const docExpanded = computed(() => artifactSeated.value)
@@ -392,8 +393,6 @@ function openOrganization(stepId: string, member?: string) {
   orgStepId.value = stepId
   orgEntry.value = { member }
   seat.value = 'org'
-  // 切座会同步清除上一工作面的铺满态，随后为这次团队入口建立默认铺满。
-  focusMode.value = true
   listOpen.value = false
   chatVisible.value = true
 }
@@ -580,7 +579,6 @@ defineExpose({
                 :entry="orgEntry"
                 @overview="orgEntry = {}"
                 :focus-active="focusActive"
-                @toggle-focus="toggleFocus"
                 @close="closeOrganization"
               />
             </template>

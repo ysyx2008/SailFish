@@ -47,6 +47,14 @@ beforeEach(() => {
 afterEach(() => { app?.unmount(); app = undefined; container?.remove(); vi.useRealTimers(); delete (window as unknown as { electronAPI?: unknown }).electronAPI })
 
 describe('团队产出物的实时边界', () => {
+  it('总览只提供关闭，右侧详情仍保留自己的铺满入口', async () => {
+    mount(true); await settle()
+    expect(container.querySelector('.oc-header .tph-close')).not.toBeNull()
+    expect(container.querySelector('.oc-header .tph-focus')).toBeNull()
+    container.querySelector<HTMLButtonElement>('.open-team-artifacts')!.click(); await settle()
+    expect(container.querySelector('.oa-header .tph-focus')).not.toBeNull()
+    expect(container.querySelector('.oc-header .tph-focus')).toBeNull()
+  })
   it('右侧查看成果和关闭时保留同一团队图，不卸载总览', async () => {
     mount(true); await settle()
     const overview = container.querySelector('.oc-body')
