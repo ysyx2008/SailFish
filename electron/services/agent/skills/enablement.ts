@@ -50,16 +50,27 @@ export class BuiltinSkillEnablement {
 
   /** 给模型挑的技能目录：开着的，且不是系统装卸的 */
   enabledSkills(): Skill[] {
-    return selectableSkills().filter(skill => this.isEnabled(skill.id))
+    const snapshot = this.snapshot()
+    return selectableSkills().filter(skill => snapshot.isEnabled(skill.id))
   }
 
   listForSettings(): { id: string; name: string; description: string; enabled: boolean }[] {
+    const snapshot = this.snapshot()
     return selectableSkills().map(skill => ({
       id: skill.id,
       name: skill.name,
       description: skill.description,
-      enabled: this.isEnabled(skill.id),
+      enabled: snapshot.isEnabled(skill.id),
     }))
+  }
+
+  /** 每次目录查询只读每个设置一次；下一次查询取新配置，不跨调用缓存开关。 */
+  private snapshot(): BuiltinSkillEnablement {
+    const values = new Map<string, unknown>()
+    return new BuiltinSkillEnablement({ get: key => {
+      if (!values.has(key)) values.set(key, this.config?.get?.(key))
+      return values.get(key)
+    } })
   }
 
   setEnabled(skillId: string, enabled: boolean): void {

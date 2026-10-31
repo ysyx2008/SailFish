@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { registerSkill } from '../registry'
 import { BuiltinSkillEnablement } from '../enablement'
 
@@ -63,6 +63,23 @@ describe('BuiltinSkillEnablement', () => {
     const ids = enablement.enabledSkills().map(s => s.id)
     expect(ids).toContain('test-regular')
     expect(ids).not.toContain('test-opt-in')
+  })
+
+  it('批量查目录不逐技能读配置，下次查询仍立即反映新开关', () => {
+    for (let i = 0; i < 30; i++) registerSkill({ id: `bulk-${i}`, name: `技能${i}`, description: '', tools: [] })
+    const config = memoryConfig()
+    config.get = vi.fn(config.get)
+    const enablement = new BuiltinSkillEnablement(config)
+    expect(enablement.enabledSkills().some(skill => skill.id === 'test-regular')).toBe(true)
+    expect(config.get).toHaveBeenCalledTimes(2)
+    vi.mocked(config.get).mockClear()
+    enablement.listForSettings()
+    expect(config.get).toHaveBeenCalledTimes(2)
+    config.set('disabledBuiltinSkills', ['test-regular'])
+    config.set('enabledOptInSkills', ['test-opt-in'])
+    const next = enablement.enabledSkills().map(skill => skill.id)
+    expect(next).not.toContain('test-regular')
+    expect(next).toContain('test-opt-in')
   })
 
   it('系统装卸的技能不归用户开关：总算开着，但不进设置页和技能目录', () => {
