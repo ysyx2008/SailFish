@@ -7,7 +7,7 @@ import { isSubAgentExpanded, memberDetailStepId, subAgentExpansionKey } from '..
 import TeamPanelHeader from './TeamPanelHeader.vue'
 import SubAgentGroup from '../SubAgentGroup.vue'
 
-const props = defineProps<{ sessionId?: string; member: OrganizationMemberView; snapshot?: SubAgentResult; focusActive: boolean; stepId?: string; inline?: boolean }>()
+const props = defineProps<{ sessionId?: string; member: OrganizationMemberView; snapshot?: SubAgentResult; focusActive: boolean; stepId?: string; inline?: boolean; embedded?: boolean }>()
 const emit = defineEmits<{ close: []; artifacts: []; toggleFocus: [] }>()
 const { t } = useI18n()
 const detailStepId = computed(() => memberDetailStepId(props.sessionId, props.stepId, props.member.name))
@@ -64,7 +64,7 @@ onBeforeUnmount(() => { request++; clearInterval(timer) })
 
 <template>
   <section class="org-member-detail" :class="{ 'is-inline': inline }">
-    <TeamPanelHeader v-if="!inline" class="om-header" :title="member.name" :close-label="t('ai.organization.closeMember')" :back-label="t('ai.organization.backToChart')" :focused="focusActive" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="emit('close')" @back="emit('close')" @toggle-focus="emit('toggleFocus')">
+    <TeamPanelHeader v-if="!inline && !embedded" class="om-header" :title="member.name" :close-label="t('ai.organization.closeMember')" :back-label="t('ai.organization.backToChart')" :focused="focusActive" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="emit('close')" @back="emit('close')" @toggle-focus="emit('toggleFocus')">
       <template #icon><UserRound :size="14" /></template>
       <template #actions><button type="button" class="btn-header om-artifacts" @click="emit('artifacts')"><Files :size="14" />{{ t('ai.organization.teamArtifacts') }}</button></template>
     </TeamPanelHeader>

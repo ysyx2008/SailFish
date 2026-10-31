@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { createApp, h, nextTick, reactive, type App } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { OrganizationArtifactView } from '@shared/types'
+import { resolveCanvasArtifactId, type OrganizationArtifactView } from '@shared/types'
 import OrganizationTeamArtifacts from '../OrganizationTeamArtifacts.vue'
 import OrganizationChart from '../OrganizationChart.vue'
 
 type TerminalFixture = { tabs: Array<{ id: string; agentState: { sessionId: string; steps: Array<{ id: string; organization: { sessionId: string; teams: []; total: number; live: number; members: Array<{ name: string; parent: string; team: string; status: string }> } }> } }> }
-const fixture = vi.hoisted(() => ({ terminal: null as TerminalFixture | null, exists: vi.fn(), open: vi.fn(), persist: vi.fn() }))
+const fixture = vi.hoisted(() => ({ terminal: null as TerminalFixture | null, exists: vi.fn(), open: vi.fn(), persist: vi.fn(), closeTab: vi.fn(), openTabs: [] as Array<{ id: string }> }))
 vi.mock('../../../stores/terminal', () => ({ useTerminalStore: () => fixture.terminal }))
 vi.mock('../OrganizationBranch.vue', async () => {
   const { defineComponent, h } = await import('vue')
@@ -18,13 +18,13 @@ vi.mock('@sailfish/workbench-assistant/artifact', () => ({
   requireArtifactDesktopHost: () => ({ persistArtifacts: fixture.persist }),
   useAssistantArtifactStore: () => ({
     getArtifactById: () => null, open: fixture.open, setActiveArtifact: vi.fn(),
-    getOpenArtifacts: () => [], isVisible: () => true, isArtifactDirty: () => false,
+    getOpenArtifacts: () => fixture.openTabs, getActiveArtifact: () => null, closeTab: fixture.closeTab, minimizePanel: vi.fn(), isVisible: () => true, isArtifactDirty: () => false,
   }),
 }))
 vi.mock('@sailfish/workbench-assistant/artifact/domain/artifact-content-loader', () => ({ loadArtifactContentFromDisk: vi.fn() }))
 vi.mock('@sailfish/workbench-assistant/artifact/components/ArtifactPanel.vue', async () => {
   const { defineComponent, h } = await import('vue')
-  return { default: defineComponent({ setup(_, { expose }) { expose({ flushDraft: vi.fn() }); return () => h('div', { class: 'artifact-preview-stub' }) } }) }
+  return { default: defineComponent({ emits: ['closePreview'], setup(_, { expose, emit }) { expose({ flushDraft: vi.fn(), deactivate: vi.fn() }); return () => h('div', { class: 'artifact-preview-stub' }, [h('button', { class: 'end-preview', onClick: () => emit('closePreview') }, '结束预览')]) } }) }
 })
 const artifact: OrganizationArtifactView = { member: '甲员', kind: 'file', data: { action: 'open', renderer: 'markdown', title: '成果', filePath: '/tmp/team-result.md' } }
 const view = reactive({ stepId: 'dispatch' })
@@ -38,7 +38,7 @@ function mount(chart = false) {
   app.mount(container)
 }
 beforeEach(() => {
-  vi.useFakeTimers(); vi.clearAllMocks(); view.stepId = 'dispatch'
+  vi.useFakeTimers(); vi.clearAllMocks(); view.stepId = 'dispatch'; fixture.openTabs = []
   fixture.exists.mockResolvedValue(true)
   fixture.terminal = reactive({ tabs: [{ id: 'tab', agentState: { sessionId: 'current', steps: [{ id: 'dispatch', organization: { sessionId: 'old', teams: [], total: 1, live: 1, members: [{ name: '甲员', parent: '甲', team: '团', status: 'running' }] } }] } }] })
   readArtifacts = vi.fn(async (session: string) => session === 'old' ? [artifact] : [])
@@ -47,13 +47,65 @@ beforeEach(() => {
 afterEach(() => { app?.unmount(); app = undefined; container?.remove(); vi.useRealTimers(); delete (window as unknown as { electronAPI?: unknown }).electronAPI })
 
 describe('团队产出物的实时边界', () => {
+  it('文件关闭只回成果列表，保持当前对象标题和右侧详情', async () => {
+    mount(true); await settle()
+    container.querySelector<HTMLButtonElement>('.open-team-artifacts')!.click(); await settle()
+    const header = container.querySelector('.od-header')
+    container.querySelector<HTMLButtonElement>('.oa-item')!.click(); await settle()
+    expect(container.querySelector('.artifact-preview-stub')).not.toBeNull()
+    expect(container.querySelector('.oa-header')).toBeNull()
+    container.querySelector<HTMLButtonElement>('.end-preview')!.click(); await settle()
+    expect(container.querySelector('.artifact-preview-stub')).toBeNull()
+    expect(container.querySelector('.oa-list')).not.toBeNull()
+    expect(container.querySelector('.od-header')).toBe(header)
+    expect(container.querySelector('.oc-detail')).not.toBeNull()
+    expect(fixture.closeTab).toHaveBeenCalledWith('tab', resolveCanvasArtifactId(artifact.data))
+  })
+  it('预览原本已打开的文件时，返回不关闭用户原有页签', async () => {
+    fixture.openTabs = [{ id: resolveCanvasArtifactId(artifact.data) }]
+    mount(true); await settle()
+    container.querySelector<HTMLButtonElement>('.open-team-artifacts')!.click(); await settle()
+    container.querySelector<HTMLButtonElement>('.oa-item')!.click(); await settle()
+    container.querySelector<HTMLButtonElement>('.end-preview')!.click(); await settle()
+    expect(fixture.closeTab).not.toHaveBeenCalled()
+  })
+  it('同对象切页签保留文件预览，键盘切回后标题与焦点稳定', async () => {
+    mount(true); await settle()
+    container.querySelector<HTMLButtonElement>('.open-team-artifacts')!.click(); await settle()
+    container.querySelector<HTMLButtonElement>('.oa-item')!.click(); await settle()
+    const preview = container.querySelector('.artifact-preview-stub')
+    const header = container.querySelector('.od-header')
+    const tabs = container.querySelectorAll<HTMLButtonElement>('.od-tabs button')
+    tabs[0].click(); await settle()
+    expect(container.querySelector('.artifact-preview-stub')).toBe(preview)
+    expect(container.querySelector('.org-artifacts')?.closest<HTMLElement>('.od-pane')?.style.display).toBe('none')
+    tabs[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); await settle()
+    expect(tabs[1].getAttribute('aria-selected')).toBe('true')
+    expect(document.activeElement).toBe(tabs[1])
+    expect(container.querySelector('.artifact-preview-stub')).toBe(preview)
+    expect(container.querySelector('.od-header')).toBe(header)
+  })
   it('总览只提供关闭，右侧详情仍保留自己的铺满入口', async () => {
     mount(true); await settle()
     expect(container.querySelector('.oc-header .tph-close')).not.toBeNull()
     expect(container.querySelector('.oc-header .tph-focus')).toBeNull()
     container.querySelector<HTMLButtonElement>('.open-team-artifacts')!.click(); await settle()
-    expect(container.querySelector('.oa-header .tph-focus')).not.toBeNull()
+    expect(container.querySelector('.od-header .tph-focus')).not.toBeNull()
     expect(container.querySelector('.oc-header .tph-focus')).toBeNull()
+  })
+  it('文件检查尚未返回时切走成果，不让迟到请求打开隐藏预览', async () => {
+    let finish!: (exists: boolean) => void
+    fixture.exists.mockReturnValue(new Promise<boolean>(resolve => { finish = resolve }))
+    mount(true); await settle()
+    container.querySelector<HTMLButtonElement>('.open-team-artifacts')!.click(); await settle()
+    container.querySelector<HTMLButtonElement>('.oa-item')!.click()
+    container.querySelector<HTMLButtonElement>('.od-tabs button')!.click(); await settle()
+    finish(true); await settle()
+    expect(fixture.open).not.toHaveBeenCalled()
+    expect(container.querySelector('.artifact-preview-stub')).toBeNull()
+    const calls = readArtifacts.mock.calls.length
+    await vi.advanceTimersByTimeAsync(3500); await settle()
+    expect(readArtifacts).toHaveBeenCalledTimes(calls)
   })
   it('右侧查看成果和关闭时保留同一团队图，不卸载总览', async () => {
     mount(true); await settle()
@@ -61,10 +113,10 @@ describe('团队产出物的实时边界', () => {
     container.querySelector<HTMLButtonElement>('.open-team-artifacts')!.click(); await settle()
     expect(container.querySelector('.oc-detail .org-artifacts')).not.toBeNull()
     expect(container.querySelector('.oc-overview .oc-body')).toBe(overview)
-    container.querySelector<HTMLButtonElement>('.oa-header .tph-focus')!.click(); await settle()
+    container.querySelector<HTMLButtonElement>('.od-header .tph-focus')!.click(); await settle()
     expect(container.querySelector('.oc-detail.is-focus')).not.toBeNull()
     expect(container.querySelector('.oc-overview')?.hasAttribute('inert')).toBe(true)
-    container.querySelector<HTMLButtonElement>('.oa-header .tph-close')!.click(); await settle()
+    container.querySelector<HTMLButtonElement>('.od-header .tph-close')!.click(); await settle()
     expect(container.querySelector('.oc-detail')).toBeNull()
     expect(container.querySelector('.oc-overview .oc-body')).toBe(overview)
     expect(container.querySelector('.oc-overview')?.hasAttribute('inert')).toBe(false)

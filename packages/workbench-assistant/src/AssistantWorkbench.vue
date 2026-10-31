@@ -166,7 +166,7 @@ function toggleFocus() {
 const docExpanded = computed(() => artifactSeated.value)
 const hasArtifacts = computed(() => artifactStore.hasArtifacts(props.tab.id))
 const showDeskList = computed(() =>
-  hasArtifacts.value || (hasHostedTerminal.value && !terminalSeated.value)
+  !orgSeated.value && (hasArtifacts.value || (hasHostedTerminal.value && !terminalSeated.value))
 )
 const showArtifactFold = computed(() =>
   !terminalSeated.value && (

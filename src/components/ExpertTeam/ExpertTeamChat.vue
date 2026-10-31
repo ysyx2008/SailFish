@@ -31,6 +31,7 @@ const props = withDefaults(defineProps<{
   teamOwner?: string
   /** 组织图宿主提供时，团聊也能沿用同一铺满状态。 */
   focusActive?: boolean
+  embedded?: boolean
 }>(), { mode: 'panel', focusActive: undefined })
 const emit = defineEmits<{ close: []; toggleFocus: [] }>()
 
@@ -220,7 +221,7 @@ onMounted(() => { void openChat(true) })
 
 <template>
   <section class="expert-team-chat" :class="[`is-${mode}`, { 'is-focus': focusActive, 'has-focus-controls': focusActive !== undefined }]">
-    <TeamPanelHeader class="etc-header" :title="t('ai.expertTeam.title', { team: team?.name ?? '' })" :close-label="t('ai.expertTeam.close')" :back-label="teamName ? t('ai.organization.backToChart') : mode === 'overlay' ? t('ai.expertTeam.back') : undefined" :meta="t('ai.expertTeam.members', { count: agents.length }) + (runningCount > 0 ? ` · ${t('ai.subAgentCount.running', { count: runningCount })}` : '')" :focused="focusActive" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="emit('close')" @back="emit('close')" @toggle-focus="emit('toggleFocus')">
+    <TeamPanelHeader v-if="!embedded" class="etc-header" :title="t('ai.expertTeam.title', { team: team?.name ?? '' })" :close-label="t('ai.expertTeam.close')" :back-label="teamName ? t('ai.organization.backToChart') : mode === 'overlay' ? t('ai.expertTeam.back') : undefined" :meta="t('ai.expertTeam.members', { count: agents.length }) + (runningCount > 0 ? ` · ${t('ai.subAgentCount.running', { count: runningCount })}` : '')" :focused="focusActive" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="emit('close')" @back="emit('close')" @toggle-focus="emit('toggleFocus')">
       <template #icon><MessagesSquare :size="14" /></template>
     </TeamPanelHeader>
 

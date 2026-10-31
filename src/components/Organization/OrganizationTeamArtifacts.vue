@@ -2,7 +2,7 @@
 /** 团队成果清单；预览复用产出物面板与同一份草稿存储。 */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { FileText, FolderOpen, RefreshCw, Files } from 'lucide-vue-next'
+import { ArrowLeft, FileText, FolderOpen, RefreshCw, Files } from 'lucide-vue-next'
 import { resolveCanvasArtifactId, type OrganizationArtifactView, type TeamArtifactSource } from '@shared/types'
 import { checkFilePathExists, requireArtifactDesktopHost, useAssistantArtifactStore } from '@sailfish/workbench-assistant/artifact'
 import type { ArtifactPanelBindings } from '@sailfish/workbench-assistant/artifact/composer-quote'
@@ -12,7 +12,7 @@ import { teamViewForStep } from '../../utils/team-view'
 import TeamPanelHeader from './TeamPanelHeader.vue'
 import { useTerminalStore } from '../../stores/terminal'
 
-const props = defineProps<{ tabId: string; stepId: string; team: TeamArtifactSource; focusActive: boolean; artifactBindings?: ArtifactPanelBindings; backLabel?: string }>()
+const props = defineProps<{ tabId: string; stepId: string; team: TeamArtifactSource; focusActive: boolean; artifactBindings?: ArtifactPanelBindings; backLabel?: string; embedded?: boolean; active?: boolean }>()
 const emit = defineEmits<{ close: []; back: []; toggleFocus: [] }>()
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
@@ -23,14 +23,34 @@ const failed = ref(false)
 const openError = ref('')
 let openRequest = 0
 const preview = ref(false)
-const panel = ref<{ flushDraft: () => void } | null>(null)
+const previewId = ref<string>()
+let previewContext: { id: string; owned: boolean; wasVisible: boolean; activeBefore?: string } | undefined
+function releasePreview() {
+  const context = previewContext
+  previewContext = undefined
+  if (!context) return
+  const stillSelected = artifactStore.getActiveArtifact(props.tabId)?.id === context.id
+  if (context.owned) artifactStore.closeTab(props.tabId, context.id)
+  if (stillSelected) {
+    if (context.activeBefore && artifactStore.getOpenArtifacts(props.tabId).some(item => item.id === context.activeBefore)) {
+      artifactStore.setActiveArtifact(props.tabId, context.activeBefore)
+    }
+    if (!context.wasVisible) artifactStore.minimizePanel(props.tabId)
+  }
+  requireArtifactDesktopHost().persistArtifacts(props.tabId)
+}
+const panel = ref<{ flushDraft: () => void; deactivate?: () => void } | null>(null)
+watch(() => props.active, active => {
+  if (active === false) { openRequest++; panel.value?.deactivate?.() }
+  else if (active && !preview.value && !loading.value) void refresh()
+})
 const state = computed(() => terminalStore.tabs.find(tab => tab.id === props.tabId)?.agentState)
 const view = computed(() => teamViewForStep(state.value?.steps ?? [], props.stepId, state.value?.sessionId))
 const sessionId = computed(() => view.value?.sessionId)
 const sourceName = computed(() => 'member' in props.team ? props.team.member : props.team.name)
 const sourceOwner = computed(() => 'name' in props.team ? props.team.owner : undefined)
 const groups = computed(() => [
-  { key: 'members', label: t('ai.organization.teamArtifacts'), items: items.value.filter(item => !item.producerRole) },
+  { key: 'members', label: t(props.embedded ? 'ai.organization.detailArtifacts' : 'ai.organization.teamArtifacts'), items: items.value.filter(item => !item.producerRole) },
   { key: 'lead', label: t('ai.organization.leadArtifacts'), items: items.value.filter(item => item.producerRole === 'lead') },
 ].filter(group => group.items.length))
 const ids = computed(() => items.value.map(item => resolveCanvasArtifactId(item.data)))
@@ -53,6 +73,7 @@ async function refresh(clearOpenError = false) {
 watch([sessionId, () => props.stepId, sourceName, sourceOwner], () => {
   openRequest++
   panel.value?.flushDraft()
+  releasePreview()
   preview.value = false
   openError.value = ''
   items.value = []
@@ -66,16 +87,16 @@ watch(working, (now, before) => {
   if (before && !now && !preview.value) void refresh()
 })
 watch(preview, (now, before) => {
-  if (before && !now && items.value.length) void refresh()
+  if (before && !now) { releasePreview(); if (items.value.length) void refresh() }
 })
 const poll = setInterval(() => {
-  if (working.value && !loading.value && !preview.value) void refresh()
+  if (props.active !== false && working.value && !loading.value && !preview.value) void refresh()
 }, 3000)
-onBeforeUnmount(() => { panel.value?.flushDraft(); request++; openRequest++; clearInterval(poll) })
+onBeforeUnmount(() => { panel.value?.flushDraft(); releasePreview(); request++; openRequest++; clearInterval(poll) })
 function back() {
   openRequest++
   panel.value?.flushDraft()
-  if (preview.value) preview.value = false
+  if (preview.value) { preview.value = false; releasePreview() }
   else emit('back')
 }
 function close() { openRequest++; panel.value?.flushDraft(); emit('close') }
@@ -91,9 +112,16 @@ async function open(item: OrganizationArtifactView) {
   if (current !== openRequest) return
   const id = resolveCanvasArtifactId(item.data)
   const existing = artifactStore.getArtifactById(props.tabId, id)
+  if (props.embedded) previewContext = {
+    id,
+    owned: !artifactStore.getOpenArtifacts(props.tabId).some(item => item.id === id),
+    wasVisible: artifactStore.isVisible(props.tabId),
+    activeBefore: artifactStore.getActiveArtifact(props.tabId)?.id,
+  }
   // 更新标题等元数据时沿用同一份草稿，不用历史快照冲掉用户内容。
   artifactStore.open(props.tabId, { ...item.data, action: 'open', content: existing ? undefined : item.data.content, activate: false })
   artifactStore.setActiveArtifact(props.tabId, id)
+  previewId.value = id
   preview.value = true
   try {
     if (existing && !artifactStore.isArtifactDirty(props.tabId, id)) {
@@ -112,7 +140,7 @@ async function open(item: OrganizationArtifactView) {
   if (current === openRequest) requireArtifactDesktopHost().persistArtifacts(props.tabId)
 }
 
-watch(() => artifactStore.getOpenArtifacts(props.tabId).some(a => ids.value.includes(a.id)), hasOpen => {
+watch(() => artifactStore.getOpenArtifacts(props.tabId).some(a => props.embedded && previewId.value ? a.id === previewId.value : ids.value.includes(a.id)), hasOpen => {
   if (preview.value && !hasOpen) preview.value = false
 })
 watch(() => artifactStore.isVisible(props.tabId), visible => {
@@ -124,12 +152,16 @@ const titleOf = (item: OrganizationArtifactView) => item.kind === 'result'
 </script>
 
 <template>
-  <section class="org-artifacts" :class="{ 'is-focus': focusActive }">
-    <TeamPanelHeader class="oa-header" :title="`${sourceName} · ${t('ai.organization.teamArtifacts')}`" :close-label="t('ai.organization.closeArtifacts')" :back-label="preview ? t('ai.organization.backToArtifacts') : backLabel ?? t('ai.organization.backToChart')" :meta="'name' in team ? sourceOwner || t('ai.organization.secretary') : undefined" :focused="focusActive" :hide-focus="preview" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="close" @back="back" @toggle-focus="toggleFocus">
+  <section class="org-artifacts" :class="{ 'is-focus': focusActive, 'is-embedded': embedded }">
+    <div v-if="embedded" class="oa-tools" :class="{ 'is-preview': preview }">
+      <button v-if="preview" type="button" class="btn-header oa-preview-back" @click="back"><ArrowLeft :size="14" />{{ t('ai.organization.backToResults') }}</button>
+      <button v-else type="button" class="btn-icon btn-icon-header oa-refresh" :disabled="loading" :title="t('ai.organization.refreshArtifacts')" @click="refresh(true)"><RefreshCw :size="14" /></button>
+    </div>
+    <TeamPanelHeader v-if="!embedded" class="oa-header" :title="`${sourceName} · ${t('ai.organization.teamArtifacts')}`" :close-label="t('ai.organization.closeArtifacts')" :back-label="preview ? t('ai.organization.backToArtifacts') : backLabel ?? t('ai.organization.backToChart')" :meta="'name' in team ? sourceOwner || t('ai.organization.secretary') : undefined" :focused="focusActive" :hide-focus="preview" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="close" @back="back" @toggle-focus="toggleFocus">
       <template #icon><Files :size="14" /></template>
       <template v-if="!preview" #actions><button type="button" class="btn-icon btn-icon-header oa-refresh" :disabled="loading" :title="t('ai.organization.refreshArtifacts')" @click="refresh(true)"><RefreshCw :size="14" /></button></template>
     </TeamPanelHeader>
-    <ArtifactPanel v-if="preview" ref="panel" v-bind="artifactBindings" :tab-id="tabId" :artifact-ids="ids" :focus-active="focusActive" @toggle-focus="toggleFocus" />
+    <ArtifactPanel v-if="preview" ref="panel" v-bind="artifactBindings" :tab-id="tabId" :artifact-ids="embedded && previewId ? [previewId] : ids" :embedded="embedded" :focus-active="focusActive" @close-preview="back" @toggle-focus="toggleFocus" />
     <div v-else class="oa-list">
       <p v-if="openError" class="oa-error" role="alert">{{ openError }}</p>
       <p v-if="failed" class="oa-empty">{{ t('ai.organization.artifactsLoadFailed') }} <button type="button" @click="refresh(true)">{{ t('ai.organization.refreshArtifacts') }}</button></p>
@@ -160,4 +192,7 @@ const titleOf = (item: OrganizationArtifactView) => item.kind === 'result'
 .oa-member, .oa-path { color: var(--text-secondary); font-size: 11px; overflow-wrap: anywhere; }
 .oa-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 60px 12px; color: var(--text-secondary); font-size: 13px; }
 .org-artifacts :deep(.canvas-panel) { flex: 1; min-height: 0; }
+.oa-tools { display: flex; flex-shrink: 0; justify-content: flex-end; padding: 7px 14px; border-bottom: 1px solid var(--border-color); }
+.oa-tools.is-preview { justify-content: flex-start; }
+.is-embedded .oa-list { padding-bottom: 14px; }
 </style>

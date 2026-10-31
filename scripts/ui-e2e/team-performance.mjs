@@ -89,9 +89,9 @@ try {
     if(process.env.E2E_SHOT){fs.mkdirSync(process.env.E2E_SHOT,{recursive:true});await page.screenshot({path:path.join(process.env.E2E_SHOT,`team-performance-${shape}-chart.png`)})}
     // 点击虚拟化后重新绘制的末尾节点，确实进入相应成员详情。
     await page.locator('[data-member="成员999"]').click()
-    await page.locator('.org-member-detail .om-header').waitFor()
-    check(`${shape}：末尾成员可点击查看详情`,(await page.locator('.om-header .tph-title').innerText()).includes('成员999'))
-    await page.locator('.om-header .tph-back').click()
+    await page.locator('.oc-detail .od-header').waitFor()
+    check(`${shape}：末尾成员可点击查看详情`,(await page.locator('.od-header .tph-title').innerText()).includes('成员999'))
+    await page.locator('.od-header .tph-close').click()
     await page.locator('.oc-header .tph-close').click()
     await page.evaluate(()=>{window.__listContentPeak=0;window.__listObserver=new MutationObserver(()=>{window.__listContentPeak=Math.max(window.__listContentPeak,document.querySelectorAll('.dock-panel .sub-agent-card').length)});window.__listObserver.observe(document.body,{childList:true,subtree:true})})
     await page.locator('.dock-toggle').click()

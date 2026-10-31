@@ -11,10 +11,8 @@ import { teamViewForStep, teamMemberSnapshot, teamSources } from '../../utils/te
 import { buildOrgTree, organizationAttention } from '../../utils/organization-view'
 import type { ArtifactPanelBindings } from '@sailfish/workbench-assistant/artifact/composer-quote'
 import OrganizationBranch from './OrganizationBranch.vue'
-import OrganizationTeamArtifacts from './OrganizationTeamArtifacts.vue'
 import type { TeamArtifactSource } from '@shared/types'
-import OrganizationMemberDetail from './OrganizationMemberDetail.vue'
-import ExpertTeamChat from '../ExpertTeam/ExpertTeamChat.vue'
+import OrganizationDetailPanel from './OrganizationDetailPanel.vue'
 import { provideTeamViewport } from './team-viewport'
 import { useTeamSnapshot } from './team-snapshot'
 import TeamPanelHeader from './TeamPanelHeader.vue'
@@ -66,11 +64,11 @@ const stats = computed(() => {
   }
 })
 
-type Detail = { kind: 'member'; name: string } | { kind: 'team'; name: string; owner?: string } | { kind: 'artifacts'; source: TeamArtifactSource; returnToMember?: string }
-const detail = ref<Detail | null>(props.entry?.member ? { kind: 'member', name: props.entry.member } : null)
+const detail = ref<TeamArtifactSource | null>(props.entry?.member ? { member: props.entry.member } : null)
+const detailTab = ref<'activity' | 'artifacts'>('activity')
 const detailFocused = ref(false)
 let detailTrigger: HTMLElement | null = null
-const memberName = computed(() => detail.value?.kind === 'member' ? detail.value.name : null)
+const memberName = computed(() => detail.value && 'member' in detail.value ? detail.value.member : null)
 const member = computed(() => currentOrganization.value?.members.find(member => member.name === memberName.value))
 function showOverview() {
   const trigger = detailTrigger
@@ -80,20 +78,17 @@ function showOverview() {
   emit('overview')
   void nextTick(() => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }) })
 }
-function openDetail(next: Detail, preserveFocus = false) {
-  if (!preserveFocus) detailFocused.value = false
+function openDetail(next: TeamArtifactSource, tab: 'activity' | 'artifacts' = 'activity') {
+  detailFocused.value = false
   const active = document.activeElement
   if (active instanceof HTMLElement && active.closest('.oc-overview')) detailTrigger = active
   detail.value = next
-}
-function closeArtifacts() {
-  if (detail.value?.kind === 'artifacts' && detail.value.returnToMember) {
-    openDetail({ kind: 'member', name: detail.value.returnToMember }, true)
-  } else showOverview()
+  detailTab.value = tab
 }
 const memberSnapshot = computed(() => memberName.value ? teamMemberSnapshot(state.value?.steps ?? [], props.stepId, memberName.value, state.value?.sessionId) : undefined)
 watch([() => props.tabId, () => props.stepId, () => props.entry], () => {
-  detail.value = props.entry?.member ? { kind: 'member', name: props.entry.member } : null
+  detail.value = props.entry?.member ? { member: props.entry.member } : null
+  detailTab.value = 'activity'
   detailFocused.value = false
   detailTrigger = null
 })
@@ -170,7 +165,7 @@ onBeforeUnmount(() => {
       <div v-if="!organization" class="oc-empty">{{ t('ai.organization.empty') }}</div>
       <template v-else>
         <div class="oc-tree">
-          <OrganizationBranch :groups="tree" @open-team="openDetail({ kind: 'team', ...$event })" @open-artifacts="openDetail({ kind: 'artifacts', source: $event })" @open-member="openDetail({ kind: 'member', name: $event })" />
+          <OrganizationBranch :groups="tree" @open-team="openDetail($event)" @open-artifacts="openDetail($event, 'artifacts')" @open-member="openDetail({ member: $event })" />
         </div>
         <p v-if="organization.omitted" class="oc-omitted">
           {{ t('ai.organization.omitted', { count: organization.omitted, path: organization.boardPath ?? '' }) }}
@@ -182,9 +177,7 @@ onBeforeUnmount(() => {
     </div>
     </div>
     <aside v-if="detail" class="oc-detail" :class="{ 'is-focus': detailFocused }" :style="!focused || mode === 'overlay' ? { '--assistant-focus-overlay': '0px' } : undefined">
-      <OrganizationMemberDetail v-if="detail.kind === 'member' && member" :key="member.name" :step-id="stepId" :session-id="currentOrganization?.sessionId" :member="member" :snapshot="memberSnapshot" :focus-active="detailFocused" @close="showOverview" @artifacts="openDetail({ kind: 'artifacts', source: { member: member.name }, returnToMember: member.name }, true)" @toggle-focus="toggleDetailFocus" />
-      <ExpertTeamChat v-else-if="detail.kind === 'team'" :key="JSON.stringify([detail.owner, detail.name])" mode="panel" :tab-id="tabId" :step-id="stepId" :team-name="detail.name" :team-owner="detail.owner" :focus-active="detailFocused" @close="showOverview" @toggle-focus="toggleDetailFocus" />
-      <OrganizationTeamArtifacts v-else-if="detail.kind === 'artifacts'" :key="JSON.stringify(detail.source)" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" :team="detail.source" :back-label="detail.returnToMember ? t('common.back') : undefined" :focus-active="detailFocused" @back="closeArtifacts" @close="showOverview" @toggle-focus="toggleDetailFocus" />
+      <OrganizationDetailPanel :key="JSON.stringify([currentOrganization?.sessionId, stepId, detail])" v-model:active-tab="detailTab" :source="detail" :member="member" :snapshot="memberSnapshot" :session-id="currentOrganization?.sessionId" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" :focus-active="detailFocused" @close="showOverview" @toggle-focus="toggleDetailFocus" />
     </aside>
     </div>
   </section>
@@ -222,8 +215,6 @@ onBeforeUnmount(() => {
 .oc-overview { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .oc-detail { display: flex; flex-direction: column; flex: 0 0 clamp(300px, 42%, 560px); max-width: 65%; min-width: 0; min-height: 0; border-left: 1px solid var(--border-color); background: var(--bg-primary); }
 .oc-detail.is-focus { position: absolute; inset: 0; z-index: 1; max-width: none; border-left: none; }
-.organization-chart.is-focus .oc-detail:not(.is-focus) { padding-bottom: var(--assistant-focus-overlay, 22px); }
-.oc-detail:not(.is-focus) :deep(.etc-list), .oc-detail:not(.is-focus) :deep(.oa-list), .oc-detail:not(.is-focus) :deep(.om-body) { padding-bottom: 14px; }
 
 .oc-progress { flex-shrink: 0; padding: 10px 14px; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .oc-progress span { color: var(--text-secondary); }
