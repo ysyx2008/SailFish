@@ -53,3 +53,22 @@ export async function checkTeamHeader(page, selector, label, check) {
   check(`${label}：系统控件安全边距生效`, metrics.safeInsets, JSON.stringify(metrics))
   check(`${label}：长标题窄面板仍能关闭`, metrics.narrowFits, JSON.stringify(metrics))
 }
+
+/** 团队总览状态与对象页签的副标题行在真实布局中连续对齐。 */
+export async function checkTeamSubheaders(page, label, check) {
+  const metrics = await page.locator('.organization-chart').evaluate(chart => {
+    const summary = chart.querySelector('.oc-summary')
+    const tabs = chart.querySelector('.od-tabs')
+    const left = summary.getBoundingClientRect()
+    const right = tabs.getBoundingClientRect()
+    const badge = summary.querySelector('.org-status-badge').getBoundingClientRect()
+    const tab = tabs.querySelector('[aria-selected="true"]').getBoundingClientRect()
+    return { leftHeight: left.height, rightHeight: right.height,
+      topGap: Math.abs(left.top - right.top), bottomGap: Math.abs(left.bottom - right.bottom),
+      centerGap: Math.abs((badge.top + badge.bottom) / 2 - (tab.top + tab.bottom) / 2),
+    }
+  })
+  check(`${label}：左右副标题行同高`, Math.abs(metrics.leftHeight - 32) < 1 && Math.abs(metrics.leftHeight - metrics.rightHeight) < 1, JSON.stringify(metrics))
+  check(`${label}：副标题上下边线对齐`, metrics.topGap < 1 && metrics.bottomGap < 1, JSON.stringify(metrics))
+  check(`${label}：状态与页签垂直居中`, metrics.centerGap < 1, JSON.stringify(metrics))
+}

@@ -64,8 +64,8 @@ function stepTab(event: KeyboardEvent) {
 
 <style scoped>
 .org-object-detail { display: flex; flex-direction: column; flex: 1; height: 100%; min-width: 0; min-height: 0; }
-.od-tabs { display: flex; flex-shrink: 0; gap: 18px; padding: 0 14px; border-bottom: 1px solid var(--border-color); }
-.od-tabs button { padding: 10px 0 8px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; }
+.od-tabs { display: flex; box-sizing: border-box; min-height: var(--team-subheader-height, 32px); flex-shrink: 0; gap: 18px; padding: 0 14px; border-bottom: 1px solid var(--border-color); }
+.od-tabs button { display: flex; align-items: center; padding: 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); font-size: 12px; line-height: 16px; cursor: pointer; }
 .od-tabs button[aria-selected="true"] { border-bottom-color: var(--accent-primary); color: var(--text-primary); }
 .od-tabs button:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -2px; }
 .od-content { display: flex; flex: 1; min-height: 0; min-width: 0; box-sizing: border-box; }

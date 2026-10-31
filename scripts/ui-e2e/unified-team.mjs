@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { launchApp } from './launch.mjs'
-import { checkTeamHeader } from './team-header-checks.mjs'
+import { checkTeamHeader, checkTeamSubheaders } from './team-header-checks.mjs'
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sft-unified-team-'))
 const failures = []
 const check = (name, pass, detail = '') => { console.log(`${pass ? 'OK' : 'FAIL'} ${name} ${detail}`); if (!pass) failures.push(name) }
@@ -31,7 +31,12 @@ page.setDefaultTimeout(15000)
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 try {
   await page.waitForFunction(() => window.electronAPI?.config)
-  await page.evaluate(async () => { await window.electronAPI.config.setSetupCompleted(true); await window.electronAPI.config.setAiProfiles([{ id: 'fixture', name: 'fixture', apiUrl: 'http://127.0.0.1:1/v1', apiKey: 'x', model: 'fixture' }]); await window.electronAPI.config.setActiveAiProfile('fixture') })
+  await page.evaluate(async theme => {
+    await window.electronAPI.config.setSetupCompleted(true)
+    await window.electronAPI.config.setAiProfiles([{ id: 'fixture', name: 'fixture', apiUrl: 'http://127.0.0.1:1/v1', apiKey: 'x', model: 'fixture' }])
+    await window.electronAPI.config.setActiveAiProfile('fixture')
+    if (theme) { await window.electronAPI.config.setUiThemeMode('manual'); await window.electronAPI.config.setUiTheme(theme) }
+  }, process.env.E2E_THEME)
   await page.reload()
   await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$pinia?._s.get('terminal'))
   await page.evaluate(() => { const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('terminal'); const id = store.createAssistantTab({ title: '统一团队验证' }); store.markAssistantSkipOnboarding(id); store.focusHubConversation(id); window.__teamFixture = { store, id } })
@@ -107,6 +112,8 @@ try {
   await node.click()
   await page.locator('.organization-chart .org-member-detail').getByText('flat-session-成员甲已核对', { exact: false }).waitFor()
   await checkTeamHeader(page, '.od-header', '成员详情分栏', check)
+  await checkTeamSubheaders(page, '成员详情分栏', check)
+  if (process.env.E2E_SHOT) await page.locator('.organization-chart').screenshot({ path: path.join(process.env.E2E_SHOT, 'subheader-aligned.png') })
   check('成员详情只在右侧展示，没有铺满入口', await page.locator('.od-header .tph-focus').count() === 0)
   check('成员过程和结果从原会话真实读取', (await page.locator('.organization-chart .org-member-detail').innerText()).includes('read_file') || await page.locator('.sa-step').count() > 0)
   await page.getByRole('tab', { name: '成果', exact: true }).click()
@@ -143,6 +150,7 @@ try {
   await page.locator('.org-team-chat').click()
   await page.getByText('请核对这一版', { exact: false }).last().waitFor()
   await checkTeamHeader(page, '.od-header', '小组群聊分栏', check)
+  await checkTeamSubheaders(page, '小组群聊分栏', check)
   if (process.env.E2E_SHOT) await page.screenshot({ path: path.join(process.env.E2E_SHOT, 'chat-header-split.png') })
   check('小组群聊保留真实成员和交接', (await page.locator('.expert-team-chat').innerText()).includes('测试'))
   await page.locator('.od-header .tph-close').first().click()
