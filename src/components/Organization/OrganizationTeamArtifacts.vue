@@ -40,7 +40,7 @@ function releasePreview() {
   }
   requireArtifactDesktopHost().persistArtifacts(props.tabId)
 }
-const panel = ref<{ flushDraft: () => void; deactivate?: () => void } | null>(null)
+const panel = ref<{ flushDraft: () => void; deactivate?: () => void; dismissMenu?: () => boolean } | null>(null)
 watch(() => props.active, active => {
   if (active === false) { openRequest++; panel.value?.deactivate?.() }
   else if (active && !preview.value && !loading.value) void refresh()
@@ -102,6 +102,12 @@ function back() {
 }
 function close() { openRequest++; panel.value?.flushDraft(); emit('close') }
 function toggleFocus() { panel.value?.flushDraft(); emit('toggleFocus') }
+function closePreview(): boolean {
+  if (!preview.value || props.active === false) return false
+  if (!panel.value?.dismissMenu?.()) back()
+  return true
+}
+defineExpose({ closePreview })
 async function open(item: OrganizationArtifactView) {
   const current = ++openRequest
   openError.value = ''

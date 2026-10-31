@@ -13,7 +13,8 @@ vi.mock('../OrganizationBranch.vue', async () => {
   return { default: defineComponent({ props: ['groups', 'depth'], emits: ['openArtifacts'], setup(_, { emit }) { return () => h('button', { class: 'open-team-artifacts', onClick: () => emit('openArtifacts', { name: '团', owner: '甲' }) }, '产出物') } }) }
 })
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
-vi.mock('@sailfish/workbench-assistant/artifact', () => ({
+vi.mock('@sailfish/workbench-assistant/artifact', async () => ({
+  ...await import('@sailfish/workbench-assistant/artifact/domain/artifact-close-shortcut'),
   checkFilePathExists: (...args: unknown[]) => fixture.exists(...args),
   requireArtifactDesktopHost: () => ({ persistArtifacts: fixture.persist }),
   useAssistantArtifactStore: () => ({

@@ -809,22 +809,27 @@ function onDocumentKeyDown(e: KeyboardEvent) {
     e.stopPropagation()
     return
   }
-  if (e.key !== 'Escape') return
+  if (e.key === 'Escape') dismissMenu()
+}
+
+function dismissMenu(): boolean {
   if (ctxMenu.value.show) {
     closeCtxMenu()
-    return
+    return true
   }
   if (showSendMenu.value) {
     closeSendMenu()
-    return
+    return true
   }
   if (showFileMenuDropdown.value) {
     closeFileMenu()
-    return
+    return true
   }
   if (showTabPicker.value) {
     closeTabPicker()
+    return true
   }
+  return false
 }
 
 watch(activeArtifactId, (next, prev) => {
@@ -935,7 +940,7 @@ onUnmounted(() => {
   offImConnectionChange?.()
 })
 
-defineExpose({ minimizePanel, flushDraft: flushActiveDraft, deactivate })
+defineExpose({ minimizePanel, flushDraft: flushActiveDraft, deactivate, dismissMenu })
 </script>
 
 <template>

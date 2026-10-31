@@ -20,6 +20,12 @@ const { t } = useI18n()
 const viewId = useId()
 const tab = computed(() => props.activeTab)
 const artifactsOpened = ref(props.activeTab === 'artifacts')
+const artifactsPanel = ref<InstanceType<typeof OrganizationTeamArtifacts> | null>(null)
+function closeLayer() {
+  if (tab.value === 'artifacts' && artifactsPanel.value?.closePreview()) return
+  emit('close')
+}
+defineExpose({ closeLayer })
 const memberView = computed(() => 'member' in props.source)
 const title = computed(() => 'member' in props.source ? props.source.member : t('ai.organization.teamTitle', { team: props.source.name }))
 function selectTab(next: 'activity' | 'artifacts') {
@@ -50,7 +56,7 @@ function stepTab(event: KeyboardEvent) {
         <ExpertTeamChat v-else-if="'name' in source" embedded mode="panel" :tab-id="tabId" :step-id="stepId" :team-name="source.name" :team-owner="source.owner" :focus-active="false" />
       </div>
       <div v-show="tab === 'artifacts'" :id="`${viewId}-artifacts-panel`" class="od-pane" role="tabpanel" :aria-labelledby="`${viewId}-artifacts`" :inert="tab !== 'artifacts' || undefined">
-        <OrganizationTeamArtifacts v-if="artifactsOpened" embedded :active="tab === 'artifacts'" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" :team="source" :focus-active="false" />
+        <OrganizationTeamArtifacts v-if="artifactsOpened" ref="artifactsPanel" embedded :active="tab === 'artifacts'" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" :team="source" :focus-active="false" />
       </div>
     </div>
   </section>

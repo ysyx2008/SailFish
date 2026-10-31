@@ -10,6 +10,7 @@ import { useTerminalStore } from '../../stores/terminal'
 import { teamViewForStep, teamMemberSnapshot, teamSources } from '../../utils/team-view'
 import { buildOrgTree, organizationAttention } from '../../utils/organization-view'
 import type { ArtifactPanelBindings } from '@sailfish/workbench-assistant/artifact/composer-quote'
+import { closeFocusedArtifact, isCloseArtifactShortcut, registerFocusedArtifactCloser } from '@sailfish/workbench-assistant/artifact'
 import OrganizationBranch from './OrganizationBranch.vue'
 import type { TeamArtifactSource } from '@shared/types'
 import OrganizationDetailPanel from './OrganizationDetailPanel.vue'
@@ -66,6 +67,7 @@ const stats = computed(() => {
 
 const detail = ref<TeamArtifactSource | null>(props.entry?.member ? { member: props.entry.member } : null)
 const detailTab = ref<'activity' | 'artifacts'>('activity')
+const detailPanel = ref<InstanceType<typeof OrganizationDetailPanel> | null>(null)
 let detailTrigger: HTMLElement | null = null
 const memberName = computed(() => detail.value && 'member' in detail.value ? detail.value.member : null)
 const member = computed(() => currentOrganization.value?.members.find(member => member.name === memberName.value))
@@ -96,12 +98,30 @@ const localFocus = ref(false)
 const focusTarget = ref<HTMLElement | null>(null)
 const focusBounds = ref<Record<string, string>>({})
 const focused = computed(() => props.focusActive ?? localFocus.value)
+function closeLayer(): boolean {
+  if (!rootRef.value?.getClientRects().length) return false
+  if (document.activeElement?.closest('[aria-modal="true"], dialog[open]')) return false
+  if (detail.value) detailPanel.value?.closeLayer()
+  else emit('close')
+  return true
+}
+function onCloseKey(event: KeyboardEvent) {
+  if (event.defaultPrevented || event.isComposing || !rootRef.value?.getClientRects().length) return
+  if (document.activeElement?.closest('[aria-modal="true"], dialog[open]')) return
+  const escape = event.key === 'Escape' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+  if (!escape && !isCloseArtifactShortcut(event)) return
+  const handled = event.repeat || (escape ? closeLayer() : closeFocusedArtifact())
+  if (handled) { event.preventDefault(); event.stopImmediatePropagation() }
+}
+let releaseCloser: (() => void) | undefined
 let focusObserver: ResizeObserver | undefined
 const syncFocusBounds = () => {
   const box = focusTarget.value?.getBoundingClientRect()
   if (box) focusBounds.value = { position: 'fixed', inset: 'auto', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` }
 }
 onMounted(() => {
+  releaseCloser = registerFocusedArtifactCloser(closeLayer)
+  document.addEventListener('keydown', onCloseKey, true)
   // 无工作台宿主的覆盖层固定铺满所属工作区，关闭时由卸载清理。
   if (props.focusActive === undefined) {
     focusTarget.value = rootRef.value?.closest<HTMLElement>('.tab-view') ?? rootRef.value?.parentElement ?? null
@@ -114,6 +134,8 @@ onMounted(() => {
   }
 })
 onBeforeUnmount(() => {
+  releaseCloser?.()
+  document.removeEventListener('keydown', onCloseKey, true)
   focusObserver?.disconnect()
   window.removeEventListener('resize', syncFocusBounds)
 })
@@ -170,7 +192,7 @@ onBeforeUnmount(() => {
     </div>
     </div>
     <aside v-if="detail" class="oc-detail">
-      <OrganizationDetailPanel :key="JSON.stringify([currentOrganization?.sessionId, stepId, detail])" v-model:active-tab="detailTab" :source="detail" :member="member" :snapshot="memberSnapshot" :session-id="currentOrganization?.sessionId" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" @close="showOverview" />
+      <OrganizationDetailPanel :key="JSON.stringify([currentOrganization?.sessionId, stepId, detail])" ref="detailPanel" v-model:active-tab="detailTab" :source="detail" :member="member" :snapshot="memberSnapshot" :session-id="currentOrganization?.sessionId" :artifact-bindings="artifactBindings" :tab-id="tabId" :step-id="stepId" @close="showOverview" />
     </aside>
     </div>
   </section>
