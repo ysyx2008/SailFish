@@ -1103,7 +1103,8 @@ button:focus-visible {
   height: 22px;
   padding: 0 8px;
   gap: 4px;
-  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+  /* 保留边框占位稳定布局，默认不绘制可见描边。 */
+  border: 1px solid transparent;
   border-radius: 5px;
   background: transparent;
   color: var(--text-secondary);

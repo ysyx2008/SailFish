@@ -1618,11 +1618,9 @@ defineExpose({ minimizePanel, flushDraft: flushActiveDraft })
 
 .canvas-header-actions .canvas-save-text-btn:hover:not(:disabled) {
   color: var(--accent-primary, #4d9eff);
-  border-color: rgba(var(--accent-rgb, 77, 158, 255), 0.35);
 }
 
 .canvas-save-text-btn:not(:disabled) {
-  border-color: rgba(var(--accent-rgb, 77, 158, 255), 0.35);
   color: var(--accent-primary, #4d9eff);
 }
 

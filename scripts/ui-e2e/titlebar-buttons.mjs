@@ -5,6 +5,8 @@ import path from 'node:path'
 import assert from 'node:assert/strict'
 import { launchApp } from './launch.mjs'
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sft-titlebar-'))
+const fixtureFile = path.join(dir, '验收稿.md')
+fs.writeFileSync(fixtureFile, '这是隔离数据里的顶栏验收稿。')
 const app = await launchApp(dir)
 const page = await app.firstWindow()
 const errors = []
@@ -16,9 +18,9 @@ async function buttons(label, selector) {
   check(`${label}入口存在`, await controls.count() > 0)
   const metrics = await controls.evaluateAll(elements => elements.map(el => {
     const css = getComputedStyle(el), rect = el.getBoundingClientRect()
-    return { width: rect.width, height: rect.height, radius: css.borderTopLeftRadius, border: css.borderTopWidth, style: css.borderTopStyle, region: css.webkitAppRegion, transform: css.transform, iconWidth: el.querySelector('svg')?.getBoundingClientRect().width }
+    return { width: rect.width, height: rect.height, radius: css.borderTopLeftRadius, border: css.borderTopWidth, style: css.borderTopStyle, borderColor: css.borderTopColor, region: css.webkitAppRegion, transform: css.transform, iconWidth: el.querySelector('svg')?.getBoundingClientRect().width }
   }))
-  check(`${label}按钮遵循共同外观且可点击`, metrics.every(m => m.width === 22 && m.height === 22 && m.radius === '5px' && m.border === '1px' && m.style === 'solid' && m.region === 'no-drag' && m.transform === 'none' && m.iconWidth === 16), JSON.stringify(metrics))
+  check(`${label}按钮统一无常驻描边且可点击`, metrics.every(m => m.width === 22 && m.height === 22 && m.radius === '5px' && m.border === '1px' && m.style === 'solid' && m.borderColor === 'rgba(0, 0, 0, 0)' && m.region === 'no-drag' && m.transform === 'none' && m.iconWidth === 16), JSON.stringify(metrics))
 }
 async function dismissDialogs() {
   for (let i = 0; i < 5; i++) {
@@ -53,10 +55,10 @@ try {
     window.__tbStore.focusHubConversation(window.__tbTab)
   })
   await page.locator('.assistant-workbench').waitFor()
-  await page.evaluate(() => {
+  await page.evaluate(filePath => {
     const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia
-    pinia._s.get('assistantArtifact').open(window.__tbTab,{renderer:'markdown',artifactId:'titlebar-file',title:'验收稿',content:'这是隔离数据里的顶栏验收稿。',activate:true})
-  })
+    pinia._s.get('assistantArtifact').open(window.__tbTab,{renderer:'markdown',artifactId:'titlebar-file',title:'验收稿',filePath,content:'这是隔离数据里的顶栏验收稿。',activate:true})
+  }, fixtureFile)
   await page.locator('.canvas-panel').waitFor()
   for (const theme of ['dark','light','blue']) {
     await page.evaluate(async value => { await window.__tbConfig.setUiThemeMode('manual'); await window.__tbConfig.setUiTheme(value) },theme)
@@ -75,9 +77,13 @@ try {
   check('键盘焦点可见', await focus.evaluate(el => getComputedStyle(el).outlineStyle === 'solid' && getComputedStyle(el).outlineWidth === '2px'))
   const save = page.locator('.canvas-save-text-btn')
   check('未修改时保存仍禁用', await save.isDisabled())
+  await page.locator('.canvas-panel [contenteditable="true"]').first().fill('修改后的隔离草稿')
+  await page.waitForFunction(() => !document.querySelector('.canvas-save-text-btn')?.disabled)
+  check('可保存状态以文字强调，无常驻描边', await save.evaluate(el => getComputedStyle(el).borderTopColor === 'rgba(0, 0, 0, 0)'))
+
   await page.locator('.artifact-chrome--fold > button').click()
   await page.locator('.artifact-chrome--cluster > button[aria-expanded="false"]').click()
-  check('描边按钮仍可收起再展开产出物', await page.locator('.canvas-panel').isVisible())
+  check('无描边按钮仍可收起再展开产出物', await page.locator('.canvas-panel').isVisible())
   await menu(/控制面板|设置/)
   await page.locator('.settings-header').waitFor()
   await buttons('设置顶栏','.settings-header .btn-icon-header')

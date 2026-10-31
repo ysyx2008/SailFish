@@ -308,7 +308,7 @@ try {
   }
   const fullButtonStyle = await page.locator('.oc-header .tph-focus').evaluate(buttonStyle)
   const collapseButtonStyle = await foldButton.evaluate(buttonStyle)
-  check('铺满与收起使用相同尺寸圆角和细描边', fullButtonStyle.borderWidth === '1px' && JSON.stringify(fullButtonStyle) === JSON.stringify(collapseButtonStyle), JSON.stringify({ fullButtonStyle, collapseButtonStyle }))
+  check('铺满与收起统一无常驻描边', fullButtonStyle.borderColor === 'rgba(0, 0, 0, 0)' && JSON.stringify(fullButtonStyle) === JSON.stringify(collapseButtonStyle), JSON.stringify({ fullButtonStyle, collapseButtonStyle }))
   await page.locator('.oc-header .tph-focus').hover()
   await sleep(160)
   const focusHover = await page.locator('.oc-header .tph-focus').evaluate(el => getComputedStyle(el).backgroundColor)
@@ -325,7 +325,7 @@ try {
   await sleep(450)
   check('收起团队后对话铺开，隐藏区域不可聚焦', await page.locator('.workbench-region.region-collapsed[inert]').count() === 1 && await page.locator('.workbench-region').evaluate(el => el.getBoundingClientRect().width) < 1)
   await shot('3a-collapsed')
-  check('重新展开按钮延续同一细描边样式', JSON.stringify(await unfoldButton.evaluate(buttonStyle)) === JSON.stringify(fullButtonStyle))
+  check('重新展开按钮延续无常驻描边样式', JSON.stringify(await unfoldButton.evaluate(buttonStyle)) === JSON.stringify(fullButtonStyle))
   await unfoldButton.click()
   await sleep(450)
   check('展开恢复同一组织图及滚动位置', await page.locator('.oc-body').evaluate((el, before) => el === window.__e2eChartBody && el.scrollLeft === before[0] && el.scrollTop === before[1], scrollBefore))
