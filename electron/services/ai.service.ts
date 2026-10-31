@@ -6,6 +6,7 @@ import { SocksProxyAgent } from 'socks-proxy-agent'
 import * as https from 'https'
 import * as http from 'http'
 import { StringDecoder } from 'string_decoder'
+import { cacheAnthropicMessageTail, normalizeAnthropicMessage } from './anthropic-prompt-cache'
 import { t } from './agent/i18n'
 import { stripCompositionMarkers } from './agent/context-composition'
 import { getAiDebugService } from './ai-debug.service'
@@ -537,6 +538,8 @@ export interface AiMessage {
   reasoning_content?: string
   /** @internal Anthropic prompt cache: 标记此消息为缓存断点（跨任务复用的消息边界） */
   _cacheBreakpoint?: boolean
+  /** @internal 带来源的引用背景；只用于应用内继承，不发送给provider。 */
+  _contextReference?: { source?: string; messages: AiMessage[] }
   /**
    * @internal 不构成新 task 边界的 user/assistant 消息（系统注入或 task 内用户补充），
    * 例如「工具读取图片占位」「上下文压力警告」等；真实用户部分另由 _userContextParts 表达。这种消息：
@@ -554,6 +557,7 @@ function withoutUserContextParts(messages: readonly AiMessage[]): AiMessage[] {
   return messages.map(message => {
     const copy = { ...message }
     delete copy._userContextParts
+    delete copy._contextReference
     return copy
   })
 }
@@ -1147,6 +1151,10 @@ function convertToAnthropicBody(body: Record<string, unknown>): Record<string, u
 
   for (const msg of rawMessages) {
     const role = msg.role as string
+    const append = (converted: Record<string, unknown>) => {
+      normalizeAnthropicMessage(converted, msg._cacheBreakpoint === true)
+      messages.push(converted)
+    }
 
     if (role === 'system') {
       if (system) system += '\n'
@@ -1165,7 +1173,7 @@ function convertToAnthropicBody(body: Record<string, unknown>): Record<string, u
             parts.push({ type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } })
           }
         }
-        messages.push({ role: 'user', content: parts })
+        append({ role: 'user', content: parts })
         continue
       }
       if (Array.isArray(msg.content)) {
@@ -1183,10 +1191,10 @@ function convertToAnthropicBody(body: Record<string, unknown>): Record<string, u
             }
           }
         }
-        messages.push({ role: 'user', content: parts })
+        append({ role: 'user', content: parts })
         continue
       }
-      messages.push({ role: 'user', content: msg.content })
+      append({ role: 'user', content: msg.content })
       continue
     }
 
@@ -1201,17 +1209,12 @@ function convertToAnthropicBody(body: Record<string, unknown>): Record<string, u
           blocks.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input })
         }
       }
-      // 缓存断点 3/4：跨任务消息复用边界（前序任务的最后一条 assistant 消息）
-      if (msg._cacheBreakpoint) {
-        if (blocks.length === 0) blocks.push({ type: 'text', text: '' })
-        blocks[blocks.length - 1].cache_control = { type: 'ephemeral' }
-        messages.push({ role: 'assistant', content: blocks })
-      } else if (blocks.length === 1 && blocks[0].type === 'text') {
-        messages.push({ role: 'assistant', content: blocks[0].text })
+      if (blocks.length === 1 && blocks[0].type === 'text') {
+        append({ role: 'assistant', content: blocks[0].text })
       } else if (blocks.length > 0) {
-        messages.push({ role: 'assistant', content: blocks })
+        append({ role: 'assistant', content: blocks })
       } else {
-        messages.push({ role: 'assistant', content: [{ type: 'text', text: '' }] })
+        append({ role: 'assistant', content: [{ type: 'text', text: '' }] })
       }
       continue
     }
@@ -1226,13 +1229,15 @@ function convertToAnthropicBody(body: Record<string, unknown>): Record<string, u
       if (last?.role === 'user' && Array.isArray(last.content) &&
           (last.content as Array<Record<string, unknown>>).every(c => c.type === 'tool_result')) {
         (last.content as Array<Record<string, unknown>>).push(result)
+        normalizeAnthropicMessage(last, msg._cacheBreakpoint === true)
       } else {
-        messages.push({ role: 'user', content: [result] })
+        append({ role: 'user', content: [result] })
       }
       continue
     }
   }
 
+  cacheAnthropicMessageTail(messages)
   const result: Record<string, unknown> = {
     model: body.model,
     max_tokens: body.max_tokens || 4096,

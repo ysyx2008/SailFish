@@ -222,8 +222,9 @@ it('插件provider也不接收本地来源元数据，正文和图片保持，�
   const ai=new AiService({getAiProfiles:()=>[profile],getActiveAiProfile:()=>profile.id} as never)
   const provider=vi.fn(async(_params:unknown)=>({content:'ok'}))
   ai.setPluginProviders([{id:'fixture',name:'fixture',match:()=>true,chatWithTools:provider}])
-  const original:AiMessage={role:'user',content:'完整正文',images:['image-original'],_systemInjected:true,_userContextParts:[{start:0,end:3}]}
+  const original:AiMessage={role:'user',content:'完整正文',images:['image-original'],_systemInjected:true,_userContextParts:[{start:0,end:3}],_contextReference:{source:'甲',messages:[{role:'user',content:'原始背景'}]}}
   await ai.chatWithTools([original],[])
   expect(provider).toHaveBeenCalledWith(expect.objectContaining({messages:[{role:'user',content:'完整正文',images:['image-original'],_systemInjected:true}]}))
   expect(original._userContextParts).toEqual([{start:0,end:3}])
+  expect(original._contextReference?.messages[0].content).toBe('原始背景')
 })
