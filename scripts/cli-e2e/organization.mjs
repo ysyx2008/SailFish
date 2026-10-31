@@ -717,6 +717,83 @@ scenario('身份固定、父上下文引用与错误寻址纠正贯穿三层真�
   } finally { await llm.close() }
 })
 
+// ───────────────────────────────────────────────────────────── 9
+scenario('组长收工后被群内再交代叫醒，不丢已完成下级；role称呼不赋派工权限', async () => {
+  const names = ['负责人', '甲组', '乙组', '甲组执行', '乙组执行', '普通专家']
+  const env = sandbox(0, 'sft-org-wake-board', tempDirs)
+  let dispatched = false
+  let wakePhase = 0
+  const woke = new Set()
+  const llm = await startMockLlm({
+    onUser: (text, _n, entry) => {
+      const who = whoAsks(entry, names)
+      entry.who = who
+      if (who === 'main') {
+        if (text.includes('[专家') || text.includes('[伙计')) return say('秘书收到组织交差')
+        return callTool('dispatch_agents', { tasks: [
+          { name: '负责人', role: '项目负责人', lead: true, description: '组织核对', prompt: '我是负责人，派甲乙两位组长，完成后再交代他们核对结果' },
+          { name: '普通专家', role: '项目组长', description: '普通专家，仅角色称呼含组长', prompt: '我是普通专家，只汇报，不派人' },
+        ] })
+      }
+      if (who === '负责人') {
+        if (!dispatched) {
+          dispatched = true
+          return callTool('dispatch_agents', { team: '核对团', tasks: ['甲组', '乙组'].map(name => ({
+            name, role: '核对负责人', lead: true, description: `负责${name}`, prompt: `我是${name}，派一位执行成员后汇总`,
+          })) })
+        }
+        if (wakePhase === 0) {
+          wakePhase = 1
+          return callTool('followup_agent', { name: '甲组', message: 'WAKE_VERIFY：核对已交回结果，无需再派人' })
+        }
+        return say('负责人完成复核')
+      }
+      if (who === '甲组' || who === '乙组') {
+        if (text.includes('WAKE_VERIFY')) {
+          woke.add(who)
+          // 产生一次真实进度刷新，和多枝并行时观察到空名册的时机一致。
+          return callTool('exec', { command: 'sleep 0.1' })
+        }
+        if (text.includes(`我是${who}，`)) return callTool('dispatch_agents', { tasks: [
+          { name: `${who}执行`, description: `${who}执行核对`, prompt: `我是${who}执行，汇报完成` },
+        ] })
+        return say(`${who}收齐结果`)
+      }
+      return say(`${who}完成`)
+    },
+    afterTool: (_last, entry) => {
+      const who = whoAsks(entry, names)
+      entry.who = who
+      if (who === '负责人' && wakePhase === 1) {
+        wakePhase = 2
+        return callTool('followup_agent', { name: '乙组', message: 'WAKE_VERIFY：核对已交回结果，无需再派人' })
+      }
+      return say('已安排，等结果')
+    },
+  })
+  env.env.SFT_API_URL = `http://127.0.0.1:${llm.port}/v1`
+  try {
+    const result = await runPlain(['组织核对并再次叫醒已收工组长', '--free'], env, 120000)
+    check('群内再交代CLI正常退出', result.code === 0, result.err.slice(-400))
+    check('两位组长收工后均被再次叫醒', woke.has('甲组') && woke.has('乙组'))
+    const { sessions, children } = readOrg(env.dataDir)
+    check('六位成员完整落盘且均已完成', names.length === Object.keys(children).length && names.every(name => children[name]?.state.status === 'completed'))
+    const meta = readJson(path.join(env.dataDir, 'history/agent', path.basename(path.dirname(sessions[0])), path.basename(sessions[0]), 'meta.json'))
+    const org = Object.values(meta?.organizations ?? {}).find(view => view.members.some(member => member.name === '负责人'))
+    const board = org?.boardPath ? fs.readFileSync(org.boardPath, 'utf8') : ''
+    check('唤醒后看板仍保留全部六位成员', board.includes('共 6 人') && names.every(name => board.includes(`${name} | `)), board.slice(-1000))
+    check('两位执行成员仍挂在原组长名下', children['甲组执行']?.state.parent === '甲组' && children['乙组执行']?.state.parent === '乙组')
+    const ordinary = llm.requests.find(entry => entry.who === '普通专家' && entry.hasTools)
+    const ordinaryTools = toolNamesOf(ordinary ?? { body: {} })
+    check('只把role叫项目组长不获得派工、等待或群聊工具', ordinaryTools.length > 0 && ['dispatch_agents', 'wait_agents', 'team_say'].every(name => !ordinaryTools.includes(name)))
+    check('真实组长初次与再次运行均有派工工具', ['甲组', '乙组'].every(name => {
+      const requests = llm.requests.filter(entry => entry.who === name && entry.hasTools)
+      return requests.length >= 3 && requests.every(entry => toolNamesOf(entry).includes('dispatch_agents'))
+    }))
+    check('唤醒看板链路没有相关异常日志', logWarnings(env.dataDir).length === 0, logWarnings(env.dataDir).join('\n'))
+  } finally { await llm.close() }
+})
+
 // ─────────────────────────────────────────────────────────────
 const only = process.argv.slice(2).map(Number).filter(Boolean)
 for (const [index, item] of scenarios.entries()) {

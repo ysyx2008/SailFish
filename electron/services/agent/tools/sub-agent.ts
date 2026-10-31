@@ -224,16 +224,25 @@ export class SubAgentWorkspace {
   /** 看板上每份花名册的最后样子：组长收工、花名册退出账本以后，他那一段还在 */
   private readonly boardSections = new Map<string, RememberedSection>()
 
-  rememberBoardSection(section: RememberedSection, seed = false): void {
+  rememberBoardSection(section: RememberedSection): void {
     const key = section.owner ?? ''
     const previous = this.boardSections.get(key)
-    // 冷恢复只叫醒一部分人；没有再次运行的团仍沿用历史元数据。
+    // 冷恢复和再次唤醒都可能只有部分名册；未在本轮启动的成员、团仍保留。
     const teamViews = [...new Map([...(previous?.teamViews ?? []), ...section.teamViews].map(team => [team.name, team])).values()]
-    const members = seed ? [...new Map([...(previous?.members ?? []), ...section.members].map(member => [member.name, member])).values()] : section.members
+    const members = [...new Map([...(previous?.members ?? []), ...section.members].map(member => [member.name, member])).values()]
+    const rows = new Map<string, string | undefined>()
+    for (const source of [previous, section]) source?.members.forEach((member, i) => rows.set(member.name, source.rows[i]))
+    const missingRows = members.filter(member => rows.get(member.name) === undefined)
+    if (missingRows.length) {
+      const formatted = this.rowsOf(missingRows.map(member => ({ ...member, prompt: '', steps: [] })))
+      missingRows.forEach((member, i) => rows.set(member.name, formatted[i]))
+    }
     this.boardSections.set(key, {
       ...section,
       members,
-      ...(seed ? { total: members.length, live: members.filter(member => member.status === 'pending' || member.status === 'running').length } : {}),
+      rows: members.map(member => rows.get(member.name)!),
+      total: members.length,
+      live: members.filter(member => member.status === 'pending' || member.status === 'running').length,
       teamViews,
       teams: teamViews.map(team => ({ name: team.name, review: team.review, reviewers: team.reviewers ?? [] })),
     })
@@ -448,7 +457,7 @@ export function seedOrganizationBoard(workspace: SubAgentWorkspace, view: Organi
       total: members.length,
       members,
       teamViews,
-    }, true)
+    })
   }
   workspace.writeBoardFromMemory()
 }

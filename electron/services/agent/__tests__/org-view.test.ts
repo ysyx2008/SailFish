@@ -170,6 +170,52 @@ describe('组织全貌（给界面看的那一份）', () => {
     expect(org.members.some(m => m.lead)).toBe(true)
     root.abortAll()
   })
+
+  it('组长收工后重新挂空名册或只恢复部分成员，不丢旧成员及看板行', async () => {
+    const root = new SubAgentRoster({ knockSettleMs: 0 })
+    const rosters: SubAgentRoster[] = []
+    let seat!: LeadSeat
+    const rootDeps = deps(() => {
+      const handle = leadWithTeam(rosters, 100, rootDeps)
+      const bind = handle.becomeLead!
+      return { ...handle, becomeLead: s => { seat = s; bind(s) } }
+    })
+    const names = root.spawn([{ description: '研发组', prompt: 'p', role: '研发组长', lead: true }], rootDeps)
+    refreshOrgBoard(root)
+    await root.settled()
+    refreshOrgBoard(root)
+    const workspace = workspaceOf(root)
+    const before = workspace.organizationView()
+    expect(before.total).toBe(3)
+    expect(before.live).toBe(0)
+
+    const resumed = new SubAgentRoster({ knockSettleMs: 0 })
+    resumed.attachLedger(seat.ledger, seat.name, seat.depth)
+    refreshOrgBoard(resumed)
+    expect(workspace.organizationView().members).toEqual(before.members)
+    expect(fs.readFileSync(workspace.boardPath, 'utf8')).toContain('后端 | 已完成')
+
+    const front = before.members.find(member => member.name === '前端')!
+    const d = { ...deps(() => worker(30)), restoreDormant: () => [{
+      ...front, description: front.description, prompt: 'p', status: 'completed' as const,
+      revive: () => ({ handle: worker(30), steps: [] }),
+    }] }
+    expect(resumed.followup('前端', '再核对', d).ok).toBe(true)
+    refreshOrgBoard(resumed)
+    expect(workspace.organizationView()).toMatchObject({ total: 3, live: 1 })
+    expect(workspace.organizationView().members.find(member => member.name === '后端')?.status).toBe('completed')
+    await resumed.settled()
+    refreshOrgBoard(resumed)
+    expect(workspace.organizationView()).toMatchObject({ total: 3, live: 0 })
+
+    resumed.spawn([{ description: '新增', prompt: 'p' }], deps(() => worker(10)))
+    refreshOrgBoard(resumed)
+    expect(workspace.organizationView()).toMatchObject({ total: 4, live: 1 })
+    expect(workspace.organizationView().members.map(member => member.name).sort()).toEqual(['前端', '后端', '新增', ...names].sort())
+    expect(fs.readFileSync(workspace.boardPath, 'utf8')).toContain('后端 | 已完成')
+    await resumed.settled()
+    resumed.release(); root.release()
+  })
 })
 
 describe('组织账本通知', () => {
