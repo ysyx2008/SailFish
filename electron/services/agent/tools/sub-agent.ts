@@ -27,6 +27,7 @@ import {
 } from '../expert-team'
 import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
 import { createTeamTexts, expertOpening, formatTranscript, formatTranscriptLines, quoteMemberText, renamedList } from './expert-team-text'
+import { emptyWaitFeedback, memberFactsPrefix, targetFeedback } from './sub-agent-feedback'
 import { orgOpeningNote, renderBoard, type BoardSection } from './organization-text'
 import type { OrganizationMemberView, OrganizationTeamView, OrganizationView, TeamReviewState } from '@shared/types'
 import { inferConversationKind } from '@shared/types'
@@ -745,9 +746,10 @@ function knockTeamsFor(roster: SubAgentRoster, child: ChildSnapshot): LeadReview
   return child.lead ? leadReviewTeamsFor(roster, child.name) : []
 }
 
-export function formatKnock(child: ChildSnapshot, reviewTeams: readonly LeadReviewTeam[] = []): string {
+export function formatKnock(child: ChildSnapshot, reviewTeams: readonly LeadReviewTeam[] = [], parent?: string): string {
   // 交差归属来自花名册；正文按数据引用，不能靠模拟消息头换成别人的回执。
-  const quoted = { ...child, result: child.result ? quoteMemberText(child.result) : child.result }
+  const facts = memberFactsPrefix(child, parent, child.status === 'completed')
+  const quoted = { ...child, result: child.status === 'completed' ? facts + (child.result ? quoteMemberText(child.result) : '(no output)') : child.result }
   const text = child.role
     ? formatExpertKnock(quoted, child.role)
     : child.status === 'completed'
@@ -766,10 +768,11 @@ export function formatKnock(child: ChildSnapshot, reviewTeams: readonly LeadRevi
           description: child.description,
           error: child.error || 'Unknown error'
         })
+  const withFacts = child.status !== 'completed' && facts ? `${text}\n\n${facts.trimEnd()}` : text
   const reviews = leadReviewLines(reviewTeams, child.name)
   return reviews.length > 0
-    ? `${text}\n\n${t('dispatch.knock_review', { lines: reviews.join('\n') })}`
-    : text
+    ? `${withFacts}\n\n${t('dispatch.knock_review', { lines: reviews.join('\n') })}`
+    : withFacts
 }
 
 function formatExpertKnock(child: ChildSnapshot, role: string): string {
@@ -1010,7 +1013,7 @@ export function spawnDeps(
       }
       executor.knockParent?.(message)
     },
-    openingFor: (child, team) => expertOpening(child, team) + orgNoteFor(roster, child),
+    openingFor: (child, team) => '## 本次交办\n' + expertOpening(child, team) + orgNoteFor(roster, child),
     restoreDormant: executor.restoreDormantChildren,
     forRestoredBranch: (branch) => {
       const branchDeps = spawnDeps({
@@ -1025,7 +1028,7 @@ export function spawnDeps(
       return branchDeps
     },
     resumeNotice: resumeNoticeFor,
-    teamTexts: createTeamTexts(team => workspace.teamTranscriptPath(team)),
+    teamTexts: createTeamTexts(team => workspace.teamTranscriptPath(team), roster.owner),
     teamHistoryFor: (teamName) => {
       const root = roster.orgRoot()
       if (!root) return undefined
@@ -1054,7 +1057,7 @@ export function spawnDeps(
     ownedNames,
     isParentAborted: () => executor.isAborted(),
     sanitize: sanitizeParentMessages,
-    formatKnock: (child) => formatKnock(child, knockTeamsFor(roster, child)),
+    formatKnock: (child) => formatKnock(child, knockTeamsFor(roster, child), roster.owner),
     archiveResult: (name, text) => workspace.keepResult(name, text, roster.list().length),
     remoteAccessFor: (name, grant) => remoteAccessFor(roster, name, grant),
   }
@@ -1377,6 +1380,12 @@ export async function dispatchSubAgents(
   }
 }
 
+/** 校验整次点名后才等待/执行，避免错误名字被静默丢掉。 */
+function checkTarget(roster: SubAgentRoster, name: string, executor: ToolExecutorConfig, waiting = false): string | undefined {
+  const issue = roster.targetIssue(name, { restoreDormant: executor.restoreDormantChildren })
+  return issue ? targetFeedback(issue, roster.owner ?? '秘书', name, workspaceOf(roster).overviewPath, waiting) : undefined
+}
+
 export async function followupAgent(
   args: Record<string, unknown>,
   executor: ToolExecutorConfig,
@@ -1388,6 +1397,8 @@ export async function followupAgent(
   const name = typeof args.name === 'string' ? args.name.trim() : ''
   const message = typeof args.message === 'string' ? args.message.trim() : ''
   if (!name || !message) return { success: false, output: '', error: '需要 name 和 message' }
+  const targetError = checkTarget(roster, name, executor)
+  if (targetError) return { success: false, output: '', error: targetError }
 
   const parsedCommands = parseRemoteCommands(args)
   if ('error' in parsedCommands) return { success: false, output: '', error: parsedCommands.error }
@@ -1438,6 +1449,10 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
   const names = Array.isArray(args.names)
     ? (args.names as unknown[]).filter((n): n is string => typeof n === 'string' && n.trim() !== '')
     : undefined
+  for (const name of names ?? []) {
+    const error = checkTarget(roster, name, executor, true)
+    if (error) return { success: false, output: '', error }
+  }
   const timeoutSec = Math.min(Math.max(1, Number(args.timeout) || 120), 600)
 
   // 等的时候用户说话：这次等待先停下，让主人先回应；伙计照旧在后台干
@@ -1503,7 +1518,8 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
     return { success: false, output: '', error: t('error.operation_aborted') }
   }
   if (news.targets.length === 0) {
-    return { success: true, output: t('dispatch.wait_empty') }
+    const summary = roster.knownMembers({ restoreDormant: executor.restoreDormantChildren }).map(member => `${member.name}：${statusLabel(member.status)}`).join('；')
+    return { success: true, output: emptyWaitFeedback(roster.owner ?? '秘书', summary) }
   }
 
   const stillWorking = news.targets.some(c => c.status === 'pending' || c.status === 'running')
@@ -1529,12 +1545,14 @@ export async function interruptAgent(args: Record<string, unknown>, executor: To
   if (!roster) return { success: false, output: '', error: '没有花名册' }
   const name = typeof args.name === 'string' ? args.name.trim() : ''
   if (!name) return { success: false, output: '', error: '需要 name' }
+  const targetError = checkTarget(roster, name, executor)
+  if (targetError) return { success: false, output: '', error: targetError }
   const result = roster.interrupt(name, { restoreDormant: executor.restoreDormantChildren })
   if (!result.ok) return { success: false, output: '', error: result.error }
   if (result.finalized) {
     const snap = roster.get(name)
     workspaceOf(roster).writeOverview(roster.list())
-    if (snap) executor.knockParent?.(formatKnock(snap, knockTeamsFor(roster, snap)))
+    if (snap) executor.knockParent?.(formatKnock(snap, knockTeamsFor(roster, snap), roster.owner))
   }
   return { success: true, output: t('dispatch.interrupt_ok', { name }) }
 }

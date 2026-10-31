@@ -4,6 +4,7 @@
 import type { ChildSnapshot, TeamTexts } from '../sub-agent-roster'
 import { TEAM_LEADER, WAKES_PER_CHECKPOINT, type ExpertTeam, type TeamMessage } from '../expert-team'
 import { t } from '../i18n'
+import { memberFactsPrefix } from './sub-agent-feedback'
 
 /** 敲门里带群里最后几条 */
 const RECENT_IN_KNOCK = 6
@@ -78,8 +79,8 @@ function reviewLine(team: ExpertTeam): string {
  */
 export function expertOpening(child: ChildSnapshot, team?: ExpertTeam): string {
   if (!child.role) return child.prompt
-  const youAre = t('expert.you_are', { name: child.name, role: child.role }) + (child.reviewer ? `\n${t('expert.you_are_reviewer')}` : '')
-  if (!team) return `${youAre}\n\n${child.prompt}`
+  const reviewer = child.reviewer ? t('expert.you_are_reviewer') : ''
+  if (!team) return [reviewer, child.prompt].filter(Boolean).join('\n\n')
   const roster = team.roster()
     .map(m => t('expert.list_item', { name: m.name, role: m.role, description: m.description }) + (m.reviewer ? t('expert.reviewer_mark') : ''))
     .join('\n')
@@ -87,17 +88,17 @@ export function expertOpening(child: ChildSnapshot, team?: ExpertTeam): string {
   const brief = t('expert.team_brief', { team: team.name, roster })
     + `\n${t('expert.team_identity', { leader: team.label(TEAM_LEADER) })}`
     + (renamed ? `\n${t('expert.team_renamed', { list: renamed })}` : '')
-  return `${brief}\n\n${youAre}\n\n${child.prompt}`
+  return [brief, reviewer, child.prompt].filter(Boolean).join('\n\n')
 }
 
 /** 各人状态；带上交的东西（团停下来时）或只报状态（等组长时） */
-function memberLines(team: ExpertTeam, members: ChildSnapshot[], withDeliverables: boolean): string {
+function memberLines(team: ExpertTeam, members: ChildSnapshot[], withDeliverables: boolean, parent?: string): string {
   return members.map(c => {
     const label = team.label(c.name)
     const status = statusLabel(c.status)
     if (!withDeliverables) return t('expert.member_status_line', { label, status })
     const detail = c.status === 'completed' ? (c.result || '(no output)') : clip(c.error || '-', ERROR_MAX)
-    return t('expert.member_line', { label, status, detail: quoteMemberText(detail) })
+    return t('expert.member_line', { label, status, detail: memberFactsPrefix(c, parent) + quoteMemberText(detail) })
   }).join('\n')
 }
 
@@ -121,7 +122,7 @@ function fitUnread(team: ExpertTeam, messages: TeamMessage[]): { lines: string[]
   return { lines: lines.reverse(), dropped: 0 }
 }
 
-export function createTeamTexts(transcriptPath: (team: ExpertTeam) => string): TeamTexts {
+export function createTeamTexts(transcriptPath: (team: ExpertTeam) => string, parent?: string): TeamTexts {
   return {
     wake(team, _member, unread, trigger) {
       const others = trigger ? unread.filter(m => m.seq !== trigger.seq) : unread
@@ -159,7 +160,7 @@ export function createTeamTexts(transcriptPath: (team: ExpertTeam) => string): T
     stopped(team, members) {
       const text = t('expert.knock_stopped', {
         team: team.name,
-        members: memberLines(team, members, true),
+        members: memberLines(team, members, true, parent),
         recent: recentLines(team),
         path: transcriptPath(team),
       }) + reviewLine(team)

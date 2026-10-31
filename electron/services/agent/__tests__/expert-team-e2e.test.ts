@@ -52,11 +52,11 @@ function text(messages: Msg[]): string {
   return messages.map(m => String(m.content ?? '')).join('\n')
 }
 
-/** 认人：专家开工第一条话里写着「你是 名字（角色）」 */
+/** 认人只读系统绑定的当前身份，不把引用背景里的上级当成本人。 */
 function whoIs(messages: Msg[], tools: string[]): string {
-  if (tools.includes('dispatch_agents')) return 'parent'
-  const m = /你是 (\S+)（/.exec(text(messages))
-  return m ? m[1] : 'unknown'
+  const system = messages.filter(message => message.role === 'system').map(message => String(message.content ?? '')).join('\n')
+  const name = /^姓名：(.+)$/m.exec(system)?.[1]
+  return name ?? (tools.includes('dispatch_agents') ? 'parent' : 'unknown')
 }
 
 function makeServices(respond: (who: string, messages: Msg[]) => LlmResponse): AgentServices {

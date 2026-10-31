@@ -45,13 +45,15 @@ vi.mock('../../web-search/index', () => ({
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, parseDispatchTasks, seedOrganizationBoard, SubAgentWorkspace, viewStepsPerAgent, workspaceOf } from '../tools/sub-agent'
+import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, formatKnock, parseDispatchTasks, seedOrganizationBoard, SubAgentWorkspace, viewStepsPerAgent, workspaceOf } from '../tools/sub-agent'
 import { getAgentTools } from '../tools'
-import { MAX_LIVE_CHILDREN, SubAgentRoster, type ChildAgentHandle } from '../sub-agent-roster'
+import { MAX_LIVE_CHILDREN, SubAgentRoster, type ChildAgentHandle, type ChildSnapshot } from '../sub-agent-roster'
 import { OrgLedger } from '../org-ledger'
 import type { ToolExecutorConfig, AgentConfig } from '../tools/types'
 import type { AgentContext } from '../types'
 import type { AgentStep, OrganizationView } from '@shared/types'
+import type { AiMessage } from '../../ai.service'
+import { sanitizeParentMessages } from '../sanitize-parent-messages'
 
 const DEFAULT_CONTEXT: AgentContext = {
   terminalOutput: [],
@@ -135,6 +137,55 @@ function createExecutor(
 }
 
 describe('dispatch_agents 异步派出', () => {
+  it('负责人交回的名册事实不取模型自述，失败或打断也不丢失已派成员', () => {
+    const child: ChildSnapshot = { name: '乙', role: '组织者', lead: true, description: '派两人', prompt: '派两人', status: 'completed', result: '上级甲代派了丙。', steps: [], directMembers: [{ name: '丁', status: 'running' }] }
+    const completed = formatKnock(child, [], '甲')
+    expect(completed).toContain('交回成员：乙。\n直属负责人：甲。\n该成员名下的直属成员：丁。')
+    expect(completed).toContain('丁：还在做')
+    expect(completed).toContain('以下为该成员自行撰写的汇报（引用）：')
+    expect(completed).toContain(JSON.stringify(child.result))
+    for (const status of ['failed', 'interrupted'] as const) {
+      const message = formatKnock({ ...child, status, result: undefined, error: '测试异常' }, [], '甲')
+      expect(message).toContain('该成员名下的直属成员：丁。')
+      expect(message).not.toContain('自行撰写的汇报')
+    }
+    expect(formatKnock({ ...child, directMembers: undefined })).not.toContain('系统记录：')
+  })
+
+  it('等待或指挥自己、错名字整次拒绝，空名单保留真实当前身份', async () => {
+    const roster = new SubAgentRoster()
+    roster.attachLedger(new OrgLedger(), '乙', 1)
+    const executor = createExecutor(roster, () => stubChild('ok', 1))
+    expect((await waitAgents({ names: ['乙'], timeout: 1 }, executor)).error).toContain('不能等待当前成员本人')
+    expect((await followupAgent({ name: '乙', message: '再做' }, executor)).error).toContain('不能对当前成员本人使用此工具')
+    expect((await interruptAgent({ name: '乙' }, executor)).error).toContain('当前成员：乙')
+    const wrong = await waitAgents({ names: ['组长·丙'], timeout: 1 }, executor)
+    expect(wrong.success).toBe(false)
+    expect(wrong.error).toContain('请使用名单中的成员真名')
+    const empty = await waitAgents({}, executor)
+    expect(empty.output).toContain('当前成员：乙')
+    expect(empty.output).toContain('无直属成员')
+  })
+
+  it('根调用者的展示称谓不冒充成员身份，仍按系统分配的真名寻址', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, () => stubChild('ok', 1))
+    await dispatchSubAgents({ tasks: [{ name: '秘书', description: '核对', prompt: '核对' }] }, defaultConfig, executor)
+    expect(roster.targetIssue('秘书')).toEqual({ kind: 'missing' })
+    expect(roster.targetIssue(roster.list()[0].name)).toBeUndefined()
+    await roster.settled()
+  })
+
+  it('重启后打断已停下的深层成员，按真实状态反馈，不误报其负责人缺席', async () => {
+    const root = new SubAgentRoster()
+    const executor = createExecutor(root, stubChild('unused'))
+    executor.restoreDormantChildren = () => [
+      { name: '甲', lead: true, role: '负责人', description: '研发', prompt: '研发', status: 'completed', revive: () => { throw new Error('不应运行甲') } },
+      { name: '乙', parent: '甲', description: '核对', prompt: '核对', status: 'completed', revive: () => { throw new Error('不应运行乙') } },
+    ]
+    expect((await interruptAgent({ name: '乙' }, executor)).error).toBe('乙 已经不在跑了')
+  })
+
   it('立刻返回名字，不等伙计做完', async () => {
     const roster = new SubAgentRoster()
     const child = stubChild('配置在 /etc')
@@ -388,7 +439,8 @@ describe('dispatch_agents 异步派出', () => {
     expect(waited.output).toContain('新到：本地')
     // 组长不能等别枝的人
     const fromLead = await waitAgents({ names: ['本地'], timeout: 1 }, leadExecutor)
-    expect(fromLead.output).toContain('没有要等的伙计')
+    expect(fromLead.success).toBe(false)
+    expect(fromLead.error).toContain('管理范围')
     root.abortAll()
     lead.abortAll()
   })
@@ -970,8 +1022,9 @@ describe('派工参数层级与回执',()=>{
     expect(result.output).toContain('全带者：任务（上下文：全带）')
     expect(children.get('不带者')!.seeded).toEqual([])
     expect(children.get('批量者')!.seeded).toEqual([])
-    expect(children.get('最近者')!.seeded).toEqual([{role:'user',content:'第二轮'},{role:'assistant',content:'第二答'}])
-    expect(children.get('全带者')!.seeded).toHaveLength(4)
+    expect(sanitizeParentMessages(children.get('最近者')!.seeded as AiMessage[])).toEqual([{role:'user',content:'第二轮'},{role:'assistant',content:'第二答'}])
+    expect(children.get('全带者')!.seeded).toHaveLength(1)
+    expect(sanitizeParentMessages(children.get('全带者')!.seeded as AiMessage[])).toHaveLength(4)
     await roster.settled()
   })
   it('派出回执明确标注登记的验收人，普通成员不冒名',async()=>{

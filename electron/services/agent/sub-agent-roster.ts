@@ -11,6 +11,7 @@ import type { SubAgentResult, SubAgentToolStep, TeamReviewState, TeamVerdict, To
 import type { ChildRecorder, ChildState, ChildStateInput } from '../history/sub-agent-record-store'
 import type { AgentContext, AgentStep, RunOptions } from './types'
 import { applyForkTurns, type ForkTurns } from './sanitize-parent-messages'
+import { parentContextMessages, type ChildIdentity } from './sub-agent-context'
 import { ExpertTeam, MAX_TEAM_SIZE, MIN_TEAM_SIZE, SECRETARY, TEAM_LEADER, tidyLabel, type TeamMessage } from './expert-team'
 import type { RemoteGrant } from './remote-access/remote-grant'
 import type { WorkerRemoteAccess } from './remote-access/worker-remote-access'
@@ -44,6 +45,8 @@ export interface ChildSnapshot {
   waitingForModel?: boolean
   /** 界面上显示的那份指令；批量写法只显示条目部分，共同指令在派出的工具参数里 */
   shownPrompt?: string
+  /** 系统在本段收尾时取到的直属成员事实；不采用模型自述。 */
+  directMembers?: ReadonlyArray<Pick<ChildSnapshot, 'name' | 'status'>>
 }
 
 export interface ChildAgentHandle {
@@ -52,6 +55,8 @@ export interface ChildAgentHandle {
   abort(): boolean
   isRunning(): boolean
   seedOpeningMessages?(messages: AiMessage[]): void
+  bindChildIdentity?(identity: ChildIdentity): void
+  directMemberFacts?(): ReadonlyArray<Pick<ChildSnapshot, 'name' | 'status'>> | undefined
   /** 这位的存盘人；没有就不存 */
   readonly childRecorder?: ChildRecorder
   /** 进专家团：之后能在群里说话 */
@@ -470,6 +475,23 @@ export class SubAgentRoster {
   /** 组织图还需保留已停止、尚未叫醒的历史成员。 */
   organizationMembers(): ChildSnapshot[] {
     return [...this.list(), ...[...this.dormant.values()].map(child => snapshotOf({ ...child, steps: [], forkTurns: { kind: 'all' }, segment: 0 }))]
+  }
+
+  /** 仅在显式查询或交回时补全盘上的直属成员，不用于高频进度刷新。 */
+  knownMembers(deps?: Pick<RosterSpawnDeps, 'restoreDormant'>): ChildSnapshot[] {
+    if (deps) this.ensureDormant(deps)
+    return this.organizationMembers()
+  }
+
+  /** 名册负责判断可寻址范围，工具层负责文案及工作区路径。 */
+  targetIssue(name: string, deps?: Pick<RosterSpawnDeps, 'restoreDormant'>): { kind: 'self' | 'missing' | 'foreign'; owner?: string } | undefined {
+    if (this.ownerName !== undefined && name === this.ownerName) return { kind: 'self' }
+    if (deps) this.ensureDormant(deps)
+    if (this.children.has(name) || this.dormant.has(name)) return
+    const holder = this.ledger?.rosterOf(name)
+    if (this.depth === 0 && (holder || this.dormantIndex.has(name))) return
+    const owner = holder?.owner ?? this.foreignNames.get(name)
+    return holder || this.foreignNames.has(name) ? { kind: 'foreign', owner: owner ?? SECRETARY } : { kind: 'missing' }
   }
 
   /** 只要名字、角色和状态的名单：界面标题要认「这几位是不是专家」，不必把每人的步骤都复制一遍 */
@@ -899,6 +921,7 @@ export class SubAgentRoster {
       if (team) this.bindTeamSeat(slot, team)
     }
     if (slot.lead) revived.handle.becomeLead?.({ ledger: this.ensureLedger(), name, depth: this.depth + 1, teamId: slot.teamId })
+    revived.handle.bindChildIdentity?.({ name, role: slot.role, parent: this.ownerName, lead: !!slot.lead })
     persistSlot(slot)
     deps.onProgress()
     const entry = this.entryOf(name)
@@ -1001,7 +1024,7 @@ export class SubAgentRoster {
     const slot = this.children.get(name)
     if (!slot) {
       if (deps) this.ensureDormant(deps)
-      if (this.dormant.has(name)) return { ok: false, error: `${name} 已经不在跑了` }
+      if (this.dormant.has(name) || (this.depth === 0 && this.dormantIndex.has(name))) return { ok: false, error: `${name} 已经不在跑了` }
       const owner = this.depth === 0 ? this.ledger?.rosterOf(name) : undefined
       if (owner && owner !== this) return owner.interrupt(name)
       return { ok: false, error: this.unknownError(name) }
@@ -1070,11 +1093,12 @@ export class SubAgentRoster {
     const handle = deps.createChild(name)
     slot.handle = handle
     if (slot.lead) handle.becomeLead?.({ ledger: this.ensureLedger(), name, depth: this.depth + 1, teamId: slot.teamId })
+    handle.bindChildIdentity?.({ name, role: slot.role, parent: this.ownerName, lead: !!slot.lead })
     if (slot.remoteGrant && deps.remoteAccessFor) handle.setRemoteAccess?.(deps.remoteAccessFor(name, slot.remoteGrant))
     slot.status = 'running'
     if (team) this.bindTeamSeat(slot, team)
     const seed = applyForkTurns(deps.sanitize(deps.getParentMessages()), slot.forkTurns)
-    handle.seedOpeningMessages?.(seed)
+    handle.seedOpeningMessages?.(parentContextMessages(seed, this.ownerName))
     handle.childRecorder?.noteOpening(seed)
     persistSlot(slot)
     deps.onProgress()
@@ -1129,6 +1153,7 @@ export class SubAgentRoster {
       }
     }
     slot.waitingForModel = undefined
+    if (slot.lead) slot.directMembers = handle.directMemberFacts?.()
     persistSlot(slot)
     deps.onProgress()
     this.reportFinished(slot, deps)
@@ -1180,6 +1205,7 @@ function persistSlot(slot: ChildSlot): void {
 
 function snapshotOf(slot: ChildSlot): ChildSnapshot {
   return {
+    ...(slot.directMembers ? { directMembers: slot.directMembers.map(member => ({ ...member })) } : {}),
     forkTurns: slot.forkTurns,
     name: slot.name,
     teamId: slot.teamId,

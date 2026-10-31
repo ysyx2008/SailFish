@@ -71,6 +71,9 @@ const userText = (m) => (m.role === 'user' ? (typeof m.content === 'string' ? m.
 /** 请求属于谁：看对话里最后一条「我是 X」的用户消息；一条都没有的是秘书 */
 function whoAsks(entry, names) {
   const messages = entry.body.messages ?? []
+  const system = messages.filter(m => m.role === 'system').map(m => String(m.content ?? '')).join('\n')
+  const bound = /^姓名：(.+)$/m.exec(system)?.[1]
+  if (bound) return bound
   for (let i = messages.length - 1; i >= 0; i--) {
     const text = userText(messages[i])
     const hit = names.find((n) => text.includes(`我是${n}，`))
@@ -419,6 +422,8 @@ scenario('进程被 kill -9：新进程接着同一场会话，秘书叫醒组�
     check('直接叫深层成员后这一轮正常结束', direct.out.includes('RESUME_DONE'), `${direct.out.slice(-300)} ${direct.err.slice(-600)}`)
     const jia = directLlm.requests.find(r => r.who === '小甲' && r.lastText.includes('[上次的情形]'))
     check('小甲从异常退出处直接恢复', !!jia && jia.lastText.includes('异常退出'), jia?.lastText)
+    const restoredSystem = jia?.body.messages.find(message => message.role === 'system')?.content ?? ''
+    check('直接恢复深层成员仍绑定本人和原直属负责人', restoredSystem.includes('姓名：小甲\n') && restoredSystem.includes('直属负责人：研发组'))
     // 完成通知可能紧接等待结果插入为最后一条 user 消息，要查整段工具记录。
     const waitEvidence = directLlm.requests.filter(r => r.who === 'main')
       .flatMap(r => r.body.messages ?? []).filter(m => m.role === 'tool')
@@ -438,6 +443,7 @@ scenario('进程被 kill -9：新进程接着同一场会话，秘书叫醒组�
     check('新进程说完这一轮', resumed.out.includes('RESUME_DONE'), `${resumed.out.slice(-300)} ${resumed.err.slice(-600)}`)
     const leadBack = llm2.requests.find((r) => r.who === '研发组' && r.lastText.includes('[上次的情形]'))
     check('组长被叫醒时带着盘上的对话，并被告知异常退出', !!leadBack && leadBack.lastText.includes('异常退出') && leadBack.lastText.includes('接着做完'), leadBack?.lastText)
+    check('恢复的负责人仍绑定自己的系统身份', leadBack?.body.messages.some(message => message.role === 'system' && String(message.content).includes('姓名：研发组\n')) === true)
     const jiaBack = llm2.requests.find((r) => r.who === '小甲' && r.lastText.includes('接着做完'))
     check('组长再把他名下的小甲叫醒，小甲带着盘上的对话', !!jiaBack && jiaBack.lastText.includes('接着做完'), jiaBack?.lastText)
     const after = readOrg(env.dataDir)
@@ -646,6 +652,59 @@ scenario('秘书点名等别枝的伙计：跨枝等到，不夺走组长的敲�
   check('两位伙计都记成做完', children['小甲']?.state.status === 'completed' && children['小乙']?.state.status === 'completed',
     JSON.stringify([children['小甲']?.state.status, children['小乙']?.state.status]))
   check('日志里没有相关警告', logWarnings(env.dataDir).length === 0, logWarnings(env.dataDir).join('\n').slice(0, 500))
+})
+
+
+scenario('身份固定、父上下文引用与错误寻址纠正贯穿三层真实CLI', async () => {
+  const names = ['甲', '乙', '丙', '丁']
+  const env = sandbox(0, 'sft-org-identity', tempDirs)
+  const seen = { errors: [], bodies: [] }
+  const started = new Set()
+  const llm = await startMockLlm({
+    onUser: (_text, _n, entry) => {
+      const who = whoAsks(entry, names)
+      seen.bodies.push({ who, body: entry.body })
+      if (started.has(who)) return say(who + '收到结果')
+      started.add(who)
+      if (who === 'main') return callTool('dispatch_agents', { tasks: [{ name: '甲', role: '项目负责人', lead: true, description: '组织三层', prompt: '你是甲，顶层负责人。派乙为下级负责人，由乙派两位伙计，自己汇总。' }] })
+      if (who === '甲') return callTool('dispatch_agents', { tasks: [{ name: '乙', role: '内容组织者', lead: true, description: '下派两人', prompt: '你是乙，上级是甲。你必须派两位伙计，自己汇总他们的结果，不替甲工作。' }] })
+      if (who === '乙') return callTool('wait_agents', { names: ['乙'], timeout: 1 })
+      return callTool('write_text_file', { path: path.join(env.cwd, who + '.txt'), content: who, mode: 'create' })
+    },
+    afterTool: (last, entry) => {
+      const who = whoAsks(entry, names)
+      seen.bodies.push({ who, body: entry.body })
+      const content = String(last.content ?? '')
+      if (who === '乙' && content.includes('不能等待当前成员本人')) {
+        seen.errors.push(content)
+        return callTool('dispatch_agents', { tasks: [{ name: '丙', description: '写丙', prompt: '只向分给你的临时文件写一个字。' }, { name: '丁', description: '写丁', prompt: '只向分给你的临时文件写一个字。' }] })
+      }
+      if (content.includes('已派出')) return callTool('wait_agents', { names: who === 'main' ? ['甲'] : who === '甲' ? ['乙'] : ['丙', '丁'], timeout: 30 })
+      return say(who + '完成')
+    },
+  })
+  env.env.SFT_API_URL = `http://127.0.0.1:${llm.port}/v1`
+  try {
+    const result = await runPlain(['组织一个小团队验证身份', '--free'], env, 120000)
+    check('身份用例CLI正常退出', result.code === 0, result.err.slice(-400))
+    const first = who => seen.bodies.find(item => item.who === who)?.body
+    const system = body => body?.messages.find(message => message.role === 'system')?.content ?? ''
+    check('每层与普通伙计均收到自己的系统身份', names.every(name => system(first(name)).includes('姓名：' + name + '\n')))
+    check('乙收到正确直属负责人', system(first('乙')).includes('直属负责人：甲'))
+    const b = first('乙')?.messages ?? []
+    check('上级任务保留在引用中', b.some(message => message.role === 'user' && String(message.content).includes('上级会话背景（引用）') && String(message.content).includes('你是甲，顶层负责人')))
+    check('父层助手答复没有变成乙自己的历史', b.filter(message => message.role === 'assistant').length === 0)
+    check('应用内部引用元数据不发给模型', !JSON.stringify(first('乙')).includes('_contextReference'))
+    check('等待自己得到明确纠正，没有误报负责人状态', seen.errors.length === 1 && seen.errors[0].includes('当前成员：乙') && !seen.errors[0].includes('现在没在干'))
+    const childBodies = seen.bodies.filter(item => item.who === '乙')
+    check('乙续跑系统前缀逐字不变', childBodies.every(item => system(item.body) === system(first('乙'))))
+    check('同能力成员共享身份之前的稳定规则', system(first('甲')).split('<!-- CACHE_BREAK -->')[0] === system(first('乙')).split('<!-- CACHE_BREAK -->')[0])
+    const { children } = readOrg(env.dataDir)
+    check('真派工归属是甲→乙→丙丁', children['乙']?.state.parent === '甲' && ['丙','丁'].every(name => children[name]?.state.parent === '乙'))
+    check('两位伙计真实文件落盘', ['丙','丁'].every(name => fs.readFileSync(path.join(env.cwd, name + '.txt'), 'utf8') === name))
+    check('负责人交回附系统真实直属成员', seen.bodies.some(({body}) => body.messages.some(message => String(message.content).includes('交回成员：乙') && String(message.content).includes('该成员名下的直属成员：丙、丁'))))
+    check('身份链路无相关异常日志', logWarnings(env.dataDir).length === 0, logWarnings(env.dataDir).join('\n'))
+  } finally { await llm.close() }
 })
 
 // ─────────────────────────────────────────────────────────────

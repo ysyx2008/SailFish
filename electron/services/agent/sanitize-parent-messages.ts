@@ -3,6 +3,7 @@
  * 剥掉工具调用、工具结果、思考和系统注入，避免伙计去模仿主人的工具。
  */
 import type { AiMessage } from '../ai.service'
+import { referencedParentMessages } from './sub-agent-context'
 
 export type ForkTurns =
   | { kind: 'none' }
@@ -39,6 +40,8 @@ export function applyForkTurns(cleaned: readonly AiMessage[], fork: ForkTurns): 
 export function sanitizeParentMessages(messages: readonly AiMessage[]): AiMessage[] {
   const out: AiMessage[] = []
   for (const msg of messages) {
+    const reference = referencedParentMessages(msg)
+    if (reference) { out.push(...sanitizeParentMessages(reference)); continue }
     if (msg.role === 'tool' || msg.role === 'system') continue
     if (msg.role === 'assistant') {
       if (msg.tool_calls && msg.tool_calls.length > 0) continue

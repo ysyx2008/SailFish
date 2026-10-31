@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { sanitizeParentMessages } from '../sanitize-parent-messages'
+import { parentContextMessages, SubAgentContext } from '../sub-agent-context'
 import { ContextWindowManager, nextCompressedArchiveId, peelOpenToolTurn, type ContextWindowDeps } from '../context-window'
 import type { AiMessage, ToolCall } from '../../ai.service'
 import type { AgentRun } from '../types'
@@ -364,6 +365,24 @@ describe('ContextWindowManager.updatePressure', () => {
 // ==================== compress ====================
 
 describe('ContextWindowManager.compress', () => {
+  it('压缩父背景和执行过程时保留系统绑定的当前成员身份', () => {
+    const identity = new SubAgentContext()
+    identity.bind({ name: '乙', parent: '甲', role: '组织者', lead: true })
+    const system: AiMessage = { role: 'system', content: identity.systemSuffix() }
+    const run = makeRun([
+      system,
+      ...parentContextMessages([user('你是甲，顶层负责人')], '甲'),
+      user('派两位成员'),
+      asst('准备派工', [tc('1', 'test')]), tool('1'),
+      asst('等候结果', [tc('2', 'test')]), tool('2'),
+    ])
+    const manager = new ContextWindowManager(makeDeps())
+    expect(manager.compress(run, '上级是甲；本成员已派出两人', 1)).not.toBeNull()
+    expect(run.messages.filter(message => message.role === 'system')).toEqual([system])
+    expect(system.content).toBe(identity.systemSuffix())
+    expect(system.content).toContain('姓名：乙')
+  })
+
   it('无 user 消息 → null', () => {
     const m = new ContextWindowManager(makeDeps())
     expect(m.compress(makeRun([asst('hi')]), '摘要', 1)).toBeNull()

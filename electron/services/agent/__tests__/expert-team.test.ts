@@ -619,7 +619,8 @@ describe('不组团的专家', () => {
     expect(roster.get('安全审查')?.role).toBe('安全专家')
     const c = child('安全审查')
     expect(c.seat).toBeUndefined()
-    expect(c.runs[0]).toBe('你是 安全审查（安全专家）。\n\n审登录')
+    expect(c.runs[0]).toContain('## 本次交办\n审登录')
+    expect(c.runs[0]).not.toContain('你是 安全审查')
     c.finish('没发现问题')
     await flush()
     expect(knocks).toHaveLength(1)
@@ -634,16 +635,17 @@ describe('专家团', () => {
     await dispatchSubAgents(TEAM_ARGS, CONFIG, executor)
     const a = child('定需求').runs[0]
     const b = child('写代码').runs[0]
-    const brief = a.slice(0, a.indexOf('你是 定需求'))
+    const brief = a.slice(0, a.indexOf('写需求文档'))
     expect(brief.length).toBeGreaterThan(20)
     expect(b.startsWith(brief)).toBe(true)
     expect(brief).toContain('小工具组')
     expect(brief).toContain('测一遍（测试专家）')
-    expect(b).toContain('你是 写代码（开发专家）。\n\n按需求实现')
+    expect(b).toContain('按需求实现')
+    expect(b).not.toContain('你是 写代码')
     expect(child('定需求').seat?.team).toBe('小工具组')
 
     await dispatchSubAgents({ tasks: [{ name: 'helper', description: '读配置', prompt: '去读' }] }, CONFIG, executor)
-    expect(child('helper').runs[0]).toBe('去读')
+    expect(child('helper').runs[0]).toBe('## 本次交办\n去读')
     expect(child('helper').seat).toBeUndefined()
   })
 
@@ -710,7 +712,7 @@ describe('专家团', () => {
     const b = child('乙').runs[0]
     expect(a).toContain('这几位的名字和任务里写的不一样：甲 → 甲-2')
     expect(a).not.toContain('乙 →')
-    expect(a.slice(0, a.indexOf('你是 甲-2'))).toBe(b.slice(0, b.indexOf('你是 乙')))
+    expect(a.slice(0, a.indexOf('写完点名乙'))).toBe(b.slice(0, b.indexOf('等甲点名')))
   })
 
   it('名字里的空格和符号会折成「-」：写明指定的和现在的；没指定名字（用简述起名）的不提', async () => {
