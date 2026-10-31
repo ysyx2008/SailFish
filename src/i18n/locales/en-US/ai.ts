@@ -922,6 +922,8 @@ export default {
       detailActivity: 'Activity',
       detailChat: 'Chat',
       detailArtifacts: 'Results',
+      refreshResults: 'Refresh results',
+      noResults: 'No results yet',
       backToResults: 'Back to results',
       openTeamArtifacts: 'View this team’s artifacts',
       refreshArtifacts: 'Refresh artifacts',

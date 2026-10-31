@@ -15,6 +15,7 @@ import { useTerminalStore } from '../../stores/terminal'
 const props = defineProps<{ tabId: string; stepId: string; team: TeamArtifactSource; focusActive: boolean; artifactBindings?: ArtifactPanelBindings; backLabel?: string; embedded?: boolean; active?: boolean }>()
 const emit = defineEmits<{ close: []; back: []; toggleFocus: [] }>()
 const { t } = useI18n()
+const refreshLabel = computed(() => t(props.embedded ? 'ai.organization.refreshResults' : 'ai.organization.refreshArtifacts'))
 const terminalStore = useTerminalStore()
 const artifactStore = useAssistantArtifactStore()
 const items = ref<OrganizationArtifactView[]>([])
@@ -87,7 +88,7 @@ watch(working, (now, before) => {
   if (before && !now && !preview.value) void refresh()
 })
 watch(preview, (now, before) => {
-  if (before && !now) { releasePreview(); if (items.value.length) void refresh() }
+  if (before && !now) { panel.value?.flushDraft(); releasePreview(); if (items.value.length) void refresh() }
 })
 const poll = setInterval(() => {
   if (props.active !== false && working.value && !loading.value && !preview.value) void refresh()
@@ -155,7 +156,7 @@ const titleOf = (item: OrganizationArtifactView) => item.kind === 'result'
   <section class="org-artifacts" :class="{ 'is-focus': focusActive, 'is-embedded': embedded }">
     <div v-if="embedded" class="oa-tools" :class="{ 'is-preview': preview }">
       <button v-if="preview" type="button" class="btn-header oa-preview-back" @click="back"><ArrowLeft :size="14" />{{ t('ai.organization.backToResults') }}</button>
-      <button v-else type="button" class="btn-icon btn-icon-header oa-refresh" :disabled="loading" :title="t('ai.organization.refreshArtifacts')" @click="refresh(true)"><RefreshCw :size="14" /></button>
+      <button v-else type="button" class="btn-icon btn-icon-header oa-refresh" :disabled="loading" :title="refreshLabel" @click="refresh(true)"><RefreshCw :size="14" /></button>
     </div>
     <TeamPanelHeader v-if="!embedded" class="oa-header" :title="`${sourceName} · ${t('ai.organization.teamArtifacts')}`" :close-label="t('ai.organization.closeArtifacts')" :back-label="preview ? t('ai.organization.backToArtifacts') : backLabel ?? t('ai.organization.backToChart')" :meta="'name' in team ? sourceOwner || t('ai.organization.secretary') : undefined" :focused="focusActive" :hide-focus="preview" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="close" @back="back" @toggle-focus="toggleFocus">
       <template #icon><Files :size="14" /></template>
@@ -164,9 +165,9 @@ const titleOf = (item: OrganizationArtifactView) => item.kind === 'result'
     <ArtifactPanel v-if="preview" ref="panel" v-bind="artifactBindings" :tab-id="tabId" :artifact-ids="embedded && previewId ? [previewId] : ids" :embedded="embedded" :focus-active="focusActive" @close-preview="back" @toggle-focus="toggleFocus" />
     <div v-else class="oa-list">
       <p v-if="openError" class="oa-error" role="alert">{{ openError }}</p>
-      <p v-if="failed" class="oa-empty">{{ t('ai.organization.artifactsLoadFailed') }} <button type="button" @click="refresh(true)">{{ t('ai.organization.refreshArtifacts') }}</button></p>
+      <p v-if="failed" class="oa-empty">{{ t('ai.organization.artifactsLoadFailed') }} <button type="button" @click="refresh(true)">{{ refreshLabel }}</button></p>
       <p v-else-if="loading && !items.length" class="oa-empty">{{ t('common.loading') }}</p>
-      <div v-else-if="!items.length" class="oa-empty"><FolderOpen :size="26" /><p>{{ t('ai.organization.noArtifacts') }}</p></div>
+      <div v-else-if="!items.length" class="oa-empty"><FolderOpen :size="26" /><p>{{ t(embedded ? 'ai.organization.noResults' : 'ai.organization.noArtifacts') }}</p></div>
       <section v-for="group in groups" :key="group.key" class="oa-group">
       <h3 v-if="groups.length > 1 || group.key === 'lead'" class="oa-group-title">{{ group.label }}</h3>
       <button v-for="item in group.items" :key="resolveCanvasArtifactId(item.data)" type="button" class="oa-item" @click="open(item)">

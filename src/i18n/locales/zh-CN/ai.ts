@@ -923,6 +923,8 @@ export default {
       detailActivity: '工作过程',
       detailChat: '群聊',
       detailArtifacts: '成果',
+      refreshResults: '刷新成果',
+      noResults: '暂无成果',
       backToResults: '返回成果列表',
       openTeamArtifacts: '查看这个团的产出物',
       refreshArtifacts: '刷新产出物',
