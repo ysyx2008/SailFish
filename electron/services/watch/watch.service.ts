@@ -29,6 +29,8 @@ import type {
 
 const log = createLogger('WatchService')
 import { WatchStore, getWatchStore } from './store'
+import { WatchState } from './state'
+import { externalizeToolOutput } from '../agent/tool-output-externalize'
 import {
   DEFAULT_WATCH_TIMEOUT_SECONDS,
   WatchWallClockTimeout,
@@ -429,7 +431,7 @@ export class WatchService {
 
   /** 更新 Watch 的工作流状态 */
   updateWatchState(id: string, state: Record<string, unknown>): void {
-    this.store.updateState(id, state)
+    this.store.updateState(id, WatchState.validate(state))
   }
 
   isWatchRunning(id: string): boolean {
@@ -681,7 +683,6 @@ export class WatchService {
       return result
     }
 
-    const enhancedPrompt = this.buildEnhancedPrompt(watch, event)
     // 静默仅约束对外派发：唤醒始终静默；desktop 自动触发不走框架兜底通知
     const isSilent = isWakeup
       ? true
@@ -707,6 +708,7 @@ export class WatchService {
     let awakeTick = Date.now()
 
     try {
+      const enhancedPrompt = await this.buildEnhancedPrompt(watch, event)
       // 手动 desktop：确保联络 tab 存在（talk_to_user / 兜底通知可落点）
       if (!isWakeup && watch.output.type === 'desktop' && !isSilent) {
         this.ensureDesktopTab()
@@ -930,12 +932,12 @@ export class WatchService {
 
   // ==================== Prompt 构建 ====================
 
-  private buildEnhancedPrompt(watch: WatchDefinition, event: SensorEvent): string {
+  private async buildEnhancedPrompt(watch: WatchDefinition, event: SensorEvent): Promise<string> {
     // 唤醒 Watch：HEARTBEAT.md 模板 + 最近联络上下文（与「其它 Watch」同源，避免心跳看不到联络 tab 对话）
     if (watch.id === WatchService.WAKEUP_ID) {
       const template = this.readWorkspaceFile(WatchService.HEARTBEAT_FILENAME)
         || WatchService.DEFAULT_HEARTBEAT_TEMPLATE
-      const parts = [this.resolveHeartbeatVariables(template, watch, event)]
+      const parts = [await this.resolveHeartbeatVariables(template, watch, event)]
       const recentContext = this.buildRecentCompanionContext()
       if (recentContext) {
         parts.push(recentContext)
@@ -948,7 +950,7 @@ export class WatchService {
 
     parts.push(`[当前时间：${new Date().toLocaleString()}]`)
 
-    const eventLines = this.formatEventLines(event)
+    const eventLines = await this.formatEventLines(event)
     if (eventLines.length) {
       parts.push(`触发事件：\n${eventLines.join('\n')}`)
       if (eventLines.length > 1) {
@@ -958,7 +960,7 @@ export class WatchService {
 
     const hasState = watch.state && Object.keys(watch.state).length > 0
     if (hasState) {
-      parts.push(`[当前 Watch 状态：${JSON.stringify(watch.state).substring(0, 500)}]`)
+      parts.push(`当前 Watch 状态：\n${await this.completeContext(JSON.stringify(watch.state, null, 2), 'watch-state')}`)
       parts.push('[需要更新状态时，调用 watch_state_update 工具。]')
     }
 
@@ -1019,12 +1021,12 @@ export class WatchService {
   }
 
   /** 解析心跳模板变量，缺失的必要变量自动追加到开头 */
-  private resolveHeartbeatVariables(template: string, watch: WatchDefinition, event: SensorEvent): string {
+  private async resolveHeartbeatVariables(template: string, watch: WatchDefinition, event: SensorEvent): Promise<string> {
     let result = template
 
     const timeValue = `[当前时间：${new Date().toLocaleString()}]`
 
-    const eventLines = this.formatEventLines(event)
+    const eventLines = await this.formatEventLines(event)
     let eventsValue = ''
     if (eventLines.length) {
       eventsValue = `# 触发事件\n${eventLines.join('\n')}`
@@ -1133,16 +1135,29 @@ export class WatchService {
     }
   }
 
-  private formatEventLines(event: SensorEvent): string[] {
-    // 批量事件：展开子事件
+  /** 直接注入不超预算；超预算交接全文指针，写盘失败由执行失败路径处理。 */
+  private async completeContext(text: string, name: string): Promise<string> {
+    if (text.length <= 4000) return text
+    const full = await externalizeToolOutput({ output: text, maxChars: 512, toolName: name, excerpt: 'head' })
+    return full!.text
+  }
+
+  private async formatEventLines(event: SensorEvent): Promise<string[]> {
     if (event.type === 'heartbeat' && event.payload.isBatch) {
-      const subEvents = event.payload.events as Array<{ type: string; source: string; timestamp: number; payload: Record<string, unknown> }> | undefined
-      if (!subEvents?.length) return ['- 例行检查（传感器未检测到新的邮件、日历或文件变化）']
-      return subEvents.slice(0, 20).map((e, i) => `  ${i + 1}. ${this.describeEvent(e.type, e.payload)}`)
+      const events = event.payload.events as Array<{ type: string; payload: Record<string, unknown> }> | undefined
+      if (!events?.length) return ['- 例行检查（传感器未检测到新的邮件、日历或文件变化）']
+      const full = JSON.stringify(event.payload, null, 2)
+      const lines = events.map((e, i) => `  ${i + 1}. ${this.truncate(this.describeEvent(e.type, e.payload), 200)}`)
+      if (full.length <= 4000) return [`共 ${events.length} 条事件，完整内容：`, full]
+      return [`共 ${events.length} 条事件，以下为前 ${Math.min(events.length, 20)} 条摘要；完整事件在快照中。`,
+        ...lines.slice(0, 20), await this.completeContext(full, 'watch-events')]
     }
-    // 单个事件
     if (event.type === 'heartbeat') return ['- 例行检查']
-    return [`- ${this.describeEvent(event.type, event.payload)}`]
+    const brief = `- ${this.describeEvent(event.type, event.payload)}`
+    if (['webhook', 'command_probe', 'http_probe'].includes(event.type)) {
+      return [brief, await this.completeContext(JSON.stringify(event.payload, null, 2), 'watch-event')]
+    }
+    return [brief]
   }
 
   private describeEvent(type: string, payload: Record<string, unknown>): string {
@@ -1154,13 +1169,13 @@ export class WatchService {
       case 'file_change':
         return `文件变更 ${payload.changeType}：${payload.directory}/${payload.filename}`
       case 'webhook':
-        return `Webhook${Object.keys(payload).length ? `：${JSON.stringify(payload).substring(0, 500)}` : ''}`
+        return 'Webhook'
       case 'manual':
         return '用户手动触发'
       case 'im_connected':
         return this.describeIMConnected(payload)
       case 'command_probe':
-        return `命令探针 \`${payload.command}\`：${payload.reason}${payload.output ? `\n输出：${String(payload.output).substring(0, 500)}` : ''}`
+        return `命令探针 \`${payload.command}\`：${payload.reason}`
       case 'http_probe':
         return `HTTP 探针 ${payload.method || 'GET'} ${payload.url}：${payload.reason}${payload.status != null ? ` (HTTP ${payload.status})` : ''}`
       case 'app_lifecycle':

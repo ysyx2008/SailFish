@@ -233,7 +233,7 @@ const watchToolDefs: ToolDefinition[] = [
       name: 'watch_state_update',
       description: `更新关切的持久化状态（用于有状态工作流）。
 
-状态在每次执行时自动注入到上下文中，用于跨执行保持记忆。`,
+状态用于跨执行保持记忆，支持嵌套 JSON 对象和数组，按顶层键增量合并。合并后 JSON 最多 65536 字符；超限明确失败，原状态不变。每次执行提供完整状态或完整快照的读取路径。较大内容可存文件，状态保存文件路径。`,
       parameters: {
         type: 'object',
         properties: {

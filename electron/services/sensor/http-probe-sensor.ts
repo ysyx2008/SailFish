@@ -5,6 +5,7 @@
  * 纯 Node.js 实现，100% 跨平台。
  */
 import { createHash } from 'crypto'
+import { readProbeBody, ProbeOutputLimitError } from './probe-output'
 import type { Sensor, SensorEvent, EventBus } from './types'
 import { createLogger } from '../../utils/logger'
 
@@ -31,7 +32,6 @@ interface ProbeState {
 const MIN_INTERVAL = 10
 const MAX_TARGETS = 50
 const DEFAULT_TIMEOUT_MS = 10_000
-const MAX_BODY_CAPTURE = 8 * 1024
 
 export class HttpProbeSensor implements Sensor {
   readonly id = 'http_probe'
@@ -42,6 +42,7 @@ export class HttpProbeSensor implements Sensor {
   private targets: Map<string, HttpProbeTarget> = new Map()
   private timers: Map<string, NodeJS.Timeout> = new Map()
   private states: Map<string, ProbeState> = new Map()
+  private active = new Map<string, AbortController>()
 
   get running(): boolean {
     return this._running
@@ -71,6 +72,8 @@ export class HttpProbeSensor implements Sensor {
     }
     this.timers.clear()
     this.states.clear()
+    for (const controller of this.active.values()) controller.abort()
+    this.active.clear()
 
     log.info('Stopped')
   }
@@ -94,6 +97,8 @@ export class HttpProbeSensor implements Sensor {
     this.targets.delete(watchId)
     this.stopProbing(watchId)
     this.states.delete(watchId)
+    this.active.get(watchId)?.abort()
+    this.active.delete(watchId)
   }
 
   getTargetCount(): number {
@@ -125,34 +130,40 @@ export class HttpProbeSensor implements Sensor {
   }
 
   private async probe(watchId: string, target: HttpProbeTarget): Promise<void> {
+    if (this.active.has(watchId)) return
+    const controller = new AbortController()
+    this.active.set(watchId, controller)
+    const timeoutId = setTimeout(() => controller.abort(), target.timeout || DEFAULT_TIMEOUT_MS)
     let status: number | null = null
     let body = ''
-    let errorMsg = ''
-
+    let failure: Error | undefined
     try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(
-        () => controller.abort(),
-        target.timeout || DEFAULT_TIMEOUT_MS
-      )
-
       const response = await fetch(target.url, {
-        method: target.method || 'GET',
-        headers: target.headers,
-        body: target.body || undefined,
-        signal: controller.signal,
-        redirect: 'follow',
+        method: target.method || 'GET', headers: target.headers,
+        body: target.body || undefined, signal: controller.signal, redirect: 'follow',
       })
-
-      clearTimeout(timeoutId)
       status = response.status
-      body = (await response.text()).substring(0, MAX_BODY_CAPTURE)
+      body = await readProbeBody(response)
     } catch (err) {
-      errorMsg = err instanceof Error ? err.message : String(err)
-      log.debug(`Probe failed for ${watchId}: ${errorMsg}`)
+      failure = err instanceof Error ? err : new Error(String(err))
+    } finally {
+      clearTimeout(timeoutId)
     }
-
+    // 已被移除的 target 或上次启动的请求不再投递结果。
+    if (this.active.get(watchId) !== controller) return
+    this.active.delete(watchId)
     if (!this._running) return
+    if (failure) {
+      this.eventBus.emit({
+        id: `hp-failed-${watchId}-${Date.now()}`, type: 'http_probe', source: this.id,
+        timestamp: Date.now(), watchId, priority: 'normal',
+        payload: { url: target.url, method: target.method || 'GET', triggerOn: target.triggerOn,
+          reason: `检查失败：${failure.message}`, checkFailed: true,
+          errorCode: failure instanceof ProbeOutputLimitError ? failure.code : 'PROBE_REQUEST_FAILED',
+          error: failure.message, status },
+      })
+      return
+    }
 
     const bodyHash = hashString(body)
     const prev = this.states.get(watchId)
@@ -160,7 +171,7 @@ export class HttpProbeSensor implements Sensor {
     this.states.set(watchId, {
       lastStatus: status,
       lastBodyHash: bodyHash,
-      lastBody: body.substring(0, 2000),
+      lastBody: body,
     })
 
     if (!prev) return
@@ -180,7 +191,7 @@ export class HttpProbeSensor implements Sensor {
         if (status === null || status >= 400) {
           shouldTrigger = true
           reason = status === null
-            ? `request failed: ${errorMsg}`
+            ? 'request failed'
             : `HTTP ${status}`
         }
         break
@@ -219,10 +230,9 @@ export class HttpProbeSensor implements Sensor {
           triggerOn: target.triggerOn,
           reason,
           status,
-          body: body.substring(0, 2000),
+          body,
           previousBody: prev.lastBody,
           previousStatus: prev.lastStatus,
-          error: errorMsg || undefined,
         },
         priority: 'normal',
       }
