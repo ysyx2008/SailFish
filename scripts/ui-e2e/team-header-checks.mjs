@@ -17,7 +17,7 @@ export async function checkTeamHeader(page, selector, label, check) {
       header.style.setProperty('--shell-inset-right', '100px')
       header.style.setProperty('--shell-inset-left', '85px')
       const insetStyle = getComputedStyle(header)
-      safeInsets = parseFloat(insetStyle.paddingRight) >= 130 && (!header.classList.contains('is-focus') || parseFloat(insetStyle.paddingLeft) >= 85)
+      safeInsets = parseFloat(insetStyle.paddingRight) >= 100 && (!header.classList.contains('is-focus') || parseFloat(insetStyle.paddingLeft) >= 85)
       header.style.setProperty('--shell-inset-right', '0px')
       header.style.setProperty('--shell-inset-left', '0px')
       header.style.width = '300px'
@@ -40,6 +40,7 @@ export async function checkTeamHeader(page, selector, label, check) {
       titleFont: getComputedStyle(title).fontSize,
       plainTitle: header.querySelector('.tph-tab') === null && getComputedStyle(header.querySelector('.tph-heading')).backgroundColor === 'rgba(0, 0, 0, 0)',
       closeInset: box.right - closeBox.right,
+      noEmptyActionSlot: !header.closest('.organization-chart') || Math.abs(parseFloat(style.paddingRight) - Math.max(8, parseFloat(style.getPropertyValue('--shell-inset-right')) || 0)) < 1,
       focusBeforeClose: !focusBox || focusBox.right <= closeBox.left,
       expectedInset: parseFloat(style.paddingRight),
       focusCentered: focusBox ? Math.abs((focusBox.top + focusBox.bottom) / 2 - (box.top + box.bottom) / 2) < 1 : true,
@@ -48,7 +49,7 @@ export async function checkTeamHeader(page, selector, label, check) {
   })
   check(`${label}：高度与产出物栏一致`, Math.abs(metrics.height - metrics.expectedHeight) < 1, JSON.stringify(metrics))
   check(`${label}：普通页面标题，没有胶囊标签底色`, metrics.plainTitle && metrics.titleFont === '12px', JSON.stringify(metrics))
-  check(`${label}：关闭位于标题栏最右侧，操作按钮不重叠`, Math.abs(metrics.closeInset - metrics.expectedInset) < 1.5 && metrics.focusBeforeClose && metrics.focusCentered, JSON.stringify(metrics))
+  check(`${label}：关闭位于标题栏最右侧，没有空操作位且按钮不重叠`, metrics.noEmptyActionSlot && Math.abs(metrics.closeInset - metrics.expectedInset) < 1.5 && metrics.focusBeforeClose && metrics.focusCentered, JSON.stringify(metrics))
   check(`${label}：系统控件安全边距生效`, metrics.safeInsets, JSON.stringify(metrics))
   check(`${label}：长标题窄面板仍能关闭`, metrics.narrowFits, JSON.stringify(metrics))
 }

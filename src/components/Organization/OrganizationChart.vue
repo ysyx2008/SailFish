@@ -201,6 +201,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .organization-chart {
+  /* 独立团队没有额外的右上收起按钮，总览和详情均不再预留它的位置。 */
+  --team-panel-extra-right: 0px;
   /* 连线是这张图的主干，比普通边框实一点；不支持 color-mix 时退回边框色 */
   --org-line: var(--border-color);
   --org-line: color-mix(in srgb, var(--text-secondary) 45%, transparent);

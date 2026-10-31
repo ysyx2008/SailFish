@@ -123,6 +123,9 @@ try {
   await page.locator('.organization-chart .org-member-detail').waitFor()
   await page.locator('.od-header .tph-close').first().click()
   await page.locator('.oc-header .tph-close').click()
+  // 关闭移到最右后，恢复工作面时鼠标会落在会话清单入口；移开再继续导航。
+  await page.mouse.move(0, 0)
+  await page.locator('.artifact-list-pop').waitFor({ state: 'hidden' })
   await page.evaluate(() => { const {store,id} = window.__teamFixture; for (const step of store.tabs.find(t => t.id === id).agentState.steps) for (const member of step.subAgents ?? []) member.status = 'completed' })
   await pause(100)
   await add({ id: 'u2', type: 'user_task', content: '开发和测试交接' })

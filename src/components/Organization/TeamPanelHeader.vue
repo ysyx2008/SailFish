@@ -21,8 +21,8 @@ const emit = defineEmits<{ close: []; back: []; toggleFocus: [] }>()
 </template>
 
 <style scoped>
-.team-panel-header { display: flex; align-items: center; gap: 12px; box-sizing: border-box; flex-shrink: 0; height: var(--workbench-panel-header-height, 38px); min-height: var(--workbench-panel-header-height, 38px); padding: 0 calc(max(8px, var(--shell-inset-right, 0px)) + 30px) 0 12px; background: var(--bg-tertiary, var(--bg-secondary, #252525)); border-bottom: 1px solid var(--border-color); color: var(--text-primary); user-select: none; -webkit-app-region: drag; }
-.team-panel-header.is-focus { padding-left: max(12px, var(--shell-inset-left, 0px)); padding-right: calc(max(8px, var(--shell-inset-right, 0px)) + 36px); }
+.team-panel-header { display: flex; align-items: center; gap: 12px; box-sizing: border-box; flex-shrink: 0; height: var(--workbench-panel-header-height, 38px); min-height: var(--workbench-panel-header-height, 38px); padding: 0 calc(max(8px, var(--shell-inset-right, 0px)) + var(--team-panel-extra-right, 30px)) 0 12px; background: var(--bg-tertiary, var(--bg-secondary, #252525)); border-bottom: 1px solid var(--border-color); color: var(--text-primary); user-select: none; -webkit-app-region: drag; }
+.team-panel-header.is-focus { padding-left: max(12px, var(--shell-inset-left, 0px)); padding-right: calc(max(8px, var(--shell-inset-right, 0px)) + var(--team-panel-extra-right, 36px)); }
 .tph-heading { display: inline-flex; align-items: center; gap: 7px; min-width: 0; max-width: 320px; font-size: 12px; font-weight: 600; line-height: 1.2; }
 .tph-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tph-title-icon { display: inline-flex; align-items: center; flex-shrink: 0; color: var(--accent-primary); }

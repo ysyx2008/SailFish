@@ -2317,9 +2317,12 @@ textarea:focus {
   padding-right: calc(max(8px, var(--shell-inset-right)) + 56px);
 }
 
-.app-container .tab-view-workbench .canvas-header,
-.app-container .tab-view-workbench .team-panel-header {
+.app-container .tab-view-workbench .canvas-header {
   padding-right: calc(max(8px, var(--shell-inset-right)) + 30px);
+}
+
+.app-container .tab-view-workbench .team-panel-header {
+  padding-right: calc(max(8px, var(--shell-inset-right)) + var(--team-panel-extra-right, 30px));
 }
 
 /* 产出物铺满时，页签顶栏就是主区最左第一排，同样按 inset 让开红绿灯和侧栏开关 */

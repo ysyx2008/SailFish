@@ -316,7 +316,7 @@ try {
     el.style.removeProperty('--shell-inset-right')
     return result
   })
-  check('标题栏为窗口控件预留左右安全距离', insets.left >= 140 && insets.right >= 210, JSON.stringify(insets))
+  check('标题栏保留真实窗口控件边距，不再附加空操作位', insets.left === 140 && insets.right === 180, JSON.stringify(insets))
   await shot('3b-focus')
   await page.locator('.organization-chart .org-team-chat').first().click()
   await page.locator('.assistant-focus-doc .expert-team-chat').waitFor({ state: 'visible' })
