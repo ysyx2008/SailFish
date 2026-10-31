@@ -196,12 +196,12 @@ const cells = computed<Cell[]>(() => {
 /* 同级换行；实际负责人分区占整行，避免窄列递归挤压下级。 */
 .org-children {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
   align-items: start;
-  gap: 14px;
+  gap: 10px;
   box-sizing: border-box;
   width: 100%;
-  min-width: 260px;
+  min-width: 0;
 }
 .org-cell {
   min-width: 0;
@@ -212,17 +212,17 @@ const cells = computed<Cell[]>(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
 }
-.org-branch > .org-node { width: 100%; }
+.org-branch > .org-node { width: 100%; max-width: 280px; }
 .org-cell.has-children > .org-branch {
   padding: 12px;
   border: 1px solid var(--border-color);
   border-radius: 12px;
   background: color-mix(in srgb, var(--bg-secondary) 25%, var(--bg-primary));
 }
-.org-cell.has-children > .org-branch > .org-node { max-width: 320px; }
+.org-cell.has-children > .org-branch > .org-node { max-width: 240px; }
 .org-branch > .org-children, .org-member > .org-children {
   padding-left: 16px;
   border-left: 2px solid var(--org-line, var(--border-color));
@@ -234,7 +234,7 @@ const cells = computed<Cell[]>(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-width: 240px;
+  min-width: 0;
   padding: 12px;
   border: 1px solid var(--border-color);
   border-radius: 12px;
@@ -342,9 +342,9 @@ const cells = computed<Cell[]>(() => {
 
 .org-team-members {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
   align-items: start;
-  gap: 12px;
+  gap: 10px;
 }
 .org-team-members > .org-member {
   display: flex;
@@ -356,6 +356,7 @@ const cells = computed<Cell[]>(() => {
 /* 只把本团成员卡片拉满列宽，团成员自己带的下级分支不受影响 */
 .org-team-members > .org-member > .org-node {
   width: 100%;
+  max-width: 280px;
 }
 .org-member.has-children { grid-column: 1 / -1; }
 </style>

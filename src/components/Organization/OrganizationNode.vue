@@ -20,6 +20,9 @@ const activity = computed(() => {
   const step = props.node.member.activity
   return step ? [toolDisplayName(t, step.tool), step.args].filter(Boolean).join(' ') : ''
 })
+const hasActivity = computed(() => props.node.bucket === 'running' && !!activity.value)
+// 屏外内容回收后仍按实际行数占位；显示时由内容自然撑开，不固定96/120px高度。
+const minimumHeight = computed(() => 38 + (props.node.member.description ? 20 : 0) + (hasActivity.value ? 18 : 0) + (props.node.member.lead ? 2 : 0))
 
 const statusLabel = computed(() => t(`ai.expertTeam.status.${props.node.bucket}`))
 const tip = computed(() => [
@@ -35,11 +38,12 @@ const tip = computed(() => [
 <template>
   <div
     ref="element"
-    v-memo="[visible, visible ? node : null, locale]"
+    v-memo="[visible, minimumHeight, visible ? node : null, locale]"
     class="org-node"
     :class="[`is-${node.bucket}`, { 'is-lead': node.member.lead }]"
     :data-status="node.bucket"
     :data-member="node.member.name"
+    :style="{ minHeight: `${minimumHeight}px` }"
     :title="tip"
     :aria-label="tip"
     role="button"
@@ -49,23 +53,19 @@ const tip = computed(() => [
     @keydown.space.stop.prevent="emit('open')"
   >
     <template v-if="visible">
-    <span v-if="node.member.lead" class="org-node-rank">
-      <Crown :size="11" aria-hidden="true" />
-      {{ t('ai.organization.lead') }}
-    </span>
+    <span class="org-node-heading">
     <span class="org-avatar" aria-hidden="true">
       {{ avatarInitial(node.member.name) }}
     </span>
-    <span class="org-node-text">
       <span class="org-node-name">
         <span class="org-node-name-text">{{ node.member.name }}</span>
         <ShieldCheck v-if="node.member.reviewer" :size="12" class="org-reviewer" :aria-label="t('ai.organization.reviewer')" />
       </span>
-      <span v-if="node.member.role" class="org-node-sub">{{ node.member.role }}</span>
-      <span v-if="node.member.description" class="org-node-duty" :title="node.member.description">{{ node.member.description }}</span>
-      <span v-if="activity" class="org-node-activity" :title="activity">{{ activity }}</span>
-    </span>
+      <span v-if="node.member.lead" class="org-node-rank"><Crown :size="10" aria-hidden="true" />{{ t('ai.organization.lead') }}</span>
     <OrganizationStatusBadge :bucket="node.bucket" :label="statusLabel" compact />
+    </span>
+    <span v-if="node.member.description" class="org-node-duty" :title="node.member.description">{{ node.member.description }}</span>
+    <span v-if="hasActivity" class="org-node-activity" :title="activity">{{ activity }}</span>
     </template>
   </div>
 </template>
@@ -77,13 +77,11 @@ const tip = computed(() => [
   position: relative;
   box-sizing: border-box;
   display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  width: 240px;
-  min-width: 240px;
-  height: 96px;
+  flex-direction: column;
+  width: 200px;
+  min-width: 0;
   flex-shrink: 0;
-  padding: 10px;
+  padding: 8px;
   border: 1px solid var(--border-color);
   border-radius: 7px;
   border-color: color-mix(in srgb, var(--node-tone) 64%, var(--border-color));
@@ -102,33 +100,24 @@ const tip = computed(() => [
 .org-node.is-failed { --node-tone: var(--color-danger, #e06c75); }
 .org-node.is-interrupted { border-style: dashed; }
 
-/* 组长始终有独立身份栏和双层框，完成变绿后仍认得身份。 */
+/* 组长用同行身份标记和双层边框区分，不再多占一条身份栏。 */
 .org-node.is-lead {
-  width: 260px;
-  min-width: 260px;
-  height: 120px;
-  padding: 30px 12px 12px;
   border-width: 2px;
-  border-radius: 10px;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-tone) 9%, transparent), 0 4px 10px #00000012;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--node-tone) 9%, transparent), 0 2px 5px #00000012;
 }
+.org-node-heading { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; min-height: 20px; line-height: 16px; }
 .org-node-rank {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 21px;
-  padding: 0 11px;
-  border-bottom: 1px solid color-mix(in srgb, var(--node-tone) 24%, transparent);
-  border-radius: 8px 8px 0 0;
+  flex-shrink: 0;
+  gap: 3px;
+  padding: 0 3px;
+  border-radius: 3px;
   background: color-mix(in srgb, var(--node-tone) 10%, transparent);
   color: var(--text-secondary);
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  line-height: 18px;
 }
 
 .org-avatar {
@@ -136,8 +125,9 @@ const tip = computed(() => [
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
   border: 1px solid color-mix(in srgb, var(--node-tone) 30%, transparent);
   border-radius: 6px;
   background: color-mix(in srgb, var(--node-tone) 12%, transparent);
@@ -145,18 +135,9 @@ const tip = computed(() => [
   font-size: 11px;
   font-weight: 600;
 }
-.is-lead .org-avatar { width: 34px; height: 34px; border-radius: 9px 3px; font-size: 14px; }
-.is-lead .org-node-name { font-size: 13px; }
-
-.org-node-text {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  line-height: 1.25;
-}
 .org-node-name {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 4px;
   min-width: 0;
@@ -168,15 +149,9 @@ const tip = computed(() => [
   white-space: nowrap;
 }
 .org-reviewer { flex-shrink: 0; color: var(--color-success, #98c379); }
-.org-node-sub {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-top: 1px;
-  font-size: 10.5px;
-  color: var(--text-secondary);
-}
-.org-node-duty, .org-node-activity { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; margin-top: 4px; }
+.org-node-duty, .org-node-activity { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 16px; }
+.org-node-duty { margin-top: 4px; }
+.org-node-activity { margin-top: 2px; }
 .org-node-duty { color: var(--text-primary); }
 .org-node-activity { color: var(--text-muted); }
 /* 只让执行节点里的状态点呼吸，整张卡片和汇总行保持静止。 */

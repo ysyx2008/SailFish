@@ -102,7 +102,8 @@ try {
   check('独立成员完整展示，不伪造小组', await page.locator('.organization-chart .org-node').count() === 2 && await page.locator('.organization-chart .org-team').count() === 0)
   if (process.env.E2E_SHOT) { fs.mkdirSync(process.env.E2E_SHOT, { recursive: true }); await page.screenshot({ path: path.join(process.env.E2E_SHOT, 'unified-team-overview.png') }) }
   const node = page.locator('.org-node').filter({ hasText: '成员甲' })
-  check('角色、职责和当前活动同时展示', (await node.innerText()).includes('校对') && (await node.innerText()).includes('成员甲的具体职责') && (await node.innerText()).includes(firstFile))
+  check('紧凑卡片保留职责，完整角色可悬停查看', (await node.getAttribute('title')).includes('校对') && (await node.innerText()).includes('成员甲的具体职责'))
+  check('收工卡片不再显示旧活动', await node.locator('.org-node-activity').count() === 0)
   await node.click()
   await page.locator('.organization-chart .org-member-detail').getByText('flat-session-成员甲已核对', { exact: false }).waitFor()
   await checkTeamHeader(page, '.od-header', '成员详情分栏', check)

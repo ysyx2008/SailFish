@@ -75,16 +75,29 @@ try {
         else target.organization={...target.organization,live:500,members:target.organization.members.map((m,i)=>({...m,status:i%2===k%2?'running':'completed',activity:{tool:'read_file',args:`tick-${k}`,status:'running'}}))}
       }
       const delays=[]
-      for(let k=0;k<10;k++){const start=performance.now();update(k);await until(()=>tail.querySelector('.org-node-activity')?.textContent.includes(`tick-${k}`));await frame();delays.push(performance.now()-start);await new Promise(resolve=>setTimeout(resolve,150))}
+      const showsTick=k=>k%2===1 ? tail.querySelector('.org-node-activity')?.textContent.includes(`tick-${k}`) : tail.dataset.status==='completed'&&!tail.querySelector('.org-node-activity')
+      for(let k=0;k<10;k++){const start=performance.now();update(k);await until(()=>showsTick(k));await frame();delays.push(performance.now()-start);await new Promise(resolve=>setTimeout(resolve,150))}
       // 多次短间隔通知最后仍显示末条，而不是积压旧帧。
       for(let k=10;k<30;k++){update(k);await new Promise(resolve=>setTimeout(resolve,10))}
       await until(()=>tail.querySelector('.org-node-activity')?.textContent.includes('tick-29'))
+      // 屏外成员收工也必须更新占位高度，滚回后才不会突然缩一截。
+      const offscreen=document.querySelector('[data-member="成员1"]')
+      const complete=(m,i)=>i===1?{...m,status:'completed'}:m
+      target.snapshotAt=Date.now()+40
+      if(shape==='flat')target.subAgents=target.subAgents.map(complete)
+      else target.organization={...target.organization,members:target.organization.members.map(complete)}
+      await new Promise(resolve=>setTimeout(resolve,180));await settle()
+      const reservedHeight=offscreen.offsetHeight
+      offscreen.scrollIntoView({block:'center'});await until(()=>offscreen.querySelector('.org-node-name-text'));await settle()
+      const offscreenStable=reservedHeight===offscreen.offsetHeight
+      tail.scrollIntoView({block:'center'});await until(()=>tail.querySelector('.org-node-name-text'));await settle()
       const p95=a=>[...a].sort((x,y)=>x-y)[Math.ceil(a.length*.95)-1]
-      return {shape,openMs:Math.round(openMs),slots:document.querySelectorAll('.organization-chart .org-node').length,painted,firstContentPeak,domNodes:document.querySelector('.organization-chart').querySelectorAll('*').length,scrollP95Ms:Math.round(p95(frames)),updateVisibleP95Ms:Math.round(p95(delays)),delays:delays.map(Math.round),stableLayout:before.join()===after.join(),tailLoaded:tail.textContent.includes('成员999')}
+      return {shape,openMs:Math.round(openMs),slots:document.querySelectorAll('.organization-chart .org-node').length,painted,firstContentPeak,domNodes:document.querySelector('.organization-chart').querySelectorAll('*').length,scrollP95Ms:Math.round(p95(frames)),updateVisibleP95Ms:Math.round(p95(delays)),delays:delays.map(Math.round),stableLayout:before.join()===after.join(),offscreenStable,tailLoaded:tail.textContent.includes('成员999')}
     },shape)
     console.log('PERF '+JSON.stringify(result))
     check(`${shape}：保留1000个完整槽位，实际绘制内容少于200`,result.slots===1000&&result.painted>0&&result.painted<200&&result.firstContentPeak<200)
     check(`${shape}：双向滚动访问末尾成员，不改变结构尺寸`,result.tailLoaded&&result.stableLayout)
+    check(`${shape}：屏外成员收工后滚回，占位与实际卡片等高`,result.offscreenStable)
     check(`${shape}：持续更新包含合并等待仍在500ms内显示最新状态`,result.updateVisibleP95Ms<500)
     if(process.env.E2E_SHOT){fs.mkdirSync(process.env.E2E_SHOT,{recursive:true});await page.screenshot({path:path.join(process.env.E2E_SHOT,`team-performance-${shape}-chart.png`)})}
     // 点击虚拟化后重新绘制的末尾节点，确实进入相应成员详情。
