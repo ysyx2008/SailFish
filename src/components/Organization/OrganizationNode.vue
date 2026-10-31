@@ -21,8 +21,6 @@ const activity = computed(() => {
   return step ? [toolDisplayName(t, step.tool), step.args].filter(Boolean).join(' ') : ''
 })
 const hasActivity = computed(() => props.node.bucket === 'running' && !!activity.value)
-// 屏外内容回收后仍按实际行数占位；显示时由内容自然撑开，不固定96/120px高度。
-const minimumHeight = computed(() => 38 + (props.node.member.description ? 20 : 0) + (hasActivity.value ? 18 : 0) + (props.node.member.lead ? 2 : 0))
 
 const statusLabel = computed(() => t(`ai.expertTeam.status.${props.node.bucket}`))
 const tip = computed(() => [
@@ -38,12 +36,11 @@ const tip = computed(() => [
 <template>
   <div
     ref="element"
-    v-memo="[visible, minimumHeight, visible ? node : null, locale]"
+    v-memo="[visible, visible ? node : null, locale]"
     class="org-node"
     :class="[`is-${node.bucket}`, { 'is-lead': node.member.lead }]"
     :data-status="node.bucket"
     :data-member="node.member.name"
-    :style="{ minHeight: `${minimumHeight}px` }"
     :title="tip"
     :aria-label="tip"
     role="button"
@@ -79,6 +76,8 @@ const tip = computed(() => [
   display: inline-flex;
   flex-direction: column;
   width: 200px;
+  /* 固定预留活动行；状态变化和屏外回收都不改变网格尺寸。 */
+  height: 76px;
   min-width: 0;
   flex-shrink: 0;
   padding: 8px;
@@ -103,6 +102,7 @@ const tip = computed(() => [
 /* 组长用同行身份标记和双层边框区分，不再多占一条身份栏。 */
 .org-node.is-lead {
   border-width: 2px;
+  padding: 7px;
   border-radius: 8px;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--node-tone) 9%, transparent), 0 2px 5px #00000012;
 }
