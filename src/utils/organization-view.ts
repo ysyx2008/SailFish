@@ -22,14 +22,14 @@ const bucketOf = (m: OrganizationMemberView): SubAgentBucket => subAgentBucket({
 })
 
 /** 一位主人（秘书写 undefined）名下的人，按团分组，没组团的放最前面 */
-function groupsOf(view: OrganizationView, owner: string | undefined, depth: number): OrgGroup[] {
-  const mine = view.members.filter(m => m.parent === owner)
+function groupsOf(view: OrganizationView, owner: string | undefined, ancestors: ReadonlySet<string>): OrgGroup[] {
+  const mine = view.members.filter(m => m.parent === owner && !ancestors.has(m.name))
   const teams = view.teams.filter(team => team.owner === owner)
   const node = (member: OrganizationMemberView): OrgNode => ({
     member,
     bucket: bucketOf(member),
-    // 防御：层数不会超过 3，万一数据成环也不无限往下走
-    groups: member.lead && depth < 8 ? groupsOf(view, member.name, depth + 1) : [],
+    // 按真实管理链展开；只防同一路径成环，不另设比派工上限更低的绘制层数。
+    groups: member.lead ? groupsOf(view, member.name, new Set([...ancestors, member.name])) : [],
   })
   const loose = mine.filter(m => !m.team || !teams.some(team => team.name === m.team))
   const groups: OrgGroup[] = []
@@ -43,7 +43,7 @@ function groupsOf(view: OrganizationView, owner: string | undefined, depth: numb
 
 /** 从扁平的全貌还原成树：秘书名下几组，组长名下再几组 */
 export function buildOrgTree(view: OrganizationView): OrgGroup[] {
-  return groupsOf(view, undefined, 0)
+  return groupsOf(view, undefined, new Set())
 }
 
 /** 执行状态与验收分开统计，不把收工等同于验收通过。 */

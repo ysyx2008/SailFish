@@ -27,3 +27,11 @@
 - 小范围上限调整已自审：检查上限所有引用、十层边界、恢复与停止、文案一致性及异常日志，本轮未另做外部审查。
 
 日志：`/tmp/team-ten-level-unit.log`、`/tmp/team-ten-level-cli.log`、`/tmp/team-ten-level-cli-basic.log`、`/tmp/team-ten-level-{types,lint,build}.log`。
+
+## 十层绘制验收补漏（2026-11-01）
+
+核对role相关界面依赖时发现，前端`groupsOf`仍有`depth < 8`保护，后端十层已放开，但最深节点会被截。此前未覆盖真实深层图，是本轮补漏。
+
+改为记录当前管理路径的祖先姓名来防环，不再使用另一套固定绘制深度。修补前十层和可达祖先环两个单测均失败，修后完整包含10层无role负责人及其末层执行成员；畸形重复祖先不再展开。
+
+13项树构建/布局单测、十层真实静默窗口6项、普通团队导航50项及类型/构建/静态检查通过；最末成员能滚动到、打开右侧详情并逐层返回，无role负责人显示真实负责人标记。截图`/tmp/team-deep-tree-shots/team-deep-tree.png`已目视核对，日志`/tmp/team-deep-tree-{red,unit,types,lint,build,ui,unified}.log`。此补漏无后端、权限、持久数据或模型文案变化，小范围修补已自审。

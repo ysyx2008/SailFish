@@ -44,6 +44,27 @@ describe('组织图', () => {
     expect(buildOrgTree(loop)).toEqual([])
   })
 
+  it('十层无role负责人及最底层执行成员全部可达，不被旧绘制层数截断', () => {
+    const leads = Array.from({ length: 10 }, (_, i) => m(`负责人${i + 1}`, { lead: true, parent: i ? `负责人${i}` : undefined }))
+    const members = [...leads, m('末层成员', { parent: '负责人10' })]
+    const tree = buildOrgTree({ members, teams: [], total: 11, live: 11 })
+    let groups = tree
+    const names: string[] = []
+    while (groups.length) {
+      expect(groups[0].nodes).toHaveLength(1)
+      const node = groups[0].nodes[0]
+      names.push(node.member.name)
+      groups = node.groups
+    }
+    expect(names).toEqual(members.map(member => member.name))
+  })
+
+  it('可达数据含同名祖先时按路径防环，不额外展开祖先副本', () => {
+    const members = [m('甲', { lead: true }), m('乙', { lead: true, parent: '甲' }), m('甲', { lead: true, parent: '乙' })]
+    const tree = buildOrgTree({ members, teams: [], live: 3, total: 3 })
+    expect(tree[0].nodes[0].groups[0].nodes[0].groups).toEqual([])
+  })
+
   it('顶部一行：在干 / 有问题 / 都干完', () => {
     expect(describeOrgDock(t, view)).toMatchObject({ kind: 'working' })
     const done: OrganizationView = { ...view, live: 0, members: view.members.map(x => ({ ...x, status: 'completed' as const })) }
