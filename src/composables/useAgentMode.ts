@@ -221,6 +221,8 @@ export function useAgentMode(
   
   // 是否有新消息（用户不在底部时显示提示）
   const hasNewMessage = ref(false)
+  // 阅读中收到内容更新后，随虚拟列表重测复核提示；单纯重排不产生新消息。
+  let newMessageHintRequested = false
   // 新一轮保留一屏空间；输出填满后列表自然超过该最小高度，继续原有跟底。
   const turnMinHeight = ref(0)
   watch(currentTabId, () => { turnMinHeight.value = 0 })
@@ -596,6 +598,7 @@ export function useAgentMode(
     stickyFollowBottom = true
     setIsUserNearBottom(true)
     hasNewMessage.value = false
+    newMessageHintRequested = false
     extendScrollGrace()
   }
 
@@ -646,6 +649,7 @@ export function useAgentMode(
 
   /** 用户主动上滚离开底部：清除跟底粘性与 grace 窗口，避免流式 chunk 继续拽底 */
   const userScrolledAway = () => {
+    newMessageHintRequested = hasNewMessage.value
     stickyFollowBottom = false
     setIsUserNearBottom(false)
     // 不在这里亮起「新消息」：用户上滚不代表有新内容，只有 doScrollIfNeeded 发现
@@ -847,7 +851,15 @@ export function useAgentMode(
   // virtua 的 resize 表示列表项已重新测量；根节点 min-height 会掩盖内容收缩，
   // 因此不能只靠根 ResizeObserver 的「变高」回调更新置顶留白。
   const onMessageListResize = async () => {
-    if (!turnMinHeight.value || tabActive?.value === false) return
+    const resizeTabId = currentTabId.value
+    await nextTick()
+    if (currentTabId.value !== resizeTabId || tabActive?.value === false) return
+    // step 更新时的 DOM 仍可能使用前一帧的行偏移；重测后以真实位置收口，
+    // 不让可见内容沿用旧的「视口下方」判定，也不漏掉刚移出视口的新增内容。
+    if (newMessageHintRequested && !shouldFollowBottom()) {
+      hasNewMessage.value = hasContentBelowViewport()
+    }
+    if (!turnMinHeight.value) return
     let index = flattenedItems.value.length - 1
     while (index >= 0 && flattenedItems.value[index].type !== 'user_task') index--
     if (index < 0) return
@@ -926,6 +938,7 @@ export function useAgentMode(
         })
       }
     } else {
+      newMessageHintRequested = true
       hasNewMessage.value = hasContentBelowViewport()
     }
   }

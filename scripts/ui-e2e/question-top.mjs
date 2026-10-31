@@ -209,10 +209,50 @@ try {
   check('可见回复增长不弹出新消息提示', await page.evaluate(() => window.__hintCount === 0)
     && await page.locator('.new-message-indicator:visible').count() === 0)
   check('可见回复增长不抢阅读位置', Math.abs((await measure()).scroll - visibleReading) < 5)
+  // 新步骤会让 virtua 在下一帧才挂载行；未挂载不能直接断言它在视口下方。
+  const newVisibleStep = await page.evaluate(() => {
+    const tab = window.__e2eStore.tabs.find(t => t.id === window.__e2eTab)
+    return { agentId: tab.agentId || tab.id, step: {
+      id: 'e2e-visible-new-row', type: 'thinking', content: '新增的一行也仍然可见。', timestamp: Date.now(),
+    } }
+  })
+  await app.evaluate(({ BrowserWindow }, payload) => {
+    BrowserWindow.getAllWindows()[0].webContents.send('agent:step', payload)
+  }, newVisibleStep)
+  await sleep(700)
+  const newRowVisible = await box().evaluate(el => {
+    const rows = el.querySelectorAll('[data-index]')
+    const last = rows[rows.length - 1]
+    return !!last && last.getBoundingClientRect().bottom < el.getBoundingClientRect().bottom
+  })
+  check('新增步骤仍在视口内', newRowVisible && await box().getByText('新增的一行也仍然可见。', { exact: false }).count() > 0)
+  check('新增可见步骤不误弹提示（含挂载过程）', await page.evaluate(() => window.__hintCount === 0)
+    && await page.locator('.new-message-indicator:visible').count() === 0)
   await grow('新增回复确实超出视口时应提示。\n\n'.repeat(65))
   await sleep(1100)
+  await grow('测量后继续追加一句。')
+  await sleep(500)
   check('新增正文超出视口才提示且不抢位置', await page.locator('.new-message-indicator:visible').count() === 1
     && Math.abs((await measure()).scroll - visibleReading) < 5)
+  // 前一行收缩后，末行要等 virtua 重新测量才上移；提示不能停在旧坐标。
+  const shortened = await page.evaluate(() => {
+    const tab = window.__e2eStore.tabs.find(t => t.id === window.__e2eTab)
+    const message = [...tab.agentState.steps].reverse().find(s => s.type === 'message')
+    return { agentId: tab.agentId || tab.id, step: { ...message, content: '收缩后的回复。' } }
+  })
+  await app.evaluate(({ BrowserWindow }, payload) => {
+    BrowserWindow.getAllWindows()[0].webContents.send('agent:step', payload)
+  }, shortened)
+  await sleep(700)
+  const settled = await box().evaluate(el => {
+    const last = [...el.querySelectorAll('[data-index]')].at(-1)
+    return last && last.getBoundingClientRect().bottom < el.getBoundingClientRect().bottom
+  })
+  check('前行收缩后最新步骤回到视口', settled)
+  check('重新测量后清除过期的新消息提示', await page.locator('.new-message-indicator:visible').count() === 0)
+  await shot('settled-visible')
+  await grow('再次超出视口的回复。\n\n'.repeat(65))
+  await sleep(700)
   await page.locator('.new-message-indicator:visible').first().dispatchEvent('click')
   await sleep(600)
   check('点击提示后清除提示并恢复跟随', await page.locator('.new-message-indicator:visible').count() === 0
