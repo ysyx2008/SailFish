@@ -764,17 +764,17 @@ export function formatKnock(child: ChildSnapshot, reviewTeams: readonly LeadRevi
     ? formatExpertKnock(quoted, child.role)
     : child.status === 'completed'
       ? t('dispatch.knock_done', {
-        name: child.name,
+        name: child.lead ? t('org.lead_label', { name: child.name }) : child.name,
         description: child.description,
         result: quoted.result || '(no output)'
       })
       : child.status === 'interrupted'
         ? t('dispatch.knock_interrupted', {
-          name: child.name,
+          name: child.lead ? t('org.lead_label', { name: child.name }) : child.name,
           description: child.description
         })
         : t('dispatch.knock_fail', {
-          name: child.name,
+          name: child.lead ? t('org.lead_label', { name: child.name }) : child.name,
           description: child.description,
           error: child.error || 'Unknown error'
         })
@@ -800,7 +800,7 @@ function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubA
   const list = snapshots.map(c => {
     const identity = c.role
       ? t(c.lead ? 'expert.list_item_lead' : 'expert.list_item', { name: c.name, role: c.role, description: c.description })
-      : `- ${c.name}：${c.description}`
+      : `- ${c.lead ? t('org.lead_label', { name: c.name }) : c.name}：${c.description}`
     const fork = c.forkTurns ?? { kind: 'all' }
     const mode = t(`dispatch.context_${fork.kind}`, fork.kind === 'last' ? { n: fork.n } : {})
     return identity + (c.reviewer ? t('expert.reviewer_mark') : '') + t('dispatch.context_mode', { mode })
@@ -1127,7 +1127,7 @@ function isBatchArgs(value: unknown): value is { instruction: string } {
 
 /**
  * tasks 每人一份指令；batch 一份共同指令加一批条目，交给伙计的是共同指令、换行、本条目。两种可同次混用。
- * tasks 里带 role 的是专家；带 team 时这次 tasks 里的人组成专家团（每位都带 role，不用 batch）。
+ * role是选填岗位说明；带team时这次tasks里的人组成协作小组（不用batch）。
  */
 export function parseDispatchTasks(args: Record<string, unknown>): { tasks: ParsedSpawnTask[]; team?: string } | { error: string } {
   const tasks: ParsedSpawnTask[] = []
@@ -1158,13 +1158,7 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
       if (task.reviewer !== undefined && typeof task.reviewer !== 'boolean') {
         return { error: `子任务 ${i + 1} 的 reviewer 必须是 true 或 false` }
       }
-      if (task.reviewer === true && !role) {
-        return { error: `子任务 ${i + 1} 要当验收人就得带 role：只有专家能当` }
-      }
-      if (task.lead === true && !role) {
-        return { error: `子任务 ${i + 1} 要当组长就得带 role：只有专家能当组长` }
-      }
-      if (role && (name?.trim() === TEAM_LEADER || role === TEAM_LEADER)) {
+      if (name?.trim() === TEAM_LEADER || role === TEAM_LEADER) {
         return { error: `「${TEAM_LEADER}」留给派出专家团的你，专家的名字和角色都不能用它（子任务 ${i + 1}）` }
       }
       if (role && labelLength(role) > MAX_ROLE_CHARS) {
@@ -1232,8 +1226,6 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
     problems.push(`团名最长 ${MAX_TEAM_NAME_CHARS} 个字，这次 ${labelLength(team)} 个字。`)
   }
   if (tasks.every(task => task.reviewer)) problems.push('团里不能人人都是验收人，总得有人做事。')
-  const noRole = tasks.findIndex(task => !task.role)
-  if (noRole >= 0) problems.push(`带 team 时每位都要有 role（专家角色），第 ${noRole + 1} 位没有。`)
   if (tasks.length < MIN_TEAM_SIZE || tasks.length > MAX_TEAM_SIZE) {
     problems.push(`一个专家团 ${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位专家，这次 ${tasks.length} 位。`
       + (tasks.length < MIN_TEAM_SIZE

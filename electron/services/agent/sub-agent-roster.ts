@@ -673,7 +673,7 @@ export class SubAgentRoster {
 
   /**
    * 全部立刻开工。超过保险丝整批不收，调用方应先看 room()。
-   * 给了 team 就让这一批组成专家团（每位都要带角色，人数在团的上下限之内）。
+   * 给了team就让这一批组成协作小组（岗位选填，人数在团的上下限之内）。
    */
   spawn(tasks: SpawnTask[], deps: RosterSpawnDeps, options?: { team?: string; teamId?: string }): string[] {
     if (tasks.length > this.room()) {
@@ -685,14 +685,12 @@ export class SubAgentRoster {
         throw new RangeError(`专家团要 ${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位，这次 ${tasks.length} 位`)
       }
       if (!deps.teamTexts) throw new Error('派专家团缺少 teamTexts')
-      if (tasks.some(t => !t.role)) throw new Error('专家团里每位都要有专家角色')
     }
     if (tasks.some(t => t.reviewer)) {
       if (!teamName) throw new Error('验收人要在专家团里：带 team 才能指定')
       if (tasks.every(t => t.reviewer)) throw new Error('团里不能人人都是验收人，总得有人做事')
     }
     if (tasks.some(t => t.lead)) {
-      if (tasks.some(t => t.lead && !t.role)) throw new Error('组长必须是专家，要带角色')
       if (!this.canAppointLeads()) throw new RangeError(`组织最多 ${MAX_ORG_DEPTH} 层，这里已经是第 ${this.depth} 层，不能再指定组长`)
       this.ensureLedger()
     }
@@ -703,7 +701,7 @@ export class SubAgentRoster {
     const used = this.takenNames()
     // 「秘书」留给顶层：现在没有组织，后面也可能指定组长，别把顶层的名字占了
     used.add(SECRETARY)
-    if (tasks.some(t => t.role)) used.add(TEAM_LEADER)
+    used.add(TEAM_LEADER)
     const names: string[] = []
 
     for (const task of tasks) {
@@ -735,7 +733,7 @@ export class SubAgentRoster {
       const finalName = uniqueName(teamName, n => this.teams.has(n) || [...this.dormant.values()].some(child => child.team === n))
       team = new ExpertTeam(finalName, names.map(n => {
         const slot = this.children.get(n)!
-        return { name: n, askedName: slot.askedName, role: slot.role!, description: slot.description, ...(slot.reviewer ? { reviewer: true } : {}) }
+        return { name: n, askedName: slot.askedName, role: slot.role ?? '', description: slot.description, ...(slot.reviewer ? { reviewer: true } : {}) }
       }), this.ownerName)
       this.teams.set(finalName, { team, deps })
       for (const n of names) this.children.get(n)!.team = finalName

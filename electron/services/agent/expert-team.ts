@@ -285,7 +285,7 @@ export class ExpertTeam {
   label(name: string): string {
     if (name === TEAM_LEADER && this.leaderName) return `${TEAM_LEADER}·${this.leaderName}`
     const m = this.members.find(x => x.name === name)
-    return m ? `${m.role}·${m.name}` : name
+    return m?.role ? `${m.role}·${m.name}` : name
   }
 
   private record(from: string, to: string[], text: string, verdict?: TeamVerdict): TeamMessage {

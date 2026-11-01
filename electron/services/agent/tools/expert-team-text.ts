@@ -75,14 +75,15 @@ function reviewLine(team: ExpertTeam): string {
 
 /**
  * 开工第一条话。同团每人开头的团说明逐字一样，好复用模型缓存；
- * 「你是谁」和各自的指令在后面。伙计没有角色，就是指令本身。
+ * 「你是谁」和各自的指令在后面。不在团里且不是验收人的，就是指令本身。
  */
 export function expertOpening(child: ChildSnapshot, team?: ExpertTeam): string {
-  if (!child.role) return child.prompt
   const reviewer = child.reviewer ? t('expert.you_are_reviewer') : ''
   if (!team) return [reviewer, child.prompt].filter(Boolean).join('\n\n')
   const roster = team.roster()
-    .map(m => t('expert.list_item', { name: m.name, role: m.role, description: m.description }) + (m.reviewer ? t('expert.reviewer_mark') : ''))
+    .map(m => (m.role
+      ? t('expert.list_item', { name: m.name, role: m.role, description: m.description })
+      : `- ${m.name}：${m.description}`) + (m.reviewer ? t('expert.reviewer_mark') : ''))
     .join('\n')
   const renamed = renamedList(team.roster())
   const brief = t('expert.team_brief', { team: team.name, roster })

@@ -159,17 +159,16 @@ describe('组长与账本', () => {
     root.abortAll()
   })
 
-  it('层数到顶不能再指定组长；伙计不能当组长', () => {
+  it('层数到顶不能再指定组长，与是否填写role无关', () => {
     const root = new SubAgentRoster({ knockSettleMs: 0 })
     expect(root.canAppointLeads()).toBe(true)
-    expect(() => root.spawn([{ description: '没角色', prompt: 'p', lead: true }], deps(() => worker()))).toThrow(/专家/)
 
     const bottom = new SubAgentRoster({ knockSettleMs: 0 })
     const ledgerHolder: LeadSeat[] = []
-    root.spawn([{ description: '一层', prompt: 'p', role: '组长', lead: true }], deps(() => lead({ members: [], seats: ledgerHolder })))
+    root.spawn([{ description: '一层', prompt: 'p', lead: true }], deps(() => lead({ members: [], seats: ledgerHolder })))
     bottom.attachLedger(ledgerHolder[0].ledger, '最底层', MAX_ORG_DEPTH)
     expect(bottom.canAppointLeads()).toBe(false)
-    expect(() => bottom.spawn([{ description: '再往下', prompt: 'p', role: '组长', lead: true }], deps(() => worker()))).toThrow(RangeError)
+    expect(() => bottom.spawn([{ description: '再往下', prompt: 'p', lead: true }], deps(() => worker()))).toThrow(RangeError)
     root.abortAll()
   })
 
@@ -258,9 +257,23 @@ describe('派出参数里的 lead', () => {
     if (!('error' in parsed)) expect(parsed.tasks[0].lead).toBe(true)
   })
 
-  it('没有 role 不能当组长，lead 不是布尔值整批退回', () => {
-    expect(parseDispatchTasks({ tasks: [{ description: '研发', prompt: 'p', lead: true }] })).toHaveProperty('error')
+  it('没有 role 也能指定组长，但 lead 仍必须是布尔值', () => {
+    const parsed = parseDispatchTasks({ tasks: [{ description: '研发', prompt: 'p', lead: true }] })
+    expect(parsed).toMatchObject({ tasks: [{ lead: true }] })
+    if ('tasks' in parsed) expect(parsed.tasks[0]).not.toHaveProperty('role')
     expect(parseDispatchTasks({ tasks: [{ description: '研发', prompt: 'p', role: '组长甲', lead: 'yes' }] })).toHaveProperty('error')
+  })
+
+  it('名册直接派出无role负责人时仍建立真实管理座位', () => {
+    const root = new SubAgentRoster()
+    const handle = worker()
+    const becomeLead = vi.fn()
+    handle.becomeLead = becomeLead
+    root.spawn([{ name: '负责人', description: '组织研发', prompt: 'p', lead: true }], deps(() => handle))
+    expect(becomeLead).toHaveBeenCalledWith(expect.objectContaining({ name: '负责人', depth: 1 }))
+    expect(root.get('负责人')).toMatchObject({ lead: true })
+    expect(root.get('负责人')?.role).toBeUndefined()
+    root.abortAll()
   })
 
   it('不写 lead 的和以前完全一样', () => {
@@ -412,8 +425,8 @@ describe('验收', () => {
     const root = new SubAgentRoster({ knockSettleMs: 0 })
     root.spawn(
       [
-        { description: '前端', prompt: 'p', role: '前端专家', ...(reviewerIndex === 0 ? { reviewer: true } : {}) },
-        { description: '后端', prompt: 'p', role: '后端专家', ...(reviewerIndex === 1 ? { reviewer: true } : {}) },
+        { description: '前端', prompt: 'p', ...(reviewerIndex === 0 ? { reviewer: true } : {}) },
+        { description: '后端', prompt: 'p', ...(reviewerIndex === 1 ? { reviewer: true } : {}) },
       ],
       { ...deps(() => {
         const w = worker(5000)
@@ -477,8 +490,8 @@ describe('验收', () => {
     expect(parseDispatchTasks({ tasks: [{ description: 'x', prompt: 'p', role: '专家', reviewer: true }] })).toHaveProperty('error')
     expect(parseDispatchTasks({ tasks: [{ description: 'x', prompt: 'p', reviewer: true }] })).toHaveProperty('error')
     const ok = parseDispatchTasks({ team: 't', tasks: [
-      { description: 'a', prompt: 'p', role: '甲', reviewer: true },
-      { description: 'b', prompt: 'p', role: '乙' },
+      { description: 'a', prompt: 'p', reviewer: true },
+      { description: 'b', prompt: 'p' },
     ] })
     expect('tasks' in ok && ok.tasks[0].reviewer).toBe(true)
     const all = parseDispatchTasks({ team: 't', tasks: [

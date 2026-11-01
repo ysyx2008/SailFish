@@ -319,9 +319,10 @@ describe('ExpertTeam：群里点名', () => {
 })
 
 describe('dispatch_agents 带角色和团', () => {
-  it('组团有人缺角色、组团带 batch、专家叫「组长」、组团只有一位、组团超过 15 位都退回；不组团超过 15 位照常', () => {
+  it('组团允许省略角色；batch、保留称呼和人数边界仍校验', () => {
     const noRole = parseDispatchTasks({ team: 't', tasks: [{ description: 'x', prompt: 'y' }, { role: '测试专家', description: 'x', prompt: 'y' }] })
-    expect('error' in noRole && noRole.error).toContain('第 1 位')
+    expect(noRole).toMatchObject({ team: 't', tasks: [{ description: 'x' }, { role: '测试专家' }] })
+    if ('tasks' in noRole) expect(noRole.tasks[0].role).toBeUndefined()
     const withBatch = parseDispatchTasks({
       team: 't',
       tasks: [{ role: '测试专家', description: 'x', prompt: 'y' }, { role: '开发专家', description: 'x', prompt: 'y' }],
@@ -331,12 +332,12 @@ describe('dispatch_agents 带角色和团', () => {
     const leaderRole = parseDispatchTasks({ tasks: [{ role: TEAM_LEADER, name: '探针', description: 'x', prompt: 'y' }] })
     expect('error' in leaderRole && leaderRole.error).toContain(TEAM_LEADER)
     const twoProblems = parseDispatchTasks({ team: 't', tasks: [{ description: 'x', prompt: 'y' }] })
-    expect('error' in twoProblems && twoProblems.error).toContain('第 1 位没有')
     expect('error' in twoProblems && twoProblems.error).toContain('2 到 15')
     const mixed = parseDispatchTasks({ tasks: [{ role: '测试专家', description: 'x', prompt: 'y' }, { description: 'x', prompt: 'y' }] })
     expect('tasks' in mixed && mixed.tasks.map(task => task.role)).toEqual(['测试专家', undefined])
     const leader = parseDispatchTasks({ tasks: [{ role: '测试专家', name: TEAM_LEADER, description: 'x', prompt: 'y' }] })
     expect('error' in leader && leader.error).toContain(TEAM_LEADER)
+    expect(parseDispatchTasks({ tasks: [{ name: TEAM_LEADER, description: 'x', prompt: 'y' }] })).toHaveProperty('error')
     const solo = parseDispatchTasks({ team: 't', tasks: [{ role: '测试专家', description: 'x', prompt: 'y' }] })
     expect('error' in solo && solo.error).toContain('一位专家')
     const many = Array.from({ length: 16 }, (_, i) => ({ role: '审查专家', description: `第 ${i}`, prompt: '审' }))
@@ -408,7 +409,7 @@ describe('dispatch_agents 团名和角色的整理与上限', () => {
     const parsed = parseDispatchTasks({ team: '团'.repeat(50), tasks: [{ description: 'x', prompt: 'y' }] })
     const error = 'error' in parsed ? parsed.error : ''
     expect(error).toContain('团名最长 40')
-    expect(error).toContain('第 1 位没有')
+    expect(error).toContain('2 到 15')
   })
 
   it('角色超过 20 个字：整批退回并指出是第几位；和团名超长一起说', () => {
@@ -453,13 +454,42 @@ describe('dispatch_agents 团名和角色的整理与上限', () => {
   })
 
   it('角色只有控制字符：预卡片和执行器一致，都当没有角色', async () => {
-    const { executor } = setup()
+    const { roster, executor } = setup()
     const args = { team: '小工具组', tasks: TEAM_ARGS.tasks.map(task => ({ ...task, role: '\u0007' })) }
     const render = (getAgentTools(undefined, { mode: 'assistant' }) as ToolDefinitionWithMeta[])
       .find(tool => tool.function.name === 'dispatch_agents')!._meta!.streamDisplay!.customRender!
     const result = await dispatchSubAgents(args, CONFIG, executor)
-    expect(result.success).toBe(false)
+    expect(result.success).toBe(true)
+    expect(roster.list().every(c => c.role === undefined && c.team === '小工具组')).toBe(true)
     expect(render(args)).toBe('派出 3 个伙计')
+    roster.abortAll()
+  })
+})
+
+describe('无role小组的开场与身份', () => {
+  it('完整提供共用群说明和验收说明，不生成空角色标签', async () => {
+    const { roster, child, executor } = setup()
+    const result = await dispatchSubAgents({ team: '核对组', tasks: [
+      { name: '实施', description: '写文件', prompt: '实施指令' },
+      { name: '复核', description: '核对文件', prompt: '复核指令', reviewer: true },
+    ] }, CONFIG, executor)
+    expect(result.success).toBe(true)
+    expect(result.output).toContain('复核：核对文件（验收人）')
+    const team = roster.listTeams()[0]
+    const common = expertOpening(roster.get('实施')!, team).split('\n\n')[0]
+    expect(common).toContain('核对组')
+    expect(common).toContain('team_say')
+    expect(common).toContain('- 实施：写文件')
+    expect(common).toContain('- 复核：核对文件（验收人）')
+    expect(child('实施').runs[0]).toContain(common)
+    expect(child('复核').runs[0]).toContain(common)
+    expect(child('复核').runs[0]).toContain('团里指定你为验收人')
+    expect(team.label('复核')).toBe('复核')
+    expect(child('实施').runs[0]).not.toMatch(/undefined|（）/)
+    expect(child('实施').seat!.say(['复核'], '请核对', 'pass').ok).toBe(false)
+    expect(child('复核').seat!.say(['实施'], '核对通过', 'pass').ok).toBe(true)
+    expect(team.reviewState()).toBe('pass')
+    roster.abortAll()
   })
 })
 

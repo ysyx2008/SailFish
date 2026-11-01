@@ -346,7 +346,7 @@ scenario('下面一层的团里点名秘书，秘书点名回应', async () => {
 })
 
 // ───────────────────────────────────────────────────────────── 4
-scenario('进程被 kill -9：新进程接着同一场会话，秘书叫醒组长，组长叫醒他名下的人', async () => {
+scenario('无role负责人冷恢复：进程被 kill -9，新进程接着同一场会话叫醒原成员', async () => {
   const names = ['研发组', '小甲', '小乙']
   const env = sandbox(0, 'sft-org-4', tempDirs)
   const makeLlm = (marker) => {
@@ -360,7 +360,7 @@ scenario('进程被 kill -9：新进程接着同一场会话，秘书叫醒组�
           if (text.includes('让研发组')) return callTool('followup_agent', { name: '研发组', message: '接着做完' })
           if (text.includes('[专家') || text.includes('[伙计')) return say('秘书收到：组织做完了')
           return callTool('dispatch_agents', {
-            tasks: [{ name: '研发组', role: '研发组长', lead: true, description: '带研发组做事', prompt: '我是研发组，带小甲、小乙做事' }],
+            tasks: [{ name: '研发组', lead: true, description: '带研发组做事', prompt: '我是研发组，带小甲、小乙做事' }],
           })
         }
         if (who === '研发组') {
@@ -454,6 +454,7 @@ scenario('进程被 kill -9：新进程接着同一场会话，秘书叫醒组�
     const leadBack = llm2.requests.find((r) => r.who === '研发组' && r.lastText.includes('[上次的情形]'))
     check('组长被叫醒时带着盘上的对话，并被告知异常退出', !!leadBack && leadBack.lastText.includes('异常退出') && leadBack.lastText.includes('接着做完'), leadBack?.lastText)
     check('恢复的负责人仍绑定自己的系统身份', leadBack?.body.messages.some(message => message.role === 'system' && String(message.content).includes('姓名：研发组\n')) === true)
+    check('无role负责人冷恢复后仍有派工管理工具', ['dispatch_agents', 'followup_agent', 'wait_agents', 'interrupt_agent'].every(name => toolNamesOf(leadBack ?? { body: {} }).includes(name)) && !before.children['研发组']?.state.role)
     const jiaBack = llm2.requests.find((r) => r.who === '小甲' && r.lastText.includes('接着做完'))
     check('组长再把他名下的小甲叫醒，小甲带着盘上的对话', !!jiaBack && jiaBack.lastText.includes('接着做完'), jiaBack?.lastText)
     const after = readOrg(env.dataDir)
@@ -470,7 +471,7 @@ scenario('进程被 kill -9：新进程接着同一场会话，秘书叫醒组�
 })
 
 // ───────────────────────────────────────────────────────────── 5
-scenario('团里有验收人：先打回、改完再通过，结论带到组长手上', async () => {
+scenario('无role成员与验收人：先打回、改完再通过，结论带到负责人手上', async () => {
   const names = ['研发组', '前端', '评审']
   const env = sandbox(0, 'sft-org-5', tempDirs)
   const seen = { verdicts: [], leadText: '', reviewerOpening: '' }
@@ -481,7 +482,7 @@ scenario('团里有验收人：先打回、改完再通过，结论带到组长�
       if (who === 'main') {
         if (text.includes('[专家') || text.includes('[伙计')) return say('秘书收到：组织做完了')
         return callTool('dispatch_agents', {
-          tasks: [{ name: '研发组', role: '研发组长', lead: true, description: '带研发组做事', prompt: '我是研发组，组一个前端加评审的团' }],
+          tasks: [{ name: '研发组', lead: true, description: '带研发组做事', prompt: '我是研发组，组一个前端加评审的团' }],
         })
       }
       if (who === '研发组') {
@@ -489,8 +490,8 @@ scenario('团里有验收人：先打回、改完再通过，结论带到组长�
           return callTool('dispatch_agents', {
             team: '项目团',
             tasks: [
-              { name: '前端', role: '前端专家', description: '写登录页', prompt: '我是前端，写登录页' },
-              { name: '评审', role: '评审专家', reviewer: true, description: '验收登录页', prompt: '我是评审，等前端交活后验收' },
+              { name: '前端', description: '写登录页', prompt: '我是前端，写登录页' },
+              { name: '评审', reviewer: true, description: '验收登录页', prompt: '我是评审，等前端交活后验收' },
             ],
           })
         }
@@ -529,6 +530,11 @@ scenario('团里有验收人：先打回、改完再通过，结论带到组长�
     check('正常退出', result.code === 0, `exit ${result.code} ${result.err.slice(0, 300)}`)
     check('评审先打回、再通过', seen.verdicts.join() === 'reject,pass', seen.verdicts.join())
     check('评审的开场里写着他是验收人', seen.reviewerOpening.includes('验收人'), seen.reviewerOpening.slice(0, 300))
+    check('无role评审仍收到群说明和完整成员名单', seen.reviewerOpening.includes('team_say') && seen.reviewerOpening.includes('- 前端：写登录页') && seen.reviewerOpening.includes('- 评审：验收登录页（验收人）') && !seen.reviewerOpening.includes('（）'))
+    const { children } = readOrg(env.dataDir)
+    check('负责人、实施和验收人都未虚构role', names.every(name => children[name] && !children[name].state.role))
+    const reviewerRequest = llm.requests.find(entry => entry.who === '评审' && entry.hasTools)
+    check('验收人有群聊工具但没有下派管理工具', toolNamesOf(reviewerRequest ?? { body: {} }).includes('team_say') && !toolNamesOf(reviewerRequest ?? { body: {} }).includes('dispatch_agents'))
     check('团停下时交给组长的话里带着最近一次结论「通过」', seen.leadText.includes('验收') && seen.leadText.includes('通过'), seen.leadText.slice(-400))
     const chatRoot = path.join(env.dataDir, 'history', 'expert-teams')
     const chatText = fs.existsSync(chatRoot)
@@ -718,7 +724,7 @@ scenario('身份固定、父上下文引用与错误寻址纠正贯穿三层真�
 })
 
 // ───────────────────────────────────────────────────────────── 9
-scenario('组长收工后被群内再交代叫醒，不丢已完成下级；role称呼不赋派工权限', async () => {
+scenario('无role组长收工后群内叫醒仍有权限；role称呼不赋派工权限', async () => {
   const names = ['负责人', '甲组', '乙组', '甲组执行', '乙组执行', '普通专家']
   const env = sandbox(0, 'sft-org-wake-board', tempDirs)
   let dispatched = false
@@ -731,7 +737,7 @@ scenario('组长收工后被群内再交代叫醒，不丢已完成下级；role
       if (who === 'main') {
         if (text.includes('[专家') || text.includes('[伙计')) return say('秘书收到组织交差')
         return callTool('dispatch_agents', { tasks: [
-          { name: '负责人', role: '项目负责人', lead: true, description: '组织核对', prompt: '我是负责人，派甲乙两位组长，完成后再交代他们核对结果' },
+          { name: '负责人', lead: true, description: '组织核对', prompt: '我是负责人，派甲乙两位组长，完成后再交代他们核对结果' },
           { name: '普通专家', role: '项目组长', description: '普通专家，仅角色称呼含组长', prompt: '我是普通专家，只汇报，不派人' },
         ] })
       }
@@ -739,7 +745,7 @@ scenario('组长收工后被群内再交代叫醒，不丢已完成下级；role
         if (!dispatched) {
           dispatched = true
           return callTool('dispatch_agents', { team: '核对团', tasks: ['甲组', '乙组'].map(name => ({
-            name, role: '核对负责人', lead: true, description: `负责${name}`, prompt: `我是${name}，派一位执行成员后汇总`,
+            name, lead: true, description: `负责${name}`, prompt: `我是${name}，派一位执行成员后汇总`,
           })) })
         }
         if (wakePhase === 0) {
@@ -778,6 +784,7 @@ scenario('组长收工后被群内再交代叫醒，不丢已完成下级；role
     check('两位组长收工后均被再次叫醒', woke.has('甲组') && woke.has('乙组'))
     const { sessions, children } = readOrg(env.dataDir)
     check('六位成员完整落盘且均已完成', names.length === Object.keys(children).length && names.every(name => children[name]?.state.status === 'completed'))
+    check('三位无role负责人保留真实lead标记', ['负责人', '甲组', '乙组'].every(name => children[name]?.state.lead === true && !children[name].state.role))
     const meta = readJson(path.join(env.dataDir, 'history/agent', path.basename(path.dirname(sessions[0])), path.basename(sessions[0]), 'meta.json'))
     const org = Object.values(meta?.organizations ?? {}).find(view => view.members.some(member => member.name === '负责人'))
     const board = org?.boardPath ? fs.readFileSync(org.boardPath, 'utf8') : ''

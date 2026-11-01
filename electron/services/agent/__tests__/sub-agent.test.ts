@@ -137,6 +137,24 @@ function createExecutor(
 }
 
 describe('dispatch_agents 异步派出', () => {
+  it('无role负责人派出与交差都保留组长标记，过程快照保留真实管理身份', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, () => stubChild('已收齐', 1))
+    const result = await dispatchSubAgents({ tasks: [{ name: '研发', description: '组织研发', prompt: '派人后汇总', lead: true }] }, defaultConfig, executor)
+    expect(result.success).toBe(true)
+    expect(result.output).toContain('- 组长·研发：组织研发')
+    const child = roster.get('研发')!
+    expect(child.role).toBeUndefined()
+    const steps = (executor as ToolExecutorConfig & { _steps: AgentStep[] })._steps
+    expect(steps[0].organization!.members[0]).toMatchObject({ name: '研发', lead: true })
+    for (const status of ['completed', 'failed', 'interrupted'] as const) {
+      const text = formatKnock({ ...child, status, result: '已收齐', error: '测试异常' })
+      expect(text).toContain('组长·研发')
+      expect(text).not.toMatch(/undefined|（）/)
+    }
+    await roster.settled()
+  })
+
   it('负责人交回的名册事实不取模型自述，失败或打断也不丢失已派成员', () => {
     const child: ChildSnapshot = { name: '乙', role: '组织者', lead: true, description: '派两人', prompt: '派两人', status: 'completed', result: '上级甲代派了丙。', steps: [], directMembers: [{ name: '丁', status: 'running' }] }
     const completed = formatKnock(child, [], '甲')
