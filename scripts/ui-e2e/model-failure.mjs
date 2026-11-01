@@ -26,7 +26,7 @@ try {
     window.__failureFixture = { store, id }
     const add = step => store.addAgentStep(id, { timestamp: Date.now(), ...step })
     add({ id: 'user', type: 'user_task', content: '观察模型调度' })
-    add({ id: 'api-error', type: 'message', content: '火山模型 · 模型额度已耗尽', apiError: { model: '火山模型', statusCode: 429, code: 'QuotaExceeded', category: 'quota', message: 'You have exceeded the weekly usage quota. Reset at 2099-11-02 00:00:00 +0800. <script>window.__apiInjected=true</script>' } })
+    add({ id: 'api-error', type: 'message', content: '火山模型：模型额度已耗尽', apiError: { profileName: '火山模型', model: 'provider-model-id', statusCode: 429, code: 'QuotaExceeded', category: 'quota', message: 'You have exceeded the weekly usage quota. Reset at 2099-11-02 00:00:00 +0800. <script>window.__apiInjected=true</script>' } })
     add({ id: 'retry', type: 'waiting', content: '已重试 (1/5) · HTTP 429 · QuotaExceeded', isStreaming: false, apiError: { model: '火山模型', statusCode: 429, code: 'QuotaExceeded', message: 'weekly quota exhausted; 原因保留' } })
     add({ id: 'org', type: 'tool_call', toolName: 'dispatch_agents', content: '团队调度', success: true, organization: { teamId: 'failure', total: 4, live: 3, teams: [], members: [
       { id: '排队成员', name: '排队成员', description: '等待统一名额', status: 'running', waitingForModel: true, modelWaitReason: 'queued' },
@@ -46,6 +46,7 @@ try {
   await details.locator('summary').click()
   check('可展开供应商原文、恢复时间、错误码和HTTP状态', /2099-11-02/.test(await details.innerText()) && /QuotaExceeded/.test(await details.innerText()) && /HTTP 429/.test(await details.innerText()))
   check('供应商内容按纯文本显示，不执行HTML', await page.evaluate(() => window.__apiInjected !== true) && (await details.locator('pre').innerText()).includes('<script>'))
+  check('用户名称优先展示、摘要用冒号，模型ID仍可在详情排查', (await page.locator('.api-error-summary').first().innerText()) === '火山模型：模型额度已耗尽' && (await details.locator('.api-error-meta').innerText()).includes('火山模型') && (await details.locator('.api-error-meta').innerText()).includes('provider-model-id'))
   const geometry = await details.evaluate(el => {
     const rect = node => node.getBoundingClientRect()
     const stack = el.closest('.api-error-stack')

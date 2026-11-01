@@ -109,7 +109,7 @@ describe('派出那一步随会话落盘再读回', () => {
 
 
 it('API错误原文及供应商码经会话存盘与恢复保留，旧记录无字段仍兼容', () => {
-  const detail = { model: 'provider-model', statusCode: 429, code: 'QuotaExceeded', message: 'weekly quota exhausted; reset at 2099-11-02 00:00:00 +0800', category: 'quota' as const }
+  const detail = { profileName: '火山模型', model: 'provider-model', statusCode: 429, code: 'QuotaExceeded', message: 'weekly quota exhausted; reset at 2099-11-02 00:00:00 +0800', category: 'quota' as const }
   const conv = Conversation.create({ agentKey: 'error-history', terminalType: 'assistant' }, { id: 'error-history', createdAt: 1 })
   conv.commitRun({ runId: 'error-run', userRequest: '验收', steps: [
     { id: 'u', type: 'user_task', content: '验收', timestamp: 1 },

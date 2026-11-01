@@ -17,6 +17,11 @@ describe('供应商额度与真实原因', () => {
     expect(quotaResetAt(text)).toBe(Date.parse('2099-11-02T00:00:00+08:00'))
     expect(quotaResetAt('No reset specified')).toBeUndefined()
   })
+  it('错误优先使用配置名称，旧记录或空名称回退模型ID', () => {
+    expect(formatApiFailure({ profileName: '火山dsV4.1flash', model: 'deepseek-model-id', message: 'failed' })).toBe('火山dsV4.1flash：failed')
+    expect(formatApiFailure({ model: 'legacy-id', message: 'failed' })).toBe('legacy-id：failed')
+    expect(formatApiFailure({ profileName: '  ', model: 'legacy-id', message: 'failed' })).toBe('legacy-id：failed')
+  })
   it('共享选择只在真实切换时唤醒等待，重复选择不打断请求', () => {
     const selection = new ModelSelection()
     selection.select('a')

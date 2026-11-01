@@ -46,8 +46,8 @@ afterAll(async () => {
   await new Promise<void>(resolve => server.close(() => resolve()))
 })
 
-function serviceFor(model: string) {
-  const profile = { id: model, name: model, apiUrl: baseUrl, apiKey: 'test-key', model }
+function serviceFor(model: string, name = model) {
+  const profile = { id: model, name, apiUrl: baseUrl, apiKey: 'test-key', model }
   const config = {
     getAiProfiles: () => [profile],
     getActiveAiProfile: () => profile.id,
@@ -254,13 +254,14 @@ describe('团队模型选择与额度熔断', () => {
   })
 
   it('配额耗尽停止HTTP重试，后续同组请求直接返回原因', async () => {
-    const { ai, key } = serviceFor('quota-model')
+    const { ai, key } = serviceFor('quota-model', '火山dsV4.1flash')
     const message = 'Weekly usage exhausted; reset at 2099-11-02 00:00:00 +0800'
     scripts.set('quota-model', [{ status: 429, body: JSON.stringify({ error: { code: 'insufficient_quota', message } }) }, okReply()])
     const failures: unknown[] = []
     const result = await run(ai, { onApiFailure: detail => failures.push(detail) })
     expect(result.error).toContain(message)
-    expect(failures).toEqual([expect.objectContaining({ code: 'insufficient_quota', category: 'quota', statusCode: 429 })])
+    expect(result.error).toContain('火山dsV4.1flash')
+    expect(failures).toEqual([expect.objectContaining({ profileName: '火山dsV4.1flash', model: 'quota-model', code: 'insufficient_quota', category: 'quota', statusCode: 429 })])
     expect(scripts.get('quota-model')).toHaveLength(1)
     expect((await run(ai)).error).toContain(message)
     expect(scripts.get('quota-model')).toHaveLength(1)

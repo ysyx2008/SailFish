@@ -5307,9 +5307,10 @@ export abstract class Agent {
           bufferPriority: this.takeModelRequestPriority(),
           getModelSelection: () => ({ profileId: this.resolveEffectiveProfileId(run), signal: this.modelSelection.signal }),
           onApiFailure: detail => {
+            const name = detail.profileName?.trim() || detail.model
             const content = detail.category === 'quota'
-              ? `${detail.model} · ${t('agent.api_quota_exhausted')}`
-              : `${detail.model} · HTTP ${detail.statusCode ?? ''} · ${detail.code ?? ''}`
+              ? `${name}：${t('agent.api_quota_exhausted')}`
+              : `${name}：${[detail.statusCode && `HTTP ${detail.statusCode}`, detail.code].filter(Boolean).join(' · ')}`
             const fingerprint = JSON.stringify(detail)
             if (!failureSteps.has(fingerprint)) {
               failureSteps.add(fingerprint)

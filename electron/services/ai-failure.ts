@@ -11,7 +11,7 @@ export class ModelUnavailableError extends Error {
 
 export function formatApiFailure(detail: ApiFailureDetail): string {
   const code = [detail.statusCode && `HTTP ${detail.statusCode}`, detail.code].filter(Boolean).join(' · ')
-  return `${detail.model}${code ? ` (${code})` : ''}：${detail.message}`
+  return `${detail.profileName?.trim() || detail.model}${code ? ` (${code})` : ''}：${detail.message}`
 }
 
 /** Ark的QuotaExceeded在聊天接口表示套餐/试用额度；异步批处理接口的同名码不在此解释。 */

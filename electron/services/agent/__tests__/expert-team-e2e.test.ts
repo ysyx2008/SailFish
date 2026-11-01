@@ -263,7 +263,7 @@ it('手动切模型作用于已创建负责人及后续深层成员，其他对�
 
 it('主请求跨模型失败保留各自原文，相同错误重试不重复新增原因记录', async () => {
   const services = makeServices(() => ({ content: '完成' }))
-  const first = { model: 'A', message: 'quota exhausted', statusCode: 429, code: 'insufficient_quota', category: 'quota' as const }
+  const first = { profileName: '火山模型', model: 'A', message: 'quota exhausted', statusCode: 429, code: 'insufficient_quota', category: 'quota' as const }
   const second = { model: 'B', message: 'temporary failure', statusCode: 503, code: 'busy' }
   vi.mocked(services.aiService.chatWithToolsStream).mockImplementationOnce(async (...args) => {
     args[12]?.onApiFailure?.(first)
@@ -276,5 +276,6 @@ it('主请求跨模型失败保留各自原文，相同错误重试不重复新�
   const steps: AgentStep[] = []
   await agent.run('核对', ctx(), { callbacks: { onStep: (_id, step) => { steps.push({ ...step }) } } })
   expect(steps.filter(step => step.apiError).map(step => step.apiError)).toEqual([first, second])
+  expect(steps.find(step => step.apiError === first)?.content).toBe('火山模型：模型额度已耗尽')
 })
 })

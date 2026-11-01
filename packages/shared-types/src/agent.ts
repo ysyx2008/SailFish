@@ -650,6 +650,8 @@ export interface EChartsStepPayload {
 }
 
 export interface ApiFailureDetail {
+  /** 出错当时的配置名称；旧记录未保存时回退到模型ID。 */
+  profileName?: string
   model: string
   message: string
   statusCode?: number

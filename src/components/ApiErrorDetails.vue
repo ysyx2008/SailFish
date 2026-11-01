@@ -14,7 +14,8 @@ const { t } = useI18n()
     </summary>
     <div class="api-error-body">
       <div class="api-error-meta">
-        <span>{{ detail.model }}</span>
+        <span>{{ detail.profileName?.trim() || detail.model }}</span>
+        <span v-if="detail.profileName?.trim() && detail.profileName.trim() !== detail.model">({{ detail.model }})</span>
         <template v-if="detail.statusCode"><span aria-hidden="true">·</span><span>HTTP {{ detail.statusCode }}</span></template>
         <template v-if="detail.code"><span aria-hidden="true">·</span><span>{{ detail.code }}</span></template>
       </div>

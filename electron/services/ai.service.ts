@@ -1913,7 +1913,7 @@ export class AiService {
     } catch (err) {
       const apiErr = err as ApiRequestError
       if (isModelQuotaError(apiErr.apiErrorCode, profile.apiUrl)) {
-        const error = new ModelUnavailableError({ model: profile.model, message: apiErr.message, statusCode: apiErr.statusCode, code: apiErr.apiErrorCode, category: 'quota' })
+        const error = new ModelUnavailableError({ profileName: profile.name, model: profile.model, message: apiErr.message, statusCode: apiErr.statusCode, code: apiErr.apiErrorCode, category: 'quota' })
         permit.reportUnavailable(error, quotaResetAt(apiErr.message))
         throw error
       }
@@ -2443,7 +2443,7 @@ export class AiService {
         const detail = [getNetworkErrorCode(error), getNetworkErrorMessage(error)].filter(Boolean).join(' ')
         getAiDebugService().logResponseError(reqId, `${detail} - 准备重试 ${retryCount}/${AI_RETRY.MAX_RETRIES} in ${(delay / 1000).toFixed(1)}s`)
         pendingRetryInfo = {
-          error: { model: profile.model, message: getNetworkErrorMessage(error), code: getNetworkErrorCode(error) },
+          error: { profileName: profile.name, model: profile.model, message: getNetworkErrorMessage(error), code: getNetworkErrorCode(error) },
           attempt: retryCount,
           max: AI_RETRY.MAX_RETRIES,
           delayMs: delay,
@@ -2554,7 +2554,7 @@ export class AiService {
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
             log.error(`Request HTTP error: model=${profile.model}, status=${res.statusCode}, duration=${elapsed}s, error=${parsed.message.slice(0, 200)}`)
             requestInFlight = false
-            const detail: ApiFailureDetail = { model: profile.model, message: parsed.message, statusCode: res.statusCode, code: parsed.code, ...(isModelQuotaError(parsed.code, profile.apiUrl) ? { category: 'quota' as const } : {}) }
+            const detail: ApiFailureDetail = { profileName: profile.name, model: profile.model, message: parsed.message, statusCode: res.statusCode, code: parsed.code, ...(isModelQuotaError(parsed.code, profile.apiUrl) ? { category: 'quota' as const } : {}) }
             streamOptions?.onApiFailure?.(detail)
             if (isModelQuotaError(parsed.code, profile.apiUrl)) {
               const quotaError = new ModelUnavailableError(detail)
