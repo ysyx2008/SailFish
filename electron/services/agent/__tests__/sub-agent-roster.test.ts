@@ -517,6 +517,15 @@ describe('allocateChildName', () => {
     used.add(a)
     const b = allocateChildName('读 nginx 配置', used)
     expect(a).toBe('读-nginx-配置')
-    expect(b).toBe('读-nginx-配置-2')
+    expect(b).toBe('读-nginx-配置(2)')
+    used.add(b)
+    expect(allocateChildName('读 nginx 配置', used)).toBe('读-nginx-配置(3)')
+  })
+
+  it('去重后缀不增加任务编号的连字符段，也不占用旧后缀成员的名字', () => {
+    const requested = '1-2-1-1'
+    const used = new Set([requested, `${requested}-2`])
+    expect(allocateChildName('核对', used, requested)).toBe(`${requested}(2)`)
+    expect(allocateChildName('核对', used, `${requested}-2`)).toBe(`${requested}-2(2)`)
   })
 })

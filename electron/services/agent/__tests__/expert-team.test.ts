@@ -735,14 +735,16 @@ describe('专家团', () => {
         { name: '乙', role: '开发专家', description: '实现', prompt: '等甲点名' },
       ],
     }, CONFIG, executor)
-    expect(result.output).toContain('这几位的名字和指定的不一样：甲 → 甲-2')
+    expect(result.output).toContain('这几位的名字和指定的不一样：甲 → 甲(2)')
     expect(result.output).not.toContain('乙 →')
 
-    const a = child('甲-2').runs[0]
+    const a = child('甲(2)').runs[0]
     const b = child('乙').runs[0]
-    expect(a).toContain('这几位的名字和任务里写的不一样：甲 → 甲-2')
+    expect(a).toContain('这几位的名字和任务里写的不一样：甲 → 甲(2)')
     expect(a).not.toContain('乙 →')
     expect(a.slice(0, a.indexOf('写完点名乙'))).toBe(b.slice(0, b.indexOf('等甲点名')))
+    expect(child('乙').seat!.say(['甲(2)'], '请接手核对').ok).toBe(true)
+    expect(child('甲(2)').supplements.join('\n')).toContain('请接手核对')
   })
 
   it('名字里的空格和符号会折成「-」：写明指定的和现在的；没指定名字（用简述起名）的不提', async () => {

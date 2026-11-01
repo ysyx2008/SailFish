@@ -138,7 +138,7 @@ describe('组长与账本', () => {
         : worker()),
     )
     await new Promise(resolve => setTimeout(resolve, 10))
-    expect(rosters[0].childNames()).toEqual(['写代码-2'])
+    expect(rosters[0].childNames()).toEqual(['写代码(2)'])
     root.abortAll()
   })
 
@@ -405,8 +405,8 @@ describe('点名秘书', () => {
     expect('error' in parseDispatchTasks({ tasks: [{ role: '专家', name: '秘书', description: 'x', prompt: 'y' }] })).toBe(false)
 
     const plain = new SubAgentRoster({ knockSettleMs: 0 })
-    expect(plain.spawn([{ description: 'x', prompt: 'p', role: '专家', name: '秘书' }], deps(() => worker()))).toEqual(['秘书-2'])
-    expect(plain.spawn([{ description: 'y', prompt: 'p', name: '秘书' }], deps(() => worker()))).toEqual(['秘书-3'])
+    expect(plain.spawn([{ description: 'x', prompt: 'p', role: '专家', name: '秘书' }], deps(() => worker()))).toEqual(['秘书(2)'])
+    expect(plain.spawn([{ description: 'y', prompt: 'p', name: '秘书' }], deps(() => worker()))).toEqual(['秘书(3)'])
     plain.abortAll()
 
     const org = new SubAgentRoster({ knockSettleMs: 0 })
@@ -551,7 +551,7 @@ describe('组织的存盘', () => {
     expect(root.followup('不存在', 'hi', d).error).toContain('没有叫')
     // 名字全组织不重复：新派的人不能占用盘上组长名下的名字
     root.spawn([{ description: '前端', prompt: 'p' }], d)
-    expect(root.childNames()).toEqual(['前端-2'])
+    expect(root.childNames()).toEqual(['前端(2)'])
     root.abortAll()
     await root.settled()
   })
@@ -602,7 +602,7 @@ describe('组长收工之后账本仍然管得住', () => {
     )
     await tick(150)
     const names = root.spawn([{ description: '调研员', prompt: 'p' }], deps(() => worker()))
-    expect(names).toEqual(['调研员-2'])
+    expect(names).toEqual(['调研员(2)'])
     root.abortAll()
   })
 

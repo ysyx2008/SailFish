@@ -724,8 +724,8 @@ scenario('身份固定、父上下文引用与错误寻址纠正贯穿三层真�
 })
 
 // ───────────────────────────────────────────────────────────── 9
-scenario('无role组长收工后群内叫醒仍有权限；role称呼不赋派工权限', async () => {
-  const names = ['负责人', '甲组', '乙组', '甲组执行', '乙组执行', '普通专家']
+scenario('组长唤醒权限不丢；跨枝重名用括号后缀并保持真实归属', async () => {
+  const names = ['负责人', '甲组', '乙组', '核对员', '核对员(2)', '普通专家']
   const env = sandbox(0, 'sft-org-wake-board', tempDirs)
   let dispatched = false
   let wakePhase = 0
@@ -761,7 +761,7 @@ scenario('无role组长收工后群内叫醒仍有权限；role称呼不赋派�
           return callTool('exec', { command: 'sleep 0.1' })
         }
         if (text.includes(`我是${who}，`)) return callTool('dispatch_agents', { tasks: [
-          { name: `${who}执行`, description: `${who}执行核对`, prompt: `我是${who}执行，汇报完成` },
+          { name: '核对员', description: `${who}执行核对`, prompt: `我是${who}执行，汇报完成` },
         ] })
         return say(`${who}收齐结果`)
       }
@@ -789,7 +789,8 @@ scenario('无role组长收工后群内叫醒仍有权限；role称呼不赋派�
     const org = Object.values(meta?.organizations ?? {}).find(view => view.members.some(member => member.name === '负责人'))
     const board = org?.boardPath ? fs.readFileSync(org.boardPath, 'utf8') : ''
     check('唤醒后看板仍保留全部六位成员', board.includes('共 6 人') && names.every(name => board.includes(`${name} | `)), board.slice(-1000))
-    check('两位执行成员仍挂在原组长名下', children['甲组执行']?.state.parent === '甲组' && children['乙组执行']?.state.parent === '乙组')
+    check('重名执行成员用括号去重，仍挂在各自组长名下', ['核对员', '核对员(2)'].map(name => children[name]?.state.parent).sort().join() === ['甲组', '乙组'].sort().join())
+    check('括号姓名完整绑定到系统身份并真实落盘', llm.requests.some(entry => entry.who === '核对员(2)' && entry.body.messages.some(message => message.role === 'system' && String(message.content).includes('姓名：核对员(2)\n'))))
     const ordinary = llm.requests.find(entry => entry.who === '普通专家' && entry.hasTools)
     const ordinaryTools = toolNamesOf(ordinary ?? { body: {} })
     check('只把role叫项目组长不获得派工、等待或群聊工具', ordinaryTools.length > 0 && ['dispatch_agents', 'wait_agents', 'team_say'].every(name => !ordinaryTools.includes(name)))

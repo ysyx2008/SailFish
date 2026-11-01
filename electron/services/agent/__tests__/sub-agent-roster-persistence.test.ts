@@ -175,7 +175,18 @@ describe('花名册里的休眠伙计', () => {
     const d = deps(() => child({ result: 'x' }))
     d.restoreDormant = () => [sleeper('reader')]
     const names = roster.spawn([{ description: 'reader', prompt: 'p' }, { name: 'reader', description: 'z', prompt: 'p' }], d)
-    expect(names).toEqual(['reader-2', 'reader-3'])
+    expect(names).toEqual(['reader(2)', 'reader(3)'])
+  })
+
+  it('旧连字符后缀成员保持原名恢复，与新括号后缀成员并存', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const d = deps(() => child({ result: '新结果' }))
+    d.restoreDormant = () => [sleeper('reader'), sleeper('reader-2')]
+    expect(roster.spawn([{ name: 'reader', description: '新任务', prompt: 'p' }], d)).toEqual(['reader(2)'])
+    expect(roster.followup('reader-2', '继续旧任务', d)).toEqual({ ok: true })
+    expect(roster.get('reader-2')?.name).toBe('reader-2')
+    expect(roster.get('reader(2)')?.description).toBe('新任务')
+    await roster.settled()
   })
 
   it('点名再交代：叫醒他，话前面带上上次的情形，卡片上有以前的步骤，存盘人记下「在干」', async () => {

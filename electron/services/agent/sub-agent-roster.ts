@@ -221,7 +221,7 @@ export function allocateChildName(description: string, used: Set<string>, explic
   let name = base
   let i = 2
   while (used.has(name)) {
-    name = `${base}-${i++}`
+    name = `${base}(${i++})`
   }
   return name
 }
