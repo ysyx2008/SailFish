@@ -206,7 +206,7 @@ describe('派出', () => {
     expect(first!.prompts[0]).toContain('看磁盘')
     expect(first!.prompts[0]).toContain('web-01（sessionId: a1，deploy@10.0.0.11:22，分组：生产）')
     expect(first!.prompts[0]).toContain('1. `df -h`')
-    expect(third!.prompts[0]).toBe('看本机')
+    expect(third!.prompts[0]).toBe('## 本次交办\n看本机')
     // 界面上显示的仍是原来的指令，不带处境说明
     expect(roster.list().find(c => c.description === '看 web-01')?.shownPrompt).toBe('看磁盘')
   })
