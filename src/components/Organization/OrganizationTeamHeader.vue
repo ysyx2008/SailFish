@@ -75,10 +75,9 @@ const summary = computed(() => summarize(props.team, props.nodes))
 <template>
   <section class="org-team" :class="`is-${summary.bucket}`" :data-owner="team.owner ?? ''" :data-team="team.name">
     <div class="org-team-head">
-      <button type="button" class="org-team-chat" :title="`${t('ai.organization.teamTitle', { team: team.name })} · ${t('ai.organization.teamChat', { count: team.messageCount })}`" :aria-label="`${t('ai.organization.teamTitle', { team: team.name })} · ${t('ai.organization.teamChat', { count: team.messageCount })}`" @click.stop="emit('openTeam')">
+      <button type="button" class="org-team-title" :title="`${t('ai.organization.teamTitle', { team: team.name })} · ${t('ai.organization.teamChat', { count: team.messageCount })}`" :aria-label="`${t('ai.organization.teamTitle', { team: team.name })} · ${t('ai.organization.teamChat', { count: team.messageCount })}`" @click.stop="emit('openTeam')">
         <MessagesSquare :size="12" aria-hidden="true" />
         <span class="org-team-name">{{ t('ai.organization.teamTitle', { team: team.name }) }}</span>
-        <span class="org-team-message-count">{{ team.messageCount }}</span>
       </button>
     </div>
     <div class="org-team-meta">
@@ -87,9 +86,12 @@ const summary = computed(() => summarize(props.team, props.nodes))
       <OrganizationStatusBadge :bucket="summary.bucket" :label="summary.label" compact />
     </div>
     <div class="org-team-actions">
-      <span class="org-review" :class="`is-${team.review}`">{{ t(`ai.organization.review.${team.review}`) }}</span>
+      <span class="org-review" :class="`is-${team.review}`" :title="t(`ai.organization.review.${team.review}`)">{{ t(`ai.organization.review.${team.review}`) }}</span>
       <OrganizationStatusBadge v-if="team.waitingLeader" bucket="waiting" :label="t('ai.organization.waitingLeader')" compact />
-      <button type="button" class="org-team-artifacts" :title="t('ai.organization.openTeamArtifacts')" @click.stop="emit('openArtifacts')"><Files :size="12" />{{ t('ai.organization.teamArtifacts') }}</button>
+      <div class="org-team-entry-actions">
+        <button type="button" class="org-team-artifacts" :title="t('ai.organization.openTeamArtifacts')" @click.stop="emit('openArtifacts')"><Files :size="12" />{{ t('ai.organization.teamArtifacts') }}</button>
+        <button type="button" class="org-team-chat" @click.stop="emit('openTeam')"><MessagesSquare :size="12" />{{ t('ai.organization.teamChat', { count: team.messageCount }) }}</button>
+      </div>
     </div>
     <div class="org-team-meter" role="img" :aria-label="summary.meterLabel">
       <i v-for="part in summary.parts" :key="part.kind" class="org-meter-part" :class="`is-${part.kind}`" :style="{ flexGrow: part.count }" />
@@ -124,7 +126,6 @@ const summary = computed(() => summarize(props.team, props.nodes))
   text-align: left;
   font-weight: 500;
 }
-.org-team-message-count { flex-shrink: 0; color: var(--text-muted); font-size: 10px; }
 .org-team-meta {
   display: flex;
   flex-wrap: nowrap;
@@ -169,7 +170,10 @@ const summary = computed(() => summarize(props.team, props.nodes))
 .org-meter-part.is-interrupted { background: var(--text-secondary); }
 
 .org-review {
-  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 10.5px;
   color: var(--text-secondary);
   padding: 2px 4px;
@@ -190,8 +194,9 @@ const summary = computed(() => summarize(props.team, props.nodes))
   background: color-mix(in srgb, var(--color-warning, #e5c07b) 10%, transparent);
 }
 
-.org-team-artifacts { margin-left: auto; }
-.org-team-artifacts, .org-team-chat {
+.org-team-entry-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.org-team-entry-actions button { white-space: nowrap; }
+.org-team-artifacts, .org-team-chat, .org-team-title {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -204,10 +209,10 @@ const summary = computed(() => summarize(props.team, props.nodes))
   font-size: 11px;
   cursor: pointer;
 }
-.org-team-chat { min-width: 0; max-width: 100%; }
-.org-team-chat svg, .org-team-artifacts { flex-shrink: 0; }
-.org-team-artifacts:hover, .org-team-chat:hover { color: var(--text-primary); background: var(--bg-tertiary); }
-.org-team-artifacts:focus-visible, .org-team-chat:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 1px; }
+.org-team-title { min-width: 0; max-width: 100%; }
+.org-team-title svg { flex-shrink: 0; }
+.org-team-artifacts:hover, .org-team-chat:hover, .org-team-title:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+.org-team-artifacts:focus-visible, .org-team-chat:focus-visible, .org-team-title:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 1px; }
 .org-team-actions { display: flex; align-items: center; gap: 6px; }
-.org-team-actions > .org-status-badge { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 10px; }
+.org-team-actions > .org-status-badge { min-width: 0; flex-shrink: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 10px; }
 </style>

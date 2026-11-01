@@ -140,7 +140,24 @@ try {
   await page.locator('.sub-agent-dock .dock-team').click()
   await page.locator('.organization-chart .org-team').waitFor()
   check('协作小组沿用同一个团队视图', await page.locator('.organization-chart .org-node').count() === 2 && await page.locator('.org-review.is-pending').count() === 1)
-  check('群聊标为协作群，顶部按实际协作群计数', (await page.locator('.org-team-chat').innerText()).includes('协作群「研发小组」') && (await page.locator('.organization-chart').innerText()).includes('1 个协作群'))
+  check('群聊标为协作群，顶部按实际协作群计数', (await page.locator('.org-team-title').innerText()).includes('协作群「研发小组」') && (await page.locator('.organization-chart').innerText()).includes('1 个协作群'))
+  check('产出物与群聊条数并列可见且不溢出', await page.locator('.org-team').evaluate(el => {
+    const actions = el.querySelector('.org-team-entry-actions')
+    const artifacts = actions.querySelector('.org-team-artifacts')
+    const chat = actions.querySelector('.org-team-chat')
+    const a = artifacts.getBoundingClientRect(), c = chat.getBoundingClientRect(), host = el.getBoundingClientRect()
+    const wideFits = artifacts.textContent.includes('产出物') && chat.textContent.includes('群聊 1 条') && Math.abs(a.top-c.top)<1 && a.right <= c.left && c.right <= Math.min(host.right, host.left + 240)+1
+    const previousWidth = el.style.width
+    const review = el.querySelector('.org-review'), previousReview = review.textContent
+    let narrowFits
+    try {
+      el.style.width = '240px'
+      review.textContent = '需要负责人进一步复核验收'.repeat(10)
+      const n = el.getBoundingClientRect(), na = artifacts.getBoundingClientRect(), nc = chat.getBoundingClientRect()
+      narrowFits = Math.abs(na.top-nc.top)<1 && na.left >= n.left && na.right <= nc.left && nc.right <= n.right+1
+    } finally { el.style.width = previousWidth; review.textContent = previousReview }
+    return wideFits && narrowFits
+  }))
   check('协作群入口轻量显示，不画管理边界且高度与布局一致', await page.locator('.org-team').evaluate(el => getComputedStyle(el).borderLeftWidth === '0px' && el.offsetHeight === 84))
   await page.locator('.oc-header .tph-close').click()
   await page.locator('.dock-toggle').click()
@@ -149,7 +166,7 @@ try {
   await inlineDev.locator('.tmt-details').click()
   await page.locator('.organization-chart .org-member-detail').waitFor()
   await page.locator('.od-header .tph-close').click()
-  await page.locator('.org-team-chat').focus()
+  await page.locator('.org-team-title').focus()
   await page.keyboard.press('Enter')
   await page.getByText('请核对这一版', { exact: false }).last().waitFor()
   await checkTeamHeader(page, '.od-header', '小组群聊分栏', check)
@@ -160,6 +177,10 @@ try {
   await page.locator('.od-header .tph-close').first().click()
   await page.locator('.oc-header').waitFor()
   check('名单直达成员后进群聊再返回仍在总览', await page.locator('.organization-chart .org-member-detail').count() === 0)
+  await page.locator('.org-team-chat').click()
+  await page.getByText('请核对这一版', { exact: false }).last().waitFor()
+  check('独立群聊按钮打开当前群聊', (await page.locator('.od-header').innerText()).includes('协作群「研发小组」'))
+  await page.locator('.od-header .tph-close').first().click()
   await page.locator('.org-team-artifacts').click()
   await page.locator('.oa-item').first().waitFor()
   const groupText = await page.locator('.oa-list').innerText()
