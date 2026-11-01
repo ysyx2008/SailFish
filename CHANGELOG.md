@@ -2,7 +2,41 @@
 
 All notable changes to SailFish will be documented in this file.
 
-## v11.15.0 (2026-10-21) (Latest)
+## v11.16.0 (2026-11-01) (Latest)
+
+> Your secretary can organize specialists into teams, assign work through team leaders, and appoint reviewers to check results. The team overview brings together member progress, group conversations, and artifacts, alongside improvements to long-running task recovery and remote execution.
+
+### New Features
+- 🎯 **Hierarchical teams**: Your secretary can appoint leaders who delegate work to their own members, with reviewers checking results and up to ten levels of team leaders.
+- 🎯 **Team overview**: Explore reporting relationships and member status in an organization chart, then open details to inspect work, group conversations, and results.
+- 🎯 **Specialist collaboration**: Your secretary can assign specialists, bring them into a group, and let them hand work over by name. You can keep chatting while it waits for them.
+- 🎯 **Remote background commands**: Helpers can run authorized commands on saved SSH hosts, with confirmation following the current approval mode.
+
+### Improvements
+- ⚡ **Resume interrupted work**: Helpers retain their conversations and can receive further instructions after an interruption. Reopening a conversation restores team information and group chat history.
+- ⚡ **Larger batches of helpers**: A task can now have up to 1,000 unfinished helpers, with improvements to rendering and updates for large teams.
+- ⚡ **More reliable long conversations**: Better context estimates when reopening conversations, handoff summaries sized to the model window, and full-message retrieval from compression archives.
+- ⚡ **Clearer progress**: Assigned members are accessible at the top of the conversation. New questions move to the top while output continues to scroll into view.
+- ⚡ **Unified usage display**: A subtle water-level animation shows context usage and provides access to cumulative usage.
+- ⚡ **Watch recovery**: Watches interrupted by computer sleep can continue after wake, and their maximum run time is configurable.
+- ⚡ **Quieter updates**: Update packages download in the background, with an installation reminder when ready.
+- ⚡ **Knowledge index improvements**: Keyword indexes use a new storage layout, and deleted tasks disappear from the list more promptly.
+- ⚡ **Visible terminal count**: The sidebar shows the number of open terminals. Exit prompts distinguish active tasks from terminals that are still open.
+
+### Bug Fixes
+- 🐛 Fixed a blank file manager, artifact lists hidden behind the terminal area, and an unstable position for the document expand button.
+- 🐛 Fixed new-message hints appearing for replies already in view and questions jumping when the artifact panel opens.
+- 🐛 Fixed garbled Chinese text in streamed output and improved model names and details in error messages.
+- 🐛 Usage totals now include model requests made by helpers.
+- 🐛 SSH remembers a host fingerprint after the first connection and requires confirmation when it changes.
+- 🐛 Strengthened download path checks, plugin loading, and sensitive configuration protection. Restored key files remain readable only by their owner.
+- 🐛 Removing conversations by age also removes their corresponding knowledge entries.
+- 🐛 Updated networking, connector, and internationalization dependencies to include security fixes.
+
+### Upgrade Notice
+- **macOS 13 or later is now required**. Users on earlier systems should keep their current version.
+
+## v11.15.0 (2026-10-21)
 
 > A task can carry a goal that it keeps working toward on its own; assistants can work in large batches at the same time; Reach can hand work off as tasks; Contacts and Memory join the secretary menu; and the knowledge base can be organized in folders.
 

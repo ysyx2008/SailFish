@@ -74,7 +74,7 @@ The window is three columns: new chat, Reach, Terminal, and recent conversations
 | Feature | Description |
 |---------|-------------|
 | 🖥️ **Local & SSH Terminal** | Operates your machine and remote servers; an SSH session can also work on local files and commands; split panes can mix local and multiple hosts; reconnects after a drop |
-| 👥 **Sub-agents** | Dispatch them in large batches at once; they report back and you can follow up |
+| 👥 **Sub-agents & Teams** | Up to 1,000 unfinished helpers; organize specialists under team leaders, review results, and inspect progress, group conversations, and artifacts in the team overview; resume after interruptions |
 | 📁 **File Manager** | Dual-pane local and remote files, drag-and-drop transfer |
 | 🌐 **Browser Bridge** | Control the Chrome / Edge / Firefox you already have open — logins preserved |
 | 📦 **Artifacts** | WYSIWYG Markdown, live HTML/URL preview, screenshot follow-ups, send to phone; Word / Excel / PDF / WPS open in place |
