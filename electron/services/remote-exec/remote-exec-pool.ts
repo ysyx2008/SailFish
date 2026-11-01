@@ -673,7 +673,6 @@ export class RemoteExecPool {
 
         let timedOut = false
         let aborted = false
-        let timeoutTimer: NodeJS.Timeout | undefined
         let killTimer: NodeJS.Timeout | undefined
         let forceTimer: NodeJS.Timeout | undefined
 
@@ -720,7 +719,7 @@ export class RemoteExecPool {
         }
         for (const s of signals) s.addEventListener('abort', onAbort, { once: true })
 
-        timeoutTimer = setTimeout(() => {
+        const timeoutTimer = setTimeout(() => {
           if (finished) return
           timedOut = true
           kill()
