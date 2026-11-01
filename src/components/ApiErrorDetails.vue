@@ -31,7 +31,7 @@ const { t } = useI18n()
 .api-error-details {
   min-width: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: inherit;
   line-height: 1.5;
   white-space: normal;
 }
@@ -39,8 +39,8 @@ summary {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 4px 16px;
+  justify-content: flex-start;
+  gap: 4px 12px;
   width: 100%;
   max-width: 100%;
   list-style: none;
@@ -55,6 +55,7 @@ summary {
   user-select: text;
 }
 .api-error-toggle {
+  font-size: 12px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -67,6 +68,7 @@ summary:focus-visible { outline: 2px solid var(--accent-primary); outline-offset
 .api-error-chevron { flex-shrink: 0; }
 details[open] .api-error-chevron { transform: rotate(90deg); }
 .api-error-body {
+  font-size: 12px;
   display: grid;
   gap: 6px;
   margin-top: 6px;

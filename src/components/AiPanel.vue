@@ -5117,7 +5117,8 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
 }
 
 /* Agent 步骤中的 markdown 样式 */
-.step-text.step-analysis.markdown-content {
+.step-text.step-analysis.markdown-content,
+.api-error-stack {
   font-size: 13px;
 }
 

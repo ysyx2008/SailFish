@@ -26,6 +26,7 @@ try {
     window.__failureFixture = { store, id }
     const add = step => store.addAgentStep(id, { timestamp: Date.now(), ...step })
     add({ id: 'user', type: 'user_task', content: '观察模型调度' })
+    add({ id: 'body-example', type: 'message', content: '正文对照：正在核对模型状态。' })
     add({ id: 'api-error', type: 'message', content: '火山模型：模型额度已耗尽', apiError: { profileName: '火山模型', model: 'provider-model-id', statusCode: 429, code: 'QuotaExceeded', category: 'quota', message: 'You have exceeded the weekly usage quota. Reset at 2099-11-02 00:00:00 +0800. <script>window.__apiInjected=true</script>' } })
     add({ id: 'retry', type: 'waiting', content: '已重试 (1/5) · HTTP 429 · QuotaExceeded', isStreaming: false, apiError: { model: '火山模型', statusCode: 429, code: 'QuotaExceeded', message: 'weekly quota exhausted; 原因保留' } })
     add({ id: 'org', type: 'tool_call', toolName: 'dispatch_agents', content: '团队调度', success: true, organization: { teamId: 'failure', total: 4, live: 3, teams: [], members: [
@@ -47,6 +48,8 @@ try {
   check('可展开供应商原文、恢复时间、错误码和HTTP状态', /2099-11-02/.test(await details.innerText()) && /QuotaExceeded/.test(await details.innerText()) && /HTTP 429/.test(await details.innerText()))
   check('供应商内容按纯文本显示，不执行HTML', await page.evaluate(() => window.__apiInjected !== true) && (await details.locator('pre').innerText()).includes('<script>'))
   check('用户名称优先展示、摘要用冒号，模型ID仍可在详情排查', (await page.locator('.api-error-summary').first().innerText()) === '火山模型：模型额度已耗尽' && (await details.locator('.api-error-meta').innerText()).includes('火山模型') && (await details.locator('.api-error-meta').innerText()).includes('provider-model-id'))
+  const matchingFont = await page.evaluate(() => getComputedStyle(document.querySelector('.api-error-summary')).fontSize === getComputedStyle(document.querySelector('.step-analysis.markdown-content')).fontSize)
+  check('报错摘要字号与普通正文一致', matchingFont)
   const geometry = await details.evaluate(el => {
     const rect = node => node.getBoundingClientRect()
     const stack = el.closest('.api-error-stack')
@@ -54,9 +57,9 @@ try {
     const summary = el.querySelector('.api-error-toggle')
     const meta = el.querySelector('.api-error-meta')
     const pre = el.querySelector('pre')
-    return { titleLeft:rect(title).left, summaryLeft:rect(summary).left, sameRow:Math.abs(rect(summary).top - rect(title).top) < 2, bodyGap:rect(pre).top - rect(meta).bottom, lineHeight:parseFloat(getComputedStyle(pre).lineHeight), fontSize:parseFloat(getComputedStyle(pre).fontSize), overflow:el.scrollWidth > el.clientWidth }
+    return { titleRight:rect(title).right, summaryLeft:rect(summary).left, sameRow:Math.abs(rect(summary).top - rect(title).top) < 2, bodyGap:rect(pre).top - rect(meta).bottom, lineHeight:parseFloat(getComputedStyle(pre).lineHeight), fontSize:parseFloat(getComputedStyle(pre).fontSize), overflow:el.scrollWidth > el.clientWidth }
   })
-  check('摘要与详情入口同行，入口位于右侧，行距统一无溢出', geometry.summaryLeft > geometry.titleLeft && geometry.sameRow && geometry.bodyGap === 6 && Math.abs(geometry.lineHeight / geometry.fontSize - 1.6) < 0.01 && !geometry.overflow)
+  check('详情入口紧跟摘要同行，间距12px且无溢出', Math.abs(geometry.summaryLeft - geometry.titleRight - 12) < 1 && geometry.sameRow && geometry.bodyGap === 6 && Math.abs(geometry.lineHeight / geometry.fontSize - 1.6) < 0.01 && !geometry.overflow)
   await details.locator('summary').focus()
   await page.keyboard.press('Enter')
   check('详情可用键盘收起', !(await details.getAttribute('open') !== null))
