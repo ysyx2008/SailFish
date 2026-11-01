@@ -232,7 +232,6 @@ describe('专家团端到端（真实 SailFish.run）', () => {
   })
 
 it('手动切模型作用于已创建负责人及后续深层成员，其他对话独立', async () => {
-  let parent: SailFish
   let sent = false
   let delegated = false
   const services = makeServices(who => {
@@ -248,7 +247,7 @@ it('手动切模型作用于已创建负责人及后续深层成员，其他对�
     return { content: '核对完成' }
   })
   vi.mocked(services.configService!.getAiProfiles).mockReturnValue([{ id: 'test', contextLength: 128000 }, { id: 'new-model', contextLength: 128000 }] as never)
-  parent = new SailFish(services)
+  const parent = new SailFish(services)
   parent.setAgentId('selection-parent')
   parent.updateConfig({ profileId: 'test', executionMode: 'free' })
   const other = new SailFish(services)
