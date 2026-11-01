@@ -2777,6 +2777,10 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                         :label="item.step!.content"
                       />
                     </div>
+                    <div v-else-if="item.step!.apiError" class="api-error-stack">
+                      <div class="api-error-summary">{{ item.step!.content }}</div>
+                      <ApiErrorDetails :detail="item.step!.apiError" />
+                    </div>
                     <div v-else-if="item.step!.type === 'message'" class="agent-message-stack">
                       <!-- 一句话拆成两半时：想的那截收进折叠行、说出口的那句留在外面，各只渲染自己那半 -->
                       <template v-for="(pres, presIdx) in [getMessageStepPresentation(item.step!)]" :key="presIdx">
@@ -2912,9 +2916,8 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                         @contextmenu="openAttachmentContextMenu"
                       />
                     </div>
-                    <div v-else-if="item.step!.apiError || item.step!.type === 'error'" class="step-text">{{ item.step!.content }}</div>
+                    <div v-else-if="item.step!.type === 'error'" class="step-text">{{ item.step!.content }}</div>
                     <div v-else class="step-text markdown-content" v-html="renderMarkdown(item.step!.content)"></div>
-                    <ApiErrorDetails v-if="item.step!.apiError" :detail="item.step!.apiError!" />
                     <!-- 并行子 Agent 卡片组 -->
                     <OrganizationCard
                       v-if="teamCardViews.has(item.step!.id)"
@@ -5091,6 +5094,22 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
 /* footer 自身的 margin-top: 6px 在 stack 内会和 gap 叠加；让 stack gap 接管 */
 .agent-message-stack > .agent-final-footer {
   margin-top: 0;
+}
+
+.api-error-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 10px;
+  line-height: 1.5;
+}
+
+.api-error-summary {
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
 }
 
 .step-text {
