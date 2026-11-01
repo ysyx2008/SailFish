@@ -852,6 +852,7 @@ export function toSubAgentView(c: ChildSnapshot, stepLimit: number = VIEW_STEPS_
     steps: c.steps.slice(-stepLimit).map(({ id, tool, args, status }) => ({ id, tool, args, status })),
     blockedReason: c.blockedReason,
     waitingForModel: c.waitingForModel,
+    modelWaitReason: c.modelWaitReason,
     ...(c.role ? { role: c.role } : {}),
   }
 }
@@ -865,7 +866,8 @@ function toOrganizationMember(c: ChildSnapshot, parent: string | undefined): Org
     name: c.name,
     description: c.description,
     status: c.status,
-    ...(c.waitingForModel ? { waitingForModel: true } : {}),
+    ...(c.error ? { error: c.error } : {}),
+    ...(c.waitingForModel ? { waitingForModel: true, modelWaitReason: c.modelWaitReason } : {}),
     ...(c.role ? { role: c.role } : {}),
     ...(parent ? { parent } : {}),
     ...(c.lead ? { lead: true } : {}),

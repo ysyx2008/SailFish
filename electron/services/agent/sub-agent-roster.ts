@@ -43,6 +43,7 @@ export interface ChildSnapshot {
   blockedReason?: string
   /** 这会儿在缓冲池里排队等模型 */
   waitingForModel?: boolean
+  modelWaitReason?: 'queued' | 'cooldown' | 'retry'
   /** 界面上显示的那份指令；批量写法只显示条目部分，共同指令在派出的工具参数里 */
   shownPrompt?: string
   /** 系统在本段收尾时取到的直属成员事实；不采用模型自述。 */
@@ -1078,10 +1079,11 @@ export class SubAgentRoster {
     onProgress()
   }
 
-  private markWaiting(name: string, waiting: boolean, onProgress: () => void): void {
+  private markWaiting(name: string, waiting: boolean, onProgress: () => void, reason?: 'queued' | 'cooldown' | 'retry'): void {
     const slot = this.children.get(name)
-    if (!slot || !!slot.waitingForModel === waiting) return
+    if (!slot || (!!slot.waitingForModel === waiting && slot.modelWaitReason === reason)) return
     slot.waitingForModel = waiting || undefined
+    slot.modelWaitReason = waiting ? reason : undefined
     onProgress()
   }
 
@@ -1128,7 +1130,7 @@ export class SubAgentRoster {
       const raw = await handle.run(message, deps.getParentContext(), {
         callbacks: {
           onStep: (_id, step) => this.recordStep(slot.name, step, deps.onProgress),
-          onModelWait: (_id, waiting) => this.markWaiting(slot.name, waiting, deps.onProgress),
+          onModelWait: (_id, waiting, reason) => this.markWaiting(slot.name, waiting, deps.onProgress, reason),
         }
       })
       if (segment !== slot.segment) return
@@ -1151,6 +1153,7 @@ export class SubAgentRoster {
       }
     }
     slot.waitingForModel = undefined
+    slot.modelWaitReason = undefined
     if (slot.lead) slot.directMembers = handle.directMemberFacts?.()
     persistSlot(slot)
     deps.onProgress()
@@ -1221,6 +1224,7 @@ function snapshotOf(slot: ChildSlot): ChildSnapshot {
     tokensUsed: slot.tokensUsed,
     blockedReason: slot.blockedReason,
     waitingForModel: slot.waitingForModel,
+    modelWaitReason: slot.modelWaitReason,
     shownPrompt: slot.shownPrompt,
   }
 }

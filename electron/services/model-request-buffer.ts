@@ -2,7 +2,7 @@
  * 发往同一个接口账号、同一款模型的请求，共用一个自适应的放行窗口。
  *
  * 没被限流就逐步放开；被限流就收窄窗口、整组先缓一缓，缓完只放一个探路，
- * 探路成功才接着放。当面等的请求不排队，只计数、参与限流判断。
+ * 探路成功才接着放。当面等的请求优先，但同样受窗口和暂停约束。
  * 详见 docs/plans/done-2026-10-20-sub-agent-scale-design.md §3.2。
  */
 import { createHash } from 'crypto'
@@ -11,8 +11,8 @@ import { createLogger } from '../utils/logger'
 const log = createLogger('ModelBuffer')
 
 /**
- * urgent：用户当面等的，不排队。
- * urgentRetry：当面等的撞了限流再试。排在所有排队的前面，窗口里有空位就发，不等暂停结束；
+ * urgent：用户当面等的，队列优先。
+ * urgentRetry：当面等的撞了限流再试。与当面请求同列优先于成员，暂停结束且窗口有空位才发；
  *   不再硬挤，免得接口被伙计占满时一次次撞限流、把重试次数用光。
  * continuing：已经开工的伙计接着发的，排队里优先。
  * queued：伙计第一次请求、关切、唤醒、后台整理。
@@ -53,7 +53,7 @@ const SYSTEM_CLOCK: BufferClock = {
 export interface AcquireOptions {
   signal?: AbortSignal
   /** 开始排队时 true，拿到名额或放弃时 false。不排队就不调。 */
-  onWait?: (waiting: boolean) => void
+  onWait?: (waiting: boolean, reason?: 'queued' | 'cooldown') => void
 }
 
 export interface ModelBufferSnapshot {
@@ -85,6 +85,10 @@ export class ModelRequestPermit {
     this.group.onSuccess(this)
   }
 
+  reportUnavailable(error: Error, until?: number): void {
+    this.group.onUnavailable(error, until)
+  }
+
   reportThrottled(retryAfterMs?: number): void {
     this.group.onThrottled(this, retryAfterMs)
   }
@@ -107,6 +111,7 @@ interface Waiter {
 
 class BufferGroup {
   private window: number
+  private unavailable?: { error: Error; until: number }
   private inFlight = 0
   /** 第一次被限流前每成功一个就 +1，之后每成功一整窗口才 +1 */
   private fastGrowth = true
@@ -133,10 +138,11 @@ class BufferGroup {
 
   acquire(priority: ModelRequestPriority, options: AcquireOptions): Promise<ModelRequestPermit> {
     if (options.signal?.aborted) return Promise.reject(new BufferAbortError())
-    if (priority === 'urgent') return Promise.resolve(this.grant(false))
+    if (this.unavailable && this.unavailable.until > this.clock.now()) return Promise.reject(this.unavailable.error)
+    this.unavailable = undefined
 
     return new Promise((resolve, reject) => {
-      const lane = priority === 'urgentRetry' ? this.front : priority === 'continuing' ? this.continuing : this.queued
+      const lane = (priority === 'urgent' || priority === 'urgentRetry') ? this.front : priority === 'continuing' ? this.continuing : this.queued
       const waiter: Waiter = { resolve, reject, options, waiting: false, detach: () => {} }
       const onAbort = () => {
         const idx = lane.indexOf(waiter)
@@ -152,7 +158,7 @@ class BufferGroup {
       this.pump()
       if (lane.includes(waiter)) {
         waiter.waiting = true
-        options.onWait?.(true)
+        options.onWait?.(true, this.clock.now() < this.pausedUntil ? 'cooldown' : 'queued')
       }
     })
   }
@@ -203,11 +209,22 @@ class BufferGroup {
       ? Math.min(this.tuning.retryAfterMaxMs, retryAfterMs)
       : backoff
     this.pausedUntil = Math.max(this.pausedUntil, this.clock.now() + pause)
+    for (const w of [...this.front, ...this.continuing, ...this.queued]) if (w.waiting) w.options.onWait?.(true, 'cooldown')
     log.info(
       `${this.label} 被限流：窗口 ${previousWindow}→${this.window}，暂停 ${(pause / 1000).toFixed(1)}s`
       + `（连续第 ${this.consecutiveThrottles} 次${retryAfterMs ? '，接口给了等待时间' : ''}），在途 ${this.inFlight}，排队 ${this.queuedCount()}`,
     )
     this.pump()
+  }
+
+  onUnavailable(error: Error, until?: number): void {
+    this.unavailable = { error, until: until ?? this.clock.now() + this.tuning.retryAfterMaxMs }
+    for (const lane of [this.front, this.continuing, this.queued]) {
+      for (const waiter of lane.splice(0)) {
+        this.stopWaiting(waiter)
+        waiter.reject(error)
+      }
+    }
   }
 
   onRelease(permit: ModelRequestPermit): void {
@@ -247,11 +264,11 @@ class BufferGroup {
   }
 
   private tryGrantHead(): boolean {
+    if (!this.canGrantQueued()) return false
     if (this.front.length > 0) {
-      if (this.inFlight >= this.window) return false
       const waiter = this.front.shift()!
       this.stopWaiting(waiter)
-      waiter.resolve(this.grant(false))
+      waiter.resolve(this.grant(true))
       return true
     }
     if (!this.canGrantQueued()) return false
@@ -276,6 +293,7 @@ class BufferGroup {
     if (wait <= 0 || this.queuedCount() === 0) return
     this.pauseTimer = this.clock.setTimeout(() => {
       this.pauseTimer = undefined
+      for (const w of [...this.front, ...this.continuing, ...this.queued]) if (w.waiting) w.options.onWait?.(true, 'queued')
       this.pump()
     }, wait)
   }

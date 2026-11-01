@@ -1,0 +1,56 @@
+/** API原因和成员等待状态：隔离、透明、静音，不调用真实模型。 */
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { launchApp } from './launch.mjs'
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sft-model-failure-'))
+const app = await launchApp(dir)
+const page = await app.firstWindow()
+page.setDefaultTimeout(15000)
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
+const check = (label, ok) => { if (!ok) throw Error(label); console.log(`OK ${label}`) }
+try {
+  await page.waitForFunction(() => window.electronAPI?.config)
+  await page.evaluate(async () => {
+    await window.electronAPI.config.setSetupCompleted(true)
+    await window.electronAPI.config.setAiProfiles([{ id: 'fixture', name: 'fixture', apiUrl: 'http://127.0.0.1:1/v1', apiKey: 'x', model: 'fixture' }])
+    await window.electronAPI.config.setActiveAiProfile('fixture')
+  })
+  await page.reload()
+  await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$pinia?._s.get('terminal'))
+  await page.evaluate(() => {
+    const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('terminal')
+    const id = store.createAssistantTab({ title: 'API错误与调度验收' })
+    store.markAssistantSkipOnboarding(id); store.focusHubConversation(id)
+    window.__failureFixture = { store, id }
+    const add = step => store.addAgentStep(id, { timestamp: Date.now(), ...step })
+    add({ id: 'user', type: 'user_task', content: '观察模型调度' })
+    add({ id: 'api-error', type: 'message', content: '火山模型 · 模型额度已耗尽', apiError: { model: '火山模型', statusCode: 429, code: 'QuotaExceeded', category: 'quota', message: 'You have exceeded the weekly usage quota. Reset at 2099-11-02 00:00:00 +0800. <script>window.__apiInjected=true</script>' } })
+    add({ id: 'retry', type: 'waiting', content: '已重试 (1/5) · HTTP 429 · QuotaExceeded', isStreaming: false, apiError: { model: '火山模型', statusCode: 429, code: 'QuotaExceeded', message: 'weekly quota exhausted; 原因保留' } })
+    add({ id: 'org', type: 'tool_call', toolName: 'dispatch_agents', content: '团队调度', success: true, organization: { teamId: 'failure', total: 4, live: 3, teams: [], members: [
+      { id: '排队成员', name: '排队成员', description: '等待统一名额', status: 'running', waitingForModel: true, modelWaitReason: 'queued' },
+      { id: '冷却成员', name: '冷却成员', description: '接口冷却中', status: 'running', waitingForModel: true, modelWaitReason: 'cooldown' },
+      { id: '重试成员', name: '重试成员', description: '等待退避计时', status: 'running', waitingForModel: true, modelWaitReason: 'retry' },
+      { id: '额度成员', name: '额度成员', description: '额度耗尽后结束等待', status: 'failed', error: '火山模型 (HTTP 429 · QuotaExceeded)：weekly quota exhausted' },
+    ] } })
+  })
+  await pause(1500)
+  for (let i = 0; i < 8; i++) {
+    const dialog = page.locator('.confirm-overlay button:visible').last()
+    if (await dialog.count()) await dialog.click({ force: true, timeout: 1000 }).catch(() => {})
+    await pause(150)
+  }
+  check('错误原因在重试结束后仍有独立记录', (await page.locator('.ai-messages:visible').innerText()).includes('模型额度已耗尽') && (await page.locator('.ai-messages:visible').innerText()).includes('已重试 (1/5)'))
+  const details = page.locator('.api-error-details').first()
+  await details.locator('summary').click()
+  check('可展开供应商原文、恢复时间、错误码和HTTP状态', /2099-11-02/.test(await details.innerText()) && /QuotaExceeded/.test(await details.innerText()) && /HTTP 429/.test(await details.innerText()))
+  check('供应商内容按纯文本显示，不执行HTML', await page.evaluate(() => window.__apiInjected !== true) && (await details.locator('pre').innerText()).includes('<script>'))
+  if (process.env.E2E_SHOT) { fs.mkdirSync(process.env.E2E_SHOT, {recursive:true}); await page.screenshot({path:path.join(process.env.E2E_SHOT,'api-error-details.png')}) }
+  await page.locator('.dock-team').first().click()
+  check('组织图区分请求排队与接口冷却', (await page.locator('[data-member="排队成员"]').innerText()).includes('等待请求名额') && (await page.locator('[data-member="冷却成员"]').innerText()).includes('接口冷却中'))
+  check('退避单独标为等待重试', (await page.locator('[data-member="重试成员"]').innerText()).includes('等待重试'))
+  const failed = page.locator('[data-member="额度成员"]')
+  check('额度耗尽成员不再显示为等模型，卡片保留错误', await failed.getAttribute('data-status') === 'failed' && (await failed.getAttribute('title')).includes('QuotaExceeded') && (await failed.innerText()).includes('weekly quota exhausted'))
+  if (process.env.E2E_SHOT) await page.screenshot({path:path.join(process.env.E2E_SHOT,'team-model-status.png')})
+  console.log('RESULT PASS')
+} finally { await app.close(); fs.rmSync(dir, {recursive:true,force:true}) }

@@ -126,7 +126,7 @@ export interface ConversationPolicy {
 
   /**
    * 发往模型的请求在缓冲池里排哪一档。
-   * - task/companion=urgent：用户当面等，不排队。
+   * - task/companion=urgent：用户当面等，优先排队但遵守窗口与冷却。
    * - watch/wakeup=queued：后台自己跑，晚一点不要紧，别挤掉当面的请求。
    */
   modelRequestPriority: Extract<ModelRequestPriority, 'urgent' | 'queued'>

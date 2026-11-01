@@ -3379,6 +3379,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       id: string
       type: string
       content: string
+      apiError?: AgentStep['apiError']
       images?: string[]
       docPreviewImages?: string[]
       echartsOption?: import('@shared/types').EChartsStepPayload
@@ -3432,6 +3433,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       subAgents: s.subAgents,
       expertTeam: s.expertTeam,
       organization: s.organization,
+      apiError: s.apiError,
       snapshotAt: s.snapshotAt,
       canvasData: s.canvasData
     })))

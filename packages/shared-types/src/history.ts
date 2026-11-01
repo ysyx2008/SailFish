@@ -5,6 +5,7 @@
 import type { ConversationKind, GoalContract, TerminalType, TokenUsage } from './agent'
 
 export interface AgentStepRecord {
+  apiError?: import('./agent').ApiFailureDetail
   id: string
   type: string
   content: string

@@ -191,6 +191,7 @@ export class SailFish extends Agent {
       commandRiskPolicy: this.commandRiskPolicy,
       profileId: this.profileId,
     })
+    child.shareModelSelection(this.modelSelection)
     return child
   }
 

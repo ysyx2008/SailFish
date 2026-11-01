@@ -472,6 +472,7 @@ export interface SubAgentResult {
   steps?: SubAgentToolStep[]
   /** 这会儿在排队等模型空位 */
   waitingForModel?: boolean
+  modelWaitReason?: 'queued' | 'cooldown' | 'retry'
   /** 专家角色（派专家时才有），跟名字一起显示 */
   role?: string
 }
@@ -528,6 +529,7 @@ export interface ExpertTeamView {
 
 /** 项目组织里的一个人（卡片和组织图用） */
 export interface OrganizationMemberView {
+  error?: string
   teamId?: string
   /** 当前或最近一次工具活动；职责仍由 description 表达。 */
   activity?: Pick<SubAgentToolStep, 'tool' | 'args' | 'status'>
@@ -536,6 +538,7 @@ export interface OrganizationMemberView {
   description: string
   status: SubAgentResult['status']
   waitingForModel?: boolean
+  modelWaitReason?: 'queued' | 'cooldown' | 'retry'
   role?: string
   /** 派出他的组长；秘书直接派的没有 */
   parent?: string
@@ -646,7 +649,16 @@ export interface EChartsStepPayload {
   registeredMaps?: string[]
 }
 
+export interface ApiFailureDetail {
+  model: string
+  message: string
+  statusCode?: number
+  code?: string
+  category?: 'quota'
+}
+
 export interface AgentStep {
+  apiError?: ApiFailureDetail
   id: string
   type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'waiting_input' | 'plan_created' | 'plan_updated' | 'plan_archived' | 'user_task' | 'final_result' | 'proactive_notice' | 'auto_review' | 'task_receipt'
   content: string

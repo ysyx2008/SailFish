@@ -123,6 +123,20 @@ describe('ModelRequestBuffer', () => {
     expect(buffer.snapshot(KEY)?.inFlight).toBe(1)
   })
 
+  it('冷却结束仍没拿到名额时，回到排队状态', async () => {
+    const held = await Promise.all(Array.from({ length: 4 }, () => buffer.acquire(KEY, 'queued')))
+    const states: string[] = []
+    const abort = new AbortController()
+    const pending = buffer.acquire(KEY, 'queued', { signal: abort.signal, onWait: (waiting, reason) => { if (waiting && reason) states.push(reason) } })
+    pending.catch(() => {})
+    held[0].reportThrottled()
+    clock.advance(1_000)
+    expect(states).toEqual(['queued', 'cooldown', 'queued'])
+    abort.abort()
+    await expect(pending).rejects.toThrow('aborted')
+    held.forEach(p => p.release())
+  })
+
   it('探路成功才接着放；缓之前放出去的成功不算恢复', async () => {
     const { granted, take } = tracker(buffer)
     for (let i = 0; i < 8; i++) void take('queued')
@@ -187,42 +201,25 @@ describe('ModelRequestBuffer', () => {
     expect(buffer.snapshot(KEY)?.pausedForMs).toBe(15_000)
   })
 
-  it('当面等的请求不排队，暂停中、窗口满也直接放', async () => {
+  it('当面请求同样受窗口和暂停约束，恢复时优先探路', async () => {
     const { granted, take } = tracker(buffer)
     for (let i = 0; i < 6; i++) void take('queued')
     await flush()
     granted[0].reportThrottled()
-    const onWait: boolean[] = []
-    await take('urgent', { onWait: w => onWait.push(w) })
+    let main: ModelRequestPermit | undefined
+    void take('urgent').then(p => { main = p })
+    for (const p of granted.slice()) p.release()
+    await flush()
+    expect(main).toBeUndefined()
+    clock.advance(1000)
+    await flush()
+    expect(main).toBeDefined()
     expect(granted).toHaveLength(5)
-    expect(onWait).toEqual([])
-  })
-
-  it('当面请求在暂停后成功，也算接口恢复', async () => {
-    const { granted, take } = tracker(buffer)
-    for (let i = 0; i < 6; i++) void take('queued')
+    expect(main!.isProbe).toBe(true)
+    main!.reportSuccess()
+    main!.release()
     await flush()
-    granted[0].reportThrottled()
-    const urgent = await take('urgent')
-    urgent.reportSuccess()
     expect(buffer.snapshot(KEY)?.recovering).toBe(false)
-  })
-
-  it('暂停中当面请求成功：接口已恢复，排队的不再干等暂停结束', async () => {
-    const { granted, take } = tracker(buffer)
-    for (let i = 0; i < 4; i++) void take('queued')
-    await flush()
-    granted[0].reportThrottled(60_000)
-    for (const p of granted.slice(0, 4)) p.release()
-    void take('queued')
-    await flush()
-    expect(granted).toHaveLength(4)
-    const urgent = await take('urgent')
-    urgent.reportSuccess()
-    urgent.release()
-    await flush()
-    expect(granted).toHaveLength(6)
-    expect(buffer.snapshot(KEY)?.pausedForMs).toBe(0)
   })
 
   it('已开工伙计接着发的，排在新排上的前面', async () => {
@@ -254,7 +251,7 @@ describe('ModelRequestBuffer', () => {
     expect(order).toEqual(['urgentRetry'])
   })
 
-  it('当面请求撞了限流再试：窗口有空位就发，不等暂停结束', async () => {
+  it('当面重试即使窗口有空位也遵守暂停', async () => {
     const { granted, take } = tracker(buffer)
     for (let i = 0; i < 4; i++) void take('queued')
     await flush()
@@ -265,8 +262,12 @@ describe('ModelRequestBuffer', () => {
     void take('queued')
     void take('urgentRetry')
     await flush()
+    expect(granted).toHaveLength(4)
+    expect(buffer.snapshot(KEY)).toMatchObject({ inFlight: 1, queued: 2 })
+    clock.advance(1000)
+    await flush()
     expect(granted).toHaveLength(5)
-    expect(buffer.snapshot(KEY)).toMatchObject({ inFlight: 2, queued: 1 })
+    expect(granted[4].isProbe).toBe(true)
   })
 
   it('排队中点停止：从队里拿掉、报中止，不占名额', async () => {
@@ -314,7 +315,7 @@ describe('ModelRequestBuffer', () => {
     expect(queuedWaits).toEqual([true, false])
   })
 
-  it('模拟压测：只能同时接 10 个的接口，200 个请求排进缓冲池比各自冲撞少得多', async () => {
+  it('模拟压测：主请求与后台各200个都经过同一窗口，不能绕过调度', async () => {
     async function simulate(priority: ModelRequestPriority) {
       const simClock = new FakeClock()
       const sim = new ModelRequestBuffer(
@@ -358,8 +359,9 @@ describe('ModelRequestBuffer', () => {
     const rushing = await simulate('urgent')
     const buffered = await simulate('queued')
     expect(buffered.done).toBe(200)
-    expect(buffered.throttled).toBeLessThan(rushing.throttled / 20)
-    expect(buffered.elapsedMs).toBeLessThan(rushing.elapsedMs / 5)
+    expect(rushing.done).toBe(200)
+    expect(rushing.throttled).toBe(buffered.throttled)
+    expect(rushing.elapsedMs).toBe(buffered.elapsedMs)
     expect(buffered.elapsedMs).toBeLessThan(60_000)
   })
 

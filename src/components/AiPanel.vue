@@ -33,6 +33,7 @@ import { describeLiveProcess, type ProcessFoldView } from '../utils/process-fold
 import { chatTimeParts } from '../utils/chat-time-marker'
 import { formatProcessFoldCaption, type ProcessFoldSay } from '../utils/process-fold-label'
 import ToolCallContent from './ToolCallContent.vue'
+import ApiErrorDetails from './ApiErrorDetails.vue'
 import SubAgentDock from './SubAgentDock.vue'
 import { toolDisplayName } from '../utils/tool-display'
 import ExpertTeamChat from './ExpertTeam/ExpertTeamChat.vue'
@@ -2911,7 +2912,9 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                         @contextmenu="openAttachmentContextMenu"
                       />
                     </div>
+                    <div v-else-if="item.step!.apiError || item.step!.type === 'error'" class="step-text">{{ item.step!.content }}</div>
                     <div v-else class="step-text markdown-content" v-html="renderMarkdown(item.step!.content)"></div>
+                    <ApiErrorDetails v-if="item.step!.apiError" :detail="item.step!.apiError!" />
                     <!-- 并行子 Agent 卡片组 -->
                     <OrganizationCard
                       v-if="teamCardViews.has(item.step!.id)"

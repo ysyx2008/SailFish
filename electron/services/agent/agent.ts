@@ -1,3 +1,5 @@
+import { formatApiFailure } from '../ai-failure'
+import { ModelSelection } from '../model-selection'
 /**
  * Agent 抽象基类
  * 
@@ -206,8 +208,26 @@ export abstract class Agent {
   /** 解析失败 / 未知命令 的风险策略（按 executionMode 分档） */
   commandRiskPolicy?: CommandRiskPolicy
   
-  /** AI 配置档案 ID（每个 Agent 实例独立，未设置时 fallback 到全局） */
-  profileId?: string
+  /** 手动选择由一场对话及其成员共享；自动降级保留实例内的有效档案。 */
+  protected modelSelection = new ModelSelection()
+  private selectedVersion = -1
+  private localProfileId?: string
+  get profileId(): string | undefined {
+    if (this.selectedVersion !== this.modelSelection.version) {
+      this.localProfileId = this.modelSelection.profileId ?? this.localProfileId
+      this.selectedVersion = this.modelSelection.version
+    }
+    return this.localProfileId
+  }
+  set profileId(value: string | undefined) {
+    this.localProfileId = value
+    this.selectedVersion = this.modelSelection.version
+  }
+
+  protected shareModelSelection(selection: ModelSelection): void {
+    this.modelSelection = selection
+    this.selectedVersion = -1
+  }
 
   /** Agent 实例的逻辑 ID（用于路由 proactive message 等场景） */
   protected _agentId?: string
@@ -1134,6 +1154,7 @@ export abstract class Agent {
     // 从没选过就保持空，下游回落到设置里当时的默认——微信进线不能写死、也不能盖掉界面选择。
     // 唤醒没有自己的选择器，每次未显式指定都跟默认。详见 agent/SPEC.md。
     if (options?.profileId) {
+      this.modelSelection.select(options.profileId)
       this.profileId = options.profileId
     } else if (this._agentId === '__wakeup__' && this.services.configService) {
       const active = this.services.configService.getActiveAiProfile()
@@ -1444,6 +1465,7 @@ export abstract class Agent {
       this.commandRiskPolicy = config.commandRiskPolicy
     }
     if (config.profileId !== undefined) {
+      this.modelSelection.select(config.profileId)
       this.profileId = config.profileId
       // 切模型即刻刷新上下文条：保留 token 快照，把 model/limit 换成新选 profile，
       // 清掉旧 Cache%（避免张冠李戴）。否则联络空闲时切了模型，状态栏仍显示上一次的模型。
@@ -4775,6 +4797,7 @@ export abstract class Agent {
     // 重试成功（首次 onChunk 到达）/ 最终失败（onError）/ 完成（onDone 兜底）时停掉 streaming 状态
     let lastRetryStepId: string | undefined
     let lastRetryParams: Record<string, string> | undefined
+    const failureSteps = new Set<string>()
     let retryCountdownTimer: ReturnType<typeof setInterval> | undefined
     // 每个 toolCallId 独立节流（多个 tool_call 并行流式时互不干扰）
     const toolProgressThrottle = new Map<string, number>()
@@ -4809,7 +4832,7 @@ export abstract class Agent {
       clearRetryCountdown()
       if (lastRetryStepId) {
         const doneContent = lastRetryParams
-          ? `🔄 ${t('agent.retry_done', lastRetryParams)}`
+          ? `🔄 ${t('agent.retry_done', lastRetryParams)}${lastRetryParams.errorSummary ? ` · ${lastRetryParams.errorSummary}` : ''}`
           : undefined
         this.updateStep(lastRetryStepId, {
           isStreaming: false,
@@ -5203,6 +5226,7 @@ export abstract class Agent {
               seconds: String(Math.max(1, Math.round(retryInfo.delayMs / 1000)))
             }
             if (retryInfo.statusCode !== undefined) params.status = String(retryInfo.statusCode)
+            if (retryInfo.error) params.errorSummary = formatApiFailure(retryInfo.error)
             const i18nKey =
               retryInfo.reason === 'rate_limit' ? 'agent.retry_rate_limit' :
               retryInfo.reason === 'server_error' ? 'agent.retry_server_error' :
@@ -5218,6 +5242,7 @@ export abstract class Agent {
               id: stepId,
               type: 'waiting',
               content: renderWait(Math.max(1, Math.round(retryInfo.delayMs / 1000))),
+              ...(retryInfo.error ? { apiError: retryInfo.error } : {}),
               isStreaming: true
             }, effectiveProfileId)
             // 秒数倒数；间隔一过改成「正在重试」，避免还停在「几秒后重试」
@@ -5228,7 +5253,7 @@ export abstract class Agent {
               if (remaining <= 0) {
                 clearRetryCountdown()
                 this.updateStep(stepId, {
-                  content: `🔄 ${t('agent.retry_in_flight', params)}`,
+                  content: `🔄 ${t('agent.retry_gate_wait', params)}`,
                   isStreaming: true
                 })
                 return
@@ -5280,7 +5305,36 @@ export abstract class Agent {
         },
         {
           bufferPriority: this.takeModelRequestPriority(),
-          onBufferWait: (waiting) => this.callbacks?.onModelWait?.(this._agentId || run.id, waiting),
+          getModelSelection: () => ({ profileId: this.resolveEffectiveProfileId(run), signal: this.modelSelection.signal }),
+          onApiFailure: detail => {
+            const content = detail.category === 'quota'
+              ? `${detail.model} · ${t('agent.api_quota_exhausted')}`
+              : `${detail.model} · HTTP ${detail.statusCode ?? ''} · ${detail.code ?? ''}`
+            const fingerprint = JSON.stringify(detail)
+            if (!failureSteps.has(fingerprint)) {
+              failureSteps.add(fingerprint)
+              this.addStep({ type: 'message', content, apiError: detail })
+            }
+          },
+          onRequestState: state => {
+            const waiting = state !== 'sending'
+            this.callbacks?.onModelWait?.(this._agentId || run.id, waiting, state === 'sending' ? undefined : state)
+            if (state === 'retry') return
+            if (lastRetryStepId) {
+              clearRetryCountdown()
+              this.updateStep(lastRetryStepId, {
+                content: `🔄 ${t(state === 'sending' ? 'agent.retry_in_flight' : state === 'cooldown' ? 'agent.retry_cooldown' : 'agent.retry_gate_wait', lastRetryParams ?? {})}`,
+              })
+            } else if (run.initialStepId) {
+              if (waiting) {
+                clearSlowTtftTimer()
+                this.updateStep(run.initialStepId, { content: t(state === 'cooldown' ? 'agent.model_cooldown' : 'agent.model_queued'), isStreaming: true })
+              } else {
+                this.markWaitingForFirstToken(run)
+                scheduleSlowTtftHint()
+              }
+            }
+          },
           rateLimitMaxRetries: this._isSubAgent ? SUB_AGENT_RATE_LIMIT_RETRIES : undefined,
         },
       )

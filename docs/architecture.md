@@ -55,7 +55,7 @@ SailFish/
 │   ├── utils/                   # 工具函数（logger、normalize 等）
 │   └── services/                # 后端服务
 │       ├── ai.service.ts        # AI 对话（多 provider 支持，见 AISERVICE_SPEC.md）
-│       ├── model-request-buffer.ts # 发往模型的请求共用的自适应缓冲池（按接口地址+密钥+模型分组；没被限流逐步放开，被限流就收窄并缓一缓；当面等的不排队、被限流后重试排最前；已开工的伙计优先于新排上的；档位读 CONVERSATION_POLICY.modelRequestPriority）
+│       ├── model-request-buffer.ts # 发往模型的请求共用的自适应缓冲池（按接口地址+密钥+模型分组；没被限流逐步放开，被限流就收窄并缓一缓；当面等的优先但不绕过窗口与冷却，每次重试重新排队；已开工的伙计优先于新排上的；档位读 CONVERSATION_POLICY.modelRequestPriority）
 │       ├── config.service.ts    # 配置管理（electron-store）
 │       ├── pty.service.ts       # 本地终端（node-pty）
 │       ├── ssh.service.ts       # SSH 连接管理
@@ -71,6 +71,8 @@ SailFish/
 │       │   ├── sub-agent-record-store.ts # 伙计/专家的状态与对话（history/sub-agents/<日期>/<主会话>/<伙计>/，不进索引，跟主会话删/过期；2026-10-23）
 │       │   ├── session-date-tree.ts  # 「日期/会话」目录树的删除与过期（专家团群聊、伙计记录共用）
 │       │   └── date-util.ts          # 历史日期工具纯函数
+│       ├── model-selection.ts    # 一场对话及其成员共享手动模型选择，唤醒排队/退避请求迁移；在途请求正常结束
+│       ├── ai-failure.ts         # 供应商额度协议码分类、错误原文与分组不可用错误
 │       ├── conversation/        # 会话领域模型（Conversation 聚合根 + Store + Manager + 策略表）
 │       │                        # —— 重构中，见 docs/conversation-refactor-design.md
 │       ├── mcp.service.ts       # MCP 服务器管理

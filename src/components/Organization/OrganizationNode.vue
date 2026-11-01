@@ -20,9 +20,11 @@ const activity = computed(() => {
   const step = props.node.member.activity
   return step ? [toolDisplayName(t, step.tool), step.args].filter(Boolean).join(' ') : ''
 })
-const hasActivity = computed(() => props.node.bucket === 'running' && !!activity.value)
+const hasActivity = computed(() => (props.node.bucket === 'running' && !!activity.value) || !!props.node.member.error)
 
-const statusLabel = computed(() => t(`ai.expertTeam.status.${props.node.bucket}`))
+const statusLabel = computed(() => props.node.bucket === 'waiting' && props.node.member.modelWaitReason
+  ? t(`ai.organization.modelWait.${props.node.member.modelWaitReason}`)
+  : t(`ai.expertTeam.status.${props.node.bucket}`))
 const tip = computed(() => [
   props.node.member.name,
   props.node.member.role,
@@ -30,6 +32,7 @@ const tip = computed(() => [
   props.node.member.reviewer ? t('ai.organization.reviewer') : '',
   statusLabel.value,
   props.node.member.description,
+  props.node.member.error,
 ].filter(Boolean).join(' · '))
 </script>
 
@@ -65,7 +68,7 @@ const tip = computed(() => [
     <OrganizationStatusBadge :bucket="node.bucket" :label="statusLabel" compact />
     </span>
     <span v-if="node.member.description" class="org-node-duty" :title="node.member.description">{{ node.member.description }}</span>
-    <span v-if="hasActivity" class="org-node-activity" :title="activity">{{ activity }}</span>
+    <span v-if="hasActivity" class="org-node-activity" :title="node.member.error || activity">{{ node.member.error || activity }}</span>
     </template>
   </div>
 </template>

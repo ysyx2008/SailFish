@@ -876,7 +876,9 @@ export default {
       leaderOf: 'Lead · {name}',
       secretary: 'Secretary',
     },
+    apiErrorDetails: 'API error details',
     organization: {
+      modelWait: { queued: 'Queued for model', cooldown: 'API cooling down', retry: 'Waiting to retry' },
       zoomOut: 'Zoom out',
       zoomIn: 'Zoom in',
       resetZoom: 'Reset zoom',

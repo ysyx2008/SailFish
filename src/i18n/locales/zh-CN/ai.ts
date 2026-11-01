@@ -877,7 +877,9 @@ export default {
       leaderOf: '负责人·{name}',
       secretary: '秘书',
     },
+    apiErrorDetails: '查看 API 错误详情',
     organization: {
+      modelWait: { queued: '等待请求名额', cooldown: '接口冷却中', retry: '等待重试' },
       zoomOut: '缩小团队图',
       zoomIn: '放大团队图',
       resetZoom: '恢复原始大小',
