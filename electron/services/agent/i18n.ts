@@ -1812,7 +1812,7 @@ const translations = {
     'expert.knock_secretary': '[组织里「{team}」的 {from} 点名秘书]\n{text}\n（用 followup_agent 点名他回应，会记进「{team}」的群里；群聊全文：{path}）',
     'expert.say_checkpoint': '专家互相叫醒满 {limit} 次了，之后点名先只记在群里、不叫醒人，等组长看过。',
     'expert.say_unknown': '群里没有 {names}。可以点名的：{members}',
-    'expert.say_denied': '只有专家团里的专家能在群里说话',
+    'expert.say_denied': '只有协作群里的成员能在群里说话',
     'expert.transcript_title': '# 专家团「{team}」群聊',
 
     // 伙计的远程范围（派出时的授权、伙计手里的 remote_exec）
@@ -3923,7 +3923,7 @@ Calendar, Todo, Bitable, Drive and Wiki operations require the user's union_id:
     'expert.knock_secretary': '[In the organization, {from} in "{team}" mentioned the secretary]\n{text}\n(Use followup_agent to name them in reply; it is recorded in the "{team}" chat. Full chat: {path})',
     'expert.say_checkpoint': 'Experts have woken each other {limit} times; further mentions are only recorded until the lead has read the chat.',
     'expert.say_unknown': 'No {names} in this team. You can name: {members}',
-    'expert.say_denied': 'Only members of an expert team can speak in the team chat',
+    'expert.say_denied': 'Only members of a collaboration chat can speak in it.',
     'expert.transcript_title': '# Expert team “{team}” chat',
 
     // Helper remote scope (dispatch-time authorization, remote_exec in helpers' hands)

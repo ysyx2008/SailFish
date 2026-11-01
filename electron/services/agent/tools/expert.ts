@@ -1,5 +1,5 @@
 /**
- * 专家在专家团的群里说话。派专家走 dispatch_agents（带 role / team），专家在运行上就是伙计。
+ * 成员在所属协作群里说话。通过dispatch_agents的team入群，role选填。
  */
 import type { ToolExecutorConfig, ToolResult } from './types'
 import { WAKES_PER_CHECKPOINT } from '../expert-team'

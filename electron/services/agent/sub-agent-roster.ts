@@ -107,7 +107,7 @@ export interface SpawnTask {
   prompt: string
   /** 专家角色；带了就是专家 */
   role?: string
-  /** 指定为组长（只有专家能当）：他在自己名下组人 */
+  /** 指定为组长（岗位选填）：他在自己名下组人 */
   lead?: boolean
   /** 当验收人（只在组团时有意义）：可以对交上来的东西给通过或打回的结论 */
   reviewer?: boolean

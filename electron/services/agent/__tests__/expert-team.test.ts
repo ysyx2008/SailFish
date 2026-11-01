@@ -569,22 +569,25 @@ describe('伙计和专家的区别写给秘书看（用户说「专家团」却�
   it('系统说明把两种人并列讲：各自带不带 role、界面上看到什么；用户的话指的是什么', () => {
     expect(prompt).toContain('派出的人有两种')
     expect(prompt).toContain('伙计：不带 role')
-    expect(prompt).toContain('界面上只是一行进度')
+    expect(prompt).toContain('没有额外岗位标签')
     expect(prompt).toContain('专家：带 role')
-    expect(prompt).toContain('名字前的角色标签')
-    expect(prompt).toContain('用户点开能看到完整群聊')
+    expect(prompt).toContain('显示为角色标签')
+    expect(prompt).toContain('用户能看到完整群聊')
   })
 
-  it('如实说角色给了专家什么：显示的称呼和开场一句话，别的和伙计一样，专长看指令；不替用户猜他想要什么', () => {
-    expect(prompt).toContain('也写进专家的开场「你是 名字（role）」')
-    expect(prompt).toContain('除此之外专家和伙计一样（同样的模型和权限，工具也一样，团里的专家多一个在群里说话的）')
-    expect(prompt).toContain('取决于你写给他的指令')
+  it('角色只说明岗位；下派、入群和验收资格独立，不替用户猜他想要什么', () => {
+    expect(prompt).toContain('也写入当前成员身份')
+    expect(prompt).toContain('分别由 lead、team 和 reviewer 决定')
+    expect(prompt).toContain('取决于 prompt')
     expect(prompt).not.toContain('他想看到的是')
   })
 
-  it('先各自独立判断再组团的安排：独立判断那步也可以是专家；带 team 时每位都带 role', () => {
+  it('独立判断仍可派专家，岗位建议填写但允许省略', () => {
     expect(prompt).toContain('独立判断那一步派不带 team 的专家，一样有角色标签')
-    expect(prompt).toContain('带 team 时 tasks 里每一位都要带 role，主持、协调这类位置也一样')
+    expect(prompt).toContain('建议填写以便辨认分工')
+    expect(prompt).toContain('负责人、协作群成员和验收人都可以不填')
+    expect(prompt).toContain('未指定为组长的成员不能再分派子智能体')
+    expect(prompt).not.toContain('每一位都要带 role')
   })
 
   it('不再用「分头就能做完的活派伙计」去压用户明说的专家', () => {
@@ -592,10 +595,13 @@ describe('伙计和专家的区别写给秘书看（用户说「专家团」却�
     expect(prompt).not.toContain('各看各的就够的不组团')
   })
 
-  it('工具说明开头就分开：不带 role 的是伙计，带 role 的是专家；角色那栏写明界面上是标签、带 team 时每项都带', () => {
+  it('工具说明建议填role，明确群内也选填且lead省略不授管理权限', () => {
     expect(tool.function.description.startsWith('派出这场任务里的同事并行干活：不带 role 的是伙计，带 role 的是专家')).toBe(true)
-    expect(props.tasks.items.properties.role.description).toContain('界面上显示为角色标签')
-    expect(props.tasks.items.properties.role.description).toContain('带 team 时 tasks 里每一项都要带')
+    expect(props.tasks.items.properties.role.description).toContain('建议填写')
+    expect(props.tasks.items.properties.role.description).toContain('负责人、协作群成员和验收人都可以不填 role')
+    expect(props.tasks.items.properties.lead.description).toContain('省略 lead 或设为 false 时没有下级管理权限')
+    expect(tool.function.description).toContain('role 仍选填')
+    expect(JSON.stringify(props)).not.toMatch(/每一项都要带|只有带 role 的专家能当|时也必填/)
   })
 
   it('伙计和专家自己的系统说明里没有这一段', () => {
