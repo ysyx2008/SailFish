@@ -1,4 +1,5 @@
 import type { AgentStep, SubAgentResult } from '@shared/types'
+import { teamCards, teamIdOfStep } from './team-view'
 import { subAgentBucket } from './sub-agent-summary'
 
 /** 这一批人里还有没干完的（排队、在干，含等模型空位） */
@@ -26,8 +27,14 @@ export class PinnedDispatchTracker {
   /** 看着干完的批次 → 当时你已经说过几句话 */
   private readonly finishedAt = new Map<string, number>()
 
-  update(steps: readonly AgentStep[]): AgentStep[] {
-    const dispatches = steps.filter(step => step.subAgents && step.subAgents.length > 0)
+  update(steps: readonly AgentStep[], sessionId?: string): AgentStep[] {
+    const cards = teamCards(steps, sessionId)
+    // 新团队取最新的整队状态，旧派出快照不能让已收工的队伍永久挂着。
+    const dispatches = steps.flatMap(step => {
+      if (!teamIdOfStep(step, steps, sessionId)) return step.organization || step.subAgents?.length ? [step] : []
+      const organization = cards.get(step.id)
+      return organization ? [{ ...step, organization }] : []
+    })
     const speech = steps.reduce((n, step) => n + (isUserSpeech(step) ? 1 : 0), 0)
 
     const alive = new Set(dispatches.map(step => step.id))
@@ -37,7 +44,7 @@ export class PinnedDispatchTracker {
     const pinned: AgentStep[] = []
     let latestFinished: AgentStep | undefined
     for (const step of dispatches) {
-      if (hasUnfinishedSubAgents(step.subAgents)) {
+      if (step.organization ? step.organization.live > 0 : hasUnfinishedSubAgents(step.subAgents)) {
         this.working.add(step.id)
         this.finishedAt.delete(step.id)
         pinned.push(step)

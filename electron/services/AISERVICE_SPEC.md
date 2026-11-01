@@ -63,6 +63,16 @@ AI API 的统一调用层。封装 OpenAI 兼容协议的 HTTP 请求，提供�
 - 不按窗口大小裁剪工具清单，也不为小窗口做其他特殊适配——省出来的空间救不了模型能力，是在给一个救不回来的场景做优化
 - 不设硬性下限、不禁用，也不维护「推荐模型白名单」
 
+### 统一模型调度与错误可见性（2026-11-01，用户确认）
+
+同接口、账号和模型的所有推理请求（主对话、成员、后台任务及每次重试）遵守同一并发窗口和冷却。主对话排在最前，但不绕过窗口或供应商要求的暂停；已有成员续跑优先于新成员。队列等待不消耗HTTP重试次数，等待和停止可取消。
+
+供应商稳定错误码表示额度耗尽时，不按短期限流反复重试；对该模型分组暂时熔断并释放排队请求，保留供应商原因和恢复信息，沿用既有备用模型开关与欠费边界。不同模型切换时重新获取其对应分组的名额。
+
+错误摘要优先使用用户配置的模型名称，以“名称：错误原因”显示；展开详情保留原始模型ID。名称随出错时的记录保存，旧记录没有名称时回退模型ID。重试记录持续保留原错误原因、HTTP状态和供应商错误码，详细错误作为文本可查看。等待退避、等待闸门和已发送请求分别展示；成功、失败或换模型后仍可追溯原因，不能只剩“已重试”。团队成员同样显示当前等待或失败原因，不把额度耗尽一直显示为“等模型”。
+
+用户切换当前对话模型，整个团队后续请求跟随新选择；已发出的请求正常收尾，排队或等重试的请求迁移到新模型闸门，成员正在执行的工具不被打断。其他对话独立；保留成员上下文、身份与既有权限。
+
 ### 自动重试要对用户说清楚
 
 网络抖动、接口限流、服务端临时出错时会自动再试，但再试本身也可能再等很久（连不上、模型一直不回）。用户不能只看到「几秒后重试」然后干等、以为卡住了。
@@ -70,7 +80,7 @@ AI API 的统一调用层。封装 OpenAI 兼容协议的 HTTP 请求，提供�
 成功标准：
 - 开始等重试间隔时，说清原因、第几次、还要等几秒；秒数要倒数，不能写死一个数字干等
 - 间隔一过、请求已经发出去，立刻改成「正在重试、等待模型」
-- 这一轮结束（成功、再试下一次、或彻底失败），卡片收成「已重试第几次」
+- 这一轮结束（成功、再试下一次、或彻底失败），卡片收成「已重试第几次」，保留错误原因摘要与可展开的API原文
 - 彻底失败时，错误本身也要说已经自动重试过，不要只丢一句超时
 - 等重试间隔时点停止，必须马上停，不能干等到点再停
 
@@ -120,7 +130,7 @@ AI API 的统一调用层。封装 OpenAI 兼容协议的 HTTP 请求，提供�
 | `chat(messages, profileId?)` | 纯文本对话（同步） | 知识文档更新、对话索引等后台任务 |
 | `chatStream(messages, onChunk, onDone, onError, profileId?)` | 纯文本对话（流式） | 前端 AI 对话面板 |
 | `chatWithTools(messages, tools, profileId?)` | 工具调用（同步） | Agent 非流式路径（较少使用） |
-| `chatWithToolsStream(messages, tools, onChunk, onToolCall, onDone, onError, profileId?, onToolCallProgress?, requestId?, onRetry?, onToolCallReady?)` | 工具调用（流式）。`onToolCallProgress(id, name, partialArgs)` 在 tool_call 参数流式片段到达时回调，`partialArgs` 为截至当前的完整 JSON 前缀，Agent 据此在"生成参数"阶段即可显示该工具卡片的实时命令文本。`onRetry(retryInfo?)` 在网络错误 / 429 / 5xx 触发自动重试前调用，`retryInfo` 包含 `{ attempt, max, delayMs, reason, statusCode? }`，用于在 UI 上展示「正在重试 N/M」避免用户误以为应用卡死；同时承担"重置已流出脏内容"职责（提供 onRetry 时上层 onChunk 不再收到 `⚠️ 重试中` 文本，由调用方自行渲染）。视觉降级等内部重试不传 `retryInfo`。 | Agent 主执行路径 |
+| `chatWithToolsStream(messages, tools, onChunk, onToolCall, onDone, onError, profileId?, onToolCallProgress?, requestId?, onRetry?, onToolCallReady?)` | 工具调用（流式）。`onToolCallProgress(id, name, partialArgs)` 在 tool_call 参数流式片段到达时回调，`partialArgs` 为截至当前的完整 JSON 前缀，Agent 据此在"生成参数"阶段即可显示该工具卡片的实时命令文本。`onRetry(retryInfo?)` 在网络错误 / 429 / 5xx 触发自动重试前调用，`retryInfo` 包含 `{ attempt, max, delayMs, reason, statusCode?, error? }`，用于在 UI 上展示「正在重试 N/M」避免用户误以为应用卡死；同时承担"重置已流出脏内容"职责（提供 onRetry 时上层 onChunk 不再收到 `⚠️ 重试中` 文本，由调用方自行渲染）。视觉降级等内部重试不传 `retryInfo`。 | Agent 主执行路径 |
 | `abort(requestId?)` | 中止请求 | Agent.abort()、用户取消 |
 | `dispose()` | 释放 keep-alive HTTP/HTTPS Agent；CLI 退出前调用避免进程空转 | `electron/cli/index.ts` agent:run finally |
 | `static getExplainCommandPrompt(command)` | 命令解释 prompt 模板 | 前端命令解释功能 |
@@ -136,7 +146,7 @@ AI API 的统一调用层。封装 OpenAI 兼容协议的 HTTP 请求，提供�
 | `ToolCall` | AI 返回的工具调用（id + name + arguments JSON） |
 | `ChatWithToolsResult` | 工具调用结果（content + tool_calls + finish_reason + usage + aborted） |
 | `ApiRequestError` | API 请求错误（statusCode + retryAfter + apiErrorCode） |
-| `RetryInfo` | 重试信息（attempt + max + delayMs + reason + statusCode） |
+| `RetryInfo` | 重试信息（attempt + max + delayMs + reason + statusCode + error原文详情） |
 | `TokenUsageInfo` | Token 消耗统计（prompt + completion + total + cache_hit/miss） |
 | `AnthropicStreamDelta` | Anthropic 流式增量（content/reasoning_content/tool_calls/finish_reason/usage） |
 | `AiContentPart` | 多模态内容块（text \| image_url） |
@@ -181,7 +191,7 @@ AI API 的统一调用层。封装 OpenAI 兼容协议的 HTTP 请求，提供�
 | Rate Limit (429) | 5 次 | 指数退避 + jitter，基础 5s（优先 `Retry-After` header） |
 | 服务端错误 (5xx) | 3 次 | 指数退避 + jitter，基础 3s |
 
-调用方提供 `onRetry` 时可拿到重试信息（第几次、最多几次、还要等几秒、原因；超时会单独标出来）以驱动界面。Agent 路径用一张持续更新的等待卡片：先说「多久后重试」，请求发出后改成「正在重试、等待模型」，结束后收成「已重试第几次」。彻底失败的错误文案也要写明已经自动重试过。
+调用方提供 `onRetry` 时可拿到重试信息（第几次、最多几次、还要等几秒、原因；超时会单独标出来）以驱动界面。Agent 路径用一张持续更新的等待卡片：先说「多久后重试」，请求发出后改成「正在重试、等待模型」，结束后收成「已重试第几次」，保留原因与可展开的原文。彻底失败的错误文案也要写明已经自动重试过。
 
 ### 多模态降级
 

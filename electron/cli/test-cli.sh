@@ -521,6 +521,8 @@ echo ""
 echo -e "${CYAN}[6/12] 历史记录${NC}"
 # ══════════════════════════════════════════════════════════════
 
+assert_fails "history:member 缺少身份报错" $CLI history:member
+assert_contains "history:member 不存在成员返回空" "null" $CLI history:member test-unknown-session no-such-member
 run_test "history:list 不崩溃"               $CLI history:list
 assert_contains "history:list --limit 2"     "steps" \
   $CLI history:list --limit 2

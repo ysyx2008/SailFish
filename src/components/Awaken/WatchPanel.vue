@@ -1402,6 +1402,8 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.panel-header .btn-icon { margin-left: auto; }
+
 /* ==================== Full-Screen Panel Layout ==================== */
 
 .modal-overlay {
@@ -1455,27 +1457,6 @@ onUnmounted(() => {
   background: rgba(var(--brand-vital-rgb), 0.12);
   border-radius: 10px;
   color: var(--brand-vital);
-}
-
-/* 与 main.css 的 .btn-icon-header 变体同源（22x22, padding 2, radius 5, hover scale 1.04）；
-   scoped 特异性更高，保证 HMR / 加载顺序变化时依然稳定生效。 */
-.panel-header .btn-icon {
-  width: 22px;
-  height: 22px;
-  padding: 2px;
-  border-radius: 5px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  /* header-stats 在 userWatches 为空时 v-if=false 不渲染，没有它撑满中间空间，
-     X 会紧挨标题。这里强制让 X 始终被推到右侧，与 settings-header 的 space-between 对齐。 */
-  margin-left: auto;
-}
-.panel-header .btn-icon:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  transform: scale(1.04);
 }
 
 /* ==================== Awaken Bar ==================== */

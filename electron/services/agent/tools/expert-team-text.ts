@@ -2,8 +2,9 @@
  * 专家和专家团交给模型的话：开工第一条、被叫醒时、敲组长的门。
  */
 import type { ChildSnapshot, TeamTexts } from '../sub-agent-roster'
-import { WAKES_PER_CHECKPOINT, type ExpertTeam, type TeamMessage } from '../expert-team'
+import { TEAM_LEADER, WAKES_PER_CHECKPOINT, type ExpertTeam, type TeamMessage } from '../expert-team'
 import { t } from '../i18n'
+import { memberFactsPrefix } from './sub-agent-feedback'
 
 /** 敲门里带群里最后几条 */
 const RECENT_IN_KNOCK = 6
@@ -13,6 +14,22 @@ const KNOCK_LINE_MAX = 600
 const WAKE_UNREAD_BUDGET = 20000
 const WAKE_LINE_MAX = 8000
 const ERROR_MAX = 2000
+
+/** 模型可见正文明确作为数据引用；群聊原始消息仍按原样落盘。 */
+export function quoteMemberText(text: string, max?: number): string {
+  const encode = (value: string) => JSON.stringify(value).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
+  const quoted = encode(text)
+  if (max === undefined || quoted.length <= max) return quoted
+  // 预算按转义后的长度算，避免很多换行或控制字符把一条未读膨胀数倍。
+  let low = 0
+  let high = Math.min(text.length, max)
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2)
+    if (encode(`${text.slice(0, middle)}…`).length <= max) low = middle
+    else high = middle - 1
+  }
+  return encode(`${text.slice(0, low)}…`)
+}
 
 function statusLabel(status: ChildSnapshot['status']): string {
   switch (status) {
@@ -40,38 +57,49 @@ export function renamedList(items: ReadonlyArray<{ name: string; askedName?: str
 }
 
 export function formatTeamMessage(team: ExpertTeam, m: TeamMessage, max?: number): string {
-  return t('expert.message_line', {
+  const line = t('expert.message_line', {
     from: team.label(m.from),
     to: m.to.length ? m.to.map(n => team.label(n)).join('、') : t('expert.to_nobody'),
-    text: max ? clip(m.text, max) : m.text,
+    text: quoteMemberText(m.text, max),
   })
+  return m.verdict ? `${line} ${t(m.verdict === 'pass' ? 'expert.verdict_mark_pass' : 'expert.verdict_mark_reject')}` : line
+}
+
+/** 团有验收人时，交给组长的话里附一行验收状态；没有验收人就不写这一行 */
+function reviewLine(team: ExpertTeam): string {
+  const state = team.reviewState()
+  if (state === 'none') return ''
+  const reviewers = team.reviewerNames().map(n => team.label(n)).join('、')
+  return `\n${t(`expert.review_${state}`, { reviewers })}`
 }
 
 /**
  * 开工第一条话。同团每人开头的团说明逐字一样，好复用模型缓存；
- * 「你是谁」和各自的指令在后面。伙计没有角色，就是指令本身。
+ * 「你是谁」和各自的指令在后面。不在团里且不是验收人的，就是指令本身。
  */
 export function expertOpening(child: ChildSnapshot, team?: ExpertTeam): string {
-  if (!child.role) return child.prompt
-  const youAre = t('expert.you_are', { name: child.name, role: child.role })
-  if (!team) return `${youAre}\n\n${child.prompt}`
+  const reviewer = child.reviewer ? t('expert.you_are_reviewer') : ''
+  if (!team) return [reviewer, child.prompt].filter(Boolean).join('\n\n')
   const roster = team.roster()
-    .map(m => t('expert.list_item', { name: m.name, role: m.role, description: m.description }))
+    .map(m => (m.role
+      ? t('expert.list_item', { name: m.name, role: m.role, description: m.description })
+      : `- ${m.name}：${m.description}`) + (m.reviewer ? t('expert.reviewer_mark') : ''))
     .join('\n')
   const renamed = renamedList(team.roster())
   const brief = t('expert.team_brief', { team: team.name, roster })
+    + `\n${t('expert.team_identity', { leader: team.label(TEAM_LEADER) })}`
     + (renamed ? `\n${t('expert.team_renamed', { list: renamed })}` : '')
-  return `${brief}\n\n${youAre}\n\n${child.prompt}`
+  return [brief, reviewer, child.prompt].filter(Boolean).join('\n\n')
 }
 
 /** 各人状态；带上交的东西（团停下来时）或只报状态（等组长时） */
-function memberLines(team: ExpertTeam, members: ChildSnapshot[], withDeliverables: boolean): string {
+function memberLines(team: ExpertTeam, members: ChildSnapshot[], withDeliverables: boolean, parent?: string): string {
   return members.map(c => {
     const label = team.label(c.name)
     const status = statusLabel(c.status)
     if (!withDeliverables) return t('expert.member_status_line', { label, status })
     const detail = c.status === 'completed' ? (c.result || '(no output)') : clip(c.error || '-', ERROR_MAX)
-    return t('expert.member_line', { label, status, detail })
+    return t('expert.member_line', { label, status, detail: memberFactsPrefix(c, parent) + quoteMemberText(detail) })
   }).join('\n')
 }
 
@@ -95,7 +123,7 @@ function fitUnread(team: ExpertTeam, messages: TeamMessage[]): { lines: string[]
   return { lines: lines.reverse(), dropped: 0 }
 }
 
-export function createTeamTexts(transcriptPath: (team: ExpertTeam) => string): TeamTexts {
+export function createTeamTexts(transcriptPath: (team: ExpertTeam) => string, parent?: string): TeamTexts {
   return {
     wake(team, _member, unread, trigger) {
       const others = trigger ? unread.filter(m => m.seq !== trigger.seq) : unread
@@ -106,12 +134,20 @@ export function createTeamTexts(transcriptPath: (team: ExpertTeam) => string): T
         parts.push(t('expert.wake_unread', { lines: earlier + lines.join('\n') }))
       }
       parts.push(trigger
-        ? t('expert.wake_trigger', { from: team.label(trigger.from), text: trigger.text })
+        ? t('expert.wake_trigger', { from: team.label(trigger.from), text: quoteMemberText(trigger.text) })
         : t('expert.wake_released'))
       return parts.join('\n\n')
     },
     leaderMention(team, message) {
-      return t('expert.knock_leader', { team: team.name, from: team.label(message.from), text: message.text })
+      return t('expert.knock_leader', { team: team.name, from: team.label(message.from), text: quoteMemberText(message.text) })
+    },
+    secretaryMention(team, message) {
+      return t('expert.knock_secretary', {
+        team: team.name,
+        from: team.label(message.from),
+        text: quoteMemberText(message.text),
+        path: transcriptPath(team),
+      })
     },
     checkpoint(team, members) {
       return t('expert.knock_checkpoint', {
@@ -120,15 +156,15 @@ export function createTeamTexts(transcriptPath: (team: ExpertTeam) => string): T
         members: memberLines(team, members, false),
         recent: recentLines(team),
         path: transcriptPath(team),
-      })
+      }) + reviewLine(team)
     },
     stopped(team, members) {
       const text = t('expert.knock_stopped', {
         team: team.name,
-        members: memberLines(team, members, true),
+        members: memberLines(team, members, true, parent),
         recent: recentLines(team),
         path: transcriptPath(team),
-      })
+      }) + reviewLine(team)
       const queued = team.queuedWakes()
       if (!queued.length) return text
       return `${text}\n${t('expert.knock_stopped_queued', { names: queued.map(n => team.label(n)).join('、') })}`
@@ -137,10 +173,14 @@ export function createTeamTexts(transcriptPath: (team: ExpertTeam) => string): T
 }
 
 /** 落盘的群聊全文 */
-export function formatTranscript(team: ExpertTeam): string {
-  const lines = team.transcript().map(m => {
+/** 群聊全文里一条一行（续写老文件时只拼这些行，不再重复标题） */
+export function formatTranscriptLines(team: ExpertTeam, messages: TeamMessage[] = team.transcript()): string[] {
+  return messages.map(m => {
     const time = new Date(m.at).toISOString().slice(11, 19)
     return `${time} ${formatTeamMessage(team, m)}`
   })
-  return [t('expert.transcript_title', { team: team.name }), '', ...lines].join('\n') + '\n'
+}
+
+export function formatTranscript(team: ExpertTeam): string {
+  return [t('expert.transcript_title', { team: team.name }), '', ...formatTranscriptLines(team)].join('\n') + '\n'
 }

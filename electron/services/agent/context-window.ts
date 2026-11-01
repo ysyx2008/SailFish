@@ -620,7 +620,11 @@ export class ContextWindowManager {
     const kept = content.slice(0, capTokens)
     return {
       ...msg,
-      content: `${kept}\n\n[内容过长已截断，完整原文见归档 "${archiveId}"，可用 recall(archive_id: "${archiveId}") 取回]`
+      content: `${kept}\n\n[内容过长已截断，完整原文见归档 "${archiveId}"，可用 recall(archive_id: "${archiveId}") 取回]`,
+      // 来源范围只指向保留下来的正文，不得把归档提示或未截断原文冒充用户交代。
+      ...(Array.isArray(msg._userContextParts) ? { _userContextParts: msg._userContextParts
+        .filter(part => part && Number.isInteger(part.start) && Number.isInteger(part.end) && part.start >= 0 && part.start < kept.length && part.end > part.start && part.end <= content.length)
+        .map(part => ({ start: part.start, end: Math.min(part.end, kept.length) })) } : {}),
     }
   }
 

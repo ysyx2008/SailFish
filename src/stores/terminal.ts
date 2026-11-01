@@ -3379,6 +3379,7 @@ export const useTerminalStore = defineStore('terminal', () => {
       id: string
       type: string
       content: string
+      apiError?: AgentStep['apiError']
       images?: string[]
       docPreviewImages?: string[]
       echartsOption?: import('@shared/types').EChartsStepPayload
@@ -3394,6 +3395,8 @@ export const useTerminalStore = defineStore('terminal', () => {
       askingStatus?: AgentStep['askingStatus']
       subAgents?: import('@shared/types').SubAgentResult[]
       expertTeam?: import('@shared/types').ExpertTeamView
+      organization?: import('@shared/types').OrganizationView
+      snapshotAt?: number
       canvasData?: import('@shared/types').CanvasData
     }>
     finalResult?: string
@@ -3429,6 +3432,9 @@ export const useTerminalStore = defineStore('terminal', () => {
       askingStatus: s.askingStatus,
       subAgents: s.subAgents,
       expertTeam: s.expertTeam,
+      organization: s.organization,
+      apiError: s.apiError,
+      snapshotAt: s.snapshotAt,
       canvasData: s.canvasData
     })))
     

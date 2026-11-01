@@ -17,7 +17,7 @@ import { writeFileAtomic } from '../../utils/atomic-write'
 import { createLogger } from '../../utils/logger'
 import { getDateString } from './date-util'
 import { SessionDateTree, isSafePathSegment } from './session-date-tree'
-import { readSessionDir, saveSessionRecordToDir } from './session-persistence'
+import { readSessionDir, readSessionDirAsync, saveSessionRecordToDir } from './session-persistence'
 
 const log = createLogger('SubAgentRecords')
 
@@ -36,6 +36,8 @@ export interface UnansweredCall {
 
 /** 名册里这位的样子，不含对话 */
 export interface ChildState {
+  /** 所属顶层团队；旧记录缺省。 */
+  teamId?: string
   name: string
   /** 派的时候指定的名字没用上时，当时指定的那个 */
   askedName?: string
@@ -43,6 +45,14 @@ export interface ChildState {
   prompt: string
   shownPrompt?: string
   role?: string
+  /** 是组长：在自己名下组人 */
+  lead?: boolean
+  /** 是验收人；叫醒后重建团时恢复 */
+  reviewer?: boolean
+  /** 派出他的组长的名字；秘书直接派的没有 */
+  parent?: string
+  /** 所在的专家团；重开时用来把团和组织拼回来 */
+  team?: string
   status: ChildStatus
   result?: string
   error?: string
@@ -56,7 +66,7 @@ export interface ChildState {
 
 /** 名册交给存储的那部分（对话和开局由存储自己记） */
 export type ChildStateInput = Pick<ChildState,
-  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'status' | 'result' | 'error' | 'blockedReason'>
+  'name' | 'askedName' | 'description' | 'prompt' | 'shownPrompt' | 'role' | 'lead' | 'reviewer' | 'parent' | 'team' | 'teamId' | 'status' | 'result' | 'error' | 'blockedReason'>
 
 export interface PersistedChild {
   state: ChildState
@@ -154,11 +164,16 @@ export class ChildRecorder {
   private writeState(input: ChildStateInput): void {
     const state: ChildState = {
       name: input.name,
+      ...(input.teamId ? { teamId: input.teamId } : {}),
       ...(input.askedName ? { askedName: input.askedName } : {}),
       description: input.description,
       prompt: input.prompt,
       ...(input.shownPrompt ? { shownPrompt: input.shownPrompt } : {}),
       ...(input.role ? { role: input.role } : {}),
+      ...(input.lead ? { lead: true } : {}),
+      ...(input.reviewer ? { reviewer: true } : {}),
+      ...(input.parent ? { parent: input.parent } : {}),
+      ...(input.team ? { team: input.team } : {}),
       status: input.status,
       ...(input.result !== undefined ? { result: input.result } : {}),
       ...(input.error ? { error: input.error } : {}),
@@ -222,9 +237,26 @@ export class SubAgentRecordStore {
     return found.sort((a, b) => a.state.updatedAt - b.state.updatedAt)
   }
 
+  /** 按真实成员名定位，详情轮询不扫描整场任务的所有成员。 */
+  async find(sessionId: string, name: string): Promise<PersistedChild | undefined> {
+    for (const sessionDir of this.tree.findSessionDirs(sessionId)) {
+      const dir = path.join(sessionDir, childDirName(name))
+      try {
+        const state = decodeState(await fs.promises.readFile(path.join(dir, STATE_FILE), 'utf8'))
+        if (state?.name === name) return { state, dir }
+      } catch { /* 该日期下没有这位成员，继续查 */ }
+    }
+    return undefined
+  }
+
   /** 这位的对话记录；没存过对话返回 null */
   readRecord(child: PersistedChild): AgentRecord | null {
     return readSessionDir(child.dir)
+  }
+
+  /** 成果索引只需要步骤：异步读取，并跳过模型对话全文。 */
+  async readSteps(child: PersistedChild): Promise<AgentRecord['steps']> {
+    return (await readSessionDirAsync(child.dir, undefined, { omitMessages: true }))?.steps ?? []
   }
 
   /** 开局带的主人对话；指纹对应的文件不在就读不到 */
@@ -306,13 +338,18 @@ export function childDirName(name: string): string {
 
 function readState(dir: string): ChildState | undefined {
   try {
-    const parsed = JSON.parse(fs.readFileSync(path.join(dir, STATE_FILE), 'utf-8')) as Partial<ChildState>
-    if (typeof parsed?.name !== 'string' || typeof parsed.description !== 'string' || typeof parsed.prompt !== 'string') return undefined
-    if (!isChildStatus(parsed.status)) return undefined
-    return { ...parsed, updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0 } as ChildState
+    return decodeState(fs.readFileSync(path.join(dir, STATE_FILE), 'utf-8'))
   } catch {
     return undefined
   }
+}
+
+function decodeState(text: string): ChildState | undefined {
+  const parsed = JSON.parse(text) as Partial<ChildState>
+  if (typeof parsed?.name !== 'string' || typeof parsed.description !== 'string' || typeof parsed.prompt !== 'string') return undefined
+  if (!isChildStatus(parsed.status)) return undefined
+  if (typeof parsed.teamId !== 'string' || !parsed.teamId.trim()) delete parsed.teamId
+  return { ...parsed, updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0 } as ChildState
 }
 
 function isChildStatus(value: unknown): value is ChildStatus {

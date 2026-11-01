@@ -1,112 +1,82 @@
+<script lang="ts">
+import { reactive } from 'vue'
+// 和早期名单一样，关闭浮层后保留“显示更多”的范围；不同来源团队各自记。
+const memberPages = reactive(new Map<string, number>())
+</script>
+
 <script setup lang="ts">
-/**
- * 对话顶部挂着的「派出去的人」：每一批一行，不随对话滚走。
- * 点一行展开成对话里那一处同样的内容（盖在对话上面，不把对话往下挤），点别处或再点一下收起。
- */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronDown, MessagesSquare, Check, TriangleAlert } from 'lucide-vue-next'
+import { Check, TriangleAlert, Network, ChevronDown } from 'lucide-vue-next'
 import type { AgentStep } from '@shared/types'
-import { describeDock } from '../utils/sub-agent-summary'
-import SubAgentGroup from './SubAgentGroup.vue'
+import { describeOrgDock } from '../utils/organization-view'
+import { teamCards, teamSources, teamMemberSnapshots } from '../utils/team-view'
+import { provideTeamViewport } from './Organization/team-viewport'
+import { useTeamSnapshot } from './Organization/team-snapshot'
+import TeamMemberTree from './Organization/TeamMemberTree.vue'
+import { teamMemberList } from '../utils/team-member-list'
+import { SUB_AGENT_PAGE_SIZE } from '../utils/sub-agent-summary'
 
-const props = defineProps<{
-  /** 该挂着的几批人（派出那几步），由外面按「还没干完 / 你还没再说话」挑好 */
-  steps: readonly AgentStep[]
-  /** 上面紧挨着计划卡：合成一块，不再各画各的框 */
-  attached?: boolean
-  /** 此刻开着群聊的专家团（派出那一步的 id） */
-  openTeamStepId?: string | null
-}>()
-const emit = defineEmits<{ openTeam: [stepId: string]; toggleTeam: [stepId: string] }>()
+const props = defineProps<{ steps: readonly AgentStep[]; teamSteps?: readonly AgentStep[]; sessionId?: string; attached?: boolean }>()
+const emit = defineEmits<{ openOrganization: [stepId: string, member?: string] }>()
 const { t } = useI18n()
-
 const root = ref<HTMLElement | null>(null)
-const openStepId = ref<string | null>(null)
-
-const items = computed(() => props.steps.map(step => {
-  const team = step.expertTeam
-  return {
-    step,
-    ...describeDock(t, step.subAgents ?? []),
-    teamCount: team ? team.messages.length + (team.earlierOmitted ?? 0) : 0,
-    hasTeam: !!team,
-  }
-}))
-
-const openItem = computed(() => items.value.find(item => item.step.id === openStepId.value))
-
-const toggle = (stepId: string) => {
-  openStepId.value = openStepId.value === stepId ? null : stepId
-}
-
-// 展开着的那一批不再挂了（你说话了、被收起），面板跟着收
-watch(() => props.steps.map(s => s.id), ids => {
-  if (openStepId.value && !ids.includes(openStepId.value)) openStepId.value = null
+const opened = ref<string | null>(null)
+const items = computed(() => {
+  const sources = props.teamSteps ?? props.steps
+  return [...teamCards(sources, props.sessionId)]
+    .filter(([id]) => teamSources(sources, id, props.sessionId).some(source => props.steps.some(step => step.id === source.id)))
+    .map(([id, org]) => ({ id, ...describeOrgDock(t, org), org }))
 })
-
-const onPointerDown = (event: PointerEvent) => {
-  if (!openStepId.value) return
-  if (root.value && event.target instanceof Node && root.value.contains(event.target)) return
-  openStepId.value = null
+const selected = computed(() => items.value.find(item => item.id === opened.value))
+const snapshots = computed(() => selected.value ? teamMemberSnapshots(props.teamSteps ?? props.steps, selected.value.id, props.sessionId) : undefined)
+const snapshotFor = (name: string) => snapshots.value?.get(name)
+const listSnapshot = useTeamSnapshot(() => selected.value?.org, () => opened.value)
+provideTeamViewport(computed(() => (listSnapshot.value?.total ?? 0) > 200))
+const listKey = computed(() => JSON.stringify([listSnapshot.value?.sessionId ?? props.sessionId, listSnapshot.value?.teamId ?? selected.value?.id]))
+const list = computed(() => listSnapshot.value ? teamMemberList(listSnapshot.value, (memberPages.get(listKey.value) ?? 1) * SUB_AGENT_PAGE_SIZE) : { groups: [], shown: 0, hidden: 0, unavailable: 0 })
+function showMore() { memberPages.set(listKey.value, (memberPages.get(listKey.value) ?? 1) + 1) }
+watch(items, () => { if (!selected.value) opened.value = null })
+function open(stepId: string, member?: string) {
+  opened.value = null
+  emit('openOrganization', stepId, member)
 }
-const onKeyDown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape') openStepId.value = null
+function onPointer(event: PointerEvent) {
+  if (event.target instanceof Node && !root.value?.contains(event.target)) opened.value = null
+}
+function onKey(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || !opened.value || !root.value?.getClientRects().length) return
+  event.preventDefault()
+  event.stopPropagation()
+  root.value?.querySelector<HTMLButtonElement>('.dock-toggle[aria-expanded="true"]')?.focus()
+  opened.value = null
 }
 onMounted(() => {
-  document.addEventListener('pointerdown', onPointerDown, true)
-  document.addEventListener('keydown', onKeyDown)
+  document.addEventListener('pointerdown', onPointer, true)
+  document.addEventListener('keydown', onKey, true)
 })
 onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onPointerDown, true)
-  document.removeEventListener('keydown', onKeyDown)
+  document.removeEventListener('pointerdown', onPointer, true)
+  document.removeEventListener('keydown', onKey, true)
 })
 </script>
 
 <template>
-  <div v-if="items.length > 0" ref="root" class="sub-agent-dock" :class="{ attached }">
-    <div v-for="item in items" :key="item.step.id" class="dock-row">
-      <div
-        class="dock-bar"
-        :class="[item.kind, { open: openStepId === item.step.id }]"
-        role="button"
-        tabindex="0"
-        :aria-expanded="openStepId === item.step.id"
-        :title="openStepId === item.step.id ? t('ai.subAgentDock.collapse') : t('ai.subAgentDock.expand')"
-        @click="toggle(item.step.id)"
-        @keydown.enter.self.prevent="toggle(item.step.id)"
-        @keydown.space.self.prevent="toggle(item.step.id)"
-      >
-        <span class="dock-icon">
-          <span v-if="item.kind === 'working'" class="dock-spinner" />
-          <Check v-else-if="item.kind === 'done'" :size="13" />
-          <TriangleAlert v-else :size="13" />
-        </span>
-        <span class="dock-headline">{{ item.headline }}</span>
-        <button
-          v-if="item.hasTeam"
-          type="button"
-          class="dock-team"
-          :class="{ active: openTeamStepId === item.step.id }"
-          :aria-pressed="openTeamStepId === item.step.id"
-          @click.stop="emit('toggleTeam', item.step.id)"
-        >
-          <MessagesSquare :size="12" />
-          <span>{{ item.teamCount > 0 ? t('ai.expertTeam.cardCount', { count: item.teamCount }) : t('ai.subAgentDock.teamChat') }}</span>
+  <div v-if="items.length" ref="root" class="sub-agent-dock" :class="{ attached }">
+    <div v-for="item in items" :key="item.id" class="dock-row">
+      <div class="dock-bar" :class="[item.kind, { open: opened === item.id }]">
+        <button type="button" class="dock-toggle" :aria-expanded="opened === item.id" :title="opened === item.id ? t('ai.subAgentDock.collapse') : t('ai.subAgentDock.expand')" @click="opened = opened === item.id ? null : item.id">
+          <span class="dock-icon"><span v-if="item.kind === 'working'" class="dock-spinner" /><Check v-else-if="item.kind === 'done'" :size="13" /><TriangleAlert v-else :size="13" /></span>
+          <span class="dock-headline">{{ item.headline }}</span>
+          <ChevronDown :size="13" class="dock-chevron" :class="{ open: opened === item.id }" />
         </button>
-        <ChevronDown :size="13" class="dock-chevron" :class="{ open: openStepId === item.step.id }" />
+        <button type="button" class="dock-team" @click="open(item.id)"><Network :size="12" /><span>{{ t('ai.organization.openChart') }}</span></button>
       </div>
-    </div>
-    <!-- 面板挂在整个栏下面（不是点开那一行下面），下面几行不被盖住 -->
-    <div v-if="openItem" class="dock-panel">
-      <SubAgentGroup
-        :step-id="openItem.step.id"
-        :sub-agents="openItem.step.subAgents ?? []"
-        :expert-team="openItem.step.expertTeam"
-        always-open
-        plain
-        hide-team-card
-      />
+      <div v-if="opened === item.id" class="dock-panel">
+        <TeamMemberTree :groups="list.groups" :step-id="item.id" :session-id="listSnapshot?.sessionId" :snapshot-for="snapshotFor" @open="open(item.id, $event)" />
+        <button v-if="list.hidden > 0" type="button" class="dock-more" @click="showMore">{{ t('ai.subAgentShowMore', { count: Math.min(SUB_AGENT_PAGE_SIZE, list.hidden), rest: list.hidden }) }}</button>
+        <p v-if="list.unavailable > 0" class="dock-unavailable">{{ t('ai.organization.listUnavailable', { count: list.unavailable }) }}</p>
+      </div>
     </div>
   </div>
 </template>
@@ -117,7 +87,7 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
   padding: 6px 12px;
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border-color);
@@ -132,14 +102,20 @@ onBeforeUnmount(() => {
 
 .dock-row {
   position: relative;
+  min-width: 0;
 }
 
 .dock-bar {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
   height: 30px;
-  padding: 0 10px 0 9px;
+  padding: 0 4px 0 0;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: var(--bg-secondary);
@@ -153,10 +129,13 @@ onBeforeUnmount(() => {
 
 .dock-bar:hover,
 .dock-bar.open,
-.dock-bar:focus-visible {
+.dock-bar:focus-within {
   background: var(--bg-tertiary);
   outline: none;
 }
+
+.dock-toggle { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; height: 100%; padding: 0 7px 0 9px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.dock-toggle:focus-visible, .dock-team:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -2px; border-radius: 6px; }
 
 .dock-icon {
   flex-shrink: 0;
@@ -210,7 +189,7 @@ onBeforeUnmount(() => {
   transform: rotate(180deg);
 }
 
-/* 群聊：行尾一个小按钮，开着时亮着，再点收起 */
+/* 全景入口独立于名单展开按钮 */
 .dock-team {
   flex-shrink: 0;
   display: inline-flex;
@@ -235,7 +214,7 @@ onBeforeUnmount(() => {
   background: rgba(var(--accent-rgb, 137, 180, 250), 0.2);
 }
 
-/* 展开的内容盖在对话上面（栏的下沿开始），不把对话往下挤，也不盖住栏里别的行 */
+/* 名单紧贴所属团队横幅，浮在下方内容上，不把对话往下挤。 */
 .dock-panel {
   position: absolute;
   left: 0;
@@ -250,4 +229,8 @@ onBeforeUnmount(() => {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   z-index: 20;
 }
+.dock-unavailable { margin: 6px 10px; color: var(--text-muted); font-size: 11px; }
+.dock-more { display: block; margin: 4px 0 0; padding: 4px 10px; font: inherit; font-size: 12px; color: var(--text-secondary); background: transparent; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; cursor: pointer; }
+.dock-more:hover { background: rgba(255,255,255,0.04); }
+.dock-more:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -2px; }
 </style>

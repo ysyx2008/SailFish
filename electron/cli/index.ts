@@ -7,6 +7,7 @@
 import { ConfigService, setConfigServiceInstance } from '../services/config.service'
 import { AiService } from '../services/ai.service'
 import { HistoryService } from '../services/history.service'
+import { readTeamMember } from '../services/history/team-member'
 import { HostProfileService } from '../services/host-profile.service'
 import type { ExecutionMode } from '../services/agent/types'
 import { createLogger, initLogging } from '../utils/logger'
@@ -2953,6 +2954,11 @@ async function runCli(): Promise<void> {
       case 'knowledge:bench:compare': await knowledgeBenchCompare(cmdArgs); break
 
       case 'history:list':   await historyList(cmdArgs); break
+      case 'history:member': {
+        if (!cmdArgs[0] || !cmdArgs[1]) throw new Error('需要会话 ID 和成员名')
+        console.log(JSON.stringify(await readTeamMember(getHistory().getAgentRecordStore().subAgents, cmdArgs[0], cmdArgs[1]) ?? null))
+        break
+      }
       case 'history:stats':  await historyStats(); break
 
       case 'host:list':      await hostList(); break

@@ -21,6 +21,7 @@ vi.mock('electron', () => ({
 
 import { HistoryService } from '../../history.service'
 import { Companion } from '../companion'
+import { readTeamArtifacts } from '../../history/team-artifacts'
 import type { AgentRecord } from '@shared/types'
 
 function companionRec(
@@ -258,6 +259,25 @@ describe('Companion.getMergedViewRecord', () => {
     expect(contents).toContain('提醒 11')
   })
 
+  it('旧组织合入联络历史后仍按原物理会话读取成果，不串最新会话同名团', async () => {
+    const hs = new HistoryService()
+    const at = Date.now() - 10_000
+    hs.saveAgentRecord(companionRec('old-org', { timestamp: at, steps: [{
+      id: 'old-dispatch', type: 'tool_call', content: '组织', timestamp: at,
+      organization: { members: [], teams: [], live: 0, total: 0 },
+    }] }))
+    hs.saveAgentRecord(companionRec('latest-org', { timestamp: at + 1000, steps: [] }))
+    const store = hs.getAgentRecordStore().subAgents
+    for (const [sessionId, result] of [['old-org', 'A的成果'], ['latest-org', 'B的成果']]) {
+      store.recorderFor({ sessionId, startedAt: at, name: '甲员' })!.saveState({ name: '甲员', parent: '甲', team: '团', description: 'fixture', prompt: 'fixture', status: 'completed', result })
+    }
+    const merged = new Companion(hs).getMergedViewRecord()!
+    expect(merged.id).toBe('latest-org')
+    const org = merged.steps.find(step => step.id === 'old-dispatch')!.organization!
+    expect(org.sessionId).toBe('old-org')
+    const artifacts = await readTeamArtifacts(store, org.sessionId!, { name: '团', owner: '甲' })
+    expect(artifacts.map(item => item.data.content)).toEqual(['A的成果'])
+  })
   it('真对话超过名额时只留最近一段窗口', () => {
     const hs = new HistoryService()
     const t0 = Date.now() - 1_000_000

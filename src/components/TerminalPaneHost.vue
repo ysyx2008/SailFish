@@ -93,7 +93,7 @@ watch(terminalPanes, (panes) => {
       <span class="stage-title">{{ stageTitle }}</span>
       <button
         type="button"
-        class="stage-close"
+        class="btn-icon btn-icon-header stage-close"
         :title="t('terminal.hosted.close')"
         :aria-label="t('terminal.hosted.close')"
         @click="closeHostedTerminal"
@@ -193,32 +193,6 @@ watch(terminalPanes, (panes) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.stage-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--text-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  -webkit-app-region: no-drag;
-}
-
-.stage-close:hover {
-  background: rgba(var(--accent-error-rgb, 243, 139, 168), 0.2);
-  color: var(--accent-error);
-}
-
-.stage-close:active {
-  transform: scale(0.9);
 }
 
 .terminal-loading,

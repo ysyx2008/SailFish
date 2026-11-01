@@ -34,6 +34,8 @@ vi.mock('../../im/im.service', () => ({
 }))
 
 import { Agent } from '../agent'
+import { sanitizeParentMessages, applyForkTurns } from '../sanitize-parent-messages'
+import { splitMessagesIntoTasks } from '../../conversation/messages'
 import type { ToolDefinition, AiMessage } from '../../ai.service'
 import type { 
   AgentContext, 
@@ -3494,5 +3496,55 @@ describe('伙计的用量算进主人这场', () => {
     expect(run.tokenUsage).toBeUndefined()
     expect(consumed).toBeGreaterThan(0)
     expect(goalShown).toBe(0)
+  })
+})
+
+
+describe('组织历史按根会话过滤', () => {
+  it('保留当前会话两种来源，排除sourceSessionId或组织来源属于其它会话的记录', () => {
+    const a=new TestAgent(createMockServices())
+    vi.spyOn(a,'getSessionId').mockReturnValue('child-session')
+    vi.spyOn(a,'rootSessionId').mockReturnValue('root-session')
+    const view=(teamId:string,sessionId?:string)=>({teamId,sessionId,members:[],teams:[],total:0,live:0})
+    ;(a as any)._conversation={steps:[
+      {organization:view('own-without-source')},
+      {sourceSessionId:'root-session',organization:view('own-with-source','root-session')},
+      {sourceSessionId:'foreign',organization:view('foreign-step','root-session')},
+      {organization:view('foreign-org','foreign')},
+    ]}
+    const executor=a.testToolExecutorConfig({context:createMockContext(),pendingUserMessages:[]})
+    expect(executor.getOrganizationHistory().map((v:{teamId?:string})=>v.teamId)).toEqual(['own-without-source','own-with-source'])
+  })
+})
+
+
+describe('运行时用户上下文来源',()=>{
+  const makeRun=(pending:unknown[])=>({id:'context-run',isRunning:true,steps:[],messages:[{role:'user',content:'原始用户任务'},{role:'assistant',content:'原始答复'}],taskMessageLog:[{role:'user',content:'原始用户任务'},{role:'assistant',content:'原始答复'}],pendingUserMessages:pending,context:createMockContext()})
+  it('敲门、后台通知和任务回执均仍送主模型，但不冒充用户轮次',()=>{
+    const a=new TestAgent(createMockServices())
+    const run=makeRun([{message:'仅敲门通知',silent:true,subAgentKnock:true},{message:'仅后台通知',silent:true,backgroundNotice:true},{message:'仅任务回执',silent:true,taskReceipt:true}])
+    a.injectCurrentRun(run);a.testProcessPendingUserMessages(run)
+    expect(run.messages.at(-1)?.content).toContain('仅敲门通知')
+    const cleaned=sanitizeParentMessages(run.messages as AiMessage[])
+    expect(cleaned).toEqual([{role:'user',content:'原始用户任务'},{role:'assistant',content:'原始答复'}])
+    expect(applyForkTurns(cleaned,{kind:'last',n:1})[0].content).toBe('原始用户任务')
+    expect(sanitizeParentMessages(run.taskMessageLog as AiMessage[])).toEqual(cleaned)
+  })
+  it('同批混合保留每条用户交代和静默点选答案，重开后仍能裁剪且不多切任务',()=>{
+    const a=new TestAgent(createMockServices())
+    const run=makeRun([{message:'混合敲门通知',silent:true,subAgentKnock:true},{message:'用户中途改任务',userInput:true},{message:'用户点选的答案',silent:true,userInput:true},{message:'混合后台通知',silent:true,backgroundNotice:true},{message:'未知静默通知',silent:true}])
+    a.injectCurrentRun(run);a.testProcessPendingUserMessages(run)
+    const live=sanitizeParentMessages(run.messages as AiMessage[])
+    const restored=sanitizeParentMessages(JSON.parse(JSON.stringify(run.taskMessageLog)))
+    expect(restored).toEqual(live)
+    expect(JSON.stringify(live)).toContain('用户中途改任务')
+    expect(JSON.stringify(live)).not.toContain('混合敲门通知')
+    expect(JSON.stringify(live)).not.toContain('混合后台通知')
+    expect(JSON.stringify(live)).not.toContain('未知静默通知')
+    const last=applyForkTurns(live,{kind:'last',n:1})
+    expect(last).toHaveLength(1)
+    expect(last[0].content).toContain('用户点选的答案')
+    expect(last[0].content).not.toContain('用户中途改任务')
+    expect(splitMessagesIntoTasks(run.taskMessageLog as AiMessage[],()=> 'task-id')).toHaveLength(1)
   })
 })

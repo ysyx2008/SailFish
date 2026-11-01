@@ -45,12 +45,15 @@ vi.mock('../../web-search/index', () => ({
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, parseDispatchTasks, SubAgentWorkspace, viewStepsPerAgent } from '../tools/sub-agent'
+import { dispatchSubAgents, followupAgent, waitAgents, interruptAgent, formatKnock, parseDispatchTasks, seedOrganizationBoard, SubAgentWorkspace, viewStepsPerAgent, workspaceOf } from '../tools/sub-agent'
 import { getAgentTools } from '../tools'
-import { MAX_LIVE_CHILDREN, SubAgentRoster, type ChildAgentHandle } from '../sub-agent-roster'
+import { MAX_LIVE_CHILDREN, SubAgentRoster, type ChildAgentHandle, type ChildSnapshot } from '../sub-agent-roster'
+import { OrgLedger } from '../org-ledger'
 import type { ToolExecutorConfig, AgentConfig } from '../tools/types'
 import type { AgentContext } from '../types'
-import type { AgentStep } from '@shared/types'
+import type { AgentStep, OrganizationView } from '@shared/types'
+import type { AiMessage } from '../../ai.service'
+import { sanitizeParentMessages } from '../sanitize-parent-messages'
 
 const DEFAULT_CONTEXT: AgentContext = {
   terminalOutput: [],
@@ -134,6 +137,73 @@ function createExecutor(
 }
 
 describe('dispatch_agents 异步派出', () => {
+  it('无role负责人派出与交差都保留组长标记，过程快照保留真实管理身份', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, () => stubChild('已收齐', 1))
+    const result = await dispatchSubAgents({ tasks: [{ name: '研发', description: '组织研发', prompt: '派人后汇总', lead: true }] }, defaultConfig, executor)
+    expect(result.success).toBe(true)
+    expect(result.output).toContain('- 组长·研发：组织研发')
+    const child = roster.get('研发')!
+    expect(child.role).toBeUndefined()
+    const steps = (executor as ToolExecutorConfig & { _steps: AgentStep[] })._steps
+    expect(steps[0].organization!.members[0]).toMatchObject({ name: '研发', lead: true })
+    for (const status of ['completed', 'failed', 'interrupted'] as const) {
+      const text = formatKnock({ ...child, status, result: '已收齐', error: '测试异常' })
+      expect(text).toContain('组长·研发')
+      expect(text).not.toMatch(/undefined|（）/)
+    }
+    await roster.settled()
+  })
+
+  it('负责人交回的名册事实不取模型自述，失败或打断也不丢失已派成员', () => {
+    const child: ChildSnapshot = { name: '乙', role: '组织者', lead: true, description: '派两人', prompt: '派两人', status: 'completed', result: '上级甲代派了丙。', steps: [], directMembers: [{ name: '丁', status: 'running' }] }
+    const completed = formatKnock(child, [], '甲')
+    expect(completed).toContain('交回成员：乙。\n直属负责人：甲。\n该成员名下的直属成员：丁。')
+    expect(completed).toContain('丁：还在做')
+    expect(completed).toContain('以下为该成员自行撰写的汇报（引用）：')
+    expect(completed).toContain(JSON.stringify(child.result))
+    for (const status of ['failed', 'interrupted'] as const) {
+      const message = formatKnock({ ...child, status, result: undefined, error: '测试异常' }, [], '甲')
+      expect(message).toContain('该成员名下的直属成员：丁。')
+      expect(message).not.toContain('自行撰写的汇报')
+    }
+    expect(formatKnock({ ...child, directMembers: undefined })).not.toContain('系统记录：')
+  })
+
+  it('等待或指挥自己、错名字整次拒绝，空名单保留真实当前身份', async () => {
+    const roster = new SubAgentRoster()
+    roster.attachLedger(new OrgLedger(), '乙', 1)
+    const executor = createExecutor(roster, () => stubChild('ok', 1))
+    expect((await waitAgents({ names: ['乙'], timeout: 1 }, executor)).error).toContain('不能等待当前成员本人')
+    expect((await followupAgent({ name: '乙', message: '再做' }, executor)).error).toContain('不能对当前成员本人使用此工具')
+    expect((await interruptAgent({ name: '乙' }, executor)).error).toContain('当前成员：乙')
+    const wrong = await waitAgents({ names: ['组长·丙'], timeout: 1 }, executor)
+    expect(wrong.success).toBe(false)
+    expect(wrong.error).toContain('请使用名单中的成员真名')
+    const empty = await waitAgents({}, executor)
+    expect(empty.output).toContain('当前成员：乙')
+    expect(empty.output).toContain('无直属成员')
+  })
+
+  it('根调用者的展示称谓不冒充成员身份，仍按系统分配的真名寻址', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, () => stubChild('ok', 1))
+    await dispatchSubAgents({ tasks: [{ name: '秘书', description: '核对', prompt: '核对' }] }, defaultConfig, executor)
+    expect(roster.targetIssue('秘书')).toEqual({ kind: 'missing' })
+    expect(roster.targetIssue(roster.list()[0].name)).toBeUndefined()
+    await roster.settled()
+  })
+
+  it('重启后打断已停下的深层成员，按真实状态反馈，不误报其负责人缺席', async () => {
+    const root = new SubAgentRoster()
+    const executor = createExecutor(root, stubChild('unused'))
+    executor.restoreDormantChildren = () => [
+      { name: '甲', lead: true, role: '负责人', description: '研发', prompt: '研发', status: 'completed', revive: () => { throw new Error('不应运行甲') } },
+      { name: '乙', parent: '甲', description: '核对', prompt: '核对', status: 'completed', revive: () => { throw new Error('不应运行乙') } },
+    ]
+    expect((await interruptAgent({ name: '乙' }, executor)).error).toBe('乙 已经不在跑了')
+  })
+
   it('立刻返回名字，不等伙计做完', async () => {
     const roster = new SubAgentRoster()
     const child = stubChild('配置在 /etc')
@@ -174,6 +244,51 @@ describe('dispatch_agents 异步派出', () => {
     expect(roster.list()).toHaveLength(0)
   })
 
+  it('秘书不能在一次派出里同时带团和指定组长', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, stubChild('ok'))
+    const result = await dispatchSubAgents({
+      team: '研发团',
+      tasks: [
+        { description: '定路线', prompt: '定路线', role: '技术负责人', lead: true },
+        { description: '对比', prompt: '对比', role: '选型' },
+        { description: '估算', prompt: '估算', role: '估算' },
+      ],
+    }, defaultConfig, executor)
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('只派组长')
+    expect(roster.list()).toHaveLength(0)
+  })
+
+  it('秘书不能把组长装进一个上级团，组长应该直管', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, stubChild('ok'))
+    const result = await dispatchSubAgents({
+      team: '项目组',
+      tasks: [
+        { description: '带研发组', prompt: '带研发组', role: '研发组长', lead: true },
+        { description: '带运营组', prompt: '带运营组', role: '运营组长', lead: true },
+      ],
+    }, defaultConfig, executor)
+    expect(result.success).toBe(false)
+    expect(roster.list()).toHaveLength(0)
+  })
+
+  it('秘书可以一次派两位组长，组长自己组人', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, stubChild('ok'))
+    const result = await dispatchSubAgents({
+      tasks: [
+        { description: '带研发组', prompt: '带研发组', role: '研发组长', lead: true },
+        { description: '带运营组', prompt: '带运营组', role: '运营组长', lead: true },
+      ],
+    }, defaultConfig, executor)
+    expect(result.success).toBe(true)
+    expect(roster.list()).toHaveLength(2)
+    expect(roster.list().every(c => c.lead)).toBe(true)
+    roster.abortAll()
+  })
+
   it('followup / interrupt 走花名册', async () => {
     const roster = new SubAgentRoster()
     const child = stubChild('v1')
@@ -190,6 +305,33 @@ describe('dispatch_agents 异步派出', () => {
     expect(roster.hasLive()).toBe(true)
     await roster.waitUntil(['alice'], new AbortController().signal)
     expect(roster.get('alice')?.status).toBe('interrupted')
+  })
+
+  it('再交代一位组长：这一步也带上组织全貌，之后跟着全组织刷新', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, stubChild('ok', 5000))
+    await dispatchSubAgents({
+      tasks: [{ name: '研发组', role: '研发组长', lead: true, description: '带研发组做事', prompt: '带研发组做事' }]
+    }, defaultConfig, executor)
+    const follow = await followupAgent({ name: '研发组', message: '再查一下' }, executor)
+    expect(follow.success).toBe(true)
+    const step = (executor as unknown as { _steps: AgentStep[] })._steps.at(-1)
+    expect(step?.organization?.members.map(m => m.name)).toContain('研发组')
+    roster.abortAll()
+  })
+
+  it('组长再交代自己的成员时，不把全组织快照写进组长的步骤', async () => {
+    const ledger = new OrgLedger()
+    const root = new SubAgentRoster()
+    root.attachLedger(ledger, undefined, 0)
+    const lead = new SubAgentRoster({ knockSettleMs: 0 })
+    lead.attachLedger(ledger, '研发组长', 1)
+    const executor = createExecutor(lead, stubChild('ok', 50))
+    await dispatchSubAgents({ tasks: [{ name: '甲', description: '甲', prompt: '甲' }] }, defaultConfig, executor)
+    expect((await followupAgent({ name: '甲', message: '再看' }, executor)).success).toBe(true)
+    const step = (executor as unknown as { _steps: AgentStep[] })._steps.at(-1)
+    expect(step?.organization).toBeUndefined()
+    lead.abortAll(); await lead.settled(); lead.release(); root.release()
   })
 
   it('wait_agents 超时后返回还在跑的状态，不挂死', async () => {
@@ -253,6 +395,103 @@ describe('dispatch_agents 异步派出', () => {
     expect(waited.output).not.toContain('快的：name=SailFish')
     expect(waited.output).not.toContain('慢的：README')
     expect(roster.hasLive()).toBe(true)
+  })
+
+  it('wait_agents 点名别枝的人：等到他停下，不领走他主人的敲门', async () => {
+    const ledger = new OrgLedger()
+    const root = new SubAgentRoster()
+    root.attachLedger(ledger, undefined, 0)
+    const lead = new SubAgentRoster({ knockSettleMs: 0 })
+    lead.attachLedger(ledger, '研发组长', 1)
+    const leadExecutor = createExecutor(lead, stubChild('做完了', 20))
+    await dispatchSubAgents({
+      tasks: [{ name: '小甲', description: '读配置', prompt: '去读' }]
+    }, defaultConfig, leadExecutor)
+
+    const waited = await waitAgents({ names: ['小甲'], timeout: 2 }, createExecutor(root, stubChild('unused')))
+    expect(waited.success).toBe(true)
+    expect(waited.output).toContain('要等的 1 个里：做完 1')
+    // 敲门还在组长的名册上，组长自己等得到
+    const leaderNews = await lead.waitForNews(['小甲'], new AbortController().signal)
+    expect(leaderNews.arrived.map(c => c.name)).toEqual(['小甲'])
+  })
+
+  it('直接恢复深层成员后，不点名也会等到他，并保留负责人的敲门', async () => {
+    const root = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(root, stubChild('unused'))
+    executor.restoreDormantChildren = () => [
+      { name: '研发组长', lead: true, role: '负责人', description: '研发', prompt: '研发', status: 'completed', revive: () => { throw new Error('不应运行组长') } },
+      { name: '小甲', parent: '研发组长', description: '核对', prompt: '核对', status: 'completed', revive: () => ({ handle: stubChild('核对完成', 50), steps: [] }) },
+    ]
+    expect((await followupAgent({ name: '小甲', message: '继续' }, executor)).success).toBe(true)
+    const started = Date.now()
+    const waited = await waitAgents({ timeout: 2 }, executor)
+    expect(Date.now() - started).toBeGreaterThanOrEqual(30)
+    expect(waited.success).toBe(true)
+    expect(waited.output).not.toContain('没有要等的伙计')
+    expect(waited.output).toContain('要等的 1 个里：做完 1')
+    const holder = root.orgEntries().find(entry => entry.owner === '研发组长')!.roster
+    const news = await holder.waitForNews(['小甲'], new AbortController().signal)
+    expect(news.arrived.map(member => member.name)).toEqual(['小甲'])
+    root.abortAll(); await root.settled(); root.release()
+  })
+
+  it('跨枝一起等时，本枝先回来就先返回，不被别枝的慢活拖住', async () => {
+    const ledger = new OrgLedger()
+    const root = new SubAgentRoster({ knockSettleMs: 0 })
+    root.attachLedger(ledger, undefined, 0)
+    const lead = new SubAgentRoster({ knockSettleMs: 0 })
+    lead.attachLedger(ledger, '研发组长', 1)
+    const rootExecutor = createExecutor(root, stubChild('本地做完了', 20))
+    const leadExecutor = createExecutor(lead, stubChild('远处还在干', 5000))
+    await dispatchSubAgents({
+      tasks: [{ name: '本地', description: '本地活', prompt: '本地活' }]
+    }, defaultConfig, rootExecutor)
+    await dispatchSubAgents({
+      tasks: [{ name: '远处', description: '远处的活', prompt: '远处的活' }]
+    }, defaultConfig, leadExecutor)
+
+    const started = Date.now()
+    const waited = await waitAgents({ names: ['本地', '远处'], timeout: 10 }, rootExecutor)
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect(waited.output).toContain('新到：本地')
+    // 组长不能等别枝的人
+    const fromLead = await waitAgents({ names: ['本地'], timeout: 1 }, leadExecutor)
+    expect(fromLead.success).toBe(false)
+    expect(fromLead.error).toContain('管理范围')
+    root.abortAll()
+    lead.abortAll()
+  })
+
+  it('派人的回执按全组织算没做完的人', async () => {
+    const ledger = new OrgLedger()
+    const root = new SubAgentRoster()
+    root.attachLedger(ledger, undefined, 0)
+    const lead = new SubAgentRoster()
+    lead.attachLedger(ledger, '研发组长', 1)
+    const executor = createExecutor(lead, stubChild('ok', 5000))
+    await dispatchSubAgents({
+      tasks: [{ name: '甲', description: 'a', prompt: 'a' }]
+    }, defaultConfig, executor)
+    const second = await dispatchSubAgents({
+      tasks: [{ name: '乙', description: 'b', prompt: 'b' }]
+    }, defaultConfig, executor)
+    expect(second.output).toContain('全组织现在没做完的共 2 个')
+    lead.abortAll()
+  })
+
+  it('派出组长：名单里写着「组长·名字」，并说明团里的人由组长自己管', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, stubChild('ok', 5000))
+    const result = await dispatchSubAgents({
+      tasks: [
+        { name: '研发组长', description: '带研发组', prompt: '带研发组', role: '研发组长', lead: true },
+        { name: '运营组长', description: '带运营组', prompt: '带运营组', role: '运营组长', lead: true },
+      ],
+    }, defaultConfig, executor)
+    expect(result.output).toContain('组长·研发组长（研发组长）')
+    expect(result.output).toContain('团里的人怎么分、怎么验收由他们管')
+    roster.abortAll()
   })
 
   it('wait_agents 人多时只报计数和新到的，不列全员', async () => {
@@ -477,11 +716,75 @@ describe('两种写法', () => {
   it('工具说明里写着保险丝的数', () => {
     const tool = getAgentTools(undefined, { mode: 'assistant' }).find(t => t.function.name === 'dispatch_agents')!
     expect(tool.function.description).toContain(String(MAX_LIVE_CHILDREN))
-    expect(Object.keys((tool.function.parameters as { properties: object }).properties).sort()).toEqual(['batch', 'remote_commands', 'tasks', 'team'])
+    expect(Object.keys((tool.function.parameters as { properties: object }).properties).sort()).toEqual(['batch', 'continue_team', 'remote_commands', 'tasks', 'team'])
   })
 })
 
 describe('结果落文件与总览', () => {
+  it('落盘目录按会话固定：中途退出后再跑，路径还对得上', () => {
+    const first = new SubAgentWorkspace('/tmp/before-crash')
+    first.bindSession('sess-1')
+    const second = new SubAgentWorkspace('/tmp/next-run')
+    second.bindSession('sess-1')
+    expect(first.organizationView().sessionId).toBe('sess-1')
+    expect(second.organizationView().sessionId).toBe('sess-1')
+    expect(first.overviewPath).toContain('session-sess-1')
+    expect(second.overviewPath).toBe(first.overviewPath)
+  })
+
+  it('超过 100 个团仍完整提供，不丢团框和群聊入口', () => {
+    const ws = new SubAgentWorkspace('/tmp/org-team-limit')
+    const teamViews = Array.from({ length: 101 }, (_, i) => ({
+      name: `团${i}`, review: 'none', messageCount: 0, waitingLeader: false, wakeLimit: 30,
+    }))
+    ;(ws as unknown as { boardSections: Map<string, unknown> }).boardSections.set('', {
+      owner: undefined, depth: 0, rows: [], teams: [], live: 0, total: 0, members: [], teamViews,
+    })
+    const view = ws.organizationView()
+    expect(view.teams).toHaveLength(101)
+    expect(view.omittedTeams).toBeUndefined()
+  })
+
+  it('重开时先用保存的组织全貌把看板铺出来', () => {
+    const ws = new SubAgentWorkspace('/tmp/org-seed-board')
+    const view: OrganizationView = {
+      members: [
+        { id: '研发组', name: '研发组', description: '带研发组', status: 'running', lead: true, role: '研发组长' },
+        { id: '小甲', name: '小甲', description: '写甲', status: 'completed', parent: '研发组', team: '项目团' },
+      ],
+      teams: [{ name: '项目团', owner: '研发组', review: 'pass', reviewers: ['小甲'], messageCount: 3, waitingLeader: false, wakeLimit: 30 }],
+      live: 1,
+      total: 2,
+    }
+    seedOrganizationBoard(ws, view)
+    const seeded = ws.organizationView()
+    expect(seeded.members.map(m => m.name)).toEqual(['研发组', '小甲'])
+    expect(seeded.teams[0]).toMatchObject({ name: '项目团', owner: '研发组', review: 'pass' })
+    expect(seeded.live).toBe(1)
+    ws.rememberBoardSection({ owner: '研发组', depth: 1, rows: [], teams: [], live: 0, total: 1,
+      members: seeded.members.filter(m => m.parent === '研发组'), teamViews: [],
+    })
+    expect(ws.organizationView().teams).toEqual(seeded.teams)
+    // 截断过的快照不铺：铺出来会把看得到的部分当成全组织
+    const truncated = new SubAgentWorkspace('/tmp/org-seed-truncated')
+    seedOrganizationBoard(truncated, { ...view, omitted: 5 })
+    expect(truncated.hasBoard()).toBe(false)
+  })
+
+  it('超过 200 人仍保留所有节点与真实异常合计', () => {
+    const ws = new SubAgentWorkspace('/tmp/org-member-limit')
+    const member = (name: string, status: string) => ({ id: name, name, description: '', status })
+    const members = Array.from({ length: 200 }, (_, i) => member(`m${i}`, 'completed'))
+    members.push(member('bad', 'failed'))
+    ;(ws as unknown as { boardSections: Map<string, unknown> }).boardSections.set('', {
+      owner: undefined, depth: 0, rows: [], teams: [], live: 0, total: 201, members, teamViews: [],
+    })
+    const view = ws.organizationView()
+    expect(view.members).toHaveLength(201)
+    expect(view.omitted).toBeUndefined()
+    expect(view.problems).toBe(1)
+  })
+
   it('直接带回的字数随这一轮派的人数收紧，夹在 1000 到 8000 之间', () => {
     expect(SubAgentWorkspace.inlineLimit(1)).toBe(8000)
     expect(SubAgentWorkspace.inlineLimit(5)).toBe(8000)
@@ -594,6 +897,27 @@ describe('进度推给界面', () => {
     expect((step.toolArgs as { batch?: { instruction: string } }).batch?.instruction).toBe('很长的共同指令'.repeat(50))
   })
 
+  it('200人成批收工不绕过节流，交差完整且最后状态立即可见', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const executor = createExecutor(roster, () => stubChild('编号=1001\n结果=3010', 1))
+    let pushes = 0
+    const update = executor.updateStep
+    executor.updateStep = (id, updates) => {
+      if (updates.subAgents) pushes++
+      update(id, updates)
+    }
+    const knocks: string[] = []
+    executor.knockParent = message => { knocks.push(message) }
+    await dispatchSubAgents({ batch: { instruction: '计算', items: Array.from({ length: 200 }, (_, i) => ({ description: '压测', input: String(i) })) } }, defaultConfig, executor)
+    await roster.settled()
+    const step = (executor as any)._steps.find((s: AgentStep) => s.toolName === 'dispatch_agents') as AgentStep
+    expect(knocks).toHaveLength(200)
+    expect(step.subAgents).toHaveLength(200)
+    expect(step.subAgents!.every(member => member.status === 'completed')).toBe(true)
+    expect(step.organization).toMatchObject({ total: 200, live: 0 })
+    expect(pushes).toBeLessThan(10)
+  })
+
   it('总览随进展重写：还在干的写做到第几步、最近的工具，不用等有人做完', async () => {
     const writes = new Map<string, string>()
     vi.mocked(fs.writeFileSync).mockImplementation((file, data) => { writes.set(String(file), String(data)) })
@@ -639,5 +963,117 @@ describe('进度推给界面', () => {
     await roster.waitUntil(undefined, new AbortController().signal)
     await new Promise(r => setTimeout(r, 300))
     expect(step().subAgents![0].waitingForModel).toBeUndefined()
+  })
+})
+
+
+describe('独立团队边界', () => {
+  it('历史百人不混入新三人，默认再次派出另开，明确指定才追加', async () => {
+    const roster = new SubAgentRoster()
+    const executor = createExecutor(roster, () => stubChild('ok', 5))
+    executor.restoreDormantChildren = () => Array.from({length:100},(_,i)=>({name:`旧${i}`,description:'历史',prompt:'历史指令',status:'completed' as const,revive:()=>{throw Error('不应叫醒历史成员')}}))
+    const tasks = (names:string[]) => names.map(name=>({name,description:name,prompt:'核对',role:'专家'}))
+    const steps = () => (executor as ToolExecutorConfig & {_steps:AgentStep[]})._steps
+    expect((await dispatchSubAgents({tasks:tasks(['新甲','新乙','新丙'])},defaultConfig,executor)).success).toBe(true)
+    const first=steps()[0].organization!
+    expect(first.total).toBe(3)
+    expect(first.members.map(m=>m.name)).toEqual(['新甲','新乙','新丙'])
+    expect(first.teamId).toBeTruthy()
+    expect(first.teamId).not.toBe('legacy')
+    expect((await dispatchSubAgents({tasks:tasks(['另甲','另乙'])},defaultConfig,executor)).success).toBe(true)
+    const second=steps()[1].organization!
+    expect(second.total).toBe(2)
+    expect(second.teamId).not.toBe(first.teamId)
+    expect((await dispatchSubAgents({tasks:tasks(['续甲']),continue_team:'新甲'},defaultConfig,executor)).success).toBe(true)
+    const continued=steps()[2].organization!
+    expect(continued.teamId).toBe(first.teamId)
+    expect(continued.total).toBe(4)
+    expect(continued.members.map(m=>m.name)).toEqual(['新甲','新乙','新丙','续甲'])
+    expect(second.members.map(m=>m.name)).toEqual(['另甲','另乙'])
+    await roster.settled()
+  })
+  it('不存在或格式错误的指定不创建成员，不退化成新队；组长不能另选队', async () => {
+    const roster=new SubAgentRoster()
+    const create=vi.fn(()=>stubChild('ok',1))
+    const executor=createExecutor(roster,create)
+    const tasks=[{name:'不应派出',description:'任务',prompt:'核对'}]
+    for(const value of ['',null,42,'不存在']) expect((await dispatchSubAgents({tasks,continue_team:value},defaultConfig,executor)).success).toBe(false)
+    expect(create).not.toHaveBeenCalled()
+    expect(roster.list()).toEqual([])
+    executor.isSubAgent=true
+    expect((await dispatchSubAgents({tasks,continue_team:'旧团队成员'},defaultConfig,executor)).success).toBe(false)
+  })
+  it('重开后指定旧成员可续派原团队，历史小组名不会复用到新群',async()=>{
+    const roster=new SubAgentRoster()
+    const executor=createExecutor(roster,()=>stubChild('ok',1))
+    executor.restoreDormantChildren=()=>[{name:'旧专家',teamId:'team-old',team:'审核组',description:'历史',prompt:'核对',role:'审核',status:'completed',revive:()=>{throw Error('不应叫醒')}}]
+    const result=await dispatchSubAgents({tasks:[{name:'新审1',role:'审核',description:'核对',prompt:'核对'},{name:'新审2',role:'审核',description:'核对',prompt:'核对'}],team:'审核组',continue_team:'旧专家'},defaultConfig,executor)
+    expect(result.success).toBe(true)
+    expect(roster.get('新审1')?.teamId).toBe('team-old')
+    expect(roster.get('新审1')?.team).not.toBe('审核组')
+    const view=(executor as ToolExecutorConfig & {_steps:AgentStep[]})._steps[0].organization!
+    expect(view.total).toBe(3)
+    expect(view.members.every(m=>m.teamId==='team-old')).toBe(true)
+    await roster.settled()
+  })
+  it('分叉对话不能把来源会话的团队铺进当前看板',async()=>{
+    const roster=new SubAgentRoster()
+    const executor=createExecutor(roster,()=>stubChild('ok',1))
+    executor.getRootSessionId=()=> 'fork-session'
+    executor.getOrganizationHistory=()=>[{teamId:'source-team',sessionId:'source-session',members:[{id:'来源成员',name:'来源成员',description:'历史',status:'completed',teamId:'source-team'}],teams:[],total:1,live:0}]
+    expect((await dispatchSubAgents({tasks:[{name:'当前成员',description:'核对',prompt:'核对'}]},defaultConfig,executor)).success).toBe(true)
+    expect(workspaceOf(roster).organizationView().members.map(member=>member.name)).toEqual(['当前成员'])
+    await roster.settled()
+  })
+
+})
+
+
+describe('派工参数层级与回执',()=>{
+  it('顶层及batch条目错位fork_turns均在派出前拒绝，不静默改成全带',async()=>{
+    const roster=new SubAgentRoster()
+    const create=vi.fn(()=>stubChild('ok',1))
+    const executor=createExecutor(roster,create)
+    const tasks=[{name:'不应派出',description:'任务',prompt:'核对'}]
+    for(const value of ['none','all','1',undefined]){
+      const result=await dispatchSubAgents({fork_turns:value,tasks},defaultConfig,executor)
+      expect(result.success).toBe(false);expect(result.error).toContain('顶层')
+    }
+    const misplaced=await dispatchSubAgents({batch:{instruction:'共同指令',items:[{input:'任务',fork_turns:'none'}]}},defaultConfig,executor)
+    expect(misplaced.success).toBe(false);expect(misplaced.error).toContain('batch.fork_turns')
+    expect(create).not.toHaveBeenCalled();expect(roster.list()).toEqual([])
+    expect((executor as any)._steps).toEqual([])
+  })
+  it('team+batch只报组合不支持，不混报batch的角色或人数',()=>{
+    const parsed=parseDispatchTasks({team:'团',tasks:[{description:'专家甲',prompt:'核对',role:'甲'},{description:'专家乙',prompt:'核对',role:'乙'}],batch:{instruction:'共同指令',items:[{description:'条目',input:'核对'}]}})
+    expect(parsed).toHaveProperty('error')
+    if('error' in parsed){expect(parsed.error).toContain('不能用 batch');expect(parsed.error).not.toContain('第 3 位');expect(parsed.error).not.toContain('role')}
+  })
+  it('混合派工回执逐人显示实际none/最近n轮/默认all，开局吻合',async()=>{
+    const roster=new SubAgentRoster()
+    const children=new Map<string,ReturnType<typeof stubChild>>()
+    const executor=createExecutor(roster,(name)=>{const child=stubChild('ok',1);children.set(name,child);return child})
+    executor.getParentMessages=()=>[{role:'user',content:'第一轮'},{role:'assistant',content:'第一答'},{role:'user',content:'第二轮'},{role:'assistant',content:'第二答'},{role:'user',content:'敲门',_userContextParts:[]}]
+    const result=await dispatchSubAgents({tasks:[{name:'不带者',description:'任务',prompt:'核对',fork_turns:'none'},{name:'最近者',description:'任务',prompt:'核对',fork_turns:'1'},{name:'全带者',description:'任务',prompt:'核对'}],batch:{instruction:'共同',fork_turns:'none',items:[{name:'批量者',input:'核对'}]}},defaultConfig,executor)
+    expect(result.success).toBe(true)
+    expect(result.output).toContain('不带者：任务（上下文：不带）')
+    expect(result.output).toContain('最近者：任务（上下文：最近 1 轮用户交代）')
+    expect(result.output).toContain('全带者：任务（上下文：全带）')
+    expect(children.get('不带者')!.seeded).toEqual([])
+    expect(children.get('批量者')!.seeded).toEqual([])
+    expect(sanitizeParentMessages(children.get('最近者')!.seeded as AiMessage[])).toEqual([{role:'user',content:'第二轮'},{role:'assistant',content:'第二答'}])
+    expect(children.get('全带者')!.seeded).toHaveLength(1)
+    expect(sanitizeParentMessages(children.get('全带者')!.seeded as AiMessage[])).toHaveLength(4)
+    await roster.settled()
+  })
+  it('派出回执明确标注登记的验收人，普通成员不冒名',async()=>{
+    const roster=new SubAgentRoster()
+    const executor=createExecutor(roster,()=>stubChild('ok',1))
+    const result=await dispatchSubAgents({team:'验收小组',tasks:[{name:'实施',role:'实施专家',description:'实施任务',prompt:'实施'},{name:'复核',role:'复核专家',description:'核对任务',prompt:'核对',reviewer:true}]},defaultConfig,executor)
+    expect(result.success).toBe(true)
+    expect(result.output.split('\n').find(line=>line.startsWith('- 复核'))).toContain('（验收人）')
+    expect(result.output.split('\n').find(line=>line.startsWith('- 实施'))).not.toContain('（验收人）')
+    expect(roster.listTeams()[0].reviewerNames()).toEqual(['复核'])
+    await roster.settled()
   })
 })

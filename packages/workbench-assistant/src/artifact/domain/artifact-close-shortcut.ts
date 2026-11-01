@@ -23,12 +23,14 @@ export const CLOSE_ARTIFACT_SHORTCUT_GUARD_MS = 200
 
 type CloseFocusedFn = () => boolean
 
-let closer: CloseFocusedFn | null = null
+const closers = new Set<CloseFocusedFn>()
 let handledUntil = 0
 let guardTimer: ReturnType<typeof setTimeout> | null = null
 
-export function registerFocusedArtifactCloser(fn: CloseFocusedFn | null): void {
-  closer = fn
+export function registerFocusedArtifactCloser(fn: CloseFocusedFn | null): () => void {
+  if (!fn) { closers.clear(); return () => {} }
+  closers.add(fn)
+  return () => { closers.delete(fn) }
 }
 
 function clearCloseGuard(): void {
@@ -55,9 +57,10 @@ function isCloseGuardActive(): boolean {
 /** 焦点在产出物上则关掉当前页签并返回 true；同一次按键再进来也返回 true，避免连关两份。 */
 export function closeFocusedArtifact(): boolean {
   if (isCloseGuardActive()) return true
-  const closed = closer?.() ?? false
-  if (closed) armCloseGuard()
-  return closed
+  for (const close of [...closers].reverse()) {
+    if (close()) { armCloseGuard(); return true }
+  }
+  return false
 }
 
 /** 测试用：清掉按键窗口，避免用例互相污染 */

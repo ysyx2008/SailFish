@@ -3,7 +3,6 @@ import { reactive } from 'vue'
 
 // 展开状态按「派出那一步」记在模块里：对话里和顶部挂着的是同一批人，两处一起展开、一起收起；
 // 对话列表滚出屏幕再回来，也不丢
-const subAgentExpandState = reactive(new Map<string, boolean>())
 const subAgentListOpen = reactive(new Map<string, boolean>())
 const subAgentPages = reactive(new Map<string, number>())
 </script>
@@ -13,6 +12,7 @@ const subAgentPages = reactive(new Map<string, number>())
  * 派出的一批伙计 / 专家：折叠计数行、每人一张卡（点开看过程和结果）、专家团小卡片。
  * 对话里派出那一处和顶部挂着的那一行展开后，用的都是这个。
  */
+import { isSubAgentExpanded as memberExpanded, toggleSubAgentExpansion, subAgentExpansionKey } from '../utils/sub-agent-expansion'
 import { useI18n } from 'vue-i18n'
 import type { SubAgentResult, ExpertTeamView } from '@shared/types'
 import { SUB_AGENT_FOLD_THRESHOLD, SUB_AGENT_PAGE_SIZE, formatSubAgentSummary, sortSubAgentsByBucket } from '../utils/sub-agent-summary'
@@ -28,15 +28,16 @@ const props = defineProps<{
   /** 不画外框和卡片框，一人一行、行间一条细线（放在已经有框的容器里时用） */
   plain?: boolean
   /** 不显示专家团那张小卡片（外面已经有群聊入口时） */
+  expandDetails?: boolean
+  /** 指令和过程可在首次展开后读取，尚未加载时也显示展开箭头。 */
+  detailsAvailable?: boolean
   hideTeamCard?: boolean
 }>()
 const emit = defineEmits<{ openTeam: [] }>()
 const { t } = useI18n()
 
-const isSubAgentExpanded = (key: string): boolean => subAgentExpandState.get(key) === true
-const toggleSubAgentExpand = (key: string) => {
-  subAgentExpandState.set(key, !isSubAgentExpanded(key))
-}
+const isSubAgentExpanded = (key: string): boolean => memberExpanded(key, props.expandDetails === true)
+const toggleSubAgentExpand = (key: string) => toggleSubAgentExpansion(key, props.expandDetails === true)
 
 // 伙计多了折叠成一行计数；点开按状态分组，一次显示一页
 const isFolded = () => props.subAgents.length > SUB_AGENT_FOLD_THRESHOLD
@@ -85,7 +86,7 @@ const getSubAgentActivity = (sa: SubAgentResult): string | null => {
       class="sub-agent-card"
       :class="[sa.status, { waiting: sa.status === 'running' && sa.waitingForModel }]"
     >
-      <div class="sub-agent-header" @click="toggleSubAgentExpand(stepId + ':' + sa.id)">
+      <div class="sub-agent-header" role="button" tabindex="0" :aria-expanded="isSubAgentExpanded(subAgentExpansionKey(stepId, sa.id))" @keydown.enter.prevent="toggleSubAgentExpand(subAgentExpansionKey(stepId, sa.id))" @keydown.space.prevent="toggleSubAgentExpand(subAgentExpansionKey(stepId, sa.id))" @click="toggleSubAgentExpand(subAgentExpansionKey(stepId, sa.id))">
         <span class="sub-agent-status-icon">
           <span v-if="sa.status === 'pending' || (sa.status === 'running' && sa.waitingForModel)" class="sa-icon-pending">○</span>
           <span v-else-if="sa.status === 'running'" class="sa-icon-running">◌</span>
@@ -101,9 +102,10 @@ const getSubAgentActivity = (sa: SubAgentResult): string | null => {
         <span class="sub-agent-status-text">
           {{ sa.status === 'running' && sa.waitingForModel ? t('ai.subAgentWaitingModel') : t(`ai.subAgent${sa.status.charAt(0).toUpperCase() + sa.status.slice(1)}`) }}
         </span>
-        <span v-if="sa.prompt || sa.result || sa.error || (sa.steps && sa.steps.length > 0)" class="sub-agent-expand-icon" :class="{ expanded: isSubAgentExpanded(stepId + ':' + sa.id) }">▶</span>
+        <span v-if="detailsAvailable || sa.prompt || sa.result || sa.error || (sa.steps && sa.steps.length > 0)" class="sub-agent-expand-icon" :class="{ expanded: isSubAgentExpanded(subAgentExpansionKey(stepId, sa.id)) }">▶</span>
       </div>
-      <div v-if="isSubAgentExpanded(stepId + ':' + sa.id)" class="sub-agent-detail">
+      <div v-if="isSubAgentExpanded(subAgentExpansionKey(stepId, sa.id))" class="sub-agent-detail">
+        <slot name="detail-status" />
         <div v-if="sa.prompt" class="sub-agent-prompt">{{ sa.prompt }}</div>
         <div v-if="sa.steps && sa.steps.length > 0" class="sub-agent-steps">
           <div v-for="(step, stepIdx) in sa.steps" :key="stepIdx" class="sa-step" :class="step.status">

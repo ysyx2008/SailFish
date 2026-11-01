@@ -918,18 +918,6 @@ const onQrImageError = (event: Event) => {
   padding-left: 4px;
 }
 
-/* 与 main.css 的 .btn-icon-header 变体同源（22x22, padding 2, radius 5, hover scale 1.04）；
-   scoped 特异性更高，保证在任何 HMR / 加载顺序下都稳定生效。 */
-.settings-header .btn-icon {
-  width: 22px;
-  height: 22px;
-  padding: 2px;
-  border-radius: 5px;
-}
-.settings-header .btn-icon:hover {
-  transform: scale(1.04);
-}
-
 .settings-body {
   display: flex;
   flex: 1;

@@ -200,8 +200,16 @@ export interface ToolExecutorConfig {
   getParentMessages?: () => import('../../ai.service').AiMessage[]
   /** 伙计完成时敲门 */
   knockParent?: (message: string) => void
-  /** 专家团成员在团里的座位（只有专家团里的专家有） */
+  /** 协作群成员的发言席位，与是否填写岗位无关。 */
   teamSeat?: import('../sub-agent-roster').TeamSeat
+  /** 被指定为组长才有 */
+  leadSeat?: import('../org-ledger').LeadSeat
+  /** 盘上的主会话号：伙计和组长名下的人都记在它下面 */
+  getRootSessionId?: () => string | undefined
+  /** 按团队恢复该会话最近保存的全貌；不改变实际成员管理权限。 */
+  getOrganizationHistory?: () => import('@shared/types').OrganizationView[]
+  /** 兼容只提供单份全貌的执行器。 */
+  getCurrentOrganization?: () => import('@shared/types').OrganizationView | undefined
   /** 未按听众过滤的工具目录，供硬拦 */
   getToolCatalog?: () => import('../../ai.service').ToolDefinition[]
   /** 创建不进会话表的伙计实例 */

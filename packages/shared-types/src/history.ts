@@ -5,6 +5,7 @@
 import type { ConversationKind, GoalContract, TerminalType, TokenUsage } from './agent'
 
 export interface AgentStepRecord {
+  apiError?: import('./agent').ApiFailureDetail
   id: string
   type: string
   content: string
@@ -43,6 +44,12 @@ export interface AgentStepRecord {
   subAgents?: import('./agent').SubAgentResult[]
   /** 专家团群聊（dispatch_agents 带 team 组团时） */
   expertTeam?: import('./agent').ExpertTeamView
+  /** 项目组织全貌（dispatch_agents 指定了组长时） */
+  organization?: import('./agent').OrganizationView
+  /** 合并展示时保留团队记录的原会话。 */
+  sourceSessionId?: string
+  /** subAgents/expertTeam/organization 最后一次变化的时间；读回时按它取较新的快照 */
+  snapshotAt?: number
   /** Canvas 预览数据（仅 UI / Artifact 面板消费，不发给 AI；历史重开时重放） */
   canvasData?: import('./canvas').CanvasData
   /** 读盘时超大行未装入正文，只留大小和头尾 */

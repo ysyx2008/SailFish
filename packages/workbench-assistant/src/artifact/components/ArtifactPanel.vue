@@ -52,28 +52,21 @@ import {
   ADD_COMPOSER_QUOTE_KEY,
   SET_COMPOSER_DRAFT_KEY,
   SUBMIT_COMPOSER_MESSAGE_KEY,
-  type AddComposerQuoteFn,
-  type SubmitComposerMessageFn
+  type ArtifactPanelBindings
 } from '../composer-quote'
 
-const props = defineProps<{
+const props = defineProps<ArtifactPanelBindings & {
   tabId: string
-  /** 岗壳注入：滚到对话流指定 step（AiPanel.scrollToAgentStep） */
-  scrollToAgentStep?: (stepId: string) => void | Promise<void>
-  /** 岗壳注入：引用摘录到 Composer（AiPanel.addComposerQuote） */
-  addComposerQuote?: AddComposerQuoteFn
-  /** 岗壳注入：图片加入 Composer 待发送区（AiPanel.addComposerImage） */
-  addComposerImage?: (image: { dataUrl: string; name: string; width?: number; height?: number; filePath?: string }) => void
-  /** 岗壳注入：设置 Composer 草稿文本（AiPanel.setComposerDraft） */
-  setComposerDraft?: (text: string) => void
-  /** 岗壳注入：当场发出一条消息（右键快捷指令） */
-  submitComposerMessage?: SubmitComposerMessageFn
-  /** 文件在座时是否铺满（文档为主） */
+  /** 团队入口仅展示本次成果集合；省略时显示这场对话全部产出物。 */
+  artifactIds?: readonly string[]
   focusActive?: boolean
+  /** 宿主提供导航的单文件预览；关闭只结束预览，不改变会话面板。 */
+  embedded?: boolean
 }>()
 
 const emit = defineEmits<{
   toggleFocus: []
+  closePreview: []
 }>()
 
 provide(ADD_COMPOSER_QUOTE_KEY, (snippet) => {
@@ -97,8 +90,9 @@ const { hoverTip, hideTip } = useHoverTip({
   delayMs: BUTTON_HOVER_TIP_DELAY_MS
 })
 
-const artifacts = computed(() => artifactStore.getArtifacts(props.tabId))
-const openTabs = computed(() => artifactStore.getOpenArtifacts(props.tabId))
+const inCollection = (id: string) => !props.artifactIds || props.artifactIds.includes(id)
+const artifacts = computed(() => artifactStore.getArtifacts(props.tabId).filter(a => inCollection(a.id)))
+const openTabs = computed(() => artifactStore.getOpenArtifacts(props.tabId).filter(a => inCollection(a.id)))
 const panelRoot = ref<HTMLElement | null>(null)
 const panelHasFocus = ref(false)
 const tabsEl = ref<HTMLElement | null>(null)
@@ -108,7 +102,10 @@ const tabPickerMenuRef = ref<HTMLElement | null>(null)
 const showTabPicker = ref(false)
 const tabPickerPos = ref({ top: 0, left: 0, maxWidth: 280, maxHeight: 360 })
 let tabsResizeObserver: ResizeObserver | null = null
-const activeArtifact = computed(() => artifactStore.getActiveArtifact(props.tabId))
+const activeArtifact = computed(() => {
+  const active = artifactStore.getActiveArtifact(props.tabId)
+  return active && inCollection(active.id) ? active : openTabs.value[0] ?? null
+})
 const activeArtifactId = computed(() => activeArtifact.value?.id ?? null)
 const renderer = computed(() => activeArtifact.value?.renderer ?? null)
 const filePath = computed(() => activeArtifact.value?.filePath ?? null)
@@ -363,6 +360,7 @@ function flushActiveDraft() {
 function closeArtifact(id: string, e?: Event) {
   e?.stopPropagation()
   saveBridge.flush(id)
+  if (props.embedded) { emit('closePreview'); return }
   artifactStore.closeTab(props.tabId, id)
 }
 
@@ -394,6 +392,8 @@ function refineCtxMenu(x: number, y: number) {
 }
 
 function isPanelFocusedNow(): boolean {
+  // 隐藏的成果页签保留草稿，但不能接管当前工作过程/群聊的关闭快捷键。
+  if (props.embedded && panelRoot.value?.closest('[inert]')) return false
   if (panelHasFocus.value) return true
   // webview / 编辑器拿到焦点时，宿主 mousedown 可能到不了，以当前 activeElement 为准
   return isArtifactOwnedTarget(document.activeElement)
@@ -401,7 +401,7 @@ function isPanelFocusedNow(): boolean {
 
 function tryCloseFocusedTab(): boolean {
   if (!isPanelFocusedNow()) return false
-  if (!artifactStore.isVisible(props.tabId)) return false
+  if (!props.embedded && !artifactStore.isVisible(props.tabId)) return false
   const id = activeArtifactId.value
   if (!id) return false
   closeArtifact(id)
@@ -426,12 +426,17 @@ function setPanelFocusedFromEvent(target: EventTarget | null) {
 
 function closeOthers(keepId: string) {
   flushActiveDraft()
-  artifactStore.closeOthers(props.tabId, keepId)
+  if (props.artifactIds) {
+    for (const artifact of openTabs.value) if (artifact.id !== keepId) artifactStore.closeTab(props.tabId, artifact.id)
+  } else artifactStore.closeOthers(props.tabId, keepId)
 }
 
 function closeAllArtifacts() {
   flushActiveDraft()
-  artifactStore.closeAll(props.tabId)
+  if (props.embedded) { emit('closePreview'); return }
+  if (props.artifactIds) {
+    for (const artifact of openTabs.value) artifactStore.closeTab(props.tabId, artifact.id)
+  } else artifactStore.closeAll(props.tabId)
 }
 
 function selectTab(id: string) {
@@ -508,12 +513,21 @@ function onTabsWheel(ev: WheelEvent) {
 
 function minimizePanel() {
   flushActiveDraft()
+  if (props.embedded) { emit('closePreview'); return }
   for (const artifact of artifacts.value) {
     saveBridge.flush(artifact.id)
   }
   closeAllMenus()
   hideTip()
   artifactStore.minimizePanel(props.tabId)
+}
+
+/** 内嵌宿主隐藏页签时提交草稿并关闭悬浮菜单，保留当前文件。 */
+function deactivate() {
+  flushActiveDraft()
+  closeAllMenus()
+  hideTip()
+  panelHasFocus.value = false
 }
 
 function jumpToSource(stepId?: string) {
@@ -718,6 +732,7 @@ const anyMenuOpen = computed(() =>
 function openCtxMenu(e: MouseEvent, target: ContextTarget) {
   e.preventDefault()
   e.stopPropagation()
+  if (props.embedded) return
   closeFileMenu()
   closeTabPicker()
   const placed = clampContextMenuPosition({
@@ -794,22 +809,27 @@ function onDocumentKeyDown(e: KeyboardEvent) {
     e.stopPropagation()
     return
   }
-  if (e.key !== 'Escape') return
+  if (e.key === 'Escape') dismissMenu()
+}
+
+function dismissMenu(): boolean {
   if (ctxMenu.value.show) {
     closeCtxMenu()
-    return
+    return true
   }
   if (showSendMenu.value) {
     closeSendMenu()
-    return
+    return true
   }
   if (showFileMenuDropdown.value) {
     closeFileMenu()
-    return
+    return true
   }
   if (showTabPicker.value) {
     closeTabPicker()
+    return true
   }
+  return false
 }
 
 watch(activeArtifactId, (next, prev) => {
@@ -884,8 +904,9 @@ function onVisibilityChange() {
   }
 }
 
+let releaseFocusedCloser: (() => void) | undefined
 onMounted(() => {
-  registerFocusedArtifactCloser(tryCloseFocusedTab)
+  releaseFocusedCloser = registerFocusedArtifactCloser(tryCloseFocusedTab)
   document.addEventListener('mousedown', onDocumentMouseDown, true)
   document.addEventListener('focusin', onDocumentFocusIn, true)
   document.addEventListener('keydown', onDocumentKeyDown, true)
@@ -906,7 +927,7 @@ onMounted(() => {
 onUnmounted(() => {
   tabsResizeObserver?.disconnect()
   tabsResizeObserver = null
-  registerFocusedArtifactCloser(null)
+  releaseFocusedCloser?.()
   document.removeEventListener('mousedown', onDocumentMouseDown, true)
   document.removeEventListener('focusin', onDocumentFocusIn, true)
   document.removeEventListener('keydown', onDocumentKeyDown, true)
@@ -919,16 +940,17 @@ onUnmounted(() => {
   offImConnectionChange?.()
 })
 
-defineExpose({ minimizePanel })
+defineExpose({ minimizePanel, flushDraft: flushActiveDraft, deactivate, dismissMenu })
 </script>
 
 <template>
-  <div ref="panelRoot" class="canvas-panel" :class="{ 'is-focus': focusActive }">
+  <div ref="panelRoot" class="canvas-panel" :class="{ 'is-focus': focusActive, 'is-embedded': embedded }">
     <div
       class="canvas-header"
       @contextmenu="openHeaderCtxMenu"
     >
       <div
+        v-if="!embedded"
         ref="tabsEl"
         class="artifact-tabs"
         :class="{ 'is-overflow': tabsOverflow }"
@@ -965,12 +987,13 @@ defineExpose({ minimizePanel })
           </span>
         </button>
       </div>
+      <span v-if="embedded" class="canvas-embedded-title" :title="activeArtifact ? artifactTabLabel(activeArtifact) : ''">{{ activeArtifact ? artifactTabLabel(activeArtifact) : '' }}</span>
       <div class="canvas-header-fill" aria-hidden="true" />
-      <div v-if="tabsOverflow" ref="tabPickerRef" class="artifact-tab-picker">
+      <div v-if="!embedded && tabsOverflow" ref="tabPickerRef" class="artifact-tab-picker">
         <button
           type="button"
-          class="artifact-tab-nav-btn"
-          :class="{ 'artifact-tab-nav-btn--open': showTabPicker }"
+          class="btn-icon btn-icon-header artifact-tab-nav-btn"
+          :class="{ 'is-open': showTabPicker }"
           :aria-expanded="showTabPicker"
           :title="t('canvas.openTabsMenu')"
           @click="toggleTabPicker"
@@ -982,7 +1005,7 @@ defineExpose({ minimizePanel })
         <button
           v-if="isActiveEditable"
           type="button"
-          class="canvas-text-btn canvas-save-text-btn"
+          class="btn-header canvas-text-btn canvas-save-text-btn"
           :disabled="saving || !canSaveActive"
           :title="saveActiveTitle"
           @click="runSaveActive"
@@ -993,7 +1016,7 @@ defineExpose({ minimizePanel })
           <button
             v-if="showOpenButton"
             type="button"
-            class="canvas-text-btn canvas-open-btn"
+            class="btn-header canvas-text-btn canvas-open-btn"
             :class="{ 'canvas-open-btn--with-menu': showFileOverflowMenu }"
             :disabled="!canOpenActive"
             :title="t('canvas.openFile')"
@@ -1004,7 +1027,7 @@ defineExpose({ minimizePanel })
           <div v-if="showFileOverflowMenu" ref="fileMenuRef" class="canvas-file-menu-wrap">
             <button
               type="button"
-              class="canvas-text-btn canvas-file-overflow-btn"
+              class="btn-header canvas-text-btn canvas-file-overflow-btn"
               :class="{ 'canvas-file-overflow-btn--solo': !showOpenButton }"
               :aria-expanded="showFileMenuDropdown"
               :title="t('canvas.openMenu')"
@@ -1048,7 +1071,7 @@ defineExpose({ minimizePanel })
         <div v-if="canSendActive" ref="sendMenuRef" class="canvas-file-menu-wrap">
           <button
             type="button"
-            class="canvas-text-btn canvas-icon-btn"
+            class="btn-icon btn-icon-header canvas-text-btn canvas-icon-btn"
             :aria-expanded="showSendMenu"
             :aria-label="t('canvas.sendToPhone')"
             :title="t('canvas.sendToPhone')"
@@ -1058,8 +1081,9 @@ defineExpose({ minimizePanel })
           </button>
         </div>
         <button
+          v-if="!embedded"
           type="button"
-          class="canvas-text-btn canvas-icon-btn"
+          class="btn-icon btn-icon-header canvas-text-btn canvas-icon-btn"
           :aria-pressed="focusActive"
           :aria-label="focusActive ? t('canvas.splitDocument') : t('canvas.focusDocument')"
           :title="focusActive ? t('canvas.splitDocument') : t('canvas.focusDocument')"
@@ -1368,6 +1392,8 @@ defineExpose({ minimizePanel })
   border-left: none;
 }
 
+.canvas-embedded-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; color: var(--text-primary); }
+.canvas-panel.is-embedded .canvas-header { padding-right: 14px; }
 .canvas-focus-spacer {
   position: absolute;
   left: 0;
@@ -1505,26 +1531,6 @@ defineExpose({ minimizePanel })
   margin-left: -6px;
 }
 
-.artifact-tab-nav-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary, #aaa);
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-
-.artifact-tab-nav-btn:hover,
-.artifact-tab-nav-btn--open {
-  background: color-mix(in srgb, var(--text-primary, #eee) 10%, transparent);
-  color: var(--text-primary, #eee);
-}
-
 .artifact-tab-picker-menu {
   position: fixed;
   z-index: 10000;
@@ -1638,51 +1644,11 @@ defineExpose({ minimizePanel })
   margin-left: auto;
 }
 
-.canvas-text-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  box-sizing: border-box;
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
-  border-radius: 5px;
-  background: transparent;
-  color: var(--text-primary, #eee);
-  font-size: 11px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.12s, border-color 0.12s;
-}
-
-.canvas-icon-btn {
-  width: 22px;
-  padding: 0;
-  justify-content: center;
-  border-radius: 5px;
-  color: var(--text-secondary, #aaa);
-}
-
-.canvas-icon-btn:hover:not(:disabled) {
-  color: var(--text-primary, #eee);
-}
-
-.canvas-text-btn:hover:not(:disabled) {
-  background: var(--hover-bg, rgba(255, 255, 255, 0.08));
-}
-
 .canvas-header-actions .canvas-save-text-btn:hover:not(:disabled) {
   color: var(--accent-primary, #4d9eff);
-  border-color: rgba(var(--accent-rgb, 77, 158, 255), 0.35);
-}
-
-.canvas-text-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .canvas-save-text-btn:not(:disabled) {
-  border-color: rgba(var(--accent-rgb, 77, 158, 255), 0.35);
   color: var(--accent-primary, #4d9eff);
 }
 

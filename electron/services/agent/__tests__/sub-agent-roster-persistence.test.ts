@@ -175,7 +175,18 @@ describe('花名册里的休眠伙计', () => {
     const d = deps(() => child({ result: 'x' }))
     d.restoreDormant = () => [sleeper('reader')]
     const names = roster.spawn([{ description: 'reader', prompt: 'p' }, { name: 'reader', description: 'z', prompt: 'p' }], d)
-    expect(names).toEqual(['reader-2', 'reader-3'])
+    expect(names).toEqual(['reader(2)', 'reader(3)'])
+  })
+
+  it('旧连字符后缀成员保持原名恢复，与新括号后缀成员并存', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const d = deps(() => child({ result: '新结果' }))
+    d.restoreDormant = () => [sleeper('reader'), sleeper('reader-2')]
+    expect(roster.spawn([{ name: 'reader', description: '新任务', prompt: 'p' }], d)).toEqual(['reader(2)'])
+    expect(roster.followup('reader-2', '继续旧任务', d)).toEqual({ ok: true })
+    expect(roster.get('reader-2')?.name).toBe('reader-2')
+    expect(roster.get('reader(2)')?.description).toBe('新任务')
+    await roster.settled()
   })
 
   it('点名再交代：叫醒他，话前面带上上次的情形，卡片上有以前的步骤，存盘人记下「在干」', async () => {
@@ -201,6 +212,34 @@ describe('花名册里的休眠伙计', () => {
     expect(sent[0]).toContain('[上次的情形]')
     expect(sent[0].endsWith('换个办法')).toBe(true)
     expect(roster.get('alice')).toMatchObject({ status: 'completed', result: '接着做完了' })
+  })
+
+  it('叫醒以前团里的人时把团补回来，团聊和 teamSay 还能接着用', async () => {
+    const roster = new SubAgentRoster({ knockSettleMs: 0 })
+    const d = deps(() => child({}))
+    d.restoreDormant = () => [
+      sleeper('alice', { team: '研发团', reviewer: true }),
+      sleeper('bob', { team: '研发团' }),
+      sleeper('carol'),
+    ]
+    d.teamHistoryFor = (name) => (name === '研发团'
+      ? { messageCount: 5, chatFile: '2026-10-28/sess/team.jsonl', review: 'pass', reviewers: ['alice'] }
+      : undefined)
+    let adopted: unknown
+    d.adoptTeamHistory = (_name, history) => { adopted = history }
+    expect(roster.getTeam('研发团')).toBeUndefined()
+
+    expect(roster.followup('alice', '接着做', d)).toEqual({ ok: true })
+    const team = roster.getTeam('研发团')
+    expect(team?.memberNames()).toEqual(['alice', 'bob'])
+    // 以前的验收结论和群聊条数也接回来
+    expect(team?.reviewerNames()).toEqual(['alice'])
+    expect(team?.reviewState()).toBe('pass')
+    expect(team?.messageCount()).toBe(5)
+    expect(adopted).toMatchObject({ chatFile: '2026-10-28/sess/team.jsonl', messageCount: 5 })
+    // 不在团里的老伙计照旧自己干
+    expect(roster.getTeam('carol')).toBeUndefined()
+    await settle()
   })
 
   it('做完的休眠伙计被再交代，不带「上次的情形」', async () => {

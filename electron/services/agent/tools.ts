@@ -25,8 +25,9 @@ import type { TerminalType, RemoteChannel } from '@shared/types'
 import { ASSISTANT_WORKBENCH_AGENT_TOOLS } from '@sailfish/workbench-assistant/agent-tools'
 import { getAllTerminalTools } from './skills/terminal/tools'
 import { MAX_LIVE_CHILDREN } from './sub-agent-roster'
+import { MAX_ORG_DEPTH } from './org-ledger'
 import {
-  labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER,
+  labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, SECRETARY, TEAM_LEADER,
   teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT
 } from './expert-team'
 import { REMOTE_OUTPUT_INLINE_CHARS, REMOTE_TIMEOUT_DEFAULT_SECONDS, REMOTE_TIMEOUT_MAX_SECONDS } from './remote-access/limits'
@@ -34,7 +35,7 @@ import { REMOTE_OUTPUT_INLINE_CHARS, REMOTE_TIMEOUT_DEFAULT_SECONDS, REMOTE_TIME
 const SUB_AGENT_NAME_DESCRIPTION = '能反映出他在干什么的短名字，让用户一眼看懂（如「读 nginx 配置」）。不要用人名、编号或跟任务无关的代号。可选，不填则从任务简述生成'
 const HOSTS_DESCRIPTION = '这个伙计能连的已存主机（sessionId）。不写就碰不到远程。'
 const OWN_REMOTE_COMMANDS_DESCRIPTION = '只属于这个伙计的远程命令，每条一项，要同时写了 hosts。他能跑的是整批共有的 remote_commands 加这些，别的伙计碰不到这些。'
-const FORK_TURNS_DESCRIPTION = '带多少对话。默认 all。none=不带，all=全带，正整数字符串（如 1、3）=只带最近几轮。'
+const FORK_TURNS_DESCRIPTION = '带多少对话。默认 all。none=不带，all=全带，正整数字符串（如 1、3）=最近几次用户交代及其后答复；敲门、后台通知和任务回执不占轮次。写在 tasks 每项或 batch 整体，顶层和 batch 条目内不支持。'
 
 /** @deprecated Use TerminalType from @shared/types */
 export type AgentMode = TerminalType
@@ -144,6 +145,12 @@ export interface ToolMeta {
    * 规划锁预留同一套过滤钩子，本次不实现锁本身。
    */
   allowedForSubAgent?: boolean
+
+  /**
+   * 被指定为组长的专家能不能用：派人、再交代、等待、打断。和 allowedForSubAgent: false 搭配，
+   * 别的伙计和专家仍然看不到、用不了；组长只能对自己名下的人用。
+   */
+  allowedForLead?: boolean
 
   /**
    * 只给专家团里的专家。主人、伙计、不组团的专家都看不到，执行时也会硬拦。
@@ -1287,7 +1294,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       type: 'function',
       function: {
         name: 'dispatch_agents',
-        description: `派出这场任务里的同事并行干活：不带 role 的是伙计，带 role 的是专家。派出的都立刻开工，立刻返回每个人的名字。两种写法：tasks 每人各写一份指令；batch 一份共同指令加一批条目，每个条目派一个人。同一次可以两种一起用。再带 team，这次 tasks 里的专家（${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位，每位都带 role，不和 batch 同用）组成专家团，在群里点名交接，你是组长，团里的规矩在派出后的回执里。同时向模型发几个请求由系统按接口的承受情况调节，暂时发不出去的排队，轮到了再发。每个伙计各自占用对话上下文和费用。一场任务里没做完的伙计最多 ${MAX_LIVE_CHILDREN} 个，这次要派的加上没做完的超过这个数时，整批不派。
+        description: `派出这场任务里的同事并行干活：不带 role 的是伙计，带 role 的是专家；role 选填，建议填写岗位或专业视角，便于辨认分工。派出的都立刻开工，立刻返回每个人的名字。两种写法：tasks 每人各写一份指令；batch 一份共同指令加一批条目，每个条目派一个人。同一次可以两种一起用。再带 team，这次 tasks 里的成员（${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位，role 仍选填，不和 batch 同用）组成协作群，在群里点名交接，你是组长，群里的规矩在派出后的回执里。同时向模型发几个请求由系统按接口的承受情况调节，暂时发不出去的排队，轮到了再发。每个伙计各自占用对话上下文和费用。一场任务里没做完的伙计最多 ${MAX_LIVE_CHILDREN} 个，这次要派的加上没做完的超过这个数时，整批不派。
 
 伙计也能在已存的 SSH 主机上后台跑命令：给伙计写 hosts（list_ssh_sessions 返回的 sessionId），并列出他要在远程跑的命令：大家共有的写在 remote_commands，只有这个伙计要跑的写在他自己的 remote_commands（不同的机器要跑不同命令时，各伙计各写各的）。命令不限只读。严格和宽松下，派出前弹卡等用户点头；替我审批下，由运维专家看这一批主机和命令，认为可以做的直接做，该问用户的才弹卡，不该做的整批不派；自由模式不问人，专家认为不该直接做的整批不派。整批不派时，回执里写明原因。关切、唤醒里派不出去。伙计只能在自己的主机上原样跑属于他的那份命令，不开终端窗。`,
         parameters: {
@@ -1299,7 +1306,9 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
                 type: 'object',
                 properties: {
                   name: { type: 'string', description: SUB_AGENT_NAME_DESCRIPTION },
-                  role: { type: 'string', description: `专家角色，几个字，最长 ${MAX_ROLE_CHARS} 个字。带了就是专家，界面上显示为角色标签；专家的名字和角色都不能用「${TEAM_LEADER}」。带 team 时 tasks 里每一项都要带，主持、协调这类位置也一样` },
+                  role: { type: 'string', description: `选填的岗位或专业视角，建议填写，几个字，最长 ${MAX_ROLE_CHARS} 个字。填写后显示为专家角色标签，也写入当前成员身份；不填时不自动补专业角色。名字和角色都不能用「${TEAM_LEADER}」。负责人、协作群成员和验收人都可以不填 role；下派权限由 lead 决定，入群由 team 决定，验收资格由 reviewer 决定。` },
+                  lead: { type: 'boolean', description: `true 时指定为组长，role 可不填；省略 lead 或设为 false 时没有下级管理权限。组长自己也有派人、再交代、等待、打断这几样，只能用在他名下的人身上；他名下没做完的人不会让他收工。组织最多 ${MAX_ORG_DEPTH} 层，已经在第 ${MAX_ORG_DEPTH} 层的组长不能再指定组长。没做完的人全组织合计仍受上面那个数限制。组长本身是一个会调用模型的智能体，他名下每个人也各自调用模型。要搭组织时，秘书这一批只派组长、不带 team（一次可以指定多位），组长自己用 team 组人；带 team 的这次由秘书当团长，组长会成为秘书团里的成员，而不是直管` },
+                  reviewer: { type: 'boolean', description: '当验收人，只在带 team 时有意义。验收人可以在群里对交上来的东西给「通过」或「打回」的结论，结论记在群里、写进团停下时交给组长的那段话；它只是意见，不拦着团收工。团里不能人人都是验收人' },
                   description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
                   prompt: { type: 'string', description: '详细任务指令' },
                   fork_turns: { type: 'string', description: FORK_TURNS_DESCRIPTION },
@@ -1310,7 +1319,8 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
               },
               description: '每人各写一份指令'
             },
-            team: { type: 'string', description: `团名，几个字，最长 ${MAX_TEAM_NAME_CHARS} 个字` },
+            team: { type: 'string', description: `本团队内的协作群名，最长 ${MAX_TEAM_NAME_CHARS} 个字` },
+            continue_team: { type: 'string', description: '继续已有团队时填写该团队任一成员的真名；秘书省略时新建独立团队，历史成员不自动加入。组长下派自动归入当前团队，不填写此项。给已有成员续交代不改变所属团队' },
             batch: {
               type: 'object',
               description: '一份共同指令加一批条目。交给每个伙计的指令是 instruction、换行、再接本条目的 input',
@@ -1346,6 +1356,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       _meta: {
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
+        allowedForLead: true,
         streamDisplay: {
           customRender: dispatchAgentsPrefix,
           customProgress: dispatchAgentsCharCount
@@ -1374,6 +1385,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       _meta: {
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
+        allowedForLead: true,
         streamDisplay: { customRender: followupAgentTitle }
       }
     } as ToolDefinitionWithMeta,
@@ -1381,7 +1393,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       type: 'function',
       function: {
         name: 'wait_agents',
-        description: `等下一批敲门（不传 names 则等任何一个还活着的）。第一个回来后再稍等一会儿，把这期间回来的一起报；超时也返回，不等全部做完。返回这次新到的名字和各状态的人数，不重复正文——正文在敲门里，全员一人一行在总览文件里。`,
+        description: `等下一批敲门（不传 names 则等任何一个还活着的）。第一个回来后再稍等一会儿，把这期间回来的一起报；超时也返回，不等全部做完。返回这次新到的名字和各状态的人数，不重复正文——正文在敲门里，全员一人一行在总览文件里。秘书点名别的组长名下的人时也能等（敲门仍归那位组长）；组长只能等自己名下的人。`,
         parameters: {
           type: 'object',
           properties: {
@@ -1400,6 +1412,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       _meta: {
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
+        allowedForLead: true,
         streamDisplay: { customRender: waitAgentsTitle }
       }
     } as ToolDefinitionWithMeta,
@@ -1419,6 +1432,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       _meta: {
         supportedModes: ['local', 'assistant'],
         allowedForSubAgent: false,
+        allowedForLead: true,
         streamDisplay: { customRender: interruptAgentTitle }
       }
     } as ToolDefinitionWithMeta,
@@ -1426,12 +1440,13 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       type: 'function',
       function: {
         name: 'team_say',
-        description: `在专家团的群里说一句。群里的话全团都看得见，用户也看得见。to 写要谁接手（专家名字，或「${TEAM_LEADER}」）：被点到的专家会接着干，他正忙着就等手上这一步走完再看；点到组长，组长会收到。不写 to 就只是告知，不叫醒任何人。专家之间互相叫醒每满 ${WAKES_PER_CHECKPOINT} 次会停下来等组长看过，这期间点名只记在群里、先不叫醒人。`,
+        description: `在自己所属的协作群里说一句。群里的话全群都看得见，用户也看得见。to 写要谁接手（成员名字，或「${TEAM_LEADER}」）：被点到的成员会接着干，他正忙着就等手上这一步走完再看；点到组长，组长会收到；在项目组织下面几层的群里，还可以点「${SECRETARY}」，话会直接带到最上面的秘书那里。不写 to 就只是告知，不叫醒任何人。成员之间互相叫醒每满 ${WAKES_PER_CHECKPOINT} 次会停下来等组长看过，这期间点名只记在群里、先不叫醒人。`,
         parameters: {
           type: 'object',
           properties: {
-            to: { type: 'array', items: { type: 'string' }, description: `要谁接手：专家名字，或「${TEAM_LEADER}」。可以为空` },
-            message: { type: 'string', description: '要说的话' }
+            to: { type: 'array', items: { type: 'string' }, description: `要谁接手：成员名字，或「${TEAM_LEADER}」。可以为空` },
+            message: { type: 'string', description: '要说的话' },
+            verdict: { type: 'string', enum: ['pass', 'reject'], description: '验收结论：pass 通过，reject 打回。只有被指定为验收人的成员能带；不写就是普通发言' }
           },
           required: ['message']
         }
@@ -1725,9 +1740,12 @@ export function filterTeamMemberTools(tools: readonly ToolDefinition[], inTeam: 
 /**
  * 伙计工具清单：只看元数据，不认工具名。默认能用。
  */
-export function filterSubAgentTools(tools: readonly ToolDefinition[]): ToolDefinition[] {
+export function filterSubAgentTools(tools: readonly ToolDefinition[], options?: { lead?: boolean }): ToolDefinition[] {
   return tools
-    .filter(tool => (tool as ToolDefinitionWithMeta)._meta?.allowedForSubAgent !== false)
+    .filter(tool => {
+      const meta = (tool as ToolDefinitionWithMeta)._meta
+      return meta?.allowedForSubAgent !== false || (options?.lead === true && meta.allowedForLead === true)
+    })
     .map(tool => {
       const alt = (tool as ToolDefinitionWithMeta)._meta?.descriptionForSubAgent
       if (!alt) return tool

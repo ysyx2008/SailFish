@@ -5407,6 +5407,18 @@ ipcMain.handle('history:getCompanionMergedView', async () => {
   return agentService.getCompanionMergedViewRecord()
 })
 
+ipcMain.handle('history:readTeamArtifacts', async (_event, sessionId: string, team: import('@shared/types').TeamArtifactSource) => {
+  if (typeof sessionId !== 'string' || !team || typeof team !== 'object' || !('member' in team ? typeof team.member === 'string' : typeof team.name === 'string' && (team.owner === undefined || typeof team.owner === 'string'))) throw new Error('Invalid team identity')
+  const { readTeamArtifacts } = await import('./services/history/team-artifacts')
+  return readTeamArtifacts(historyService.getAgentRecordStore().subAgents, sessionId, team)
+})
+
+ipcMain.handle('history:readTeamMember', async (_event, sessionId: string, name: string) => {
+  if (typeof sessionId !== 'string' || typeof name !== 'string') throw new Error('Invalid member identity')
+  const { readTeamMember } = await import('./services/history/team-member')
+  return readTeamMember(historyService.getAgentRecordStore().subAgents, sessionId, name)
+})
+
 ipcMain.handle('history:readExpertTeamChat', async (_event, file: string, cursor?: import('@shared/types').ExpertTeamChatCursor) => {
   return historyService.getAgentRecordStore().expertTeamChats.read(file, cursor ?? {})
 })

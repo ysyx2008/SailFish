@@ -17,13 +17,14 @@ import type {
 import { getAgentTools, filterUnattendedTools, filterSubAgentTools, filterTeamMemberTools, AgentMode } from './tools'
 import type { ToolExecutorConfig } from './tools/types'
 import type { AgentRun } from './types'
-import { toolStepsFromRecords, type ChildAgentHandle, type DormantChild, type TeamSeat } from './sub-agent-roster'
+import { toolStepsFromRecords, type ChildAgentHandle, type ChildSnapshot, type DormantChild, type SubAgentRoster, type TeamSeat } from './sub-agent-roster'
+import { parentContextMessages, SubAgentContext, type ChildIdentity } from './sub-agent-context'
 import type { PersistedChild } from '../history/sub-agent-record-store'
 import { sanitizeToolCallSequence } from './context-builder'
 import type { WorkerRemoteAccess } from './remote-access/worker-remote-access'
 import { COMPANION_WORKBENCH_AGENT_TOOLS } from '@sailfish/workbench-companion/agent-tools'
 import { COMPANION_AGENT_KEY } from '@shared/types'
-import { PromptBuilder } from './prompt-builder'
+import { PromptBuilder, CACHE_BREAK_MARKER } from './prompt-builder'
 import { BuiltinSkillEnablement, type SkillSession } from './skills'
 import { createLogger } from '../../utils/logger'
 
@@ -43,6 +44,17 @@ export class SailFish extends Agent {
   private _personalitySkillLoaded = false
   /** 专家团里的专家才有 */
   private _teamSeat?: TeamSeat
+  private readonly childContext = new SubAgentContext()
+  private ownRoster?: SubAgentRoster
+
+  bindChildIdentity(identity: ChildIdentity): void {
+    this.childContext.bind(identity)
+  }
+
+  directMemberFacts(): ReadonlyArray<Pick<ChildSnapshot, 'name' | 'status'>> | undefined {
+    return this.ownRoster?.knownMembers({ restoreDormant: () => this.restoreDormantChildren() })
+      .map(({ name, status }) => ({ name, status }))
+  }
   
   constructor(services: AgentServices, ptyId?: string) {
     super(services)
@@ -90,7 +102,7 @@ export class SailFish extends Agent {
     const unattended = this.currentRun?.context?.unattended
     const afterUnattended = unattended ? filterUnattendedTools(raw) : raw
     const forTeam = filterTeamMemberTools(afterUnattended, !!this._teamSeat)
-    return this.isSubAgent() ? filterSubAgentTools(forTeam) : forTeam
+    return this.isSubAgent() ? filterSubAgentTools(forTeam, { lead: !!this.getLeadSeat() }) : forTeam
   }
 
   /** 进专家团：之后看得到、用得了在群里说话的工具 */
@@ -143,11 +155,13 @@ export class SailFish extends Agent {
 
   protected createToolExecutorConfig(run: AgentRun): ToolExecutorConfig {
     const config = super.createToolExecutorConfig(run)
+    if (this.isSubAgent()) this.ownRoster = config.getSubAgentRoster?.()
     return {
       ...config,
       createChildAgent: (name) => this.spawnChild(name),
       restoreDormantChildren: () => this.restoreDormantChildren(),
       teamSeat: this._teamSeat,
+      leadSeat: this.getLeadSeat(),
       getRemoteAccess: () => this.remoteAccess,
     }
   }
@@ -169,7 +183,7 @@ export class SailFish extends Agent {
     const child = new SailFish(this.services)
     child.setAgentId(`${this.getConversationAgentId()}:sub:${name}`)
     child.markAsSubAgent()
-    child.bindConfirmationHost(this, name)
+    child.bindConfirmationHost(this.confirmationRoot(), name)
     child.inheritSkills(this.getSkillSession().getInheritableSkills())
     child.updateConfig({
       executionMode: this.executionMode,
@@ -177,6 +191,7 @@ export class SailFish extends Agent {
       commandRiskPolicy: this.commandRiskPolicy,
       profileId: this.profileId,
     })
+    child.shareModelSelection(this.modelSelection)
     return child
   }
 
@@ -185,7 +200,7 @@ export class SailFish extends Agent {
    * 这一轮自己派的也在盘上，由花名册按名字去重。
    */
   private restoreDormantChildren(): DormantChild[] {
-    const sessionId = this.getSessionId()
+    const sessionId = this.rootSessionId()
     const store = this.services.historyService?.getAgentRecordStore().subAgents
     if (!sessionId || !store) return []
     return store.list(sessionId).map((persisted): DormantChild => {
@@ -193,11 +208,16 @@ export class SailFish extends Agent {
       const stopped = state.status === 'completed' || state.status === 'failed' || state.status === 'interrupted'
       return {
         name: state.name,
+        teamId: state.teamId,
         askedName: state.askedName,
         description: state.description,
         prompt: state.prompt,
         shownPrompt: state.shownPrompt,
         role: state.role,
+        lead: state.lead,
+        reviewer: state.reviewer,
+        parent: state.parent,
+        team: state.team,
         result: state.result,
         error: state.error,
         blockedReason: state.blockedReason,
@@ -215,8 +235,8 @@ export class SailFish extends Agent {
    */
   private reviveChild(persisted: PersistedChild): ReturnType<DormantChild['revive']> {
     const { state } = persisted
-    const sessionId = this.getSessionId()
-    const startedAt = this.getSessionStartTime()
+    const sessionId = this.rootSessionId()
+    const startedAt = this.rootSessionStartTime()
     const store = this.services.historyService?.getAgentRecordStore().subAgents
     if (!sessionId || startedAt === undefined || !store) throw new Error('这场会话没有存伙计的地方')
     const record = store.readRecord(persisted)
@@ -229,15 +249,15 @@ export class SailFish extends Agent {
     // 没有留下对话的，他的第一句就是原来的指令；也记进他的会话，下次再叫醒时仍在
     const ownMessages: AiMessage[] = own.length > 0 ? own : [{ role: 'user', content: state.prompt }]
     const history = sanitizeToolCallSequence(ownMessages.map(({ _cacheBreakpoint, ...rest }) => rest))
-    child.seedOpeningMessages([...opening, ...history])
+    child.seedOpeningMessages([...parentContextMessages(opening, state.parent), ...history])
     child.restoreChildTranscript(ownMessages, record?.steps)
     return { handle: child, steps: toolStepsFromRecords(record?.steps ?? []) }
   }
 
   /** 伙计的对话记录存在这场会话下面；没有会话或没有历史服务时这位就不存 */
   private attachRecorderTo(child: SailFish, name: string): void {
-    const sessionId = this.getSessionId()
-    const startedAt = this.getSessionStartTime()
+    const sessionId = this.rootSessionId()
+    const startedAt = this.rootSessionStartTime()
     const store = this.services.historyService?.getAgentRecordStore().subAgents
     if (!sessionId || startedAt === undefined || !store) return
     const recorder = store.recorderFor({ sessionId, startedAt, name })
@@ -249,11 +269,15 @@ export class SailFish extends Agent {
    */
   protected buildSystemPrompt(context: AgentContext, options: PromptOptions): string {
     if (this.isSubAgent()) {
-      return PromptBuilder.buildSubAgentSystemPrompt({
+      const seat = this.getLeadSeat()
+      this.ownRoster = seat?.ledger.rosterOwnedBy(seat.name)
+      const shared = PromptBuilder.buildSubAgentSystemPrompt({
         context,
         aiRules: options.aiRules,
         hostProfileService: this.services.hostProfileService,
       })
+      const identity = this.childContext.systemSuffix()
+      return identity ? `${shared}\n\n${CACHE_BREAK_MARKER}\n\n${identity}` : shared
     }
     const skillEnablement = new BuiltinSkillEnablement(this.services.configService)
     return new PromptBuilder({

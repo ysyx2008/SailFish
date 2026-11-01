@@ -5,6 +5,8 @@
  * 直接 `new ContextWindowManager(mockDeps)`,无需构造 Agent——这正是抽出的可测性收益。
  */
 import { describe, it, expect, vi } from 'vitest'
+import { sanitizeParentMessages } from '../sanitize-parent-messages'
+import { parentContextMessages, SubAgentContext } from '../sub-agent-context'
 import { ContextWindowManager, nextCompressedArchiveId, peelOpenToolTurn, type ContextWindowDeps } from '../context-window'
 import type { AiMessage, ToolCall } from '../../ai.service'
 import type { AgentRun } from '../types'
@@ -363,6 +365,24 @@ describe('ContextWindowManager.updatePressure', () => {
 // ==================== compress ====================
 
 describe('ContextWindowManager.compress', () => {
+  it('压缩父背景和执行过程时保留系统绑定的当前成员身份', () => {
+    const identity = new SubAgentContext()
+    identity.bind({ name: '乙', parent: '甲', role: '组织者', lead: true })
+    const system: AiMessage = { role: 'system', content: identity.systemSuffix() }
+    const run = makeRun([
+      system,
+      ...parentContextMessages([user('你是甲，顶层负责人')], '甲'),
+      user('派两位成员'),
+      asst('准备派工', [tc('1', 'test')]), tool('1'),
+      asst('等候结果', [tc('2', 'test')]), tool('2'),
+    ])
+    const manager = new ContextWindowManager(makeDeps())
+    expect(manager.compress(run, '上级是甲；本成员已派出两人', 1)).not.toBeNull()
+    expect(run.messages.filter(message => message.role === 'system')).toEqual([system])
+    expect(system.content).toBe(identity.systemSuffix())
+    expect(system.content).toContain('姓名：乙')
+  })
+
   it('无 user 消息 → null', () => {
     const m = new ContextWindowManager(makeDeps())
     expect(m.compress(makeRun([asst('hi')]), '摘要', 1)).toBeNull()
@@ -1396,5 +1416,36 @@ describe('peelOpenToolTurn', () => {
     ]
     expect(peelOpenToolTurn(done)).toEqual([])
     expect(done).toHaveLength(3)
+  })
+})
+
+
+describe('压缩后的用户上下文来源',()=>{
+  it('长用户消息截断时来源范围同步缩短，下级不能取回预算外原文',async()=>{
+    const m=new ContextWindowManager(makeDeps({getLastPromptTokens:()=>125000}))
+    const content='用户长交代'+ 'x'.repeat(200000)+'尾部预算外原文'
+    const original:AiMessage={role:'user',content,_userContextParts:[{start:0,end:content.length}]}
+    const run=makeRun([original,asst('已读完'),user('当前任务'),asst('',[tc('cc1','exec')]),tool('cc1'),asst('',[tc('cc2','exec')]),tool('cc2'),asst('',[tc('cc3','exec')]),tool('cc3')])
+    await m.proactiveCompress(run)
+    const capped=run.messages.find(msg=>msg.content.startsWith('用户长交代'))!
+    expect(capped.content.length).toBeLessThan(content.length)
+    expect(capped._userContextParts![0].end).toBeLessThan(content.length)
+    const cleaned=sanitizeParentMessages([capped])
+    expect(cleaned).toHaveLength(1)
+    expect(cleaned[0].content.length).toBeLessThan(capped.content.length)
+    expect(cleaned[0].content).not.toContain('尾部预算外原文')
+    expect(cleaned[0].content).not.toContain('完整原文见归档')
+    expect(original._userContextParts![0].end).toBe(content.length)
+    expect(JSON.stringify(run.compressedArchives)).toContain('尾部预算外原文')
+  })
+  it('被截掉的用户范围不指向新插入的归档提示',async()=>{
+    const m=new ContextWindowManager(makeDeps({getLastPromptTokens:()=>125000}))
+    const prefix='通知'.repeat(100000), content=prefix+'尾部用户交代'
+    const mixed:AiMessage={role:'user',content,_userContextParts:[{start:prefix.length,end:content.length}]}
+    const run=makeRun([mixed,asst('已读完'),user('当前任务'),asst('',[tc('dd1','exec')]),tool('dd1'),asst('',[tc('dd2','exec')]),tool('dd2'),asst('',[tc('dd3','exec')]),tool('dd3')])
+    await m.proactiveCompress(run)
+    const capped=run.messages.find(msg=>msg.content.startsWith('通知'))!
+    expect(capped._userContextParts).toEqual([])
+    expect(sanitizeParentMessages([capped])).toEqual([])
   })
 })

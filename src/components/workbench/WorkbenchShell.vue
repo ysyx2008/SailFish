@@ -189,6 +189,17 @@ onUnmounted(() => {
   resizeObserver = null
   activeCleanup?.()
 })
+
+defineExpose({
+  /** 宿主区域改宽而窗口未改宽时，按当前比例重新测量。 */
+  refreshLayout: syncRegionWidth,
+  /** 返回是否消费了当前拖动，供宿主的分层关闭快捷键优先处理。 */
+  cancelResize: () => {
+    const active = isResizing.value
+    activeCleanup?.()
+    return active
+  },
+})
 </script>
 
 <template>

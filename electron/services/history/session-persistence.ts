@@ -16,7 +16,7 @@
  */
 import * as fs from 'fs'
 import * as path from 'path'
-import type { AgentRecord, AgentStepRecord, ApprovalMode } from '@shared/types'
+import type { AgentRecord, AgentStepRecord, ApprovalMode, ExpertTeamView, OrganizationView, SubAgentResult } from '@shared/types'
 import { isApprovalMode, isAssignedBy } from '@shared/types'
 import {
   forEachBoundedJsonlLineAsync,
@@ -41,6 +41,8 @@ const log = createLogger('SessionPersistence')
 /** 读会话时的场景选择。默认完整读回；检索时丢掉产出物快照，避免把整篇文档拉进内存。 */
 export interface ReadSessionOptions {
   omitCanvasData?: boolean
+  /** 只读步骤的调用方不解析完整模型对话。 */
+  omitMessages?: boolean
 }
 
 export interface SessionMeta {
@@ -71,6 +73,20 @@ export interface SessionMeta {
   stepCount: number
   /** 已持久化的 messages 条数 */
   messageCount: number
+  /**
+   * 步骤上最新的组织快照（按步骤 id）。
+   * steps.jsonl 是追加写，步骤创建后组织再长出来不会回头改那一行；快照放 meta 里，
+   * 每次存盘按 updatedAt 覆盖，重开时再用它盖回步骤。
+   */
+  organizations?: Record<string, OrganizationView>
+  /** 步骤上的子 Agent / 团聊实时快照；和 organizations 同一类问题、同一种存法 */
+  liveSteps?: Record<string, StepSnapshot>
+}
+
+export interface StepSnapshot {
+  at: number
+  subAgents?: SubAgentResult[]
+  expertTeam?: ExpertTeamView
 }
 
 function sessionDir(agentDir: string, dateStr: string, recordId: string): string {
@@ -94,6 +110,22 @@ function mergeTitleLock(meta: SessionMeta, existing: SessionMeta | null): Sessio
   if (existing?.titleLocked) meta.titleLocked = true
   if (!meta.approval && existing?.approval) meta.approval = existing.approval
   if (!meta.assignedBy && existing?.assignedBy) meta.assignedBy = existing.assignedBy
+  if (existing?.organizations) {
+    const merged: Record<string, OrganizationView> = { ...(meta.organizations ?? {}) }
+    for (const [stepId, old] of Object.entries(existing.organizations)) {
+      const current = merged[stepId]
+      if (!current || (current.updatedAt ?? 0) < (old.updatedAt ?? 0)) merged[stepId] = old
+    }
+    meta.organizations = merged
+  }
+  if (existing?.liveSteps) {
+    const merged: Record<string, StepSnapshot> = { ...(meta.liveSteps ?? {}) }
+    for (const [stepId, old] of Object.entries(existing.liveSteps)) {
+      const current = merged[stepId]
+      if (!current || current.at < old.at) merged[stepId] = old
+    }
+    meta.liveSteps = merged
+  }
   return meta
 }
 
@@ -130,11 +162,25 @@ function recordToMeta(record: AgentRecord, stepCount: number, messageCount: numb
     meta.compressedArchives = record.compressedArchives.map(a => JSON.parse(JSON.stringify(a)))
   }
   if (record.lastPromptUsage) meta.lastPromptUsage = { ...record.lastPromptUsage }
+  const organizations: Record<string, OrganizationView> = {}
+  const liveSteps: Record<string, StepSnapshot> = {}
+  for (const step of record.steps ?? []) {
+    if (step.organization) organizations[step.id] = step.organization
+    if (step.subAgents || step.expertTeam) {
+      liveSteps[step.id] = {
+        at: step.snapshotAt ?? 0,
+        ...(step.subAgents ? { subAgents: step.subAgents } : {}),
+        ...(step.expertTeam ? { expertTeam: step.expertTeam } : {}),
+      }
+    }
+  }
+  if (Object.keys(organizations).length > 0) meta.organizations = organizations
+  if (Object.keys(liveSteps).length > 0) meta.liveSteps = liveSteps
   return meta
 }
 
 function metaToRecord(meta: SessionMeta, steps: AgentStepRecord[], messages: AgentRecord['messages']): AgentRecord {
-  return normalizeAgentRecord({
+  const record = normalizeAgentRecord({
     id: meta.id,
     timestamp: meta.timestamp,
     terminalId: meta.terminalId,
@@ -161,6 +207,24 @@ function metaToRecord(meta: SessionMeta, steps: AgentStepRecord[], messages: Age
     compressedArchives: meta.compressedArchives,
     ...(meta.lastPromptUsage ? { lastPromptUsage: meta.lastPromptUsage } : {}),
   })
+  if ((meta.organizations || meta.liveSteps) && record.steps.length > 0) {
+    record.steps = record.steps.map(step => {
+      const organization = meta.organizations?.[step.id]
+      const snapshot = meta.liveSteps?.[step.id]
+      // 步骤自己要是比 meta 里的快照还新（例如整份重写过），别用旧快照盖回去
+      const useSnapshot = !!snapshot && (step.snapshotAt ?? 0) <= snapshot.at
+      const useOrganization = !!organization && (step.organization?.updatedAt ?? 0) <= (organization.updatedAt ?? 0)
+      if (!useOrganization && !useSnapshot) return step
+      return {
+        ...step,
+        ...(useOrganization ? { organization } : {}),
+        ...(useSnapshot && snapshot?.subAgents ? { subAgents: snapshot.subAgents } : {}),
+        ...(useSnapshot && snapshot?.expertTeam ? { expertTeam: snapshot.expertTeam } : {}),
+        ...(useSnapshot && snapshot ? { snapshotAt: Math.max(step.snapshotAt ?? 0, snapshot.at) } : {}),
+      }
+    })
+  }
+  return record
 }
 
 function applyReadOptions<T>(value: T, options?: ReadSessionOptions): T {
@@ -290,7 +354,7 @@ export function readSessionDir(
     const meta = readMeta(dir)
     if (!meta) return null
     const steps = readJsonl<AgentStepRecord>(stepsPath(dir), options)
-    const messages = readJsonl<NonNullable<AgentRecord['messages']>[number]>(messagesPath(dir), options)
+    const messages = options?.omitMessages ? [] : readJsonl<NonNullable<AgentRecord['messages']>[number]>(messagesPath(dir), options)
     return metaToRecord(meta, steps, messages)
   } catch (e) {
     onCorrupt?.(dir, e)
@@ -298,7 +362,7 @@ export function readSessionDir(
   }
 }
 
-async function readSessionDirAsync(
+export async function readSessionDirAsync(
   dir: string,
   onCorrupt?: (corruptPath: string | null, error: unknown) => void,
   options?: ReadSessionOptions
@@ -308,7 +372,7 @@ async function readSessionDirAsync(
     if (!meta) return null
     const [steps, messages] = await Promise.all([
       readJsonlAsync<AgentStepRecord>(stepsPath(dir), options),
-      readJsonlAsync<NonNullable<AgentRecord['messages']>[number]>(messagesPath(dir), options),
+      options?.omitMessages ? [] : readJsonlAsync<NonNullable<AgentRecord['messages']>[number]>(messagesPath(dir), options),
     ])
     return metaToRecord(meta, steps, messages)
   } catch (e) {

@@ -33,10 +33,13 @@ import { describeLiveProcess, type ProcessFoldView } from '../utils/process-fold
 import { chatTimeParts } from '../utils/chat-time-marker'
 import { formatProcessFoldCaption, type ProcessFoldSay } from '../utils/process-fold-label'
 import ToolCallContent from './ToolCallContent.vue'
-import SubAgentGroup from './SubAgentGroup.vue'
+import ApiErrorDetails from './ApiErrorDetails.vue'
 import SubAgentDock from './SubAgentDock.vue'
 import { toolDisplayName } from '../utils/tool-display'
 import ExpertTeamChat from './ExpertTeam/ExpertTeamChat.vue'
+import { teamCards } from '../utils/team-view'
+import OrganizationCard from './Organization/OrganizationCard.vue'
+import OrganizationChart from './Organization/OrganizationChart.vue'
 import ImageContextMenu from './ImageContextMenu.vue'
 import AttachmentContextMenu from './AttachmentContextMenu.vue'
 import AttachmentFileIcon from './AttachmentFileIcon.vue'
@@ -101,6 +104,8 @@ const props = withDefaults(defineProps<{
   /** 外壳接手群聊时：此刻开着的是哪个专家团（没开就空），以及怎么关掉 */
   openedExpertTeamStepId?: string | null
   closeExpertTeam?: () => void
+  /** 外壳有地方放组织图时由它打开；不给就盖在对话栏上 */
+  openOrganizationSeat?: (stepId: string, member?: string) => void
 }>(), {
   visible: true,
   tabActive: true,
@@ -552,21 +557,23 @@ const getHostname = (url: string): string => {
 
 /** 盖在对话栏上的专家团群聊（外壳没接手时） */
 const overlayTeamStepId = ref<string | null>(null)
-const openExpertTeam = (stepId: string) => {
-  if (props.openExpertTeam) props.openExpertTeam(stepId)
-  else overlayTeamStepId.value = stepId
+/** 盖在对话栏上的项目组织图，和从图里点开的某个团的群聊（再盖在组织图上） */
+const overlayOrgStepId = ref<string | null>(null)
+const overlayOrgEntry = ref<{ member?: string }>({})
+const openOrganization = (stepId: string, member?: string) => {
+  if (props.openOrganizationSeat) {
+    props.openOrganizationSeat(stepId, member)
+    return
+  }
+  overlayOrgStepId.value = stepId
+  overlayOrgEntry.value = { member }
 }
-watch(() => props.tabId, () => { overlayTeamStepId.value = null })
-/** 此刻开着群聊的专家团 */
-const openedTeamStepId = computed(() => (props.openExpertTeam ? props.openedExpertTeamStepId : overlayTeamStepId.value) ?? null)
-/** 顶部群聊按钮：没开就打开，开着再点就收起 */
-const toggleExpertTeam = (stepId: string) => {
-  if (openedTeamStepId.value !== stepId) openExpertTeam(stepId)
-  else if (props.closeExpertTeam) props.closeExpertTeam()
-  else overlayTeamStepId.value = null
-}
-
-
+/** 同一份组织可能挂在多个派出步骤上：每个任务只认第一份，对话里每个任务也只挂一张卡片 */
+const teamCardViews = computed(() => teamCards(agentState.value?.steps ?? [], agentState.value?.sessionId))
+watch(() => props.tabId, () => {
+  overlayTeamStepId.value = null
+  overlayOrgStepId.value = null
+})
 // ==================== 初始化 Composables ====================
 
 // 当前终端 ID（使用 prop，每个实例固定绑定一个 tab）
@@ -2676,10 +2683,10 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
       <SubAgentDock
         v-if="pinnedDispatches.length > 0 && !peek"
         :steps="pinnedDispatches"
+        :team-steps="agentState?.steps ?? []"
+        :session-id="agentState?.sessionId"
         :attached="!!currentPlan"
-        :open-team-step-id="openedTeamStepId"
-        @open-team="openExpertTeam"
-        @toggle-team="toggleExpertTeam"
+        @open-organization="openOrganization"
       />
 
       <!-- 消息列表（虚拟滚动） -->
@@ -2769,6 +2776,9 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                         :started-at="item.step!.timestamp"
                         :label="item.step!.content"
                       />
+                    </div>
+                    <div v-else-if="item.step!.apiError" class="api-error-stack">
+                      <ApiErrorDetails :detail="item.step!.apiError" :summary="item.step!.content" />
                     </div>
                     <div v-else-if="item.step!.type === 'message'" class="agent-message-stack">
                       <!-- 一句话拆成两半时：想的那截收进折叠行、说出口的那句留在外面，各只渲染自己那半 -->
@@ -2905,15 +2915,13 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                         @contextmenu="openAttachmentContextMenu"
                       />
                     </div>
+                    <div v-else-if="item.step!.type === 'error'" class="step-text">{{ item.step!.content }}</div>
                     <div v-else class="step-text markdown-content" v-html="renderMarkdown(item.step!.content)"></div>
                     <!-- 并行子 Agent 卡片组 -->
-                    <SubAgentGroup
-                      v-if="item.step!.subAgents && item.step!.subAgents.length > 0"
-                      class="sub-agent-group-in-chat"
-                      :step-id="item.step!.id"
-                      :sub-agents="item.step!.subAgents"
-                      :expert-team="item.step!.expertTeam"
-                      @open-team="openExpertTeam(item.step!.id)"
+                    <OrganizationCard
+                      v-if="teamCardViews.has(item.step!.id)"
+                      :organization="teamCardViews.get(item.step!.id)!"
+                      @open="openOrganization(item.step!.id)"
                     />
                     <div v-if="item.step!.type === 'user_supplement' && splitSentMessage(item.step!.content, item.step!.attachments).rest.length > 0" class="message-attachments">
                       <span
@@ -3496,6 +3504,17 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
       </div>
     </div>
 
+    <OrganizationChart
+      :artifact-bindings="{ scrollToAgentStep, addComposerQuote, addComposerImage, setComposerDraft, submitComposerMessage }"
+      v-if="overlayOrgStepId && !openOrganizationSeat"
+      class="organization-overlay"
+      mode="overlay"
+      :tab-id="tabId"
+      :step-id="overlayOrgStepId"
+      :entry="overlayOrgEntry"
+      @overview="overlayOrgEntry = {}"
+      @close="overlayOrgStepId = null"
+    />
     <ExpertTeamChat
       v-if="overlayTeamStepId"
       class="expert-team-overlay"
@@ -5076,6 +5095,13 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
   margin-top: 0;
 }
 
+.api-error-stack {
+  min-width: 0;
+  padding: 8px 10px;
+  line-height: 1.5;
+}
+
+
 .step-text {
   word-break: break-word;
   line-height: 1.5;
@@ -5091,7 +5117,8 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
 }
 
 /* Agent 步骤中的 markdown 样式 */
-.step-text.step-analysis.markdown-content {
+.step-text.step-analysis.markdown-content,
+.api-error-stack {
   font-size: 13px;
 }
 

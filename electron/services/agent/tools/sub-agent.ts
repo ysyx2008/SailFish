@@ -2,6 +2,8 @@
  * 伙计调度：派出 / 再交代 / 等待 / 打断。
  * 伙计用真正的 Agent 循环，花名册活在这场 run 里。
  */
+import { createHash, randomUUID } from 'crypto'
+import { LEGACY_TEAM_ID } from '@shared/types'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
@@ -10,6 +12,7 @@ import type { AgentStep, RemoteAccessRequest, SubAgentResult } from '@shared/typ
 import type { AgentContext } from '../types'
 import { getDefaultShell, getLocalOS } from '../../../utils/platform'
 import { getMetaByName } from '../tool-metadata'
+import { MAX_ORG_DEPTH } from '../org-ledger'
 import { MAX_LIVE_CHILDREN, type ChildSnapshot, type DormantChild, type RosterSpawnDeps, type SpawnTask, type SubAgentRoster } from '../sub-agent-roster'
 import { parseForkTurns, sanitizeParentMessages, type ForkTurns } from '../sanitize-parent-messages'
 import type { ToolExecutorConfig, ToolResult, AgentConfig } from './types'
@@ -17,13 +20,16 @@ import { getAgentTools, filterSubAgentTools, dispatchTitle } from '../tools'
 import { truncateFromEnd, truncateFromEndWithNotice } from './utils'
 import { getScratchPath } from './file'
 import { createLogger } from '../../../utils/logger'
-import { t } from '../i18n'
+import { t, createTranslator } from '../i18n'
 import {
   labelLength, MAX_ROLE_CHARS, MAX_TEAM_NAME_CHARS, MAX_TEAM_SIZE, MIN_TEAM_SIZE, TEAM_LEADER,
   teamNameFrom, tidyLabel, WAKES_PER_CHECKPOINT, type ExpertTeam
 } from '../expert-team'
 import type { ExpertTeamChatStore } from '../../history/expert-team-chat-store'
-import { createTeamTexts, expertOpening, formatTranscript, renamedList } from './expert-team-text'
+import { createTeamTexts, expertOpening, formatTranscript, formatTranscriptLines, quoteMemberText, renamedList } from './expert-team-text'
+import { emptyWaitFeedback, memberFactsPrefix, targetFeedback } from './sub-agent-feedback'
+import { orgOpeningNote, renderBoard, type BoardSection } from './organization-text'
+import type { OrganizationMemberView, OrganizationTeamView, OrganizationView, TeamReviewState } from '@shared/types'
 import { inferConversationKind } from '@shared/types'
 import { conversationPolicy } from '../../conversation/policy'
 import { getConfigService } from '../../config.service'
@@ -53,25 +59,30 @@ function buildArtifactDir(): string {
   return path.join(getScratchPath(), 'sub-agents', `${stamp}-${nonce}`)
 }
 
-function statusLabel(status: ChildSnapshot['status']): string {
+/** 会话 id 做目录名：不能进路径的字符换成 -，留一段就够保证不重 */
+function safeDirPart(value: string): string {
+  return value.replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'session'
+}
+
+function statusLabel(status: ChildSnapshot['status'], translate = t): string {
   switch (status) {
-    case 'completed': return t('dispatch.status_completed')
-    case 'interrupted': return t('dispatch.status_interrupted')
-    case 'failed': return t('dispatch.status_failed')
-    case 'pending': return t('dispatch.status_pending')
-    default: return t('dispatch.status_running')
+    case 'completed': return translate('dispatch.status_completed')
+    case 'interrupted': return translate('dispatch.status_interrupted')
+    case 'failed': return translate('dispatch.status_failed')
+    case 'pending': return translate('dispatch.status_pending')
+    default: return translate('dispatch.status_running')
   }
 }
 
 /** 总览里的状态一格：还在干的写做到第几步、最近用了什么工具，看得出是在忙还是停住了 */
-function statusCell(c: ChildSnapshot): string {
-  if (c.status !== 'running' && c.status !== 'pending') return statusLabel(c.status)
+function statusCell(c: ChildSnapshot, translate: typeof t): string {
+  if (c.status !== 'running' && c.status !== 'pending') return statusLabel(c.status, translate)
   const last = c.steps[c.steps.length - 1]
   const detail = [
-    last && t('dispatch.overview_steps', { steps: c.steps.length, tool: last.tool }),
-    c.waitingForModel && t('dispatch.overview_queued'),
+    last && translate('dispatch.overview_steps', { steps: c.steps.length, tool: last.tool }),
+    c.waitingForModel && translate('dispatch.overview_queued'),
   ].filter(Boolean).join('；')
-  return detail ? t('dispatch.overview_live', { status: statusLabel(c.status), detail }) : statusLabel(c.status)
+  return detail ? translate('dispatch.overview_live', { status: statusLabel(c.status, translate), detail }) : statusLabel(c.status, translate)
 }
 
 /** 做完 / 在干 / 失败 / 已打断各几个 */
@@ -87,22 +98,45 @@ function formatCounts(children: ChildSnapshot[]): string {
 
 /** 这一轮伙计的落盘处：每人一份结果文件，再加一份总览，一人一行。 */
 export class SubAgentWorkspace {
-  private readonly dir: string
-  readonly overviewPath: string
+  private dir: string
+  overviewPath: string
+  /** 目录按会话定下来了（或者已经写过东西、不能换） */
+  private sessionId?: string
+  private sessionBound = false
+  private wrote = false
   private readonly results = new Map<string, { chars: number; file?: string }>()
   /** 总览上次写进去的内容，没变就不重写 */
   private lastOverview?: string
+  private lastBoard?: string
+  private readonly seededTeams = new Set<string>()
+  private readonly teamBoards = new Map<string, string>()
   /** 每个群聊文件写到第几条 */
   private readonly transcriptCounts = new Map<string, number>()
   /** 团名对应的群聊文件名 */
   private readonly transcriptFiles = new Map<string, string>()
   /** 随会话保存的群聊全文：团名对应的文件和写到第几条 */
   private readonly chatFiles = new Map<string, { file: string; written: number }>()
+  /** 从盘上叫醒的团：旧的 transcript 文件还在，只能往后追加，不能拿新消息整份覆盖 */
+  private readonly adoptedTranscripts = new Set<string>()
+  /** 同一场会话换了目录策略也不撞群聊文件名：每次运行给新团一个短标记 */
+  private readonly chatToken = Math.random().toString(36).slice(2, 8)
   private chats?: { store: ExpertTeamChatStore; sessionId: string }
 
   constructor(dir = buildArtifactDir()) {
     this.dir = dir
     this.overviewPath = path.join(dir, 'overview.md')
+  }
+
+  /**
+   * 落盘目录按会话定下来：同一条会话中途退出、再开一轮时，看板、总览和结果文件
+   * 还在原来的地方，之前给伙计的路径对得上。写过东西以后不再换。
+   */
+  bindSession(sessionId: string | undefined): void {
+    this.sessionId ??= sessionId
+    if (!sessionId || this.sessionBound || this.wrote) return
+    this.sessionBound = true
+    this.dir = path.join(getScratchPath(), 'sub-agents', `session-${safeDirPart(sessionId)}`)
+    this.overviewPath = path.join(this.dir, 'overview.md')
   }
 
   /** 有会话才存群聊全文；只认第一次挂上的 */
@@ -116,7 +150,7 @@ export class SubAgentWorkspace {
     if (!this.chats) return
     let chat = this.chatFiles.get(team.name)
     if (!chat) {
-      const stem = `${path.basename(this.dir)}-${this.teamTranscriptFile(team).replace(/\.md$/, '')}`
+      const stem = `${path.basename(this.dir)}-${this.chatToken}-${this.teamTranscriptFile(team).replace(/\.md$/, '')}`
       const file = this.chats.store.create(this.chats.sessionId, stem)
       if (!file) return
       chat = { file, written: 0 }
@@ -130,6 +164,17 @@ export class SubAgentWorkspace {
   teamChatFile(team: ExpertTeam): string | undefined {
     const chat = this.chatFiles.get(team.name)
     return chat && chat.written > 0 ? chat.file : undefined
+  }
+
+  /** 重建的团接上以前的群聊文件：新消息继续往后追加，界面也能接着翻旧消息 */
+  adoptTeamChat(teamName: string, file: string | undefined, written: number): void {
+    if (!file || written <= 0 || this.chatFiles.has(teamName)) return
+    this.chatFiles.set(teamName, { file, written })
+  }
+
+  /** 重建的团接上以前的 transcript：之后只能往后追加，别把旧对话整份盖掉 */
+  adoptTeamTranscript(teamName: string): void {
+    this.adoptedTranscripts.add(teamName)
   }
 
   /** 这一轮的落盘目录 */
@@ -154,30 +199,163 @@ export class SubAgentWorkspace {
       t('dispatch.result_archived', { total: originalLength, path: file }))
   }
 
+  /** 一人一行：名字、状态、结果字数、结果文件、任务 */
+  rowsOf(children: ChildSnapshot[]): string[] {
+    const translate = createTranslator()
+    return children.map(c => {
+      const kept = this.results.get(c.name)
+      const who = [c.lead ? translate('org.lead_mark') : '', c.role, c.team && `「${c.team}」`].filter(Boolean).join(' ')
+      const task = who ? `[${who}] ${c.description}` : c.description
+      return [c.name, statusCell(c, translate), kept ? String(kept.chars) : '-', kept?.file ?? '-', task].join(' | ')
+    })
+  }
+
   writeOverview(children: ChildSnapshot[]): void {
     const lines = [
       t('dispatch.overview_title', { total: children.length, counts: formatCounts(children) }),
       t('dispatch.overview_header'),
-      ...children.map(c => {
-        const kept = this.results.get(c.name)
-        const who = [c.role, c.team && `「${c.team}」`].filter(Boolean).join(' ')
-        const task = who ? `[${who}] ${c.description}` : c.description
-        return [c.name, statusCell(c), kept ? String(kept.chars) : '-', kept?.file ?? '-', task].join(' | ')
-      }),
+      ...this.rowsOf(children),
     ]
     const content = lines.join('\n') + '\n'
     if (content === this.lastOverview) return
     if (this.write('overview.md', content)) this.lastOverview = content
   }
 
+  /** 看板上每份花名册的最后样子：组长收工、花名册退出账本以后，他那一段还在 */
+  private readonly boardSections = new Map<string, RememberedSection>()
+
+  rememberBoardSection(section: RememberedSection): void {
+    const key = section.owner ?? ''
+    const previous = this.boardSections.get(key)
+    // 冷恢复和再次唤醒都可能只有部分名册；未在本轮启动的成员、团仍保留。
+    const teamViews = [...new Map([...(previous?.teamViews ?? []), ...section.teamViews].map(team => [team.name, team])).values()]
+    const members = [...new Map([...(previous?.members ?? []), ...section.members].map(member => [member.name, member])).values()]
+    const rows = new Map<string, string | undefined>()
+    for (const source of [previous, section]) source?.members.forEach((member, i) => rows.set(member.name, source.rows[i]))
+    const missingRows = members.filter(member => rows.get(member.name) === undefined)
+    if (missingRows.length) {
+      const formatted = this.rowsOf(missingRows.map(member => ({ ...member, prompt: '', steps: [] })))
+      missingRows.forEach((member, i) => rows.set(member.name, formatted[i]))
+    }
+    this.boardSections.set(key, {
+      ...section,
+      members,
+      rows: members.map(member => rows.get(member.name)!),
+      total: members.length,
+      live: members.filter(member => member.status === 'pending' || member.status === 'running').length,
+      teamViews,
+      teams: teamViews.map(team => ({ name: team.name, review: team.review, reviewers: team.reviewers ?? [] })),
+    })
+  }
+
+  /** 看板上已经有内容了（重开时先铺一次，之后按账本刷新） */
+  hasBoard(): boolean {
+    return this.boardSections.size > 0
+  }
+
+  /** 全组织的团（不截断）：交给组长看自己的验收结论时用 */
+  organizationTeams(): OrganizationTeamView[] {
+    return [...this.boardSections.values()]
+      .sort((a, b) => a.depth - b.depth)
+      .flatMap(s => s.teamViews)
+  }
+
+  /** 完整组织元数据：节点不按人数裁掉，所有分组与汇报链保持完整。 */
+  organizationView(teamId?: string): OrganizationView {
+    const sections = [...this.boardSections.values()].sort((a, b) => a.depth - b.depth)
+    const allMembers = sections.flatMap(s => s.members)
+    const members = teamId ? allMembers.filter(member => (member.teamId ?? LEGACY_TEAM_ID) === teamId) : allMembers
+    const teams = sections.flatMap(s => s.teamViews).filter(team => !teamId || (team.teamId ?? LEGACY_TEAM_ID) === teamId)
+    const problems = members.filter(m => m.status === 'failed' || m.status === 'interrupted').length
+    return {
+      ...(teamId ? { teamId } : {}),
+      ...(this.sessionId ? { sessionId: this.sessionId } : {}), members, teams,
+      live: teamId ? members.filter(m => m.status === 'running' || m.status === 'pending').length : sections.reduce((n, s) => n + s.live, 0),
+      total: teamId ? members.length : sections.reduce((n, s) => n + s.total, 0),
+      ...(problems > 0 ? { problems } : {}),
+      boardPath: this.boardPathFor(teamId), updatedAt: Date.now(),
+    }
+  }
+
+  /** 每个历史团队只铺一次，多个团队可并存于同一会话。 */
+  beginSeed(teamId: string): boolean {
+    if (this.seededTeams.has(teamId)) return false
+    this.seededTeams.add(teamId)
+    return true
+  }
+
+  boardPathFor(teamId?: string): string {
+    return teamId ? path.join(this.dir, ORG_DIR, `team-${safeDirPart(teamId)}-${createHash('sha1').update(teamId).digest('hex').slice(0, 8)}`, 'board.md') : this.boardPath
+  }
+
+  /** 组织看板放在秘书这一轮的落盘目录下的 org/ 里；内容没变就不重写 */
+  writeBoardFromMemory(): void {
+    const sections = [...this.boardSections.values()].sort((a, b) => a.depth - b.depth)
+    const live = sections.reduce((n, s) => n + s.live, 0)
+    const total = sections.reduce((n, s) => n + s.total, 0)
+    const content = renderBoard(sections, { live, total })
+    if (content !== this.lastBoard && this.write(path.join(ORG_DIR, 'board.md'), content)) this.lastBoard = content
+    // 一次分桶，避免团队很多时反复扫描全会话成员。
+    const byTeam = new Map<string, RememberedSection[]>()
+    for (const section of sections) {
+      const buckets = new Map<string, { members: OrganizationMemberView[]; teamViews: OrganizationTeamView[] }>()
+      const bucket = (id: string) => {
+        let value = buckets.get(id)
+        if (!value) { value = { members: [], teamViews: [] }; buckets.set(id, value) }
+        return value
+      }
+      for (const member of section.members) bucket(member.teamId ?? LEGACY_TEAM_ID).members.push(member)
+      for (const team of section.teamViews) bucket(team.teamId ?? LEGACY_TEAM_ID).teamViews.push(team)
+      for (const [id, { members, teamViews }] of buckets) {
+        const filtered = { ...section, members, teamViews, rows: this.rowsOf(members.map(member => ({ ...member, prompt: '', steps: [] }))),
+          teams: teamViews.map(team => ({ name: team.name, review: team.review, reviewers: team.reviewers ?? [] })),
+          total: members.length, live: members.filter(member => member.status === 'running' || member.status === 'pending').length }
+        const list = byTeam.get(id) ?? []
+        list.push(filtered)
+        byTeam.set(id, list)
+      }
+    }
+    for (const [teamId, filtered] of byTeam) {
+      const body = renderBoard(filtered, { live: filtered.reduce((n,s) => n+s.live,0), total: filtered.reduce((n,s)=>n+s.total,0) })
+      if (this.teamBoards.get(teamId) !== body && this.write(path.relative(this.dir, this.boardPathFor(teamId)), body)) this.teamBoards.set(teamId, body)
+    }
+  }
+
+  get boardPath(): string {
+    return path.join(this.dir, ORG_DIR, 'board.md')
+  }
+
+  /** 组长名下的人的结果文件放在这里 */
+  leadDirectory(lead: string): string {
+    return path.join(this.dir, ORG_DIR, tidyDirName(lead))
+  }
+
   teamTranscriptPath(team: ExpertTeam): string {
     return path.join(this.dir, this.teamTranscriptFile(team))
   }
 
-  /** 群里有新消息才重写 */
+  /** 群里有新消息才重写；从盘上接回来的团只往后追加 */
   writeTeamTranscript(team: ExpertTeam): void {
     const count = team.messageCount()
     if (this.transcriptCounts.get(team.name) === count) return
+    if (this.adoptedTranscripts.has(team.name)) {
+      const file = this.teamTranscriptPath(team)
+      if (!team.hasNewMessages()) {
+        // 还没有新消息：旧的 transcript 原样留着
+        this.transcriptCounts.set(team.name, count)
+        return
+      }
+      try {
+        if (fs.existsSync(file)) {
+          fs.appendFileSync(file, formatTranscriptLines(team).join('\n') + '\n', 'utf-8')
+          this.transcriptCounts.set(team.name, count)
+          return
+        }
+      } catch (err) {
+        log.warn(`Sub-agent transcript append failed (${file}): ${err}`)
+      }
+      this.adoptedTranscripts.delete(team.name)
+    }
     if (this.write(this.teamTranscriptFile(team), formatTranscript(team))) this.transcriptCounts.set(team.name, count)
   }
 
@@ -196,8 +374,9 @@ export class SubAgentWorkspace {
   private write(fileName: string, content: string): string | undefined {
     const filePath = path.join(this.dir, fileName)
     try {
-      fs.mkdirSync(this.dir, { recursive: true })
+      fs.mkdirSync(path.dirname(filePath), { recursive: true })
       fs.writeFileSync(filePath, content, 'utf-8')
+      this.wrote = true
       return filePath
     } catch (err) {
       log.warn(`Sub-agent workspace write failed (${filePath}): ${err}`)
@@ -206,15 +385,128 @@ export class SubAgentWorkspace {
   }
 }
 
+const ORG_DIR = 'org'
+
+interface RememberedSection extends BoardSection {
+  live: number
+  total: number
+  members: OrganizationMemberView[]
+  teamViews: OrganizationTeamView[]
+}
+
+/** 组长的名字做目录名：不能进路径的字符换成 - */
+function tidyDirName(name: string): string {
+  return name.replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'lead'
+}
+
 const workspaces = new WeakMap<SubAgentRoster, SubAgentWorkspace>()
 
 export function workspaceOf(roster: SubAgentRoster): SubAgentWorkspace {
   let workspace = workspaces.get(roster)
   if (!workspace) {
-    workspace = new SubAgentWorkspace()
+    // 组织里组长名下的人，结果和总览放在秘书那一轮目录下 org/<组长名>/，整个组织共用一处
+    const root = roster.orgRoot()
+    workspace = root && root !== roster && roster.owner
+      ? new SubAgentWorkspace(workspaceOf(root).leadDirectory(roster.owner))
+      : new SubAgentWorkspace()
     workspaces.set(roster, workspace)
   }
   return workspace
+}
+
+/**
+ * 重开一场会话、还没按账本刷新时，先用保存下来的组织全貌把看板铺出来：
+ * 之前给伙计的看板路径马上有内容，叫醒团里以前的人时也能拿到上一次的验收结论。
+ * 每队只铺一次，多个历史团队合并进看板内存（之后按账本刷新）。
+ */
+export function seedOrganizationBoard(workspace: SubAgentWorkspace, view: OrganizationView): void {
+  // 快照本来就截断过：铺出来会把「看得到的这些人」当成全组织，宁可不铺
+  if (view.omitted || view.omittedTeams) return
+  const teamId = view.teamId ?? LEGACY_TEAM_ID
+  if (!workspace.beginSeed(teamId)) return
+  view = { ...view, members: view.members.map(member => ({ ...member, teamId: member.teamId ?? teamId })), teams: view.teams.map(team => ({ ...team, teamId: team.teamId ?? teamId })) }
+  const depthOf = (name: string, seen = new Set<string>()): number => {
+    const member = view.members.find(m => m.name === name)
+    if (!member?.parent || seen.has(name)) return 1
+    seen.add(name)
+    return depthOf(member.parent, seen) + 1
+  }
+  const asChild = (member: OrganizationMemberView): ChildSnapshot => ({
+    name: member.name,
+    description: member.description,
+    prompt: '',
+    status: member.status,
+    steps: [],
+    ...(member.role ? { role: member.role } : {}),
+    ...(member.team ? { team: member.team } : {}),
+    ...(member.lead ? { lead: true } : {}),
+    ...(member.reviewer ? { reviewer: true } : {}),
+  })
+  const owners = [undefined, ...view.members.filter(m => m.lead).map(m => m.name)]
+  for (const owner of owners) {
+    const members = view.members.filter(m => (owner ? m.parent === owner : !m.parent))
+    const teamViews = view.teams.filter(t => t.owner === owner)
+    if (!owner && members.length === 0 && teamViews.length === 0) continue
+    workspace.rememberBoardSection({
+      owner,
+      depth: owner ? depthOf(owner) : 0,
+      reportsTo: owner ? view.members.find(m => m.name === owner)?.parent : undefined,
+      rows: workspace.rowsOf(members.map(asChild)),
+      teams: teamViews.map(team => ({ name: team.name, review: team.review, reviewers: team.reviewers ?? [] })),
+      live: members.filter(m => m.status === 'running' || m.status === 'pending').length,
+      total: members.length,
+      members,
+      teamViews,
+    })
+  }
+  workspace.writeBoardFromMemory()
+}
+
+/**
+ * 组织看板：全树每份花名册一段，由系统按账本重写。没有组织时什么也不做。
+ * 组长收工后他的花名册退出账本，看板上他那一段保留最后的样子。
+ */
+export function refreshOrgBoard(roster: SubAgentRoster): void {
+  const root = roster.orgRoot() ?? (roster.owner === undefined ? roster : undefined)
+  if (!root) return
+  const rootWorkspace = workspaceOf(root)
+  const entries = roster.orgEntries()
+  for (const entry of entries.length ? entries : [{ roster, owner: undefined, depth: 0, reportsTo: undefined }]) {
+    const r = entry.roster
+    rootWorkspace.rememberBoardSection({
+      owner: entry.owner,
+      depth: entry.depth,
+      reportsTo: entry.reportsTo,
+      rows: workspaceOf(r).rowsOf(r.organizationMembers()),
+      teams: r.listTeams().map(team => ({ name: team.name, review: team.reviewState(), reviewers: team.reviewerNames() })),
+      live: r.liveCount(),
+      total: r.organizationMembers().length,
+      members: r.organizationMembers().map(c => toOrganizationMember(c, r.owner)),
+      teamViews: r.listTeams().map(team => toOrganizationTeam(team, r.owner, workspaceOf(r), r.teamMembers(team)[0]?.teamId)),
+    })
+    if (!watchedForRelease.has(r)) {
+      watchedForRelease.add(r)
+      r.onRelease(() => refreshOrgBoard(r))
+    }
+  }
+  rootWorkspace.writeBoardFromMemory()
+}
+
+const watchedForRelease = new WeakSet<SubAgentRoster>()
+
+/** 组织里每个人开场多出的一段；没有组织时是空串 */
+function orgNoteFor(roster: SubAgentRoster, child: ChildSnapshot): string {
+  const root = roster.orgRoot()
+  if (!root) return ''
+  const note = orgOpeningNote({
+    name: child.name,
+    role: child.role,
+    boardPath: workspaceOf(root).boardPathFor(child.teamId),
+    resultDir: workspaceOf(roster).directory,
+    reportsTo: roster.owner,
+    ...(child.lead ? { leadDir: workspaceOf(root).leadDirectory(child.name) } : {}),
+  })
+  return `\n\n${note}`
 }
 
 /** 这场伙计共用的远程通道：花名册整场被打断时一起关掉 */
@@ -416,41 +708,103 @@ export function toSubAgentContext(parent: AgentContext): AgentContext {
   }
 }
 
-function formatKnock(child: ChildSnapshot): string {
-  if (child.role) return formatExpertKnock(child, child.role)
-  if (child.status === 'completed') {
-    return t('dispatch.knock_done', {
-      name: child.name,
-      description: child.description,
-      result: child.result || '(no output)'
-    })
-  }
-  if (child.status === 'interrupted') {
-    return t('dispatch.knock_interrupted', {
-      name: child.name,
-      description: child.description
-    })
-  }
-  return t('dispatch.knock_fail', {
-    name: child.name,
-    description: child.description,
-    error: child.error || 'Unknown error'
-  })
+/** 一位组长名下某个团的验收情况；账本里的花名册和给界面看的组织全貌都能给出这几项 */
+export interface LeadReviewTeam {
+  name: string
+  /** 团所在的那位组长；秘书自己派的团没有 */
+  owner?: string
+  review: TeamReviewState
+  /** 验收人的名字；没有验收人时为空 */
+  reviewers?: readonly string[]
+}
+
+/**
+ * 组长交差时随敲门带上的验收结论：他名下每个团一行，别的组长的团不写。
+ * 顶层（没有组长名）没有这一项；没有可写的团时返回空数组。
+ */
+export function leadReviewLines(teams: readonly LeadReviewTeam[], leadName: string | undefined): string[] {
+  if (!leadName) return []
+  return teams
+    .filter(team => team.owner === leadName)
+    .map(team => t('org.board_team', {
+      team: team.name,
+      review: t(`org.board_review_${team.review}`, { reviewers: (team.reviewers ?? []).join('、') }),
+    }))
+}
+
+/**
+ * 组长收工时自己的名册可能刚退出账本：先用账本里仍登记的那份，退而用组织看板留下的最后一笔。
+ * 两者都拿不到时返回空数组，不报错、不编结论。
+ */
+function leadReviewTeamsFor(roster: SubAgentRoster, leadName: string): LeadReviewTeam[] {
+  const root = roster.orgRoot()
+  if (!root) return []
+  const registered = roster.orgEntries()
+    .filter(entry => entry.owner === leadName)
+    .flatMap(entry => entry.roster.listTeams().map(team => ({
+      name: team.name,
+      owner: leadName,
+      review: team.reviewState(),
+      reviewers: team.reviewerNames(),
+    })))
+  if (registered.length > 0) return registered
+  return workspaceOf(root).organizationTeams()
+}
+
+/** 只有组长名下才有团要交代；普通伙计、专家不查组织看板 */
+function knockTeamsFor(roster: SubAgentRoster, child: ChildSnapshot): LeadReviewTeam[] {
+  return child.lead ? leadReviewTeamsFor(roster, child.name) : []
+}
+
+export function formatKnock(child: ChildSnapshot, reviewTeams: readonly LeadReviewTeam[] = [], parent?: string): string {
+  // 交差归属来自花名册；正文按数据引用，不能靠模拟消息头换成别人的回执。
+  const facts = memberFactsPrefix(child, parent, child.status === 'completed')
+  const quoted = { ...child, result: child.status === 'completed' ? facts + (child.result ? quoteMemberText(child.result) : '(no output)') : child.result }
+  const text = child.role
+    ? formatExpertKnock(quoted, child.role)
+    : child.status === 'completed'
+      ? t('dispatch.knock_done', {
+        name: child.lead ? t('org.lead_label', { name: child.name }) : child.name,
+        description: child.description,
+        result: quoted.result || '(no output)'
+      })
+      : child.status === 'interrupted'
+        ? t('dispatch.knock_interrupted', {
+          name: child.lead ? t('org.lead_label', { name: child.name }) : child.name,
+          description: child.description
+        })
+        : t('dispatch.knock_fail', {
+          name: child.lead ? t('org.lead_label', { name: child.name }) : child.name,
+          description: child.description,
+          error: child.error || 'Unknown error'
+        })
+  const withFacts = child.status !== 'completed' && facts ? `${text}\n\n${facts.trimEnd()}` : text
+  const reviews = leadReviewLines(reviewTeams, child.name)
+  return reviews.length > 0
+    ? `${withFacts}\n\n${t('dispatch.knock_review', { lines: reviews.join('\n') })}`
+    : withFacts
 }
 
 function formatExpertKnock(child: ChildSnapshot, role: string): string {
-  const base = { name: child.name, role, description: child.description }
+  const base = {
+    name: child.lead ? t('org.lead_label', { name: child.name }) : child.name,
+    role,
+    description: child.description,
+  }
   if (child.status === 'completed') return t('expert.knock_done', { ...base, result: child.result || '(no output)' })
   if (child.status === 'interrupted') return t('expert.knock_interrupted', base)
   return t('expert.knock_fail', { ...base, error: child.error || 'Unknown error' })
 }
 
 function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubAgentRoster, team?: string): string {
-  const list = snapshots
-    .map(c => c.role
-      ? t('expert.list_item', { name: c.name, role: c.role, description: c.description })
-      : `- ${c.name}：${c.description}`)
-    .join('\n')
+  const list = snapshots.map(c => {
+    const identity = c.role
+      ? t(c.lead ? 'expert.list_item_lead' : 'expert.list_item', { name: c.name, role: c.role, description: c.description })
+      : `- ${c.lead ? t('org.lead_label', { name: c.name }) : c.name}：${c.description}`
+    const fork = c.forkTurns ?? { kind: 'all' }
+    const mode = t(`dispatch.context_${fork.kind}`, fork.kind === 'last' ? { n: fork.n } : {})
+    return identity + (c.reviewer ? t('expert.reviewer_mark') : '') + t('dispatch.context_mode', { mode })
+  }).join('\n')
   const count = names.length
   const head = team
     ? t('expert.spawned_team', { team, count, list, limit: WAKES_PER_CHECKPOINT })
@@ -460,8 +814,9 @@ function formatSpawned(names: string[], snapshots: ChildSnapshot[], roster: SubA
   const renamed = renamedList(snapshots)
   return [
     head,
+    ...(snapshots.some(c => c.lead) ? [t('org.spawned_leads')] : []),
     ...(renamed ? [t('dispatch.renamed', { list: renamed })] : []),
-    t('dispatch.capacity', { live: roster.liveCount(), room: roster.room() }),
+    t('dispatch.capacity', { live: roster.orgLiveCount(), room: roster.room() }),
     t('dispatch.overview_at', { path: workspaceOf(roster).overviewPath }),
   ].join('\n')
 }
@@ -487,6 +842,7 @@ export function viewStepsPerAgent(agentCount: number): number {
 export function toSubAgentView(c: ChildSnapshot, stepLimit: number = VIEW_STEPS_PER_AGENT): SubAgentResult {
   return {
     id: c.name,
+    ...(c.teamId ? { teamId: c.teamId } : {}),
     name: c.name,
     description: c.description,
     prompt: c.shownPrompt ?? c.prompt,
@@ -496,21 +852,61 @@ export function toSubAgentView(c: ChildSnapshot, stepLimit: number = VIEW_STEPS_
     steps: c.steps.slice(-stepLimit).map(({ id, tool, args, status }) => ({ id, tool, args, status })),
     blockedReason: c.blockedReason,
     waitingForModel: c.waitingForModel,
+    modelWaitReason: c.modelWaitReason,
     ...(c.role ? { role: c.role } : {}),
   }
 }
 
-/** 派出那一步上显示的人和群聊：只看这一次派的人；他们组了团就带上群聊 */
-export function dispatchStepView(roster: SubAgentRoster, names: ReadonlySet<string>): Pick<AgentStep, 'subAgents' | 'expertTeam'> {
+function toOrganizationMember(c: ChildSnapshot, parent: string | undefined): OrganizationMemberView {
+  const activity = c.steps.at(-1)
+  return {
+    ...(activity ? { activity: { tool: activity.tool, args: activity.args, status: activity.status } } : {}),
+    id: c.name,
+    ...(c.teamId ? { teamId: c.teamId } : {}),
+    name: c.name,
+    description: c.description,
+    status: c.status,
+    ...(c.error ? { error: c.error } : {}),
+    ...(c.waitingForModel ? { waitingForModel: true, modelWaitReason: c.modelWaitReason } : {}),
+    ...(c.role ? { role: c.role } : {}),
+    ...(parent ? { parent } : {}),
+    ...(c.lead ? { lead: true } : {}),
+    ...(c.reviewer ? { reviewer: true } : {}),
+    ...(c.team ? { team: c.team } : {}),
+  }
+}
+
+function toOrganizationTeam(team: ExpertTeam, owner: string | undefined, workspace: SubAgentWorkspace, teamId?: string): OrganizationTeamView {
+  const view = team.view({ transcriptPath: workspace.teamTranscriptPath(team), chatFile: workspace.teamChatFile(team) })
+  return {
+    name: team.name,
+    ...(teamId ? { teamId } : {}),
+    ...(owner ? { owner } : {}),
+    review: team.reviewState(),
+    ...(view.reviewers ? { reviewers: view.reviewers } : {}),
+    messageCount: team.messageCount(),
+    waitingLeader: team.isWaitingLeader(),
+    wakeLimit: WAKES_PER_CHECKPOINT,
+    ...(view.chatFile ? { chatFile: view.chatFile } : {}),
+    ...(view.transcriptPath ? { transcriptPath: view.transcriptPath } : {}),
+  }
+}
+
+/** 派出那一步上显示的人和群聊：只看这一次派的人；他们组了团就带上群聊；其中有组长就带上整个组织的全貌 */
+export function dispatchStepView(roster: SubAgentRoster, names: ReadonlySet<string>): Pick<AgentStep, 'subAgents' | 'expertTeam' | 'organization'> {
   const mine = roster.list().filter(c => names.has(c.name))
   const teamName = mine.find(c => c.team)?.team
   const team = teamName ? roster.getTeam(teamName) : undefined
   const workspace = workspaceOf(roster)
+  const teamId = mine[0]?.teamId
+  const withOrg = roster.owner === undefined && (mine.some(c => c.lead) || !!teamId)
+  if (withOrg) refreshOrgBoard(roster)
   return {
     subAgents: mine.map(c => toSubAgentView(c, viewStepsPerAgent(mine.length))),
     ...(team ? {
       expertTeam: team.view({ transcriptPath: workspace.teamTranscriptPath(team), chatFile: workspace.teamChatFile(team) }),
     } : {}),
+    ...(withOrg ? { organization: workspaceOf(roster.orgRoot() ?? roster).organizationView(teamId) } : {}),
   }
 }
 
@@ -574,17 +970,40 @@ export function resumeNoticeFor(child: DormantChild): string {
 export function spawnDeps(
   executor: ToolExecutorConfig,
   progressStepId: string,
-  ownedNames?: Set<string>
+  ownedNames?: Set<string>,
+  includeOrganization = false,
 ): RosterSpawnDeps | { error: string } {
   const roster = executor.getSubAgentRoster?.()
   if (!roster) return { error: 'dispatch_agents 需要主人花名册（内部错误）' }
   const workspace = workspaceOf(roster)
-  workspace.attachChats(executor.getExpertTeamChats?.(), executor.getSessionId?.())
-  const overviewProgress = new ProgressThrottle(() => workspace.writeOverview(roster.list()), OVERVIEW_INTERVAL_MS)
+  const sessionId = executor.getRootSessionId?.() ?? executor.getSessionId?.()
+  workspace.attachChats(executor.getExpertTeamChats?.(), sessionId)
+  // 秘书这一份按会话落盘：同一场会话再开一轮时，看板和结果文件还在原来的路径
+  if (roster.owner === undefined) {
+    workspace.bindSession(sessionId)
+    const saved = executor.getOrganizationHistory?.() ?? [executor.getCurrentOrganization?.()].filter((view): view is OrganizationView => !!view)
+    const latest = new Map<string, OrganizationView>()
+    for (const view of saved) {
+      if (view.sessionId && sessionId && view.sessionId !== sessionId) continue
+      const id = view.teamId ?? LEGACY_TEAM_ID
+      if (!latest.has(id) || (view.updatedAt ?? 0) >= (latest.get(id)?.updatedAt ?? 0)) latest.set(id, view)
+    }
+    for (const view of latest.values()) seedOrganizationBoard(workspace, view)
+  }
+  const overviewProgress = new ProgressThrottle(() => {
+    workspace.writeOverview(roster.list())
+    refreshOrgBoard(roster)
+  }, OVERVIEW_INTERVAL_MS)
   const progress = new ProgressThrottle(() => {
     const names = ownedNames ?? new Set(roster.list().map(c => c.name))
     for (const team of roster.listTeams()) workspace.writeTeamChat(team)
-    executor.updateStep(progressStepId, dispatchStepView(roster, names))
+    const view = dispatchStepView(roster, names)
+    const root = roster.orgRoot()
+    if (includeOrganization && root && roster.owner === undefined) {
+      if (!view.organization) refreshOrgBoard(root)
+      view.organization = workspaceOf(root).organizationView(roster.teamIdOf([...names][0]))
+    }
+    executor.updateStep(progressStepId, view)
     for (const team of roster.listTeams()) workspace.writeTeamTranscript(team)
   })
   const createChild = executor.createChildAgent
@@ -597,26 +1016,66 @@ export function spawnDeps(
     getParentMessages: () => executor.getParentMessages?.() ?? [],
     getParentContext: () => toSubAgentContext(executor.getAgentContext?.() ?? agentContext),
     knock: (message) => {
-      progress.flush()
-      workspace.writeOverview(roster.list())
+      // 每位的交差立即送达；整队进度与看板沿用合并窗口，全部停止才强制落最后一帧。
+      // 否则200人相继收工会重建200次完整名单、看板和IPC快照。
+      if (roster.hasLive()) {
+        progress.schedule()
+        overviewProgress.schedule()
+      } else {
+        progress.flush()
+        overviewProgress.flush()
+      }
       for (const team of roster.listTeams()) {
         workspace.writeTeamChat(team)
         workspace.writeTeamTranscript(team)
       }
       executor.knockParent?.(message)
     },
-    openingFor: expertOpening,
+    openingFor: (child, team) => '## 本次交办\n' + expertOpening(child, team) + orgNoteFor(roster, child),
     restoreDormant: executor.restoreDormantChildren,
+    forRestoredBranch: (branch) => {
+      const branchDeps = spawnDeps({
+        ...executor,
+        getSubAgentRoster: () => branch,
+        updateStep: () => { roster.notifyOrg() },
+        knockParent: (message) => {
+          if (!branch.deliverToOwner(message)) executor.knockParent?.(message)
+        },
+      }, progressStepId)
+      if ('error' in branchDeps) throw new Error(branchDeps.error)
+      return branchDeps
+    },
     resumeNotice: resumeNoticeFor,
-    teamTexts: createTeamTexts(team => workspace.teamTranscriptPath(team)),
+    teamTexts: createTeamTexts(team => workspace.teamTranscriptPath(team), roster.owner),
+    teamHistoryFor: (teamName) => {
+      const root = roster.orgRoot()
+      if (!root) return undefined
+      const team = workspaceOf(root).organizationTeams()
+        .find(t => t.name === teamName && t.owner === roster.owner)
+      if (!team) return undefined
+      return {
+        messageCount: team.messageCount,
+        ...(team.chatFile ? { chatFile: team.chatFile } : {}),
+        ...(team.transcriptPath ? { transcriptPath: team.transcriptPath } : {}),
+        review: team.review,
+        reviewers: team.reviewers ?? [],
+      }
+    },
+    adoptTeamHistory: (teamName, history) => {
+      workspace.adoptTeamChat(teamName, history.chatFile, history.messageCount)
+      workspace.adoptTeamTranscript(teamName)
+    },
     onProgress: () => {
       progress.schedule()
       overviewProgress.schedule()
+      // 组织里任何人变了（含秘书自己名下）：所有挂着组织全貌的步骤都要刷新，
+      // 否则两批都带组织时，另一批会停在旧状态。账本里防了重入。
+      roster.notifyOrg()
     },
     ownedNames,
     isParentAborted: () => executor.isAborted(),
     sanitize: sanitizeParentMessages,
-    formatKnock,
+    formatKnock: (child) => formatKnock(child, knockTeamsFor(roster, child), roster.owner),
     archiveResult: (name, text) => workspace.keepResult(name, text, roster.list().length),
     remoteAccessFor: (name, grant) => remoteAccessFor(roster, name, grant),
   }
@@ -670,13 +1129,18 @@ function isBatchArgs(value: unknown): value is { instruction: string } {
 
 /**
  * tasks 每人一份指令；batch 一份共同指令加一批条目，交给伙计的是共同指令、换行、本条目。两种可同次混用。
- * tasks 里带 role 的是专家；带 team 时这次 tasks 里的人组成专家团（每位都带 role，不用 batch）。
+ * role是选填岗位说明；带team时这次tasks里的人组成协作小组（不用batch）。
  */
 export function parseDispatchTasks(args: Record<string, unknown>): { tasks: ParsedSpawnTask[]; team?: string } | { error: string } {
   const tasks: ParsedSpawnTask[] = []
   const problems: string[] = []
   const rawTasks = args.tasks
   const rawBatch = args.batch
+  if (Object.prototype.hasOwnProperty.call(args, 'fork_turns')) {
+    return { error: 'fork_turns 不能放在顶层；每人的设置写在 tasks[].fork_turns，批量共用设置写在 batch.fork_turns。本次未派出。' }
+  }
+  const team = teamNameFrom(args.team)
+  if (team && rawBatch !== undefined) return { error: '带 team 时只用 tasks 写每位专家，不能用 batch。本次未派出。' }
   if (rawTasks !== undefined && !Array.isArray(rawTasks)) {
     return { error: 'tasks 必须是数组，每项包含 description 和 prompt' }
   }
@@ -690,7 +1154,13 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
       if ('error' in forkTurns) return { error: `子任务 ${i + 1}：${forkTurns.error}` }
       const name = optionalName(task.name)
       const role = typeof task.role === 'string' ? tidyLabel(task.role) || undefined : undefined
-      if (role && (name?.trim() === TEAM_LEADER || role === TEAM_LEADER)) {
+      if (task.lead !== undefined && typeof task.lead !== 'boolean') {
+        return { error: `子任务 ${i + 1} 的 lead 必须是 true 或 false` }
+      }
+      if (task.reviewer !== undefined && typeof task.reviewer !== 'boolean') {
+        return { error: `子任务 ${i + 1} 的 reviewer 必须是 true 或 false` }
+      }
+      if (name?.trim() === TEAM_LEADER || role === TEAM_LEADER) {
         return { error: `「${TEAM_LEADER}」留给派出专家团的你，专家的名字和角色都不能用它（子任务 ${i + 1}）` }
       }
       if (role && labelLength(role) > MAX_ROLE_CHARS) {
@@ -707,6 +1177,8 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
         prompt: task.prompt,
         forkTurns,
         ...(role ? { role } : {}),
+        ...(task.lead === true ? { lead: true } : {}),
+        ...(task.reviewer === true ? { reviewer: true } : {}),
         ...hosts,
         ...own,
       })
@@ -727,6 +1199,7 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
     if ('error' in forkTurns) return { error: `batch：${forkTurns.error}` }
     for (let i = 0; i < batch.items.length; i++) {
       const item = batch.items[i] as Record<string, unknown> | undefined
+      if (item && Object.prototype.hasOwnProperty.call(item, 'fork_turns')) return { error: `batch 第 ${i + 1} 条的 fork_turns 应写在 batch.fork_turns，由整批共用。本次未派出。` }
       if (typeof item?.input !== 'string' || item.input.trim() === '') {
         return { error: `batch 第 ${i + 1} 条缺少 input` }
       }
@@ -749,14 +1222,12 @@ export function parseDispatchTasks(args: Record<string, unknown>): { tasks: Pars
   if (tasks.length === 0) {
     return { error: 'tasks 和 batch 至少给一个，且不能为空' }
   }
-  const team = teamNameFrom(args.team)
+  if (!team && tasks.some(task => task.reviewer)) problems.push('reviewer（验收人）只在带 team 组专家团时才有意义。')
   if (!team) return problems.length ? { error: `没派：${problems.join('')}` } : { tasks }
   if (labelLength(team) > MAX_TEAM_NAME_CHARS) {
     problems.push(`团名最长 ${MAX_TEAM_NAME_CHARS} 个字，这次 ${labelLength(team)} 个字。`)
   }
-  if (rawBatch !== undefined) problems.push('带 team 时只用 tasks 写每位专家，不能用 batch。')
-  const noRole = tasks.findIndex(task => !task.role)
-  if (noRole >= 0) problems.push(`带 team 时每位都要有 role（专家角色），第 ${noRole + 1} 位没有。`)
+  if (tasks.every(task => task.reviewer)) problems.push('团里不能人人都是验收人，总得有人做事。')
   if (tasks.length < MIN_TEAM_SIZE || tasks.length > MAX_TEAM_SIZE) {
     problems.push(`一个专家团 ${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位专家，这次 ${tasks.length} 位。`
       + (tasks.length < MIN_TEAM_SIZE
@@ -820,6 +1291,28 @@ export async function dispatchSubAgents(
     return { success: false, output: '', error: parsed.error }
   }
   const { tasks: parsedTasks, team } = parsed
+  // 设计里组织是「秘书只指定组长，组长自己组人」：秘书这一批只派组长、不带 team，
+  // 组长直接归秘书管；带 team 的这次由秘书当团长，组长会变成秘书团里的成员，
+  // 组织图上就多了一层。团里的人由组长自己用 team 派。
+  if (roster.owner === undefined && team && parsedTasks.some(task => task.lead)) {
+    return { success: false, output: '', error: t('org.lead_own_team') }
+  }
+  if (executor.isSubAgent) {
+    const remoteAsked = parsedTasks.some(task => task.hosts || task.remoteCommands) || args.remote_commands !== undefined
+    if (remoteAsked) return { success: false, output: '', error: t('org.lead_no_remote') }
+  }
+  if (parsedTasks.some(task => task.lead) && !roster.canAppointLeads()) {
+    return { success: false, output: '', error: t('org.depth_limit', { max: MAX_ORG_DEPTH }) }
+  }
+  const continuing = args.continue_team
+  if (continuing !== undefined && (typeof continuing !== 'string' || !continuing.trim())) {
+    return { success: false, output: '', error: t('dispatch.bad_continue_team') }
+  }
+  const representative = typeof continuing === 'string' ? continuing.trim() : undefined
+  if (representative && (executor.isSubAgent || roster.owner !== undefined)) return { success: false, output: '', error: t('dispatch.branch_team_fixed') }
+  const existingTeamId = representative ? roster.teamIdOf(representative, { restoreDormant: executor.restoreDormantChildren }) : undefined
+  if (representative && !existingTeamId) return { success: false, output: '', error: t('dispatch.unknown_continue_team', { name: representative }) }
+  const teamId = roster.owner === undefined ? existingTeamId ?? `team-${randomUUID()}` : roster.inheritedTeamId ?? LEGACY_TEAM_ID
   const allExperts = parsedTasks.every(task => !!task.role)
   if (parsedTasks.length > roster.room()) {
     return {
@@ -827,7 +1320,7 @@ export async function dispatchSubAgents(
       output: '',
       error: t('dispatch.over_fuse', {
         max: MAX_LIVE_CHILDREN,
-        live: roster.liveCount(),
+        live: roster.orgLiveCount(),
         room: roster.room(),
         count: parsedTasks.length,
       }),
@@ -842,6 +1335,7 @@ export async function dispatchSubAgents(
     toolArgs: {
       tasks: parsedTasks.map(task => ({ name: task.name, description: task.description, ...(task.role ? { role: task.role } : {}) })),
       ...(team ? { team } : {}),
+      ...(representative ? { continue_team: representative } : {}),
       ...(isBatchArgs(args.batch) ? { batch: { instruction: args.batch.instruction } } : {}),
     },
     riskLevel: 'safe',
@@ -849,6 +1343,7 @@ export async function dispatchSubAgents(
     // 伙计先按「等着」画出来；批准后换成真正派出的样子
     subAgents: parsedTasks.map((task, i): SubAgentResult => ({
       id: task.name ?? `pending-${i}`,
+      teamId,
       name: task.name ?? task.description,
       description: task.description,
       prompt: task.shownPrompt ?? task.prompt,
@@ -869,9 +1364,12 @@ export async function dispatchSubAgents(
     return { success: false, output: '', error: deps.error }
   }
 
-  const names = roster.spawn(remote.tasks, deps, team ? { team } : undefined)
+  const names = roster.spawn(remote.tasks, deps, { team, teamId })
+  // 这一步里指定了组长：整个组织里任何一层有人变了，都刷新这一步
+  if (roster.owner === undefined && remote.tasks.some(task => task.lead)) roster.onOrgChange(() => deps.onProgress())
   const workspace = workspaceOf(roster)
   workspace.writeOverview(roster.list())
+  refreshOrgBoard(roster)
   const created = team ? roster.teamOf(names[0]) : undefined
   if (created) {
     workspace.writeTeamChat(created)
@@ -888,8 +1386,14 @@ export async function dispatchSubAgents(
   const blankTeam = typeof args.team === 'string' && !teamNameFrom(args.team)
   return {
     success: true,
-    output: formatSpawned(names, snapshots, roster, created?.name) + (blankTeam ? `\n\n${t('expert.blank_team')}` : '')
+    output: formatSpawned(names, snapshots, roster, created?.name) + '\n\n' + t(representative ? 'dispatch.continued_team' : roster.owner === undefined ? 'dispatch.new_team' : 'dispatch.inherited_team', { name: representative ?? '' }) + (blankTeam ? `\n\n${t('expert.blank_team')}` : '')
   }
+}
+
+/** 校验整次点名后才等待/执行，避免错误名字被静默丢掉。 */
+function checkTarget(roster: SubAgentRoster, name: string, executor: ToolExecutorConfig, waiting = false): string | undefined {
+  const issue = roster.targetIssue(name, { restoreDormant: executor.restoreDormantChildren })
+  return issue ? targetFeedback(issue, roster.owner ?? '秘书', name, workspaceOf(roster).overviewPath, waiting) : undefined
 }
 
 export async function followupAgent(
@@ -903,6 +1407,8 @@ export async function followupAgent(
   const name = typeof args.name === 'string' ? args.name.trim() : ''
   const message = typeof args.message === 'string' ? args.message.trim() : ''
   if (!name || !message) return { success: false, output: '', error: '需要 name 和 message' }
+  const targetError = checkTarget(roster, name, executor)
+  if (targetError) return { success: false, output: '', error: targetError }
 
   const parsedCommands = parseRemoteCommands(args)
   if ('error' in parsedCommands) return { success: false, output: '', error: parsedCommands.error }
@@ -924,7 +1430,7 @@ export async function followupAgent(
     success: true,
   })
 
-  const deps = spawnDeps(executor, progressStep.id, new Set([name]))
+  const deps = spawnDeps(executor, progressStep.id, new Set([name]), true)
   if ('error' in deps) return { success: false, output: '', error: deps.error }
 
   // 他还在跑时一收到话就可能用上新命令，所以先记进单子，再交话
@@ -937,6 +1443,13 @@ export async function followupAgent(
     executor.updateStep(progressStep.id, { success: false, content: result.error })
     return { success: false, output: '', error: result.error }
   }
+  // 再交代一位组长：这一步也挂着组织全貌，之后哪一层有人变了都跟着刷新
+  if (roster.owner === undefined && roster.orgRoot()) {
+    refreshOrgBoard(roster)
+    const root = roster.orgRoot()
+    if (root) executor.updateStep(progressStep.id, { organization: workspaceOf(root).organizationView(roster.teamIdOf(name)) })
+    roster.onOrgChange(() => deps.onProgress())
+  }
   return { success: true, output: t('dispatch.followup_ok', { name }) }
 }
 
@@ -946,6 +1459,10 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
   const names = Array.isArray(args.names)
     ? (args.names as unknown[]).filter((n): n is string => typeof n === 'string' && n.trim() !== '')
     : undefined
+  for (const name of names ?? []) {
+    const error = checkTarget(roster, name, executor, true)
+    if (error) return { success: false, output: '', error }
+  }
   const timeoutSec = Math.min(Math.max(1, Number(args.timeout) || 120), 600)
 
   // 等的时候用户说话：这次等待先停下，让主人先回应；伙计照旧在后台干
@@ -959,9 +1476,51 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
     ? setInterval(() => { if (spoke()) userSpoke.abort() }, USER_SPEECH_POLL_MS)
     : undefined
 
+  // 点名的人可能在别的组长名下：那份名册的敲门仍归它的主人，这里只等这些人停下
+  const waitGroups = new Map<SubAgentRoster, { names: string[]; consume: boolean }>()
+  if (names?.length) {
+    // 跨枝只有秘书能等：组长只管自己这一枝，别枝的人对它等于不存在
+    const rosters = roster.owner === undefined
+      ? [roster, ...roster.orgEntries().map(entry => entry.roster)].filter((r, i, all) => all.indexOf(r) === i)
+      : [roster]
+    for (const name of names) {
+      const holder = rosters.find(r => r.get(name))
+      if (!holder) continue
+      const group = waitGroups.get(holder) ?? { names: [], consume: holder === roster }
+      if (!group.names.includes(name)) group.names.push(name)
+      waitGroups.set(holder, group)
+    }
+  }
+  if (!names?.length && roster.owner === undefined) {
+    for (const { roster: holder } of roster.orgEntries()) {
+      const consume = holder === roster
+      const waiting = holder.waitingNames(consume)
+      if (waiting.length) waitGroups.set(holder, { names: waiting, consume })
+    }
+  }
+  // 没有运行成员和未读敲门，或点名均未找到时，沿用本名册的原有回执。
+  if (waitGroups.size === 0) waitGroups.set(roster, { names: names ?? [], consume: true })
+
   let news: Awaited<ReturnType<SubAgentRoster['waitForNews']>>
   try {
-    news = await roster.waitForNews(names, signal)
+    // 哪一份名册先有消息 / 先都停下就按那次返回：别的名册不再继续等（它们的敲门也不会被领走）
+    const groups = [...waitGroups]
+    const cancels = groups.map(() => new AbortController())
+    const results = await Promise.all(groups.map(([r, group], i) => {
+      const scoped = AbortSignal.any([signal, cancels[i].signal])
+      return r.waitForNews(group.names, scoped, { consume: group.consume }).then((result) => {
+        for (const [j, cancel] of cancels.entries()) if (j !== i) cancel.abort()
+        return result
+      })
+    }))
+    const byName = new Map<string, ChildSnapshot>()
+    for (const result of results) for (const target of result.targets) byName.set(target.name, target)
+    const arrived = results.flatMap(result => result.arrived)
+      .filter((child, i, all) => all.findIndex(c => c.name === child.name) === i)
+    const targets = names?.length
+      ? names.map(name => byName.get(name)).filter((c): c is ChildSnapshot => !!c)
+      : results.flatMap(result => result.targets)
+    news = { arrived, targets }
   } finally {
     if (poll) clearInterval(poll)
   }
@@ -969,7 +1528,8 @@ export async function waitAgents(args: Record<string, unknown>, executor: ToolEx
     return { success: false, output: '', error: t('error.operation_aborted') }
   }
   if (news.targets.length === 0) {
-    return { success: true, output: t('dispatch.wait_empty') }
+    const summary = roster.knownMembers({ restoreDormant: executor.restoreDormantChildren }).map(member => `${member.name}：${statusLabel(member.status)}`).join('；')
+    return { success: true, output: emptyWaitFeedback(roster.owner ?? '秘书', summary) }
   }
 
   const stillWorking = news.targets.some(c => c.status === 'pending' || c.status === 'running')
@@ -995,12 +1555,14 @@ export async function interruptAgent(args: Record<string, unknown>, executor: To
   if (!roster) return { success: false, output: '', error: '没有花名册' }
   const name = typeof args.name === 'string' ? args.name.trim() : ''
   if (!name) return { success: false, output: '', error: '需要 name' }
+  const targetError = checkTarget(roster, name, executor)
+  if (targetError) return { success: false, output: '', error: targetError }
   const result = roster.interrupt(name, { restoreDormant: executor.restoreDormantChildren })
   if (!result.ok) return { success: false, output: '', error: result.error }
   if (result.finalized) {
     const snap = roster.get(name)
     workspaceOf(roster).writeOverview(roster.list())
-    if (snap) executor.knockParent?.(formatKnock(snap))
+    if (snap) executor.knockParent?.(formatKnock(snap, knockTeamsFor(roster, snap), roster.owner))
   }
   return { success: true, output: t('dispatch.interrupt_ok', { name }) }
 }
@@ -1013,7 +1575,7 @@ export function denyIfNotForThisAgent(executor: ToolExecutorConfig, toolName: st
   if (meta?.onlyForTeamMember && !executor.teamSeat) {
     return { success: false, output: '', error: t('expert.say_denied') }
   }
-  if (executor.isSubAgent && meta?.allowedForSubAgent === false) {
+  if (executor.isSubAgent && meta?.allowedForSubAgent === false && !(meta.allowedForLead && executor.leadSeat)) {
     return { success: false, output: '', error: t('dispatch.tool_denied') }
   }
   return null

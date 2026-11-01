@@ -141,6 +141,8 @@ export interface TaskReceiptText {
 
 // 用户补充消息（Agent 运行中追加的对话）
 export interface PendingUserMessage {
+  /** 通过用户输入入口接收；通知不设置。silent点选回复仍可为用户输入。 */
+  userInput?: true
   message: string
   attachments?: AttachmentInfo[]
   documentContext?: string
@@ -325,8 +327,8 @@ export interface AgentCallbacks {
   onTextChunk?: (agentId: string, chunk: string) => void
   /** 当前对话因模型不可用已换到下一个（不改默认模型） */
   onModelFailover?: (agentId: string, notice: import('../ai.service').AiModelFailoverNotice) => void
-  /** 模型请求在缓冲池里排队：开始等 true，拿到名额或放弃 false。当面等的请求不排队，不会触发 */
-  onModelWait?: (agentId: string, waiting: boolean) => void
+  /** 模型请求在缓冲池里排队：开始等 true，拿到名额或放弃 false。前台和成员均适用，附带排队、冷却或退避原因 */
+  onModelWait?: (agentId: string, waiting: boolean, reason?: 'queued' | 'cooldown' | 'retry') => void
 }
 
 // 默认配置

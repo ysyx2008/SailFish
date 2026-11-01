@@ -3,6 +3,7 @@ import { runUntilIdle } from '../run-until-idle'
 import { MAX_LIVE_CHILDREN, SubAgentRoster, allocateChildName, summarizeArgs, type ChildAgentHandle } from '../sub-agent-roster'
 import type { AgentContext, AgentStep } from '../types'
 import type { AiMessage } from '../../ai.service'
+import { sanitizeParentMessages } from '../sanitize-parent-messages'
 
 const context: AgentContext = {
   terminalOutput: [],
@@ -416,7 +417,8 @@ describe('开局带多少对话', () => {
       spawnDeps(() => child)
     )
     await roster.waitUntil(['读包'], new AbortController().signal)
-    expect(child.seeded).toEqual([
+    expect(child.seeded).toHaveLength(1)
+    expect(sanitizeParentMessages(child.seeded as AiMessage[])).toEqual([
       { role: 'user', content: '第一轮：先读包' },
       { role: 'assistant', content: '好' },
       { role: 'user', content: '第二轮：回头再列 test 脚本' },
@@ -445,7 +447,7 @@ describe('开局带多少对话', () => {
       spawnDeps(() => child)
     )
     await roster.waitUntil(['读包'], new AbortController().signal)
-    expect(child.seeded).toEqual([
+    expect(sanitizeParentMessages(child.seeded as AiMessage[])).toEqual([
       { role: 'user', content: '第二轮：回头再列 test 脚本' },
       { role: 'assistant', content: '我先派人' },
     ])
@@ -515,6 +517,15 @@ describe('allocateChildName', () => {
     used.add(a)
     const b = allocateChildName('读 nginx 配置', used)
     expect(a).toBe('读-nginx-配置')
-    expect(b).toBe('读-nginx-配置-2')
+    expect(b).toBe('读-nginx-配置(2)')
+    used.add(b)
+    expect(allocateChildName('读 nginx 配置', used)).toBe('读-nginx-配置(3)')
+  })
+
+  it('去重后缀不增加任务编号的连字符段，也不占用旧后缀成员的名字', () => {
+    const requested = '1-2-1-1'
+    const used = new Set([requested, `${requested}-2`])
+    expect(allocateChildName('核对', used, requested)).toBe(`${requested}(2)`)
+    expect(allocateChildName('核对', used, `${requested}-2`)).toBe(`${requested}-2(2)`)
   })
 })

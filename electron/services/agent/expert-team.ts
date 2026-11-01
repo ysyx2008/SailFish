@@ -2,9 +2,11 @@
  * 一个专家团：团员、群消息、每人读到哪、这一段专家互相叫醒了几次。
  * 只管群里的事，谁在跑、怎么叫醒由花名册管。
  */
-import { EXPERT_TEAM_LEADER, type ExpertTeamView } from '@shared/types'
+import { EXPERT_TEAM_LEADER, SECRETARY_NAME, type ExpertTeamView, type TeamReviewState, type TeamVerdict } from '@shared/types'
 
 export const TEAM_LEADER = EXPERT_TEAM_LEADER
+/** 任何一层的群里都能点名：秘书在组织最上面，顶层的团里他就是组长 */
+export const SECRETARY = SECRETARY_NAME
 
 /** 专家互相叫醒每满这么多次，停下来等组长看一眼 */
 export const WAKES_PER_CHECKPOINT = 30
@@ -53,6 +55,8 @@ export interface TeamMember {
   askedName?: string
   role: string
   description: string
+  /** 验收人：看别人交上来的东西，可以给通过或打回的结论 */
+  reviewer?: boolean
 }
 
 export interface TeamMessage {
@@ -62,6 +66,8 @@ export interface TeamMessage {
   to: string[]
   text: string
   at: number
+  /** 验收人说这一句时带的结论 */
+  verdict?: TeamVerdict
 }
 
 export interface TeamPostOutcome {
@@ -74,6 +80,8 @@ export interface TeamPostOutcome {
   skipped: string[]
   /** 点到了组长 */
   toLeader: boolean
+  /** 点到了秘书 */
+  toSecretary: boolean
   /** 这一条让叫醒次数满了这一段，从现在起等组长 */
   checkpointReached: boolean
 }
@@ -88,8 +96,12 @@ export class ExpertTeam {
   private waitingLeader = false
   /** 等组长期间被点到、还没叫醒的人，按被点到的先后 */
   private readonly pendingWakes: string[] = []
+  /** 从盘上叫醒重建时，群里旧消息没带进来；最后一次验收结论先记在这里 */
+  private seededReview?: TeamReviewState
+  /** 重建时群聊文件里已有的条数：新消息的序号接着往后排，计数也把它算上 */
+  private historyCount = 0
 
-  constructor(name: string, members: TeamMember[]) {
+  constructor(name: string, members: TeamMember[], readonly leaderName?: string) {
     this.name = name
     this.members = members.map(m => ({ ...m }))
     for (const m of members) this.readUpTo.set(m.name, 0)
@@ -112,9 +124,44 @@ export class ExpertTeam {
     return m ? { ...m } : undefined
   }
 
-  /** 不是团员、也不是组长的名字 */
+  isReviewer(name: string): boolean {
+    return this.members.some(m => m.name === name && m.reviewer)
+  }
+
+  reviewerNames(): string[] {
+    return this.members.filter(m => m.reviewer).map(m => m.name)
+  }
+
+  /** 从盘上叫醒重建时先把最后一次验收结论接回来；之后群里有新结论会覆盖它 */
+  seedReview(state: TeamReviewState | undefined): void {
+    if (state === 'pass' || state === 'reject') this.seededReview = state
+  }
+
+  /** 以前的群聊还在文件里：新消息序号接着排，成员默认只重新看新消息 */
+  seedHistory(count: number): void {
+    if (!Number.isFinite(count) || count <= 0) return
+    this.historyCount = Math.max(this.historyCount, Math.floor(count))
+    for (const name of this.readUpTo.keys()) this.readUpTo.set(name, this.historyCount)
+  }
+
+  /** 验收状态：没有验收人 / 还没给过结论 / 最近一次的结论 */
+  reviewState(): TeamReviewState {
+    if (this.reviewerNames().length === 0) return 'none'
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const verdict = this.messages[i].verdict
+      if (verdict) return verdict
+    }
+    return this.seededReview ?? 'pending'
+  }
+
+  /** 不是团员、也不是组长和秘书的名字 */
   unknownNames(names: string[]): string[] {
-    return names.filter(n => n !== TEAM_LEADER && !this.has(n))
+    return this.resolveRecipients(names).filter(n => n !== TEAM_LEADER && n !== SECRETARY && !this.has(n))
+  }
+
+  /** 真名只映射到本团已经绑定的组长，不能寻址其他枝的负责人。 */
+  resolveRecipients(names: string[]): string[] {
+    return dedupe(names.map(name => this.leaderName && name.trim() === this.leaderName ? TEAM_LEADER : name))
   }
 
   isWaitingLeader(): boolean {
@@ -134,25 +181,28 @@ export class ExpertTeam {
    * 每叫醒一位算一次；这一条让次数满了就从下一条起等组长，这一条照常叫醒。
    * asleep 里的人（被组长打断的）只记在群里，不叫醒、不计数、不排队。
    */
-  post(from: string, to: string[], text: string, asleep: ReadonlySet<string> = new Set()): TeamPostOutcome {
-    const targets = dedupe(to)
-    const message = this.record(from, targets, text)
+  post(from: string, to: string[], text: string, asleep: ReadonlySet<string> = new Set(), verdict?: TeamVerdict): TeamPostOutcome {
+    if (!this.has(from)) throw new Error(`Not a team member: ${from}`)
+    if (verdict && !this.isReviewer(from)) throw new Error('Only the designated reviewer can give a verdict')
+    const targets = this.resolveRecipients(to)
+    const message = this.record(from, targets, text, verdict)
     const named = targets.filter(n => n !== from && this.has(n))
     const skipped = named.filter(n => asleep.has(n))
     const experts = named.filter(n => !asleep.has(n))
     const toLeader = targets.includes(TEAM_LEADER)
+    const toSecretary = targets.includes(SECRETARY)
 
     if (this.waitingLeader) {
       for (const n of experts) {
         if (!this.pendingWakes.includes(n)) this.pendingWakes.push(n)
       }
-      return { message, wakeNow: [], queued: experts, skipped, toLeader, checkpointReached: false }
+      return { message, wakeNow: [], queued: experts, skipped, toLeader, toSecretary, checkpointReached: false }
     }
 
     this.wakesThisStretch += experts.length
     const checkpointReached = experts.length > 0 && this.wakesThisStretch >= WAKES_PER_CHECKPOINT
     if (checkpointReached) this.waitingLeader = true
-    return { message, wakeNow: experts, queued: [], skipped, toLeader, checkpointReached }
+    return { message, wakeNow: experts, queued: [], skipped, toLeader, toSecretary, checkpointReached }
   }
 
   /**
@@ -167,6 +217,14 @@ export class ExpertTeam {
     return { message, release }
   }
 
+  /**
+   * 不是这个团的组长、却在群里对某位专家说话的人（秘书回应点名）。只记进群里：
+   * 组长没有看过，叫醒次数和等组长期间被点到的人都不动。
+   */
+  outsiderSpoke(from: string, to: string, text: string): TeamMessage {
+    return this.record(from, [to], text)
+  }
+
   /** 这个人还没看过的群消息（不含他自己说的），取完就算看过 */
   takeUnread(name: string): TeamMessage[] {
     const seen = this.readUpTo.get(name) ?? 0
@@ -176,7 +234,12 @@ export class ExpertTeam {
   }
 
   messageCount(): number {
-    return this.messages.length
+    return this.historyCount + this.messages.length
+  }
+
+  /** 重建的团里，本次有没有新说的话（旧消息只在文件里） */
+  hasNewMessages(): boolean {
+    return this.messages.length > 0
   }
 
   transcript(): TeamMessage[] {
@@ -204,7 +267,7 @@ export class ExpertTeam {
       kept.unshift(text.length < m.text.length ? { ...copyMessage(m), text, omitted: m.text.length - text.length } : copyMessage(m))
       budget -= text.length
     }
-    const earlier = this.messages.length - kept.length
+    const earlier = this.historyCount + this.messages.length - kept.length
     return {
       name: this.name,
       messages: kept,
@@ -212,6 +275,7 @@ export class ExpertTeam {
       wakes: this.wakesThisStretch,
       wakeLimit: WAKES_PER_CHECKPOINT,
       waitingLeader: this.waitingLeader,
+      ...(this.reviewerNames().length ? { reviewers: this.reviewerNames(), review: this.reviewState() } : {}),
       ...(transcriptPath ? { transcriptPath } : {}),
       ...(chatFile ? { chatFile } : {}),
     }
@@ -219,12 +283,13 @@ export class ExpertTeam {
 
   /** 名字前带上角色，给人和模型看 */
   label(name: string): string {
+    if (name === TEAM_LEADER && this.leaderName) return `${TEAM_LEADER}·${this.leaderName}`
     const m = this.members.find(x => x.name === name)
-    return m ? `${m.role}·${m.name}` : name
+    return m?.role ? `${m.role}·${m.name}` : name
   }
 
-  private record(from: string, to: string[], text: string): TeamMessage {
-    const message: TeamMessage = { seq: this.messages.length + 1, from, to, text, at: Date.now() }
+  private record(from: string, to: string[], text: string, verdict?: TeamVerdict): TeamMessage {
+    const message: TeamMessage = { seq: this.historyCount + this.messages.length + 1, from, to, text, at: Date.now(), ...(verdict ? { verdict } : {}) }
     this.messages.push(message)
     return message
   }

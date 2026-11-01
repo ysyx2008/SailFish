@@ -491,7 +491,7 @@ const tasksAreaAttentionTooltip = computed(() => {
     <!-- 批量操作按钮 -->
     <button 
       v-if="hasMultipleTerminals"
-      class="btn-batch" 
+      class="btn-icon btn-icon-header btn-batch"
       @click="openBatchPanel" 
       :title="t('batch.title')"
     >
@@ -538,7 +538,7 @@ const tasksAreaAttentionTooltip = computed(() => {
     <!-- 新建终端按钮（带下拉菜单） -->
     <div v-if="(props.variant === 'terminal' ? (canCreateLocal || canCreateSsh) : (canCreateAssistant || canCreateLocal || canCreateSsh))" class="new-tab-wrapper">
       <button
-        class="btn-new-tab"
+        class="btn-icon btn-icon-header btn-new-tab"
         :draggable="canDragPlusToSplit"
         @click="handlePlusClick"
         @dragstart="handlePlusDragStart"
@@ -549,7 +549,7 @@ const tasksAreaAttentionTooltip = computed(() => {
       >
         <Plus :size="14" />
       </button>
-      <button class="btn-new-tab-dropdown" @click="toggleNewMenu" :title="t('tabs.selectShell')">
+      <button class="btn-icon btn-icon-header btn-new-tab-dropdown" @click="toggleNewMenu" :title="t('tabs.selectShell')">
         <ChevronDown :size="10" />
       </button>
       
@@ -921,129 +921,15 @@ const tasksAreaAttentionTooltip = computed(() => {
   }
 }
 
-.btn-batch {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  margin-left: 4px;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
-  overflow: hidden;
-  flex-shrink: 0;
-  -webkit-app-region: no-drag;
-}
-
-.btn-batch::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-  opacity: 0;
-  transition: opacity 0.25s ease;
-}
-
-.btn-batch:hover::before {
-  opacity: 0.15;
-}
-
-.btn-batch:hover {
-  background: var(--bg-surface);
-  color: var(--accent-primary);
-  transform: scale(1.05);
-}
-
-.btn-batch:hover svg {
-  filter: drop-shadow(0 0 4px var(--accent-primary));
-}
-
-.btn-batch:active {
-  transform: scale(0.95);
-}
+.btn-batch { margin-left: 4px; }
 
 .new-tab-wrapper {
+  gap: 4px;
   position: relative;
   display: flex;
   flex-shrink: 0;
   margin-left: 4px;
   -webkit-app-region: no-drag;
-}
-
-.btn-new-tab {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 8px 0 0 8px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
-  overflow: hidden;
-}
-
-/* 新建按钮悬停光效 */
-.btn-new-tab::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-  opacity: 0;
-  transition: opacity 0.25s ease;
-}
-
-.btn-new-tab:hover::before {
-  opacity: 0.15;
-}
-
-.btn-new-tab:hover {
-  background: var(--bg-surface);
-  color: var(--accent-primary);
-  transform: scale(1.05);
-}
-
-.btn-new-tab:hover svg {
-  filter: drop-shadow(0 0 4px var(--accent-primary));
-}
-
-.btn-new-tab:active {
-  transform: scale(0.95);
-}
-
-.btn-new-tab-dropdown {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 28px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-left: 1px solid var(--border-color);
-  border-radius: 0 8px 8px 0;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.btn-new-tab-dropdown:hover {
-  background: var(--bg-surface);
-  color: var(--accent-primary);
-}
-
-.btn-new-tab-dropdown:active {
-  transform: scale(0.95);
 }
 
 .shell-menu-overlay {

@@ -454,6 +454,8 @@ export interface WebSearchResultItem {
 
 /** 子 Agent 执行结果（通过 AgentStep.subAgents 推送进度） */
 export interface SubAgentResult {
+  /** 顶层协作团队的稳定归属；team 字段仍是组内小组名。 */
+  teamId?: string
   id: string
   /** 这场任务里招呼他的名字，要能反映出他在干什么 */
   name?: string
@@ -470,12 +472,22 @@ export interface SubAgentResult {
   steps?: SubAgentToolStep[]
   /** 这会儿在排队等模型空位 */
   waitingForModel?: boolean
+  modelWaitReason?: 'queued' | 'cooldown' | 'retry'
   /** 专家角色（派专家时才有），跟名字一起显示 */
   role?: string
 }
 
 /** 组长（派出专家团的秘书）在群里的名字。专家不能叫这个名字。 */
 export const EXPERT_TEAM_LEADER = '组长'
+
+/** 项目组织里任何一层的群都能点名的人：最上面的秘书 */
+export const SECRETARY_NAME = '秘书'
+
+/** 验收人对交上来的东西给的结论 */
+export type TeamVerdict = 'pass' | 'reject'
+
+/** 一个团现在的验收状态：没有验收人 / 有验收人但还没给结论 / 最近一次结论 */
+export type TeamReviewState = 'none' | 'pending' | TeamVerdict
 
 /** 专家团群里的一条话 */
 export interface ExpertTeamMessageView {
@@ -486,6 +498,8 @@ export interface ExpertTeamMessageView {
   to: string[]
   text: string
   at: number
+  /** 验收人说这一句时带的结论 */
+  verdict?: TeamVerdict
   /** 正文太长没放进来的字数，全文在群聊文件里 */
   omitted?: number
 }
@@ -503,10 +517,88 @@ export interface ExpertTeamView {
   wakeLimit: number
   /** 正在等组长看过再接着叫醒 */
   waitingLeader: boolean
+  /** 团里的验收人（名字）；没有就不写 */
+  reviewers?: string[]
+  /** 验收状态；团里没有验收人时不写 */
+  review?: TeamReviewState
   /** 给模型读的群聊文件（临时区，过些天会清掉） */
   transcriptPath?: string
   /** 随会话保存的群聊全文，在群聊存储里的相对位置；没有会话时不存 */
   chatFile?: string
+}
+
+/** 项目组织里的一个人（卡片和组织图用） */
+export interface OrganizationMemberView {
+  error?: string
+  teamId?: string
+  /** 当前或最近一次工具活动；职责仍由 description 表达。 */
+  activity?: Pick<SubAgentToolStep, 'tool' | 'args' | 'status'>
+  id: string
+  name: string
+  description: string
+  status: SubAgentResult['status']
+  waitingForModel?: boolean
+  modelWaitReason?: 'queued' | 'cooldown' | 'retry'
+  role?: string
+  /** 派出他的组长；秘书直接派的没有 */
+  parent?: string
+  lead?: boolean
+  reviewer?: boolean
+  /** 所在的专家团 */
+  team?: string
+}
+
+/** 项目组织里的一个专家团（群聊全文在 chatFile 里，界面翻页读） */
+export interface OrganizationTeamView {
+  teamId?: string
+  name: string
+  /** 团所在那位组长的名字；秘书自己派的团没有 */
+  owner?: string
+  review: TeamReviewState
+  reviewers?: string[]
+  messageCount: number
+  waitingLeader: boolean
+  /** 每段叫醒满这么多次就等组长 */
+  wakeLimit: number
+  chatFile?: string
+  transcriptPath?: string
+}
+
+/** 小组或单个成员的真实成果来源。 */
+export type TeamArtifactSource = { name: string; owner?: string } | { member: string }
+
+/** 从成员记录登记的团队成果；身份来自系统成员表，不取正文署名。 */
+export interface OrganizationArtifactView {
+  member: string
+  kind: 'file' | 'result'
+  /** 负责人本人的成果在其主持的团之间共享，清单单列。 */
+  producerRole?: 'lead'
+  data: import('./canvas').CanvasData
+}
+
+/** 项目组织的全貌（派出组长的那一步上实时更新）；保留完整成员与团，旧记录可能仍带遗漏标记 */
+export const LEGACY_TEAM_ID = 'legacy'
+
+export interface OrganizationView {
+  /** 独立团队的稳定标识，旧记录可能没有。 */
+  teamId?: string
+  /** 所属主会话；联络合并历史时仍从原会话读取团队成果。 */
+  sessionId?: string
+  members: OrganizationMemberView[]
+  teams: OrganizationTeamView[]
+  /** 没做完的人数 / 全部人数（全组织） */
+  live: number
+  total: number
+  /** 失败或被打断的人数（全组织；成员太多没放全时也准） */
+  problems?: number
+  /** members 里没放进来的人数 */
+  omitted?: number
+  /** teams 里没放进来的团数 */
+  omittedTeams?: number
+  /** 系统维护的组织看板文件 */
+  boardPath?: string
+  /** 这份快照是什么时候的样子：存盘时用新的覆盖旧的 */
+  updatedAt?: number
 }
 
 /** 从哪里接着读群聊全文：都不给读末尾一页；before 往前一页；after 往后补 */
@@ -557,7 +649,18 @@ export interface EChartsStepPayload {
   registeredMaps?: string[]
 }
 
+export interface ApiFailureDetail {
+  /** 出错当时的配置名称；旧记录未保存时回退到模型ID。 */
+  profileName?: string
+  model: string
+  message: string
+  statusCode?: number
+  code?: string
+  category?: 'quota'
+}
+
 export interface AgentStep {
+  apiError?: ApiFailureDetail
   id: string
   type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'error' | 'confirm' | 'streaming' | 'user_supplement' | 'waiting' | 'asking' | 'waiting_password' | 'waiting_input' | 'plan_created' | 'plan_updated' | 'plan_archived' | 'user_task' | 'final_result' | 'proactive_notice' | 'auto_review' | 'task_receipt'
   content: string
@@ -615,6 +718,12 @@ export interface AgentStep {
   subAgents?: SubAgentResult[]
   /** 专家团群聊（dispatch_agents 带 team 组团时，实时更新） */
   expertTeam?: ExpertTeamView
+  /** 项目组织全貌（dispatch_agents 指定了组长时，实时更新） */
+  organization?: OrganizationView
+  /** 合并历史中的原会话，用于团队详情和成果定位。 */
+  sourceSessionId?: string
+  /** 这些实时快照（subAgents/expertTeam/organization）最后一次变化的时间；存盘合并用 */
+  snapshotAt?: number
   /** Web 搜索结果（web_search 工具专用，供 UI 可展开渲染） */
   webSearchResults?: WebSearchResultItem[]
   /**

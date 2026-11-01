@@ -63,6 +63,14 @@ describe('专家团群聊全文', () => {
     expect(store.read(file, { after: 0 })!.messages.map(m => m.seq)).toEqual([1, 2, 3, 4])
   })
 
+  it('验收结论跟着那一句存下来，读出来还在；没有结论的不多出字段', () => {
+    const file = store.create('s1', '项目团', 1_700_000_000_000)!
+    store.append(file, [message(1), { ...message(2), verdict: 'reject' }, { ...message(3), verdict: 'pass' }])
+    const read = store.read(file)!.messages
+    expect(read.map(m => m.verdict)).toEqual([undefined, 'reject', 'pass'])
+    expect('verdict' in read[0]).toBe(false)
+  })
+
   it('读末尾一页；往前翻一页页接上，不重不漏', () => {
     const file = store.create('sess_1', 'team')!
     const all = Array.from({ length: 130 }, (_, i) => message(i + 1))

@@ -25,3 +25,12 @@ export type SubmitComposerMessageFn = (text: string) => void
 
 /** 选区右键快捷指令：当场发出，不预填输入框 */
 export const SUBMIT_COMPOSER_MESSAGE_KEY: InjectionKey<SubmitComposerMessageFn> = Symbol('submitComposerMessage')
+
+/** 产出物面板与当前对话输入、步骤定位的接线，所有入口共用。 */
+export interface ArtifactPanelBindings {
+  scrollToAgentStep?: (stepId: string) => void | Promise<void>
+  addComposerQuote?: AddComposerQuoteFn
+  addComposerImage?: (image: { dataUrl: string; name: string; width?: number; height?: number; filePath?: string }) => void
+  setComposerDraft?: SetComposerDraftFn
+  submitComposerMessage?: SubmitComposerMessageFn
+}

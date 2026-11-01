@@ -41,7 +41,7 @@ type ToolCall = { id: string; type: 'function'; function: { name: string; argume
 type LlmResponse = { content?: string; tool_calls?: ToolCall[] }
 type Msg = { role?: string; content?: unknown; tool_calls?: unknown }
 
-let calls: Array<{ who: string; tools: string[]; messages: Msg[] }> = []
+let calls: Array<{ who: string; tools: string[]; messages: Msg[]; profileId?: string }> = []
 let n = 0
 
 function tc(name: string, args: Record<string, unknown>): ToolCall {
@@ -52,11 +52,11 @@ function text(messages: Msg[]): string {
   return messages.map(m => String(m.content ?? '')).join('\n')
 }
 
-/** 认人：专家开工第一条话里写着「你是 名字（角色）」 */
+/** 认人只读系统绑定的当前身份，不把引用背景里的上级当成本人。 */
 function whoIs(messages: Msg[], tools: string[]): string {
-  if (tools.includes('dispatch_agents')) return 'parent'
-  const m = /你是 (\S+)（/.exec(text(messages))
-  return m ? m[1] : 'unknown'
+  const system = messages.filter(message => message.role === 'system').map(message => String(message.content ?? '')).join('\n')
+  const name = /^姓名：(.+)$/m.exec(system)?.[1]
+  return name ?? (tools.includes('dispatch_agents') ? 'parent' : 'unknown')
 }
 
 function makeServices(respond: (who: string, messages: Msg[]) => LlmResponse): AgentServices {
@@ -70,10 +70,12 @@ function makeServices(respond: (who: string, messages: Msg[]) => LlmResponse): A
         onChunk: (s: string) => void,
         _onToolCall: unknown,
         onDone: (r: unknown) => void,
+        _onError: unknown,
+        profileId?: string,
       ) => {
         const names = tools.map(t => t.function.name)
         const who = whoIs(messages, names)
-        calls.push({ who, tools: names, messages: JSON.parse(JSON.stringify(messages)) })
+        calls.push({ who, tools: names, messages: JSON.parse(JSON.stringify(messages)), profileId })
         await new Promise(r => setTimeout(r, 5))
         const r = respond(who, messages)
         if (r.content) onChunk(r.content)
@@ -228,4 +230,52 @@ describe('专家团端到端（真实 SailFish.run）', () => {
     expect(body).toContain('产品专家·定需求 → 开发专家·写代码')
     expect(body).toContain('hello.txt 写好了')
   })
+
+it('手动切模型作用于已创建负责人及后续深层成员，其他对话独立', async () => {
+  let sent = false
+  let delegated = false
+  const services = makeServices(who => {
+    if (who === 'parent' && !sent) {
+      sent = true
+      return { tool_calls: [tc('dispatch_agents', { tasks: [{ name: '带队', lead: true, description: '组织核对', prompt: '组织核对' }] })] }
+    }
+    if (who === '带队' && !delegated) {
+      delegated = true
+      parent.updateConfig({ profileId: 'new-model' })
+      return { tool_calls: [tc('dispatch_agents', { tasks: [{ name: '执行', description: '核对', prompt: '核对' }] })] }
+    }
+    return { content: '核对完成' }
+  })
+  vi.mocked(services.configService!.getAiProfiles).mockReturnValue([{ id: 'test', contextLength: 128000 }, { id: 'new-model', contextLength: 128000 }] as never)
+  const parent = new SailFish(services)
+  parent.setAgentId('selection-parent')
+  parent.updateConfig({ profileId: 'test', executionMode: 'free' })
+  const other = new SailFish(services)
+  other.updateConfig({ profileId: 'test' })
+  await parent.run('分层核对', ctx())
+  expect(calls.find(c => c.who === '带队')?.profileId).toBe('test')
+  expect(calls.filter(c => c.who === '执行').every(c => c.profileId === 'new-model')).toBe(true)
+  expect(calls.some(c => c.who === '执行')).toBe(true)
+  expect(calls.filter(c => c.who === '带队').at(-1)?.profileId).toBe('new-model')
+  expect(other.profileId).toBe('test')
+})
+
+
+it('主请求跨模型失败保留各自原文，相同错误重试不重复新增原因记录', async () => {
+  const services = makeServices(() => ({ content: '完成' }))
+  const first = { profileName: '火山模型', model: 'A', message: 'quota exhausted', statusCode: 429, code: 'insufficient_quota', category: 'quota' as const }
+  const second = { model: 'B', message: 'temporary failure', statusCode: 503, code: 'busy' }
+  vi.mocked(services.aiService.chatWithToolsStream).mockImplementationOnce(async (...args) => {
+    args[12]?.onApiFailure?.(first)
+    args[12]?.onApiFailure?.(second)
+    args[12]?.onApiFailure?.(second)
+    args[4]({ content: '备用模型恢复' })
+  })
+  const agent = new SailFish(services)
+  agent.updateConfig({ profileId: 'test', executionMode: 'free' })
+  const steps: AgentStep[] = []
+  await agent.run('核对', ctx(), { callbacks: { onStep: (_id, step) => { steps.push({ ...step }) } } })
+  expect(steps.filter(step => step.apiError).map(step => step.apiError)).toEqual([first, second])
+  expect(steps.find(step => step.apiError === first)?.content).toBe('火山模型：模型额度已耗尽')
+})
 })

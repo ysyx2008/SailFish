@@ -43,6 +43,7 @@ import { getDateString } from './date-util'
 import { AgentIndexLog } from './agent-index-log'
 import { ExpertTeamChatStore } from './expert-team-chat-store'
 import { SubAgentRecordStore } from './sub-agent-record-store'
+import { rebuildOrganization } from './organization-rebuild'
 import { throwIfAborted } from '../../utils/abort'
 import {
   isWatchAgentKey,
@@ -502,7 +503,80 @@ export class AgentRecordStore {
   ): AgentRecord {
     // 裁过字段的记录绝不能回写，否则会把产出物快照从磁盘抹掉
     if (options?.omitCanvasData) return found
-    return this.maybeExternalizeAndSaveRecord(found, dateStr)
+    return this.maybeExternalizeAndSaveRecord(this.augmentLiveSteps(found), dateStr)
+  }
+
+  /**
+   * 旧会话的派出步骤只存了最初的快照，之后的状态（组织长大、子 Agent 完成、团聊新增）不在里面。
+   * 伙计记录都还在：用它校正步骤上的 subAgents / expertTeam，并用组长自己的派出步骤补回组织。
+   * 已有能用的字段不动；找不到记录的保持原样。
+   */
+  private augmentLiveSteps(found: AgentRecord): AgentRecord {
+    if (!found.steps?.some(step => step.organization || step.subAgents || step.expertTeam)) return found
+    try {
+      const persisted = this.subAgents.list(found.id)
+      if (persisted.length === 0) return found
+      const children = persisted.map(child => child.state)
+      const byName = new Map(children.map(state => [state.name, state]))
+      // 每一层组长自己的记录都要用：只取最上层的话，组长名下再设的组长那个团就补不回来
+      const leaderRecords = persisted
+        .filter(({ state }) => state.lead)
+        .map(child => ({ leader: child.state, record: this.subAgents.readRecord(child) }))
+
+      const steps = found.steps.map(step => {
+        let next = step.subAgents || step.organization ? { ...step, sourceSessionId: step.sourceSessionId ?? found.id } : step
+        if (step.organization) {
+          next = { ...next, organization: rebuildOrganization({ ...step.organization, sessionId: step.organization.sessionId ?? found.id }, children, leaderRecords, found) }
+        }
+        if (step.subAgents?.length) {
+          let changed = false
+          const subAgents = step.subAgents.map(sa => {
+            const state = byName.get(sa.name ?? sa.id)
+            if (!state) return sa
+            const updated = {
+              ...sa,
+              ...(state.teamId ? { teamId: state.teamId } : {}),
+              status: state.status,
+              ...(state.result !== undefined ? { result: state.result } : {}),
+              ...(state.error ? { error: state.error } : {}),
+              ...(state.blockedReason ? { blockedReason: state.blockedReason } : {}),
+              ...(state.role ? { role: state.role } : {}),
+            }
+            if (updated.status !== sa.status || updated.result !== sa.result || updated.error !== sa.error
+              || updated.blockedReason !== sa.blockedReason || updated.role !== sa.role || updated.teamId !== sa.teamId) changed = true
+            return updated
+          })
+          if (changed) next = { ...next, subAgents }
+        }
+        if (step.expertTeam && next.organization) {
+          // 不同组长手下可能有同名团：先用群聊文件认，认不出再按名字取第一个
+          const sameName = next.organization.teams.filter(t => t.name === step.expertTeam!.name)
+          const team = sameName.find(t => !!step.expertTeam!.chatFile && t.chatFile === step.expertTeam!.chatFile)
+            ?? sameName.find(t => !!step.expertTeam!.transcriptPath && t.transcriptPath === step.expertTeam!.transcriptPath)
+            ?? sameName[0]
+          if (team) {
+            next = {
+              ...next,
+              expertTeam: {
+                ...step.expertTeam,
+                review: team.review,
+                ...(team.reviewers ? { reviewers: [...team.reviewers] } : {}),
+                ...(team.chatFile ? { chatFile: team.chatFile } : {}),
+                ...(team.transcriptPath ? { transcriptPath: team.transcriptPath } : {}),
+                waitingLeader: team.waitingLeader,
+                wakeLimit: team.wakeLimit,
+                earlierOmitted: Math.max(0, team.messageCount - (step.expertTeam.messages?.length ?? 0)),
+              },
+            }
+          }
+        }
+        return next
+      })
+      return { ...found, steps }
+    } catch (err) {
+      log.warn(`Live step rebuild failed for ${found.id}:`, err)
+      return found
+    }
   }
 
   private maybeExternalizeAndSaveRecord(found: AgentRecord, _dateStr: string): AgentRecord {

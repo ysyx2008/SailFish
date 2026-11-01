@@ -9,12 +9,14 @@
  */
 import { computed, nextTick, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, X, ArrowDown, Crown, MessagesSquare } from 'lucide-vue-next'
-import { EXPERT_TEAM_LEADER, type ExpertTeamChatCursor, type ExpertTeamMessageView } from '@shared/types'
+import { ArrowDown, Crown, MessagesSquare } from 'lucide-vue-next'
+import { EXPERT_TEAM_LEADER, SECRETARY_NAME, type ExpertTeamChatCursor, type ExpertTeamMessageView, type ExpertTeamView, type SubAgentResult } from '@shared/types'
 import { useTerminalStore } from '../../stores/terminal'
 import { useMarkdown } from '../../composables/useMarkdown'
 import { avatarHue, avatarInitial, continuesPrevious, memberLabel } from '../../utils/expert-team-view'
 import { countSubAgents, subAgentBucket, type SubAgentBucket } from '../../utils/sub-agent-summary'
+import { teamViewForStep, teamSources } from '../../utils/team-view'
+import TeamPanelHeader from '../Organization/TeamPanelHeader.vue'
 import { ExpertTeamChatPages } from '../../utils/expert-team-chat-pages'
 
 const props = withDefaults(defineProps<{
@@ -23,8 +25,15 @@ const props = withDefaults(defineProps<{
   stepId: string
   /** panel：右侧面板，右上角关掉；overlay：盖在对话栏上，左上角返回对话 */
   mode?: 'panel' | 'overlay'
-}>(), { mode: 'panel' })
-const emit = defineEmits<{ close: [] }>()
+  /** 项目组织里某个团的群聊：团名；不写就是这一步自己派出的专家团 */
+  teamName?: string
+  /** 团所在组长的名字；不同组长手下可能有同名团，顶层团不写 */
+  teamOwner?: string
+  /** 组织图宿主提供时，团聊也能沿用同一铺满状态。 */
+  focusActive?: boolean
+  embedded?: boolean
+}>(), { mode: 'panel', focusActive: undefined })
+const emit = defineEmits<{ close: []; toggleFocus: [] }>()
 
 const { t } = useI18n()
 const terminalStore = useTerminalStore()
@@ -41,8 +50,44 @@ const EARLIER_SLACK_PX = 80
 const step = computed(() => terminalStore.tabs
   .find(tab => tab.id === props.tabId)?.agentState?.steps
   .find(s => s.id === props.stepId))
-const team = computed(() => step.value?.expertTeam)
-const agents = computed(() => step.value?.subAgents ?? [])
+/** 项目组织里指定的那个团（派出组长那一步带着全貌）；有组长时团名加组长一起认 */
+const orgTeam = computed(() => {
+  if (!props.teamName) return undefined
+  const state = terminalStore.tabs.find(tab => tab.id === props.tabId)?.agentState
+  const teams = teamViewForStep(state?.steps ?? [], props.stepId, state?.sessionId)?.teams ?? []
+  return teams.find(team => team.name === props.teamName && team.owner === props.teamOwner)
+})
+const team = computed<ExpertTeamView | undefined>(() => {
+  if (!props.teamName) return step.value?.expertTeam
+  const o = orgTeam.value
+  const state = terminalStore.tabs.find(tab => tab.id === props.tabId)?.agentState
+  // 组织里的团不带群消息，全文从群聊文件里读
+  return o ? {
+    name: o.name,
+    messages: props.teamOwner ? [] : teamSources(state?.steps ?? [], props.stepId, state?.sessionId).find(s => s.expertTeam?.name === props.teamName)?.expertTeam?.messages ?? [],
+    review: o.review,
+    reviewers: o.reviewers,
+    wakes: 0,
+    wakeLimit: o.wakeLimit,
+    waitingLeader: o.waitingLeader,
+    ...(o.transcriptPath ? { transcriptPath: o.transcriptPath } : {}),
+    ...(o.chatFile ? { chatFile: o.chatFile } : {}),
+  } : undefined
+})
+const agents = computed<SubAgentResult[]>(() => {
+  if (!props.teamName) return step.value?.subAgents ?? []
+  const state = terminalStore.tabs.find(tab => tab.id === props.tabId)?.agentState
+  return (teamViewForStep(state?.steps ?? [], props.stepId, state?.sessionId)?.members ?? [])
+    .filter(m => m.team === props.teamName && m.parent === props.teamOwner)
+    .map(m => ({
+      id: m.id,
+      name: m.name,
+      description: m.description,
+      status: m.status,
+      ...(m.waitingForModel ? { waitingForModel: true } : {}),
+      ...(m.role ? { role: m.role } : {}),
+    }))
+})
 
 const readPage = (file: string, cursor: ExpertTeamChatCursor) =>
   window.electronAPI.history.readExpertTeamChat(file, cursor)
@@ -57,9 +102,14 @@ const messages = computed<ExpertTeamMessageView[]>(() =>
   paged.value ? pages.value!.messages : team.value?.messages ?? [])
 /** 单条没放全时，全文在哪 */
 const fullTextPath = computed(() => paged.value ? pages.value!.path : team.value?.transcriptPath)
-const labels = computed(() => ({ leader: t('ai.expertTeam.leader') }))
+/** 组织里的团，组长是那位组长；顶层的团组长就是秘书 */
+const labels = computed(() => ({
+  leader: orgTeam.value?.owner ? t('ai.expertTeam.leaderOf', { name: orgTeam.value.owner }) : t('ai.expertTeam.leader'),
+}))
 
-const nameOf = (from: string) => from === EXPERT_TEAM_LEADER ? labels.value.leader : from
+const nameOf = (from: string) => from === EXPERT_TEAM_LEADER
+  ? labels.value.leader
+  : from === SECRETARY_NAME ? t('ai.expertTeam.secretary') : from
 const roleOf = (from: string) => from === EXPERT_TEAM_LEADER ? '' : agents.value.find(a => (a.name ?? a.id) === from)?.role ?? ''
 const avatarStyle = (name: string) => ({ background: `hsl(${avatarHue(name)} 42% 32%)` })
 const mentions = (m: ExpertTeamMessageView) => m.to.map(name => ({
@@ -150,6 +200,8 @@ watch(lastSeq, async (seq, before) => {
 
 /** 群里有新消息：看全文时去文件里补 */
 const viewLastSeq = computed(() => {
+  // 组织里的团没有那一小段，群里一共几条就是最后一条的序号
+  if (orgTeam.value) return orgTeam.value.messageCount
   const view = team.value?.messages ?? []
   return view[view.length - 1]?.seq ?? 0
 })
@@ -159,7 +211,7 @@ watch(viewLastSeq, (seq) => {
 })
 
 /** 换了一个团就从头打开；这个团的全文文件刚有时换成看全文 */
-watch(() => props.stepId, () => { void openChat(true) })
+watch(() => [props.stepId, props.teamName, props.teamOwner], () => { void openChat(true) })
 watch(() => team.value?.chatFile, () => { void openChat() })
 
 watch(() => !!team.value, (has, had) => { if (had && !has) emit('close') })
@@ -168,36 +220,10 @@ onMounted(() => { void openChat(true) })
 </script>
 
 <template>
-  <section class="expert-team-chat" :class="`is-${mode}`">
-    <header class="etc-header">
-      <button
-        v-if="mode === 'overlay'"
-        type="button"
-        class="etc-icon-btn"
-        :title="t('ai.expertTeam.back')"
-        :aria-label="t('ai.expertTeam.back')"
-        @click="emit('close')"
-      >
-        <ArrowLeft :size="15" />
-      </button>
-      <span class="etc-title-icon" aria-hidden="true"><MessagesSquare :size="14" /></span>
-      <div class="etc-title">
-        <span class="etc-title-name">{{ t('ai.expertTeam.title', { team: team?.name ?? '' }) }}</span>
-        <span class="etc-title-meta">
-          {{ t('ai.expertTeam.members', { count: agents.length }) }}<template v-if="runningCount > 0"> · {{ t('ai.subAgentCount.running', { count: runningCount }) }}</template>
-        </span>
-      </div>
-      <button
-        v-if="mode === 'panel'"
-        type="button"
-        class="etc-icon-btn"
-        :title="t('ai.expertTeam.close')"
-        :aria-label="t('ai.expertTeam.close')"
-        @click="emit('close')"
-      >
-        <X :size="15" />
-      </button>
-    </header>
+  <section class="expert-team-chat" :class="[`is-${mode}`, { 'is-focus': focusActive, 'has-focus-controls': focusActive !== undefined }]">
+    <TeamPanelHeader v-if="!embedded" class="etc-header" :title="t('ai.expertTeam.title', { team: team?.name ?? '' })" :close-label="t('ai.expertTeam.close')" :back-label="teamName ? t('ai.organization.backToChart') : mode === 'overlay' ? t('ai.expertTeam.back') : undefined" :meta="t('ai.expertTeam.members', { count: agents.length }) + (runningCount > 0 ? ` · ${t('ai.subAgentCount.running', { count: runningCount })}` : '')" :focused="focusActive" :focus-label="focusActive ? t('canvas.splitDocument') : t('ai.organization.focus')" @close="emit('close')" @back="emit('close')" @toggle-focus="emit('toggleFocus')">
+      <template #icon><MessagesSquare :size="14" /></template>
+    </TeamPanelHeader>
 
     <div class="etc-main">
       <aside class="etc-members" :aria-label="t('ai.expertTeam.membersTitle')">
@@ -262,6 +288,9 @@ onMounted(() => { void openChat(true) })
                 <span class="etc-time">{{ timeOf(m.at) }}</span>
               </div>
               <div class="etc-bubble" :title="follow ? timeOf(m.at) : undefined">
+                <p v-if="m.verdict" class="etc-verdict" :class="`is-${m.verdict}`">
+                  {{ t(m.verdict === 'pass' ? 'ai.expertTeam.verdictPass' : 'ai.expertTeam.verdictReject') }}
+                </p>
                 <p v-if="m.to.length" class="etc-mentions">
                   <span v-for="mention in mentions(m)" :key="mention.name" class="etc-mention" :title="mention.title">{{ mention.text }}</span>
                 </p>
@@ -315,79 +344,8 @@ onMounted(() => { void openChat(true) })
   inset: 0;
   z-index: 30;
 }
-
-/* 头部 */
-.etc-header {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-sizing: border-box;
-  height: var(--workbench-panel-header-height, 38px);
-  padding: 0 10px;
-  /* 和产出物面板、对话顶栏同一个底色 */
-  background: var(--bg-tertiary, var(--bg-secondary, #252525));
-  border-bottom: 1px solid var(--border-color);
-  /* 群聊在窗口最上面时，标题栏同样能拖动窗口；按钮仍可点 */
-  -webkit-app-region: drag;
-}
-
-.etc-header .etc-icon-btn {
-  -webkit-app-region: no-drag;
-}
-
-.etc-title-icon {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  color: var(--accent-primary);
-  background: rgba(var(--accent-rgb, 137, 180, 250), 0.14);
-}
-
-.etc-title {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.etc-title-name {
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.etc-title-meta {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.etc-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.etc-icon-btn:hover {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
-  color: var(--text-primary);
-}
+.expert-team-chat.is-focus .etc-list { padding-bottom: calc(var(--assistant-focus-overlay, 160px) + 20px); }
+.expert-team-chat.is-focus .etc-jump { bottom: calc(var(--assistant-focus-overlay, 160px) + 14px); }
 
 .etc-main {
   flex: 1;
@@ -429,6 +387,11 @@ onMounted(() => { void openChat(true) })
   border-right: 1px solid var(--border-color);
   background: var(--bg-secondary);
   overflow-y: auto;
+}
+
+/* 右侧面板和对话之间画一道分界，和组织图面板一致 */
+.expert-team-chat.is-panel {
+  border-left: 1px solid var(--border-color);
 }
 
 .etc-members-title {
@@ -637,6 +600,26 @@ onMounted(() => { void openChat(true) })
   border-radius: 12px 4px 12px 12px;
   border-color: rgba(var(--accent-rgb, 137, 180, 250), 0.35);
   background: rgba(var(--accent-rgb, 137, 180, 250), 0.14);
+}
+
+.etc-verdict {
+  margin: 0;
+  align-self: flex-start;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.etc-verdict.is-pass {
+  color: var(--success-color, #4caf50);
+  background: rgba(76, 175, 80, 0.14);
+}
+
+.etc-verdict.is-reject {
+  color: var(--warning-color, #e0a030);
+  background: rgba(224, 160, 48, 0.16);
 }
 
 .etc-mentions {

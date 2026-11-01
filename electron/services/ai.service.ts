@@ -1,3 +1,4 @@
+import { ModelUnavailableError, isModelQuotaError, quotaResetAt, formatApiFailure, type ApiFailureDetail } from './ai-failure'
 import { oemResolved } from '@shared/oem-resolve'
 import { bundledRequestAuth } from '@shared/oem-model-catalog'
 import { ConfigService, getConfigService } from './config.service'
@@ -6,6 +7,7 @@ import { SocksProxyAgent } from 'socks-proxy-agent'
 import * as https from 'https'
 import * as http from 'http'
 import { StringDecoder } from 'string_decoder'
+import { cacheAnthropicMessageTail, normalizeAnthropicMessage } from './anthropic-prompt-cache'
 import { t } from './agent/i18n'
 import { stripCompositionMarkers } from './agent/context-composition'
 import { getAiDebugService } from './ai-debug.service'
@@ -188,6 +190,7 @@ export interface RetryInfo {
   statusCode?: number
   /** 网络错误里把超时单独标出来，方便界面说「请求超时」而不是笼统的「网络异常」 */
   cause?: 'timeout'
+  error?: ApiFailureDetail
 }
 
 function toApiRequestError(err: unknown, statusCode?: number, headers?: Record<string, string | string[] | undefined>, apiErrorCode?: string): ApiRequestError {
@@ -226,11 +229,22 @@ function isThrottleSignal(statusCode: number | undefined, apiErrorCode: string |
  * - 5xx 服务端错误：指数退避
  * - context_length_exceeded / 其他 4xx：不重试
  */
+function waitForRetry(delay: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new Error('Aborted')); return }
+    const finish = () => { signal?.removeEventListener('abort', abort); resolve() }
+    const timer = setTimeout(finish, delay)
+    const abort = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); reject(new Error('Aborted')) }
+    signal?.addEventListener('abort', abort, { once: true })
+  })
+}
+
 async function withApiRetry<T>(
   fn: () => Promise<T>,
   options?: {
     /** 覆盖网络错误最大重试次数 */
     maxRetries?: number
+    signal?: AbortSignal
     /** 不重试的错误码 */
     noRetryErrorCodes?: string[]
     /** 重试前回调 */
@@ -248,6 +262,7 @@ async function withApiRetry<T>(
       return await fn()
     } catch (err) {
       const apiErr = err as ApiRequestError
+      if (err instanceof ModelUnavailableError || options?.signal?.aborted) throw err
 
       // 不重试的业务错误（欠费 / 鉴权等）。码先归一成小写，避免 ArrearsError 对不上 arrearserror
       if (isAccountBillingError(apiErr.apiErrorCode, apiErr.statusCode)) {
@@ -269,7 +284,7 @@ async function withApiRetry<T>(
         }
         log.warn(`Rate limited (429), retry ${rateLimitAttempt}/${AI_RETRY.RATE_LIMIT_MAX_RETRIES} in ${(delay / 1000).toFixed(1)}s`)
         options?.onRetry?.(rateLimitAttempt, delay, '429')
-        await new Promise(resolve => setTimeout(resolve, delay))
+        await waitForRetry(delay, options?.signal)
         return _retry()
       }
 
@@ -280,7 +295,7 @@ async function withApiRetry<T>(
         const delay = calculateBackoff(AI_RETRY.SERVER_ERROR_BASE_DELAY, serverErrorAttempt - 1)
         log.warn(`Server error (${apiErr.statusCode}), retry ${serverErrorAttempt}/${AI_RETRY.SERVER_ERROR_MAX_RETRIES} in ${(delay / 1000).toFixed(1)}s`)
         options?.onRetry?.(serverErrorAttempt, delay, String(apiErr.statusCode))
-        await new Promise(resolve => setTimeout(resolve, delay))
+        await waitForRetry(delay, options?.signal)
         return _retry()
       }
 
@@ -291,7 +306,7 @@ async function withApiRetry<T>(
         const detail = [getNetworkErrorCode(apiErr), getNetworkErrorMessage(apiErr)].filter(Boolean).join(' ').slice(0, 80)
         log.warn(`Network error (${detail}), retry ${networkAttempt}/${maxRetries} in ${(delay / 1000).toFixed(1)}s`)
         options?.onRetry?.(networkAttempt, delay, 'network')
-        await new Promise(resolve => setTimeout(resolve, delay))
+        await waitForRetry(delay, options?.signal)
         return _retry()
       }
 
@@ -537,14 +552,28 @@ export interface AiMessage {
   reasoning_content?: string
   /** @internal Anthropic prompt cache: 标记此消息为缓存断点（跨任务复用的消息边界） */
   _cacheBreakpoint?: boolean
+  /** @internal 带来源的引用背景；只用于应用内继承，不发送给provider。 */
+  _contextReference?: { source?: string; messages: AiMessage[] }
   /**
-   * @internal 系统在 task 内部主动注入的 user/assistant 消息（非用户真实输入），
-   * 例如「工具读取图片占位」「上下文压力警告」等。这种消息：
+   * @internal 不构成新 task 边界的 user/assistant 消息（系统注入或 task 内用户补充），
+   * 例如「工具读取图片占位」「上下文压力警告」等；真实用户部分另由 _userContextParts 表达。这种消息：
    * - 不应被 splitMessagesIntoTasks 当作任务边界（否则会把同一个 task 切碎，
    *   产生「孤儿 tool」之类的违规序列）。
    * - 仍然会原样发给 API（formatMessageForApi 会忽略未知字段）。
    */
   _systemInjected?: boolean
+  /** @internal 用户输入对应的正文位置范围；[]表示没有用户输入。与任务边界独立，不发给模型API。 */
+  _userContextParts?: Array<{ start: number; end: number }>
+}
+
+/** 本地来源片段不进入普通聊天或插件provider参数；保留原正文和图片形式。 */
+function withoutUserContextParts(messages: readonly AiMessage[]): AiMessage[] {
+  return messages.map(message => {
+    const copy = { ...message }
+    delete copy._userContextParts
+    delete copy._contextReference
+    return copy
+  })
 }
 
 interface ToolParameterSchema {
@@ -646,8 +675,11 @@ export interface ChatStreamOptions {
   onReasoning?: (delta: string) => void
   /** 正文的增量。不含思考过程，调用方可以边收边显示 */
   onContent?: (delta: string) => void
-  /** 在模型请求缓冲池里排哪一档；不传按当面等的算，不排队 */
+  /** 在模型请求缓冲池里排哪一档；不传按前台优先排队，同样遵守窗口和冷却 */
   bufferPriority?: ModelRequestPriority
+  getModelSelection?: () => { profileId?: string; signal: AbortSignal }
+  onRequestState?: (state: 'queued' | 'cooldown' | 'retry' | 'sending') => void
+  onApiFailure?: (detail: ApiFailureDetail) => void
   /** 在缓冲池里排队等名额：开始等 true，拿到或放弃 false */
   onBufferWait?: (waiting: boolean) => void
   /** 被限流（429）时最多重试几次；不传用默认的 5 次。不影响网络错误和 5xx 的重试 */
@@ -1136,6 +1168,10 @@ function convertToAnthropicBody(body: Record<string, unknown>): Record<string, u
 
   for (const msg of rawMessages) {
     const role = msg.role as string
+    const append = (converted: Record<string, unknown>) => {
+      normalizeAnthropicMessage(converted, msg._cacheBreakpoint === true)
+      messages.push(converted)
+    }
 
     if (role === 'system') {
       if (system) system += '\n'
@@ -1154,7 +1190,7 @@ function convertToAnthropicBody(body: Record<string, unknown>): Record<string, u
             parts.push({ type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } })
           }
         }
-        messages.push({ role: 'user', content: parts })
+        append({ role: 'user', content: parts })
         continue
       }
       if (Array.isArray(msg.content)) {
@@ -1172,10 +1208,10 @@ function convertToAnthropicBody(body: Record<string, unknown>): Record<string, u
             }
           }
         }
-        messages.push({ role: 'user', content: parts })
+        append({ role: 'user', content: parts })
         continue
       }
-      messages.push({ role: 'user', content: msg.content })
+      append({ role: 'user', content: msg.content })
       continue
     }
 
@@ -1190,17 +1226,12 @@ function convertToAnthropicBody(body: Record<string, unknown>): Record<string, u
           blocks.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input })
         }
       }
-      // 缓存断点 3/4：跨任务消息复用边界（前序任务的最后一条 assistant 消息）
-      if (msg._cacheBreakpoint) {
-        if (blocks.length === 0) blocks.push({ type: 'text', text: '' })
-        blocks[blocks.length - 1].cache_control = { type: 'ephemeral' }
-        messages.push({ role: 'assistant', content: blocks })
-      } else if (blocks.length === 1 && blocks[0].type === 'text') {
-        messages.push({ role: 'assistant', content: blocks[0].text })
+      if (blocks.length === 1 && blocks[0].type === 'text') {
+        append({ role: 'assistant', content: blocks[0].text })
       } else if (blocks.length > 0) {
-        messages.push({ role: 'assistant', content: blocks })
+        append({ role: 'assistant', content: blocks })
       } else {
-        messages.push({ role: 'assistant', content: [{ type: 'text', text: '' }] })
+        append({ role: 'assistant', content: [{ type: 'text', text: '' }] })
       }
       continue
     }
@@ -1215,13 +1246,15 @@ function convertToAnthropicBody(body: Record<string, unknown>): Record<string, u
       if (last?.role === 'user' && Array.isArray(last.content) &&
           (last.content as Array<Record<string, unknown>>).every(c => c.type === 'tool_result')) {
         (last.content as Array<Record<string, unknown>>).push(result)
+        normalizeAnthropicMessage(last, msg._cacheBreakpoint === true)
       } else {
-        messages.push({ role: 'user', content: [result] })
+        append({ role: 'user', content: [result] })
       }
       continue
     }
   }
 
+  cacheAnthropicMessageTail(messages)
   const result: Record<string, unknown> = {
     model: body.model,
     max_tokens: body.max_tokens || 4096,
@@ -1524,7 +1557,7 @@ export class AiService {
 
     const requestBody = {
       model: profile.model,
-      messages,
+      messages: withoutUserContextParts(messages),
       temperature: resolveTemperature(profile),
       max_tokens: 2048
     }
@@ -1762,7 +1795,7 @@ export class AiService {
    * 发送单次 HTTP 请求（支持代理，带超时处理）
    * 抛出 ApiRequestError 携带 statusCode / retryAfter / apiErrorCode，供 withApiRetry 分类重试
    */
-  private async makeRequestOnce<T>(profile: AiProfile, body: object, signal?: AbortSignal): Promise<T> {
+  private async performRequestOnce<T>(profile: AiProfile, body: object, signal?: AbortSignal): Promise<T> {
     if (signal?.aborted) {
       throw toApiRequestError(new Error(t('error.request_aborted')))
     }
@@ -1871,25 +1904,30 @@ export class AiService {
   /**
    * 发送 HTTP 请求（带自动重试：网络错误 / 429 / 5xx 均自动退避重试）
    */
-  private async makeRequest<T>(profile: AiProfile, body: object, signal?: AbortSignal): Promise<T> {
-    const permit = await getModelRequestBuffer().acquire(modelRequestKey(profile), 'urgent')
+  private async withModelPermit<T>(profile: AiProfile, operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const permit = await getModelRequestBuffer().acquire(modelRequestKey(profile), 'urgent', { signal })
     try {
-      return await withApiRetry(async () => {
-        try {
-          const result = await this.makeRequestOnce<T>(profile, body, signal)
-          permit.reportSuccess()
-          return result
-        } catch (err) {
-          const apiErr = err as ApiRequestError
-          if (isThrottleSignal(apiErr.statusCode, apiErr.apiErrorCode)) {
-            permit.reportThrottled(apiErr.statusCode === 429 ? apiErr.retryAfter : undefined)
-          }
-          throw err
-        }
-      })
-    } finally {
-      permit.release()
-    }
+      const result = await operation()
+      permit.reportSuccess()
+      return result
+    } catch (err) {
+      const apiErr = err as ApiRequestError
+      if (isModelQuotaError(apiErr.apiErrorCode, profile.apiUrl)) {
+        const error = new ModelUnavailableError({ profileName: profile.name, model: profile.model, message: apiErr.message, statusCode: apiErr.statusCode, code: apiErr.apiErrorCode, category: 'quota' })
+        permit.reportUnavailable(error, quotaResetAt(apiErr.message))
+        throw error
+      }
+      if (isThrottleSignal(apiErr.statusCode, apiErr.apiErrorCode)) permit.reportThrottled(apiErr.retryAfter)
+      throw err
+    } finally { permit.release() }
+  }
+
+  private async makeRequestOnce<T>(profile: AiProfile, body: object, signal?: AbortSignal): Promise<T> {
+    return this.withModelPermit(profile, () => this.performRequestOnce<T>(profile, body, signal), signal)
+  }
+
+  private async makeRequest<T>(profile: AiProfile, body: object, signal?: AbortSignal): Promise<T> {
+    return withApiRetry(() => this.makeRequestOnce<T>(profile, body, signal), { signal })
   }
 
   /**
@@ -1906,344 +1944,9 @@ export class AiService {
     profileId?: string,
     requestId?: string
   ): Promise<void> {
-    const profile = this.getCurrentProfile(profileId)
-    if (!profile) {
-      onError(t('error.ai_no_config'))
-      return
-    }
-
-    const isAnthropic = isAnthropicApi(profile)
-    const streamStartTime = Date.now()
-    log.info(`ChatStream request: model=${profile.model}, messages=${messages.length}`)
-    const permit = await getModelRequestBuffer().acquire(modelRequestKey(profile), 'urgent')
-
-    const originalOnDone = onDone
-    const originalOnError = onError
-    onDone = () => {
-      permit.release()
-      const elapsed = ((Date.now() - streamStartTime) / 1000).toFixed(1)
-      log.info(`ChatStream done: model=${profile.model}, duration=${elapsed}s`)
-      originalOnDone()
-    }
-    onError = (error: string) => {
-      permit.release()
-      const elapsed = ((Date.now() - streamStartTime) / 1000).toFixed(1)
-      log.error(`ChatStream failed: model=${profile.model}, duration=${elapsed}s, error=${error}`)
-      originalOnError(error)
-    }
-
-    const requestBody = {
-      model: profile.model,
-      messages,
-      temperature: resolveTemperature(profile),
-      max_tokens: 2048,
-      stream: true
-    }
-
-    // 创建 AbortController，使用 requestId 或生成一个唯一 ID
-    const reqId = requestId || `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    const abortController = new AbortController()
-    this.abortControllers.set(reqId, abortController)
-
-    // 完成状态标记，防止重复回调
-    let isCompleted = false
-    // 总超时计时器
-    let totalTimeoutId: NodeJS.Timeout
-    // 空闲超时计时器（收到数据后重置）
-    let idleTimeoutId: NodeJS.Timeout
-    // 请求对象引用
-    let req: http.ClientRequest | undefined
-    // 重试计数器
-    let networkRetryCount = 0
-    let rateLimitRetryCount = 0
-    let serverErrorRetryCount = 0
-
-    // reasoning 输出状态
-    let hasReasoningOutput = false
-    let hasContentOutput = false
-
-    const complete = (fn: () => void) => {
-      if (!isCompleted) {
-        isCompleted = true
-        clearTimeout(totalTimeoutId)
-        clearTimeout(idleTimeoutId)
-        this.abortControllers.delete(reqId)
-        fn()
-      }
-    }
-
-    const resetForRetry = () => {
-      clearTimeout(totalTimeoutId)
-      clearTimeout(idleTimeoutId)
-      req = undefined
-      hasReasoningOutput = false
-      hasContentOutput = false
-    }
-
-    const closeOpenReasoningBlock = () => {
-      if (hasReasoningOutput && !hasContentOutput) {
-        onChunk('\n\n</blockquote>\n</details>\n\n')
-        hasReasoningOutput = false
-      }
-    }
-
-    const resetIdleTimeout = () => {
-      clearTimeout(idleTimeoutId)
-      idleTimeoutId = setTimeout(() => {
-        if (!isCompleted) {
-          req?.destroy()
-          if (!tryRetry('ETIMEDOUT')) {
-            complete(() => onError(t('error.ai_idle_timeout')))
-          }
-        }
-      }, AI_TIMEOUT.SOCKET_IDLE)
-    }
-
-    const tryRetry = (error: NetworkErrorLike, statusCode?: number, retryAfterMs?: number, apiErrorCode?: string): boolean => {
-      if (isCompleted) return true
-
-      if (isAccountBillingError(apiErrorCode, statusCode) || isNoRetryBusinessCode(apiErrorCode)) {
-        return false
-      }
-
-      // 429 Rate Limit
-      if (statusCode === 429 && rateLimitRetryCount < AI_RETRY.RATE_LIMIT_MAX_RETRIES) {
-        rateLimitRetryCount++
-        const delay = retryAfterMs ?? calculateBackoff(AI_RETRY.RATE_LIMIT_BASE_DELAY, rateLimitRetryCount - 1)
-        log.warn(`ChatStream rate limited (429), retry ${rateLimitRetryCount}/${AI_RETRY.RATE_LIMIT_MAX_RETRIES} in ${(delay / 1000).toFixed(0)}s`)
-        closeOpenReasoningBlock()
-        onChunk(`⚠️ ${t('error.rate_limited', { seconds: (delay / 1000).toFixed(0), attempt: String(rateLimitRetryCount), max: String(AI_RETRY.RATE_LIMIT_MAX_RETRIES) })}\n`)
-        resetForRetry()
-        setTimeout(doRequest, delay)
-        isCompleted = true
-        return true
-      }
-
-      // 5xx 服务端错误
-      if (statusCode && AI_RETRY.RETRYABLE_STATUS_CODES.includes(statusCode) && serverErrorRetryCount < AI_RETRY.SERVER_ERROR_MAX_RETRIES) {
-        serverErrorRetryCount++
-        const delay = calculateBackoff(AI_RETRY.SERVER_ERROR_BASE_DELAY, serverErrorRetryCount - 1)
-        log.warn(`ChatStream server error (${statusCode}), retry ${serverErrorRetryCount}/${AI_RETRY.SERVER_ERROR_MAX_RETRIES} in ${(delay / 1000).toFixed(0)}s`)
-        closeOpenReasoningBlock()
-        onChunk(`⚠️ ${t('error.server_error_retry', { status: String(statusCode), seconds: (delay / 1000).toFixed(0), attempt: String(serverErrorRetryCount), max: String(AI_RETRY.SERVER_ERROR_MAX_RETRIES) })}\n`)
-        resetForRetry()
-        setTimeout(doRequest, delay)
-        isCompleted = true
-        return true
-      }
-
-      // 网络错误（优先 err.code，避免 TLS 握手断开等 message 不含错误码时漏重试）
-      if (networkRetryCount < AI_RETRY.MAX_RETRIES && isRetryableError(error)) {
-        networkRetryCount++
-        const delay = calculateBackoff(AI_RETRY.BASE_DELAY, networkRetryCount - 1)
-        log.warn(`ChatStream network error, retry ${networkRetryCount}/${AI_RETRY.MAX_RETRIES} in ${(delay / 1000).toFixed(0)}s`)
-        closeOpenReasoningBlock()
-        onChunk(`⚠️ ${t('error.network_retry', { attempt: String(networkRetryCount), max: String(AI_RETRY.MAX_RETRIES) })}\n`)
-        resetForRetry()
-        setTimeout(doRequest, delay)
-        isCompleted = true
-        return true
-      }
-
-      return false
-    }
-
-    const doRequest = async () => {
-    isCompleted = false
-
-    // 重试等待期间用户可能已取消请求
-    if (abortController.signal.aborted) {
-      this.abortControllers.delete(reqId)
-      onDone()
-      return
-    }
-
-    let headers: Record<string, string>
-    try {
-      headers = await resolveRequestHeaders(profile)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      complete(() => onError(message))
-      return
-    }
-    if (abortController.signal.aborted) {
-      this.abortControllers.delete(reqId)
-      onDone()
-      return
-    }
-
-    try {
-      const url = new URL(profile.apiUrl)
-      const isHttps = url.protocol === 'https:'
-      const httpModule = isHttps ? https : http
-
-      const options: https.RequestOptions = {
-        hostname: url.hostname,
-        port: url.port || (isHttps ? 443 : 80),
-        path: url.pathname + url.search,
-        method: 'POST',
-        headers,
-        timeout: AI_TIMEOUT.CONNECT,
-        agent: profile.proxy ? this.getProxyAgent(profile.proxy) : (isHttps ? this.httpsAgent : this.httpAgent)
-      }
-
-      totalTimeoutId = setTimeout(() => {
-        if (!isCompleted) {
-          req?.destroy()
-          complete(() => onError(t('error.ai_total_timeout')))
-        }
-      }, AI_TIMEOUT.TOTAL)
-
-      req = httpModule.request(options, (res) => {
-        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) permit.reportSuccess()
-        // 开始接收响应，启动空闲超时
-        resetIdleTimeout()
-
-        if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
-          const utf8 = createUtf8ChunkDecoder()
-          let errorData = ''
-          res.on('data', (chunk: Buffer) => { 
-            errorData += utf8.push(chunk)
-            resetIdleTimeout()
-          })
-          res.on('end', () => {
-            errorData += utf8.end()
-            const parsed = parseApiError(errorData)
-            if (isContextLengthApiFailure(parsed.code, parsed.message)) {
-              complete(() => onError(t('error.context_length_exceeded')))
-              return
-            }
-            const retryAfterMs = parseRetryAfterMs(res.headers)
-            if (isThrottleSignal(res.statusCode, parsed.code)) {
-              permit.reportThrottled(res.statusCode === 429 ? retryAfterMs : undefined)
-            }
-            if (!tryRetry(parsed.message, res.statusCode, retryAfterMs, parsed.code)) {
-              const friendly = translateApiBusinessError(res.statusCode, parsed.code, profile.model)
-              complete(() => onError(friendly || t('error.api_request_failed', { data: parsed.message })))
-            }
-          })
-          return
-        }
-
-        const utf8 = createUtf8ChunkDecoder()
-        let buffer = ''
-
-        res.on('data', (chunk: Buffer) => {
-          // 收到数据，重置空闲超时
-          resetIdleTimeout()
-
-          const next = pushUtf8Lines(utf8, buffer, chunk)
-          buffer = next.pending
-
-          for (const line of next.lines) {
-            const trimmedLine = line.trim()
-            if (!trimmedLine) continue
-
-            if (trimmedLine.startsWith('data: ')) {
-              const data = trimmedLine.slice(6).trim()
-              if (!data) continue
-
-              let delta: { content?: string; reasoning_content?: string } | undefined
-              let isDone = false
-
-              if (isAnthropic) {
-                const event = parseAnthropicStreamEvent(data)
-                if (!event) continue
-                isDone = !!event.done
-                delta = event
-              } else {
-                if (data === '[DONE]') {
-                  isDone = true
-                } else {
-                  try {
-                    const json = JSON.parse(data)
-                    delta = json.choices?.[0]?.delta
-                  } catch { continue }
-                }
-              }
-
-              if (isDone) {
-                if (hasReasoningOutput && !hasContentOutput) {
-                  onChunk('\n\n</details>\n')
-                }
-                complete(() => onDone())
-                return
-              }
-
-              if (delta?.reasoning_content) {
-                if (!hasReasoningOutput) {
-                  hasReasoningOutput = true
-                  onChunk('<details open>\n<summary>🤔 <strong>思考过程</strong>（点击折叠）</summary>\n\n<blockquote>\n\n')
-                }
-                onChunk(delta.reasoning_content)
-              }
-
-              if (delta?.content) {
-                if (hasReasoningOutput && !hasContentOutput) {
-                  hasContentOutput = true
-                  onChunk('\n\n</blockquote>\n</details>\n\n---\n\n### 💬 回复\n\n')
-                }
-                onChunk(delta.content)
-              }
-            }
-          }
-        })
-
-        res.on('end', () => {
-          complete(() => onDone())
-        })
-
-        res.on('error', (err) => {
-          if (!tryRetry(err)) {
-            const friendly = tryFriendlyApiError(err, profile.model)
-            complete(() => onError(friendly || t('error.ai_response_error', { message: translateNetworkError(err) })))
-          }
-        })
-      })
-
-      // 连接超时处理
-      req.on('timeout', () => {
-        req?.destroy()
-        if (!tryRetry('ETIMEDOUT')) {
-          complete(() => onError(t('error.ai_connection_timeout')))
-        }
-      })
-
-      req.on('error', (err) => {
-        if (abortController.signal.aborted) {
-          complete(() => onDone())
-          return
-        }
-        if (!tryRetry(err)) {
-          const friendly = tryFriendlyApiError(err, profile.model)
-          complete(() => onError(friendly || t('error.request_error', { message: translateNetworkError(err) })))
-        }
-      })
-
-      // 支持中止请求
-      abortController.signal.addEventListener('abort', () => {
-        req?.destroy()
-        complete(() => onDone())
-      })
-
-      const chatStreamBody = isAnthropic ? convertToAnthropicBody(requestBody as Record<string, unknown>) : requestBody
-      req.write(JSON.stringify(sanitizeBodyStrings(chatStreamBody)))
-      req.end()
-    } catch (error) {
-      const errorLike: NetworkErrorLike = error instanceof Error ? error : 'Unknown error'
-      if (!tryRetry(errorLike)) {
-        if (error instanceof Error) {
-          const friendly = tryFriendlyApiError(error, profile.model)
-          complete(() => onError(friendly || t('error.ai_request_failed', { message: translateNetworkError(error) })))
-        } else {
-          complete(() => onError(t('error.ai_request_failed_unknown')))
-        }
-      }
-    }
-    }  // end of doRequest
-
-    // 开始执行请求
-    doRequest()
+    await this.chatWithToolsStream(messages, [], onChunk, () => {}, () => onDone(), onError,
+      profileId, undefined, requestId, undefined, undefined, undefined,
+      { maxOutputTokens: 2048, disableFailover: true })
   }
 
   /**
@@ -2272,8 +1975,7 @@ export class AiService {
     for (const provider of this.pluginProviders) {
       if (provider.match(profile)) {
         log.info(`Delegating to plugin provider "${provider.id}" for model=${profile.model}`)
-        const result = await provider.chatWithTools({ messages: messages as ProviderChatParams['messages'], tools, model: profile.model, apiUrl: profile.apiUrl, apiKey: profile.apiKey })
-        return result as ChatWithToolsResult
+        return this.withModelPermit(profile, async () => await provider.chatWithTools({ messages: withoutUserContextParts(messages) as ProviderChatParams['messages'], tools, model: profile.model, apiUrl: profile.apiUrl, apiKey: profile.apiKey }) as ChatWithToolsResult, signal)
       }
     }
 
@@ -2481,7 +2183,7 @@ export class AiService {
     onModelFailover?: (notice: AiModelFailoverNotice) => void,
     streamOptions?: ChatStreamOptions,
   ): Promise<void> {
-    const initialProfile = this.getCurrentProfile(profileId)
+    const initialProfile = this.getCurrentProfile(streamOptions?.getModelSelection?.().profileId ?? profileId)
     if (!initialProfile) {
       onError(t('error.ai_no_config'))
       return
@@ -2549,9 +2251,12 @@ export class AiService {
     const rateLimitMaxRetries = streamOptions?.rateLimitMaxRetries ?? AI_RETRY.RATE_LIMIT_MAX_RETRIES
     // 5xx 服务端错误重试计数器（独立于网络错误重试）
     let serverErrorRetryCount = 0
-    // 缓冲池名额：一次请求同一时刻最多占一个；等重试时先放掉，到点再排。换模型仍记在起始那一档上
-    const bufferKey = modelRequestKey(profile)
+    // 缓冲池名额：一次请求同一时刻最多占一个；等重试时先放掉，到点再排。换模型重新进入对应分组
+    let bufferKey = modelRequestKey(profile)
     let permit: ModelRequestPermit | undefined
+    let acquiring: AbortController | undefined
+    let requestInFlight = false
+    let selectionSignal = streamOptions?.getModelSelection?.().signal
     let bufferPriority: ModelRequestPriority = streamOptions?.bufferPriority ?? 'urgent'
     const releasePermit = () => {
       permit?.release()
@@ -2573,6 +2278,9 @@ export class AiService {
     const complete = (fn: () => void) => {
       if (settled) return
       settled = true
+      requestInFlight = false
+      acquiring?.abort()
+      selectionSignal?.removeEventListener('abort', selectionChanged)
       isCompleted = true
       if (retryTimeoutId !== undefined) {
         clearTimeout(retryTimeoutId)
@@ -2593,6 +2301,8 @@ export class AiService {
       }, delay)
       // 挡住旧请求的 error/timeout 收尾，但 settled 仍为 false，点停止可以立刻 complete
       isCompleted = true
+      requestInFlight = false
+      streamOptions?.onRequestState?.('retry')
     }
 
     // 重置状态以便重试（不重置 isCompleted，由 tryRetry/doRequest 管理）
@@ -2632,7 +2342,7 @@ export class AiService {
         if (gen !== requestGeneration) return
         if (!isCompleted) {
           req?.destroy()
-          if (!tryRetry('ETIMEDOUT', doRequest)) {
+          if (!tryRetry('ETIMEDOUT')) {
             if (!tryModelFailover('retries_exhausted')) {
               complete(() => onError(t('error.ai_idle_timeout')))
             }
@@ -2672,7 +2382,8 @@ export class AiService {
         requestBody = rebuildRequestBody()
         closeOpenReasoningBlock()
         resetForRetry()
-        doRequest()
+        releasePermit()
+        sendWithPermit()
         return true
       }
       return false
@@ -2711,12 +2422,14 @@ export class AiService {
       requestBody = rebuildRequestBody()
       closeOpenReasoningBlock()
       resetForRetry()
-      doRequest()
+      releasePermit()
+      bufferKey = modelRequestKey(profile)
+      sendWithPermit()
       return true
     }
 
     // 尝试重试的辅助函数（网络错误：指数退避 + jitter；优先 err.code）
-    const tryRetry = (error: NetworkErrorLike, doRequest: () => void): boolean => {
+    const tryRetry = (error: NetworkErrorLike): boolean => {
       // 已有重试在等待或请求已完成，跳过（防止 res/req 同时 emit error 导致重复重试）
       if (settled || isCompleted) return true
       if (streamOptions?.disableRetry) return false
@@ -2730,6 +2443,7 @@ export class AiService {
         const detail = [getNetworkErrorCode(error), getNetworkErrorMessage(error)].filter(Boolean).join(' ')
         getAiDebugService().logResponseError(reqId, `${detail} - 准备重试 ${retryCount}/${AI_RETRY.MAX_RETRIES} in ${(delay / 1000).toFixed(1)}s`)
         pendingRetryInfo = {
+          error: { profileName: profile.name, model: profile.model, message: getNetworkErrorMessage(error), code: getNetworkErrorCode(error) },
           attempt: retryCount,
           max: AI_RETRY.MAX_RETRIES,
           delayMs: delay,
@@ -2745,6 +2459,8 @@ export class AiService {
     }
 
     const doRequest = async () => {
+      requestInFlight = true
+      streamOptions?.onRequestState?.('sending')
     if (settled) return
     const gen = requestGeneration
     const isStale = () => gen !== requestGeneration
@@ -2837,6 +2553,16 @@ export class AiService {
             const parsed = parseApiError(errorData)
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
             log.error(`Request HTTP error: model=${profile.model}, status=${res.statusCode}, duration=${elapsed}s, error=${parsed.message.slice(0, 200)}`)
+            requestInFlight = false
+            const detail: ApiFailureDetail = { profileName: profile.name, model: profile.model, message: parsed.message, statusCode: res.statusCode, code: parsed.code, ...(isModelQuotaError(parsed.code, profile.apiUrl) ? { category: 'quota' as const } : {}) }
+            streamOptions?.onApiFailure?.(detail)
+            if (isModelQuotaError(parsed.code, profile.apiUrl)) {
+              const quotaError = new ModelUnavailableError(detail)
+              permit?.reportUnavailable(quotaError, quotaResetAt(parsed.message))
+              if (tryModelFailover('insufficient_quota')) return
+              complete(() => onError(quotaError.message))
+              return
+            }
             if (isThrottleSignal(res.statusCode, parsed.code)) {
               permit?.reportThrottled(res.statusCode === 429 ? parseRetryAfterMs(res.headers) : undefined)
             }
@@ -2869,7 +2595,7 @@ export class AiService {
                 onChunk(`⚠️ ${t('error.rate_limited', { seconds: retryAfterSec, attempt: String(rateLimitRetryCount), max: String(rateLimitMaxRetries) })}\n`)
               }
               getAiDebugService().logResponseError(reqId, `429 Rate Limited - retry ${rateLimitRetryCount}/${rateLimitMaxRetries} in ${retryAfterSec}s`)
-              pendingRetryInfo = { attempt: rateLimitRetryCount, max: rateLimitMaxRetries, delayMs: retryAfterMs, reason: 'rate_limit', statusCode: 429 }
+              pendingRetryInfo = { error: detail, attempt: rateLimitRetryCount, max: rateLimitMaxRetries, delayMs: retryAfterMs, reason: 'rate_limit', statusCode: 429 }
               resetForRetry()
               releasePermit()
               if (bufferPriority === 'urgent') bufferPriority = 'urgentRetry'
@@ -2890,7 +2616,7 @@ export class AiService {
                 onChunk(`⚠️ ${t('error.server_error_retry', { status: String(res.statusCode), seconds: delaySec, attempt: String(serverErrorRetryCount), max: String(AI_RETRY.SERVER_ERROR_MAX_RETRIES) })}\n`)
               }
               getAiDebugService().logResponseError(reqId, `${res.statusCode} Server Error - retry ${serverErrorRetryCount}/${AI_RETRY.SERVER_ERROR_MAX_RETRIES} in ${delaySec}s`)
-              pendingRetryInfo = { attempt: serverErrorRetryCount, max: AI_RETRY.SERVER_ERROR_MAX_RETRIES, delayMs: delay, reason: 'server_error', statusCode: res.statusCode }
+              pendingRetryInfo = { error: detail, attempt: serverErrorRetryCount, max: AI_RETRY.SERVER_ERROR_MAX_RETRIES, delayMs: delay, reason: 'server_error', statusCode: res.statusCode }
               resetForRetry()
               releasePermit()
               scheduleRetry(sendWithPermit, delay)
@@ -2910,7 +2636,7 @@ export class AiService {
                 return
               }
               const friendly = translateApiBusinessError(res.statusCode, parsed.code, profile.model)
-              complete(() => onError(friendly || t('error.api_request_failed', { data: parsed.message })))
+              complete(() => onError([friendly, formatApiFailure(detail)].filter(Boolean).join('\n')))
             }
           })
           return
@@ -3149,7 +2875,7 @@ export class AiService {
           }
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
           log.error(`Request failed: model=${profile.model}, duration=${elapsed}s, error=${err.message}`)
-          if (!tryRetry(err, doRequest)) {
+          if (!tryRetry(err)) {
             getAiDebugService().logResponseError(reqId, err.message)
             const friendly = tryFriendlyApiError(err, profile.model)
             if (!tryModelFailover(classifyFailoverTrigger({
@@ -3167,7 +2893,7 @@ export class AiService {
       req.on('timeout', () => {
         if (isStale()) return
         req?.destroy()
-        if (!tryRetry('ETIMEDOUT', doRequest)) {
+        if (!tryRetry('ETIMEDOUT')) {
           const errorMsg = t('error.ai_connection_timeout')
           getAiDebugService().logResponseError(reqId, errorMsg)
           if (!tryModelFailover('retries_exhausted')) {
@@ -3191,7 +2917,7 @@ export class AiService {
         }
         if (tryVisionFallback(err.message)) return
         // 尝试重试网络错误（包括 socket hang up / TLS 握手中断）
-        if (!tryRetry(err, doRequest)) {
+        if (!tryRetry(err)) {
           getAiDebugService().logResponseError(reqId, err.message)
           const friendly = tryFriendlyApiError(err, profile.model)
           if (!tryModelFailover('retries_exhausted')) {
@@ -3235,7 +2961,7 @@ export class AiService {
       if (tryVisionFallback(errorMsg)) return
       const errorLike: NetworkErrorLike = error instanceof Error ? error : errorMsg
       // 尝试重试网络错误
-      if (!tryRetry(errorLike, doRequest)) {
+      if (!tryRetry(errorLike)) {
         getAiDebugService().logResponseError(reqId, `Exception: ${errorMsg}`)
         if (tryModelFailover('retries_exhausted')) return
         if (error instanceof Error) {
@@ -3248,30 +2974,61 @@ export class AiService {
     }
     }  // end of doRequest
 
+    const selectionChanged = () => {
+      if (settled || requestInFlight) return
+      acquiring?.abort()
+      if (retryTimeoutId !== undefined) { clearTimeout(retryTimeoutId); retryTimeoutId = undefined }
+      releasePermit()
+      sendWithPermit()
+    }
+    selectionSignal?.addEventListener('abort', selectionChanged, { once: true })
+
     const sendWithPermit = () => {
       if (settled) return
-      if (permit) {
-        void doRequest()
-        return
+      requestInFlight = false
+      const selection = streamOptions?.getModelSelection?.()
+      if (selection && selection.signal !== selectionSignal) {
+        selectionSignal?.removeEventListener('abort', selectionChanged)
+        selectionSignal = selection.signal
+        selectionSignal.addEventListener('abort', selectionChanged, { once: true })
+        const next = this.getCurrentProfile(selection.profileId)
+        if (!next) { complete(() => onError(t('error.ai_no_config'))); return }
+        requestGeneration++
+        profile = next
+        bufferKey = modelRequestKey(profile)
+        isAnthropic = isAnthropicApi(profile)
+        rateLimitRetryCount = retryCount = serverErrorRetryCount = 0
+        requestBody = rebuildRequestBody()
+        releasePermit()
       }
+      if (permit) { void doRequest(); return }
+      const attempt = new AbortController()
+      acquiring = attempt
+      const abort = () => attempt.abort()
+      abortController.signal.addEventListener('abort', abort, { once: true })
       getModelRequestBuffer().acquire(bufferKey, bufferPriority, {
-        signal: abortController.signal,
-        onWait: streamOptions?.onBufferWait,
-      }).then((granted) => {
-        if (settled) {
-          granted.release()
-          return
-        }
+        signal: attempt.signal,
+        onWait: (waiting, reason) => {
+          streamOptions?.onBufferWait?.(waiting)
+          if (waiting) streamOptions?.onRequestState?.(reason ?? 'queued')
+        },
+      }).then(granted => {
+        abortController.signal.removeEventListener('abort', abort)
+        if (acquiring === attempt) acquiring = undefined
+        if (settled || attempt.signal.aborted) { granted.release(); return }
         permit = granted
         void doRequest()
-      }, () => {
-        getAiDebugService().logResponseDone(reqId, { finishReason: 'aborted' })
-        complete(() => onDone({
-          content: undefined,
-          tool_calls: undefined,
-          finish_reason: 'stop',
-          aborted: true
-        }))
+      }, error => {
+        abortController.signal.removeEventListener('abort', abort)
+        if (acquiring === attempt) acquiring = undefined
+        if (attempt.signal.aborted && !abortController.signal.aborted) return
+        if (error instanceof ModelUnavailableError) {
+          streamOptions?.onApiFailure?.(error.detail)
+          if (tryModelFailover('insufficient_quota')) return
+          complete(() => onError(error.message))
+          return
+        }
+        complete(() => onDone({ content: undefined, tool_calls: undefined, finish_reason: 'stop', aborted: true }))
       })
     }
 

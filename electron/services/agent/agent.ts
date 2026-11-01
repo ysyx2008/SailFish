@@ -1,3 +1,5 @@
+import { formatApiFailure } from '../ai-failure'
+import { ModelSelection } from '../model-selection'
 /**
  * Agent 抽象基类
  * 
@@ -67,6 +69,7 @@ import { buildGoalSystemSection } from './goal/goal-prompts'
 import { estimateTextTokens } from './token-estimate'
 import { runUntilIdle } from './run-until-idle'
 import { SubAgentRoster } from './sub-agent-roster'
+import type { LeadSeat } from './org-ledger'
 import type { ChildRecorder } from '../history/sub-agent-record-store'
 import { findUnansweredToolCalls } from './unanswered-calls'
 import { isOemFeatureEnabled } from '@shared/oem-features'
@@ -205,8 +208,26 @@ export abstract class Agent {
   /** 解析失败 / 未知命令 的风险策略（按 executionMode 分档） */
   commandRiskPolicy?: CommandRiskPolicy
   
-  /** AI 配置档案 ID（每个 Agent 实例独立，未设置时 fallback 到全局） */
-  profileId?: string
+  /** 手动选择由一场对话及其成员共享；自动降级保留实例内的有效档案。 */
+  protected modelSelection = new ModelSelection()
+  private selectedVersion = -1
+  private localProfileId?: string
+  get profileId(): string | undefined {
+    if (this.selectedVersion !== this.modelSelection.version) {
+      this.localProfileId = this.modelSelection.profileId ?? this.localProfileId
+      this.selectedVersion = this.modelSelection.version
+    }
+    return this.localProfileId
+  }
+  set profileId(value: string | undefined) {
+    this.localProfileId = value
+    this.selectedVersion = this.modelSelection.version
+  }
+
+  protected shareModelSelection(selection: ModelSelection): void {
+    this.modelSelection = selection
+    this.selectedVersion = -1
+  }
 
   /** Agent 实例的逻辑 ID（用于路由 proactive message 等场景） */
   protected _agentId?: string
@@ -230,6 +251,8 @@ export abstract class Agent {
 
   /** 这场已被删掉：不再落盘、不再写回知识库，跑完后从内存里摘掉 */
   private _sessionDiscarded = false
+  /** 组织快照检查点的节流定时器 */
+  private orgSaveTimer?: ReturnType<typeof setTimeout>
   private _whenDiscardedSettled?: () => void
 
   /** 调用方给下一轮指定的执行档（IM / 网页 / 关切 / 命令行等渠道自己的设定），开跑时用掉 */
@@ -256,6 +279,8 @@ export abstract class Agent {
 
   /** 伙计的确认交给主人这场：问你和替你放行都留在正在看的这场 */
   private _confirmationHost?: Agent
+  /** 被指定为组长才有 */
+  private _leadSeat?: LeadSeat
   /** 卡片上能认出是哪一个伙计 */
   private _workerLabel?: string
   /** 这场同时只问一件：几个伙计和主人自己的确认排着来 */
@@ -556,6 +581,29 @@ export abstract class Agent {
   bindConfirmationHost(host: Agent, label: string): void {
     this._confirmationHost = host
     this._workerLabel = label
+  }
+
+  /** 这场会话最外层的那位：伙计往上一路认到秘书；秘书自己就是 */
+  confirmationRoot(): Agent {
+    return this._confirmationHost ?? this
+  }
+
+  /** 盘上的主会话号。伙计和组长名下的人都记在它下面，不记在各自的临时会话里 */
+  rootSessionId(): string | undefined {
+    return this.confirmationRoot().getSessionId()
+  }
+
+  rootSessionStartTime(): number | undefined {
+    return this.confirmationRoot().getSessionStartTime()
+  }
+
+  /** 成为组长：之后每次开跑都有自己的一份花名册，能在自己名下派人 */
+  becomeLead(seat: LeadSeat): void {
+    this._leadSeat = seat
+  }
+
+  getLeadSeat(): LeadSeat | undefined {
+    return this._leadSeat
   }
 
   /** 文档备份算在哪一场。伙计跟主人这场，一直走到最外层。 */
@@ -1106,6 +1154,7 @@ export abstract class Agent {
     // 从没选过就保持空，下游回落到设置里当时的默认——微信进线不能写死、也不能盖掉界面选择。
     // 唤醒没有自己的选择器，每次未显式指定都跟默认。详见 agent/SPEC.md。
     if (options?.profileId) {
+      this.modelSelection.select(options.profileId)
       this.profileId = options.profileId
     } else if (this._agentId === '__wakeup__' && this.services.configService) {
       const active = this.services.configService.getActiveAiProfile()
@@ -1416,6 +1465,7 @@ export abstract class Agent {
       this.commandRiskPolicy = config.commandRiskPolicy
     }
     if (config.profileId !== undefined) {
+      this.modelSelection.select(config.profileId)
       this.profileId = config.profileId
       // 切模型即刻刷新上下文条：保留 token 快照，把 model/limit 换成新选 profile，
       // 清掉旧 Cache%（避免张冠李戴）。否则联络空闲时切了模型，状态栏仍显示上一次的模型。
@@ -1491,6 +1541,7 @@ export abstract class Agent {
     display?: { previewImages?: string[]; docPreviewImages?: string[] }
   ): boolean {
     const pending: PendingUserMessage = {
+      userInput: true,
       message,
       attachments: attachments?.length ? attachments : undefined,
       documentContext: documentContext || undefined,
@@ -1848,9 +1899,14 @@ export abstract class Agent {
    * 清理资源
    */
   cleanup(): void {
+    // 先收尾：攒着没写的快照在 cleanupRun 里 flush；先清定时器会让最后一次快照丢掉
     if (this.currentRun) {
       this.cleanupRun(this.currentRun)
       this.currentRun = undefined
+    }
+    if (this.orgSaveTimer) {
+      clearTimeout(this.orgSaveTimer)
+      this.orgSaveTimer = undefined
     }
     void this.flushMemory()
     this._memoryRefresher?.dispose()
@@ -1936,8 +1992,12 @@ export abstract class Agent {
       documentContext: undefined,
       terminalOutput: [],
     }
-    if (!this._isSubAgent) {
-      this._subAgentRoster = new SubAgentRoster()
+    if (!this._isSubAgent || this._leadSeat) {
+      const seat = this._leadSeat
+      const roster = seat?.ledger.rosterOwnedBy(seat.name) ?? new SubAgentRoster()
+      if (seat) roster.attachLedger(seat.ledger, seat.name, seat.depth, seat.teamId)
+      roster.bindOwner(message => this.injectSubAgentKnock(message))
+      this._subAgentRoster = roster
     }
     
     // 注册运行级别回调
@@ -2412,8 +2472,26 @@ export abstract class Agent {
    * 记录的构建（首个 user_task 标题、taskMemory 末态决定整体状态、steps/messages 序列化、kind/形态/token）
    * 全部由 Conversation.toRecord 负责；空会话（无 user_task）返回 null，与现状一致跳过。
    */
+  /** 实时快照变化时的检查点：攒一秒写一次，别每次变化都写盘；收尾前 flush */
+  private scheduleOrgCheckpoint(): void {
+    if (this.orgSaveTimer) return
+    this.orgSaveTimer = setTimeout(() => {
+      this.orgSaveTimer = undefined
+      if (this.currentRun && !this._sessionDiscarded) this.saveCheckpoint(this.currentRun)
+    }, 1000)
+  }
+
+  /** 收尾/完整保存前把攒着的组织快照立刻写一次 */
+  private flushOrgCheckpoint(): void {
+    if (!this.orgSaveTimer) return
+    clearTimeout(this.orgSaveTimer)
+    this.orgSaveTimer = undefined
+    if (this.currentRun && !this._sessionDiscarded) this.saveCheckpoint(this.currentRun)
+  }
+
   private saveSessionToHistory(): void {
     if (this._sessionDiscarded) return
+    this.flushOrgCheckpoint()
     const historyService = this.services.historyService
     if (!historyService || !this._conversation) return
 
@@ -3072,6 +3150,7 @@ export abstract class Agent {
    * 注意：技能会话在 Agent 实例级别维护，不在单次 Run 结束时清理
    */
   protected cleanupRun(run: AgentRun): void {
+    this.flushOrgCheckpoint()
     // 取消输出监听
     if (run.outputUnsubscribe) {
       run.outputUnsubscribe()
@@ -3086,6 +3165,7 @@ export abstract class Agent {
     const roster = this._subAgentRoster
     roster?.abortAll()
     this._previousChildrenSettling = roster?.settled()
+    roster?.release()
     this._subAgentRoster = undefined
   }
 
@@ -4717,6 +4797,7 @@ export abstract class Agent {
     // 重试成功（首次 onChunk 到达）/ 最终失败（onError）/ 完成（onDone 兜底）时停掉 streaming 状态
     let lastRetryStepId: string | undefined
     let lastRetryParams: Record<string, string> | undefined
+    const failureSteps = new Set<string>()
     let retryCountdownTimer: ReturnType<typeof setInterval> | undefined
     // 每个 toolCallId 独立节流（多个 tool_call 并行流式时互不干扰）
     const toolProgressThrottle = new Map<string, number>()
@@ -4751,7 +4832,7 @@ export abstract class Agent {
       clearRetryCountdown()
       if (lastRetryStepId) {
         const doneContent = lastRetryParams
-          ? `🔄 ${t('agent.retry_done', lastRetryParams)}`
+          ? `🔄 ${t('agent.retry_done', lastRetryParams)}${lastRetryParams.errorSummary ? ` · ${lastRetryParams.errorSummary}` : ''}`
           : undefined
         this.updateStep(lastRetryStepId, {
           isStreaming: false,
@@ -5145,6 +5226,7 @@ export abstract class Agent {
               seconds: String(Math.max(1, Math.round(retryInfo.delayMs / 1000)))
             }
             if (retryInfo.statusCode !== undefined) params.status = String(retryInfo.statusCode)
+            if (retryInfo.error) params.errorSummary = formatApiFailure(retryInfo.error)
             const i18nKey =
               retryInfo.reason === 'rate_limit' ? 'agent.retry_rate_limit' :
               retryInfo.reason === 'server_error' ? 'agent.retry_server_error' :
@@ -5160,6 +5242,7 @@ export abstract class Agent {
               id: stepId,
               type: 'waiting',
               content: renderWait(Math.max(1, Math.round(retryInfo.delayMs / 1000))),
+              ...(retryInfo.error ? { apiError: retryInfo.error } : {}),
               isStreaming: true
             }, effectiveProfileId)
             // 秒数倒数；间隔一过改成「正在重试」，避免还停在「几秒后重试」
@@ -5170,7 +5253,7 @@ export abstract class Agent {
               if (remaining <= 0) {
                 clearRetryCountdown()
                 this.updateStep(stepId, {
-                  content: `🔄 ${t('agent.retry_in_flight', params)}`,
+                  content: `🔄 ${t('agent.retry_gate_wait', params)}`,
                   isStreaming: true
                 })
                 return
@@ -5222,7 +5305,37 @@ export abstract class Agent {
         },
         {
           bufferPriority: this.takeModelRequestPriority(),
-          onBufferWait: (waiting) => this.callbacks?.onModelWait?.(this._agentId || run.id, waiting),
+          getModelSelection: () => ({ profileId: this.resolveEffectiveProfileId(run), signal: this.modelSelection.signal }),
+          onApiFailure: detail => {
+            const name = detail.profileName?.trim() || detail.model
+            const content = detail.category === 'quota'
+              ? `${name}：${t('agent.api_quota_exhausted')}`
+              : `${name}：${[detail.statusCode && `HTTP ${detail.statusCode}`, detail.code].filter(Boolean).join(' · ')}`
+            const fingerprint = JSON.stringify(detail)
+            if (!failureSteps.has(fingerprint)) {
+              failureSteps.add(fingerprint)
+              this.addStep({ type: 'message', content, apiError: detail })
+            }
+          },
+          onRequestState: state => {
+            const waiting = state !== 'sending'
+            this.callbacks?.onModelWait?.(this._agentId || run.id, waiting, state === 'sending' ? undefined : state)
+            if (state === 'retry') return
+            if (lastRetryStepId) {
+              clearRetryCountdown()
+              this.updateStep(lastRetryStepId, {
+                content: `🔄 ${t(state === 'sending' ? 'agent.retry_in_flight' : state === 'cooldown' ? 'agent.retry_cooldown' : 'agent.retry_gate_wait', lastRetryParams ?? {})}`,
+              })
+            } else if (run.initialStepId) {
+              if (waiting) {
+                clearSlowTtftTimer()
+                this.updateStep(run.initialStepId, { content: t(state === 'cooldown' ? 'agent.model_cooldown' : 'agent.model_queued'), isStreaming: true })
+              } else {
+                this.markWaitingForFirstToken(run)
+                scheduleSlowTtftHint()
+              }
+            }
+          },
           rateLimitMaxRetries: this._isSubAgent ? SUB_AGENT_RATE_LIMIT_RETRIES : undefined,
         },
       )
@@ -6126,6 +6239,27 @@ export abstract class Agent {
       isSubAgent: this._isSubAgent,
       inReceiptTurn: run.internalNotice && run.noticeKind === 'task_receipt',
       getSessionId: () => this.getSessionId(),
+      getRootSessionId: () => this.rootSessionId(),
+      getOrganizationHistory: () => {
+        const sessionId = this.rootSessionId()
+        return (this._conversation?.steps ?? []).flatMap(step => step.organization
+          && (!step.sourceSessionId || step.sourceSessionId === sessionId)
+          && (!step.organization.sessionId || step.organization.sessionId === sessionId) ? [step.organization] : [])
+      },
+      getCurrentOrganization: () => {
+        const steps = this._conversation?.steps ?? []
+        let start = 0
+        for (let i = steps.length - 1; i >= 0; i--) {
+          if (steps[i].type === 'user_task' && !steps[i].systemInjected) {
+            start = i
+            break
+          }
+        }
+        for (let i = steps.length - 1; i >= start; i--) {
+          if (steps[i].organization) return steps[i].organization
+        }
+        return undefined
+      },
       getRecallingConversation: () => this.recallingConversation(),
       getDocumentConversationId: () => this.documentConversationId(),
       getExpertTeamChats: () => this.services.historyService?.getAgentRecordStore().expertTeamChats,
@@ -6336,7 +6470,14 @@ export abstract class Agent {
       Object.assign(step, updates)
       if (this.currentRun.savedStepIds?.has(stepId)) this.currentRun.stepsEditedAfterSave = true
     }
-    
+
+    // 步骤上的实时快照（子 Agent / 团聊 / 组织）变了：记时间并攒一下写检查点。
+    // steps.jsonl 只追加，后长出来的状态不会回头改那一行；快照随 meta 存，重开时再盖回步骤。
+    if (updates.organization !== undefined || updates.subAgents !== undefined || updates.expertTeam !== undefined) {
+      step.snapshotAt = Date.now()
+      this.scheduleOrgCheckpoint()
+    }
+
     this.callbacks?.onStep?.(this.currentRun.id, step)
   }
   
@@ -6395,6 +6536,7 @@ export abstract class Agent {
     if (run.pendingUserMessages.length === 0) return
 
     let combinedText = ''
+    const userContextParts: NonNullable<AiMessage['_userContextParts']> = []
     const allImages: string[] = []
     const visionAvailable = this.currentProfileHasVision()
 
@@ -6433,10 +6575,12 @@ export abstract class Agent {
         uploadedDocs: pending.documentContext,
         imageNote: imageNote || undefined,
       })
+      const start = combinedText.length + (combinedText ? 2 : 0)
       combinedText += (combinedText ? '\n\n' : '') + msgPart
+      if (pending.userInput) userContextParts.push({ start, end: combinedText.length })
     }
 
-    const userSupplementMsg: AiMessage = { role: 'user', content: combinedText }
+    const userSupplementMsg: AiMessage = { role: 'user', content: combinedText, _userContextParts: userContextParts }
     if (allImages.length > 0) {
       userSupplementMsg.images = allImages
     }
@@ -6444,7 +6588,7 @@ export abstract class Agent {
     // _systemInjected: supplement 是任务中途的追加消息，不是新 task 的起点。
     // 不加此标记会让 splitMessagesIntoTasks（../conversation/messages）把它误计为
     // 新 task 边界，使 message task 数 > step chunk 数，fork 截断时丢失最近 task 的上下文。
-    run.taskMessageLog.push({ role: 'user', content: combinedText, _systemInjected: true })
+    run.taskMessageLog.push({ role: 'user', content: combinedText, _systemInjected: true, _userContextParts: userContextParts })
 
     const heardFromUser = run.pendingUserMessages.some(pending => !pending.silent)
     if (heardFromUser) this._userSpokeThisGoalRun = true

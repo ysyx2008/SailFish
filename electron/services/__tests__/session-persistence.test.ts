@@ -456,4 +456,54 @@ describe('session-persistence bounded reads', () => {
     const loaded = readSessionRecord(agentDir, dateStr, record.id)
     expect(loaded?.steps.map(s => s.id)).toEqual(['s1', 's2'])
   })
+
+  it('步骤上的组织快照存进 meta，旧快照不会盖掉新的', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-org-snapshot-'))
+    const agentDir = path.join(tmp, 'agent')
+    fs.mkdirSync(agentDir, { recursive: true })
+    const withOrg = (updatedAt: number): AgentStepRecord => ({
+      ...makeStep('s1'),
+      organization: {
+        members: [{ id: '研发组长', name: '研发组长', description: '带研发组', status: 'running', lead: true }],
+        teams: [],
+        live: 1,
+        total: 1,
+        updatedAt,
+      },
+    })
+    saveSessionRecord(agentDir, makeRecord({ steps: [withOrg(200)] }))
+    // 最终保存可能拿的是步骤最初的样子（append-only 的 steps.jsonl 不会回头改），
+    // 这里用全量重写把 steps 换成旧快照，meta 里应仍保留新的
+    saveSessionRecord(agentDir, makeRecord({ steps: [withOrg(100)] }), { forceRewrite: true })
+
+    const loaded = readSessionRecord(agentDir, '2026-07-13', 'sess-1')
+    expect(loaded?.steps[0].organization?.updatedAt).toBe(200)
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('子 Agent / 团聊快照也存进 meta，旧快照不会盖掉新的', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-live-snapshot-'))
+    const agentDir = path.join(tmp, 'agent')
+    fs.mkdirSync(agentDir, { recursive: true })
+    const withLive = (at: number, status: 'running' | 'completed', review: 'none' | 'pass'): AgentStepRecord => ({
+      ...makeStep('s1'),
+      subAgents: [{ id: '研发组长', name: '研发组长', description: '带研发组', status }],
+      expertTeam: {
+        name: '项目团',
+        messages: [],
+        wakes: 0,
+        wakeLimit: 30,
+        waitingLeader: false,
+        review,
+      },
+      snapshotAt: at,
+    })
+    saveSessionRecord(agentDir, makeRecord({ steps: [withLive(200, 'completed', 'pass')] }))
+    saveSessionRecord(agentDir, makeRecord({ steps: [withLive(100, 'running', 'none')] }), { forceRewrite: true })
+
+    const loaded = readSessionRecord(agentDir, '2026-07-13', 'sess-1')
+    expect(loaded?.steps[0].subAgents?.[0].status).toBe('completed')
+    expect(loaded?.steps[0].expertTeam?.review).toBe('pass')
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
 })

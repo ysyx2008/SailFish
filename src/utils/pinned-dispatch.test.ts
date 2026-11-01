@@ -73,9 +73,36 @@ describe('挂在顶部的派出的人', () => {
     expect(tracker.update([say('u'), dispatch('old', 'completed', 'interrupted'), plain('m')])).toEqual([])
   })
 
+  it('直接恢复深层成员时，直属名单为空也按全组织进度挂在顶部', () => {
+    const tracker = new PinnedDispatchTracker()
+    const step = { ...dispatch('deep'), organization: { members: [], teams: [], total: 5, live: 1 } }
+    expect(ids(tracker.update([say('u'), step]))).toEqual(['deep'])
+    const stopped = { ...step, organization: { ...step.organization, live: 0 } }
+    expect(ids(tracker.update([say('u'), stopped]))).toEqual(['deep'])
+    expect(tracker.update([say('u'), stopped, say('next')])).toEqual([])
+  })
+
   it('刚派出、还没人的那一步不挂', () => {
     expect(new PinnedDispatchTracker().update([dispatch('d')])).toEqual([])
     expect(hasUnfinishedSubAgents(dispatch('d', 'completed', 'interrupted').subAgents)).toBe(false)
     expect(hasUnfinishedSubAgents(undefined)).toBe(false)
   })
+  it('有归属的团队跨轮取最新状态，旧的在干快照不会永久挂着', () => {
+    const tracker = new PinnedDispatchTracker()
+    const first = { ...dispatch('first', 'running'), organization: {teamId:'A', members:[], teams:[], total:3, live:3, updatedAt:1} }
+    expect(ids(tracker.update([first]))).toEqual(['first'])
+    const done = { ...dispatch('done', 'completed'), organization: {...first.organization, live:0, updatedAt:2} }
+    expect(ids(tracker.update([first, say('续交代'), done]))).toEqual(['first'])
+    expect(tracker.update([first, say('续交代'), done, say('下一件事')])).toEqual([])
+    const other = { ...dispatch('other','running'), organization:{...first.organization,teamId:'B',live:2,updatedAt:3} }
+    expect(ids(tracker.update([first,say('续交代'),done,say('下一件事'),other]))).toEqual(['other'])
+  })
+
+})
+
+
+it('横幅按当前会话补齐缺失来源，旧legacy续派只有一个入口', () => {
+  const old=dispatch('old','running')
+  const continued={...dispatch('continued','running'),organization:{teamId:'legacy',sessionId:'current',members:[],teams:[],total:2,live:2}}
+  expect(ids(new PinnedDispatchTracker().update([old,continued],'current'))).toEqual(['old'])
 })
