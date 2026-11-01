@@ -2778,8 +2778,7 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                       />
                     </div>
                     <div v-else-if="item.step!.apiError" class="api-error-stack">
-                      <div class="api-error-summary">{{ item.step!.content }}</div>
-                      <ApiErrorDetails :detail="item.step!.apiError" />
+                      <ApiErrorDetails :detail="item.step!.apiError" :summary="item.step!.content" />
                     </div>
                     <div v-else-if="item.step!.type === 'message'" class="agent-message-stack">
                       <!-- 一句话拆成两半时：想的那截收进折叠行、说出口的那句留在外面，各只渲染自己那半 -->
@@ -5097,20 +5096,11 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
 }
 
 .api-error-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   min-width: 0;
   padding: 8px 10px;
   line-height: 1.5;
 }
 
-.api-error-summary {
-  color: var(--text-primary);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  user-select: text;
-}
 
 .step-text {
   word-break: break-word;

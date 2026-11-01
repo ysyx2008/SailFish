@@ -51,16 +51,29 @@ try {
     const rect = node => node.getBoundingClientRect()
     const stack = el.closest('.api-error-stack')
     const title = stack.querySelector('.api-error-summary')
-    const summary = el.querySelector('summary')
+    const summary = el.querySelector('.api-error-toggle')
     const meta = el.querySelector('.api-error-meta')
     const pre = el.querySelector('pre')
-    return { titleLeft:rect(title).left, summaryLeft:rect(summary).left, gap:rect(summary).top - rect(title).bottom, bodyGap:rect(pre).top - rect(meta).bottom, lineHeight:parseFloat(getComputedStyle(pre).lineHeight), fontSize:parseFloat(getComputedStyle(pre).fontSize), overflow:el.scrollWidth > el.clientWidth }
+    return { titleLeft:rect(title).left, summaryLeft:rect(summary).left, sameRow:Math.abs(rect(summary).top - rect(title).top) < 2, bodyGap:rect(pre).top - rect(meta).bottom, lineHeight:parseFloat(getComputedStyle(pre).lineHeight), fontSize:parseFloat(getComputedStyle(pre).fontSize), overflow:el.scrollWidth > el.clientWidth }
   })
-  check('摘要与详情入口对齐，段落及行距统一，无横向溢出', geometry.titleLeft === geometry.summaryLeft && geometry.gap === 6 && geometry.bodyGap === 6 && Math.abs(geometry.lineHeight / geometry.fontSize - 1.6) < 0.01 && !geometry.overflow)
+  check('摘要与详情入口同行，入口位于右侧，行距统一无溢出', geometry.summaryLeft > geometry.titleLeft && geometry.sameRow && geometry.bodyGap === 6 && Math.abs(geometry.lineHeight / geometry.fontSize - 1.6) < 0.01 && !geometry.overflow)
   await details.locator('summary').focus()
   await page.keyboard.press('Enter')
   check('详情可用键盘收起', !(await details.getAttribute('open') !== null))
   await page.keyboard.press('Enter')
+  const narrow = await details.evaluate(el => {
+    const previous = el.style.width
+    el.style.width = '210px'
+    const title = el.querySelector('.api-error-summary').getBoundingClientRect()
+    const toggle = el.querySelector('.api-error-toggle').getBoundingClientRect()
+    const result = { wrapped: toggle.top >= title.bottom, overflow: el.scrollWidth > el.clientWidth }
+    el.style.width = previous
+    return result
+  })
+  check('窄区域入口自然换行，详情与长文本无横向溢出', narrow.wrapped && !narrow.overflow)
+  await page.locator('.api-error-summary').first().click()
+  check('点击摘要所在行也可收起详情', await details.getAttribute('open') === null)
+  await details.locator('summary').click()
   if (process.env.E2E_SHOT) { fs.mkdirSync(process.env.E2E_SHOT, {recursive:true}); await page.screenshot({path:path.join(process.env.E2E_SHOT,'api-error-details.png')}) }
   await page.locator('.dock-team').first().click()
   check('组织图区分请求排队与接口冷却', (await page.locator('[data-member="排队成员"]').innerText()).includes('等待请求名额') && (await page.locator('[data-member="冷却成员"]').innerText()).includes('接口冷却中'))

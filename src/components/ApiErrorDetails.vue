@@ -2,15 +2,18 @@
 import { ChevronRight } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import type { ApiFailureDetail } from '@shared/types'
-defineProps<{ detail: ApiFailureDetail }>()
+defineProps<{ detail: ApiFailureDetail; summary: string }>()
 const { t } = useI18n()
 </script>
 
 <template>
   <details class="api-error-details">
     <summary>
-      <ChevronRight :size="14" class="api-error-chevron" aria-hidden="true" />
-      <span>{{ t('ai.apiErrorDetails') }}</span>
+      <span class="api-error-summary">{{ summary }}</span>
+      <span class="api-error-toggle">
+        <ChevronRight :size="14" class="api-error-chevron" aria-hidden="true" />
+        <span>{{ t('ai.apiErrorDetails') }}</span>
+      </span>
     </summary>
     <div class="api-error-body">
       <div class="api-error-meta">
@@ -35,12 +38,28 @@ const { t } = useI18n()
 summary {
   display: flex;
   align-items: center;
-  gap: 4px;
-  width: fit-content;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  width: 100%;
   max-width: 100%;
   list-style: none;
   cursor: pointer;
   border-radius: 3px;
+}
+.api-error-summary {
+  min-width: 0;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.api-error-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 summary::-webkit-details-marker { display: none; }
 summary:hover { color: var(--text-primary); }
