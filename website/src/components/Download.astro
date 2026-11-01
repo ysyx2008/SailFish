@@ -6,8 +6,9 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const require = createRequire(import.meta.url);
-const { extractVersionSummary } = require('../../../scripts/extract-changelog-summary.js');
+// 预渲染会移动模块位置；与 CHANGELOG 一样，按官网构建目录定位仓库文件。
+const require = createRequire(path.resolve(process.cwd(), '../package.json'));
+const { extractVersionSummary } = require('./scripts/extract-changelog-summary.js');
 
 interface Props {
   lang?: Lang;

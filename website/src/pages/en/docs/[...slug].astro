@@ -1,20 +1,20 @@
 ---
-import { getCollection } from 'astro:content';
+import { getCollection, render } from 'astro:content';
 import DocsLayout from '../../../layouts/DocsLayout.astro';
 
 export async function getStaticPaths() {
   const docs = await getCollection('docs');
   return docs
-    .filter(entry => entry.slug.startsWith('en/'))
+    .filter(entry => entry.id.startsWith('en/'))
     .map(entry => ({
-      params: { slug: entry.slug.replace(/^en\//, '') },
+      params: { slug: entry.id.replace(/^en\//, '') },
       props: { entry },
     }));
 }
 
 const { entry } = Astro.props;
-const { Content, headings } = await entry.render();
-const slug = entry.slug.replace(/^en\//, '');
+const { Content, headings } = await render(entry);
+const slug = entry.id.replace(/^en\//, '');
 ---
 
 <DocsLayout

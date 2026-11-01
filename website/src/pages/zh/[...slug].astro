@@ -14,8 +14,8 @@ export async function getStaticPaths() {
     'guide',
   ];
   const docPaths = docs
-    .filter((e) => e.slug.startsWith('zh/'))
-    .map((e) => `docs/${e.slug.replace(/^zh\//, '')}`);
+    .filter((e) => e.id.startsWith('zh/'))
+    .map((e) => `docs/${e.id.replace(/^zh\//, '')}`);
 
   return [...staticPages, ...docPaths].map((slug) => ({
     params: { slug },
