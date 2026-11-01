@@ -1,17 +1,19 @@
 <script setup lang="ts">
 /** 快捷名单复用全景图层级；成员行按同一视口策略绘制。 */
-import { Users } from 'lucide-vue-next'
+import { MessagesSquare } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import type { SubAgentResult } from '@shared/types'
 import type { OrgGroup } from '../../utils/organization-view'
 import TeamMemberRow from './TeamMemberRow.vue'
 defineProps<{ groups: OrgGroup[]; stepId: string; sessionId?: string; snapshotFor?: (name: string) => SubAgentResult | undefined }>()
 const emit = defineEmits<{ open: [name: string] }>()
+const { t } = useI18n()
 </script>
 
 <template>
   <ul class="team-member-tree">
     <li v-for="group in groups" :key="JSON.stringify([group.team?.teamId, group.team?.owner, group.team?.name])" class="tmt-group">
-      <div v-if="group.team" class="tmt-group-title"><Users :size="12" aria-hidden="true" /><span>{{ group.team.name }}</span></div>
+      <div v-if="group.team" class="tmt-group-title"><MessagesSquare :size="12" aria-hidden="true" /><span>{{ t('ai.organization.teamTitle', { team: group.team.name }) }}</span></div>
       <ul class="tmt-members">
         <li v-for="node in group.nodes" :key="node.member.id" class="tmt-node">
           <TeamMemberRow :node="node" :step-id="stepId" :session-id="sessionId" :snapshot-for="snapshotFor" @open="emit('open', node.member.name)" />

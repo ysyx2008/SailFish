@@ -4,7 +4,7 @@ export const ORG_CARD_WIDTH = 240
 export const ORG_CARD_HEIGHT = 76
 const ROW_GAP = 24
 const LEVEL_GAP = 56
-export const ORG_TEAM_HEIGHT = 104
+export const ORG_TEAM_HEIGHT = 84
 
 export interface OrgMemberPlacement { node: OrgNode; x: number; y: number; depth: number }
 export interface OrgTeamPlacement { group: OrgGroup; x: number; y: number; width: number; key: string }
@@ -18,7 +18,7 @@ export interface OrgLayout {
 }
 export interface OrgViewport { left: number; top: number; right: number; bottom: number }
 
-/** 小组只是同级成员的分组标题，不作为管理节点，也不改变成员所在列。 */
+/** 协作群只提供群聊入口，不作为管理节点，也不改变成员所在列。 */
 export function layoutOrganization(groups: readonly OrgGroup[], availableWidth: number): OrgLayout {
   const result: OrgLayout = { members: [], teams: [], lines: [], width: 0, height: 0 }
   const hierarchical = groups.some(group => group.nodes.some(node => node.groups.length > 0))

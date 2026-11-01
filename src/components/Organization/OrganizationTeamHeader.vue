@@ -75,8 +75,11 @@ const summary = computed(() => summarize(props.team, props.nodes))
 <template>
   <section class="org-team" :class="`is-${summary.bucket}`" :data-owner="team.owner ?? ''" :data-team="team.name">
     <div class="org-team-head">
-      <span class="org-team-name" :title="team.name">{{ t('ai.organization.teamTitle', { team: team.name }) }}</span>
-      <span class="org-review" :class="`is-${team.review}`">{{ t(`ai.organization.review.${team.review}`) }}</span>
+      <button type="button" class="org-team-chat" :title="`${t('ai.organization.teamTitle', { team: team.name })} · ${t('ai.organization.teamChat', { count: team.messageCount })}`" :aria-label="`${t('ai.organization.teamTitle', { team: team.name })} · ${t('ai.organization.teamChat', { count: team.messageCount })}`" @click.stop="emit('openTeam')">
+        <MessagesSquare :size="12" aria-hidden="true" />
+        <span class="org-team-name">{{ t('ai.organization.teamTitle', { team: team.name }) }}</span>
+        <span class="org-team-message-count">{{ team.messageCount }}</span>
+      </button>
     </div>
     <div class="org-team-meta">
       <span class="org-team-owner" :title="summary.owner">{{ summary.owner }}</span>
@@ -84,9 +87,9 @@ const summary = computed(() => summarize(props.team, props.nodes))
       <OrganizationStatusBadge :bucket="summary.bucket" :label="summary.label" compact />
     </div>
     <div class="org-team-actions">
+      <span class="org-review" :class="`is-${team.review}`">{{ t(`ai.organization.review.${team.review}`) }}</span>
       <OrganizationStatusBadge v-if="team.waitingLeader" bucket="waiting" :label="t('ai.organization.waitingLeader')" compact />
       <button type="button" class="org-team-artifacts" :title="t('ai.organization.openTeamArtifacts')" @click.stop="emit('openArtifacts')"><Files :size="12" />{{ t('ai.organization.teamArtifacts') }}</button>
-      <button type="button" class="org-team-chat" :title="t('ai.organization.openTeamChat')" @click.stop="emit('openTeam')"><MessagesSquare :size="12" />{{ t('ai.organization.teamChat', { count: team.messageCount }) }}</button>
     </div>
     <div class="org-team-meter" role="img" :aria-label="summary.meterLabel">
       <i v-for="part in summary.parts" :key="part.kind" class="org-meter-part" :class="`is-${part.kind}`" :style="{ flexGrow: part.count }" />
@@ -94,16 +97,15 @@ const summary = computed(() => summarize(props.team, props.nodes))
   </section>
 </template>
 <style scoped>
-/* 小组只作同列标题，状态与验收独立呈现，不用嵌套外框表示管理层级。 */
+/* 协作群是辅助入口；管理关系只由成员卡片与连线表达。 */
 .org-team {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  height: 104px;
-  gap: 7px;
+  height: 84px;
+  gap: 4px;
   min-width: 0;
-  padding: 8px;
-  border-left: 2px solid var(--border-color);
+  padding: 4px 0;
 }
 
 .org-team-head {
@@ -119,9 +121,10 @@ const summary = computed(() => summarize(props.team, props.nodes))
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
-  color: var(--text-primary);
+  text-align: left;
+  font-weight: 500;
 }
+.org-team-message-count { flex-shrink: 0; color: var(--text-muted); font-size: 10px; }
 .org-team-meta {
   display: flex;
   flex-wrap: nowrap;
@@ -138,7 +141,7 @@ const summary = computed(() => summarize(props.team, props.nodes))
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-primary);
+  color: var(--text-secondary);
 }
 .org-team-count { flex-shrink: 0; }
 .org-team-meta .org-status-badge { margin-left: auto; }
@@ -146,7 +149,8 @@ const summary = computed(() => summarize(props.team, props.nodes))
 .org-team-meter {
   display: flex;
   gap: 2px;
-  height: 3px;
+  height: 2px;
+  flex-shrink: 0;
   overflow: hidden;
   border-radius: 2px;
   background: var(--bg-tertiary);
@@ -168,7 +172,7 @@ const summary = computed(() => summarize(props.team, props.nodes))
   flex-shrink: 0;
   font-size: 10.5px;
   color: var(--text-secondary);
-  padding: 3px 6px;
+  padding: 2px 4px;
   border-radius: 4px;
 }
 .org-review.is-pass {
@@ -188,19 +192,22 @@ const summary = computed(() => summarize(props.team, props.nodes))
 
 .org-team-artifacts { margin-left: auto; }
 .org-team-artifacts, .org-team-chat {
-  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-primary);
+  padding: 2px 4px;
+  border-radius: 4px;
+  border: 0;
+  background: transparent;
   color: var(--text-secondary);
+  font-family: inherit;
   font-size: 11px;
   cursor: pointer;
 }
-.org-team-artifacts:hover, .org-team-chat:hover { color: var(--text-primary); border-color: rgba(var(--accent-rgb, 137, 180, 250), 0.45); }
+.org-team-chat { min-width: 0; max-width: 100%; }
+.org-team-chat svg, .org-team-artifacts { flex-shrink: 0; }
+.org-team-artifacts:hover, .org-team-chat:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+.org-team-artifacts:focus-visible, .org-team-chat:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 1px; }
 .org-team-actions { display: flex; align-items: center; gap: 6px; }
 .org-team-actions > .org-status-badge { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 10px; }
 </style>
