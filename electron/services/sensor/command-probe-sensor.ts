@@ -11,6 +11,7 @@ import { createHash } from 'crypto'
 import type { Sensor, SensorEvent, EventBus } from './types'
 import { createLogger } from '../../utils/logger'
 import { resolveDefaultShell, getShellSpawnArgs } from '../../utils/shell'
+import { PROBE_MAX_OUTPUT_BYTES, ProbeOutputLimitError } from './probe-output'
 import { ChunkTextDecoder } from '../../utils/encoding'
 
 const log = createLogger('CommandProbeSensor')
@@ -34,7 +35,7 @@ interface ProbeState {
 const MIN_INTERVAL = 10
 const MAX_TARGETS = 50
 const COMMAND_TIMEOUT_MS = 30_000
-const MAX_OUTPUT_BYTES = 64 * 1024
+const MAX_OUTPUT_BYTES = PROBE_MAX_OUTPUT_BYTES
 
 export class CommandProbeSensor implements Sensor {
   readonly id = 'command_probe'
@@ -85,7 +86,7 @@ export class CommandProbeSensor implements Sensor {
   }
 
   addTarget(watchId: string, target: Omit<CommandProbeTarget, 'watchId'>): void {
-    if (this.targets.size >= MAX_TARGETS) {
+    if (!this.targets.has(watchId) && this.targets.size >= MAX_TARGETS) {
       log.warn(`Target limit reached (${MAX_TARGETS}), rejecting: ${watchId}`)
       return
     }
@@ -155,14 +156,31 @@ export class CommandProbeSensor implements Sensor {
     let stderr = ''
     let exitCode: number | null = null
     let timeoutId: NodeJS.Timeout | null = null
+    let forceFinalizeTimer: NodeJS.Timeout | null = null
     let done = false
+    let captureFailure: Error | undefined
 
     const finalize = () => {
       if (done) return
       done = true
       if (timeoutId) clearTimeout(timeoutId)
+      if (forceFinalizeTimer) clearTimeout(forceFinalizeTimer)
+      // 被移除/替换的旧进程不能污染新目标基线或产生伪失败事件。
+      if (this.runningProcesses.get(watchId) !== child) return
       this.runningProcesses.delete(watchId)
-      if (!this._running) return
+      if (!this._running || this.targets.get(watchId) !== target) return
+
+      if (captureFailure) {
+        this.eventBus.emit({
+          id: `cp-failed-${watchId}-${Date.now()}`, type: 'command_probe', source: this.id,
+          timestamp: Date.now(), watchId, priority: 'normal',
+          payload: { command: target.command, triggerOn: target.triggerOn,
+            reason: `检查失败：${captureFailure.message}`, checkFailed: true,
+            errorCode: captureFailure instanceof ProbeOutputLimitError ? captureFailure.code : 'PROBE_COMMAND_FAILED',
+            error: captureFailure.message },
+        })
+        return
+      }
 
       const code = exitCode ?? 0
       const output = stdout.trim()
@@ -172,7 +190,7 @@ export class CommandProbeSensor implements Sensor {
       this.states.set(watchId, {
         lastOutputHash: outputHash,
         lastExitCode: typeof code === 'number' ? code : null,
-        lastOutput: output.substring(0, 2000),
+        lastOutput: output,
       })
 
       if (!prev) return
@@ -221,9 +239,9 @@ export class CommandProbeSensor implements Sensor {
             triggerOn: target.triggerOn,
             reason,
             exitCode: code,
-            output: output.substring(0, 2000),
+            output,
             previousOutput: prev.lastOutput,
-            stderr: stderr.trim().substring(0, 500),
+            stderr: stderr.trim(),
           },
           priority: 'normal',
         }
@@ -244,10 +262,14 @@ export class CommandProbeSensor implements Sensor {
         windowsHide: true,
       }, (error, out, err) => {
         if (error) {
-          exitCode = error.code ?? 1
+          const errorCode = (error as { code?: string | number }).code
+          exitCode = typeof errorCode === 'number' ? errorCode : 1
+          if (errorCode === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') captureFailure = new ProbeOutputLimitError()
+          else if (error.killed || typeof errorCode === 'string') captureFailure = error
         }
         stdout = out || ''
         stderr = err || ''
+        if (Buffer.byteLength(stdout) > MAX_OUTPUT_BYTES || Buffer.byteLength(stderr) > MAX_OUTPUT_BYTES) captureFailure = new ProbeOutputLimitError()
         finalize()
       })
     } else {
@@ -260,25 +282,37 @@ export class CommandProbeSensor implements Sensor {
       })
       const stdoutText = new ChunkTextDecoder()
       const stderrText = new ChunkTextDecoder()
+      let stdoutBytes = 0
+      let stderrBytes = 0
+      const limitExceeded = () => {
+        captureFailure = new ProbeOutputLimitError()
+        try { child.kill('SIGKILL') } catch { /* 已退出 */ }
+        forceFinalizeTimer = setTimeout(() => {
+          child.stdout?.destroy()
+          child.stderr?.destroy()
+          finalize()
+        }, 500)
+      }
       const takeOutput = () => {
-        stdout += stdoutText.end()
-        stderr += stderrText.end()
-        if (stdout.length > MAX_OUTPUT_BYTES) stdout = stdout.slice(0, MAX_OUTPUT_BYTES)
-        if (stderr.length > MAX_OUTPUT_BYTES * 0.1) stderr = stderr.slice(0, Math.floor(MAX_OUTPUT_BYTES * 0.1))
+        if (!captureFailure) {
+          stdout += stdoutText.end()
+          stderr += stderrText.end()
+        }
       }
       child.stdout?.on('data', (chunk: Buffer) => {
+        if (captureFailure) return
+        stdoutBytes += chunk.length
+        if (stdoutBytes > MAX_OUTPUT_BYTES) { limitExceeded(); return }
         stdout += stdoutText.push(chunk)
-        if (stdout.length > MAX_OUTPUT_BYTES) {
-          stdout = stdout.slice(0, MAX_OUTPUT_BYTES)
-        }
       })
       child.stderr?.on('data', (chunk: Buffer) => {
+        if (captureFailure) return
+        stderrBytes += chunk.length
+        if (stderrBytes > MAX_OUTPUT_BYTES) { limitExceeded(); return }
         stderr += stderrText.push(chunk)
-        if (stderr.length > MAX_OUTPUT_BYTES * 0.1) {
-          stderr = stderr.slice(0, Math.floor(MAX_OUTPUT_BYTES * 0.1))
-        }
       })
       child.on('error', (err) => {
+        captureFailure = err
         stderr += `\n[probe spawn error] ${err.message}`
         exitCode = 1
         takeOutput()
@@ -292,9 +326,12 @@ export class CommandProbeSensor implements Sensor {
 
       // 超时强杀
       timeoutId = setTimeout(() => {
+        captureFailure = new Error('命令探针执行超时，本次检查失败，未更新比较基线。')
         try { child.kill('SIGTERM') } catch { /* 已退出 */ }
-        setTimeout(() => {
+        forceFinalizeTimer = setTimeout(() => {
           try { child.kill('SIGKILL') } catch { /* 已退出 */ }
+          child.stdout?.destroy()
+          child.stderr?.destroy()
           takeOutput()
           finalize()
         }, 500)

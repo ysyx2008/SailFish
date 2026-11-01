@@ -2,6 +2,7 @@
  * 关切技能执行器
  * 实现 Agent 对关切的完整 CRUD + 触发 + 历史查询
  */
+import { WatchState } from '../../../watch/state'
 import { getWatchService } from '../../../watch/watch.service'
 import type { WatchTrigger, WatchExecution, WatchOutput, WatchDefinition, CreateWatchParams } from '../../../watch/types'
 import type { ToolResult, ToolExecutorConfig, AgentConfig } from '../../tools/types'
@@ -234,28 +235,6 @@ async function getHistory(args: Record<string, unknown>): Promise<ToolResult> {
   }
 }
 
-const MAX_STATE_KEYS = 20
-const MAX_KEY_LENGTH = 100
-const MAX_STRING_VALUE_LENGTH = 500
-
-function sanitizeState(raw: Record<string, unknown>): Record<string, unknown> {
-  const keys = Object.keys(raw)
-  if (keys.length > MAX_STATE_KEYS) {
-    throw new Error(`状态键数量超出限制 (${keys.length}/${MAX_STATE_KEYS})`)
-  }
-  const result: Record<string, unknown> = {}
-  for (const key of keys) {
-    if (typeof key !== 'string' || key.length > MAX_KEY_LENGTH) continue
-    const val = raw[key]
-    if (typeof val === 'string') {
-      result[key] = val.slice(0, MAX_STRING_VALUE_LENGTH)
-    } else if (typeof val === 'number' || typeof val === 'boolean' || val === null) {
-      result[key] = val
-    }
-  }
-  return result
-}
-
 async function updateWatchState(args: Record<string, unknown>): Promise<ToolResult> {
   const watchId = args.watch_id as string | undefined
   const watchState = args.watch_state as Record<string, unknown> | undefined
@@ -271,11 +250,10 @@ async function updateWatchState(args: Record<string, unknown>): Promise<ToolResu
     const service = getWatchService()
     const watch = service.get(watchId)
     if (!watch) return { success: false, output: '', error: `关切不存在: ${watchId}` }
-    const sanitized = sanitizeState(watchState)
-    const merged = { ...(watch.state || {}), ...sanitized }
+    const merged = WatchState.merge(watch.state, watchState)
     service.updateWatchState(watchId, merged)
 
-    return { success: true, output: `✅ 状态已更新: watch_state(${Object.keys(sanitized).join(', ')})` }
+    return { success: true, output: `✅ 状态已更新: watch_state(${Object.keys(watchState).join(', ')})` }
   } catch (error) {
     return { success: false, output: '', error: `状态更新失败: ${errMsg(error)}` }
   }

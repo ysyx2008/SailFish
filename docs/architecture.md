@@ -260,7 +260,8 @@ Agent 的运行环境分三种：`local`（本地终端）、`ssh`（SSH 远程�
 - **10 种触发器 / 5 种传感器 / 8 个内置模板**：具体清单见 `docs/sensor-loop-architecture.md`
 - **Webhook**：Gateway 的 `POST /hooks/:token` 端点，外部系统可触发 Watch
 - **Pre-check**：执行前让 AI 自主判断"该不该做"（Agency of Omission）
-- **有状态工作流**：Watch 自身状态 + 跨 Watch 共享状态，Agent 通过 `STATE_UPDATE` / `SHARED_UPDATE` 指令自动更新
+- **有状态工作流**：Watch 私有 JSON 状态通过 `watch_state_update` 按顶层键合并；整体校验后完整保存，超限明确失败并保留旧值。详见 `watch/SPEC.md`
+- **上下文完整交接**：长状态与事件由 `watch/context-snapshots.ts` 提供内容寻址快照，缓存有字节、文件数和排队上限，活动执行的引用受保护；大事件的调试历史明确显示为摘要，执行链路仍收全文。准备上下文、技能预加载均受停止/取消/超时约束，旧执行不覆盖新一轮状态。
 - **事件派发**：所有事件通过 EventBus 排队派发；Watch **执行**由 WatchService 并发调度（不同 `watchId` 可并行，同 `watchId` 互斥，全局软上限默认 5）
 - **独立 Agent**：普通关切使用 `__watch__:${watchId}`（逐次失忆、可并发）；唤醒用 `__wakeup__`（自身单实例，可与普通关切并行）；两者均与 IM/桌面助手的 `__companion__` 隔离
 - **执行形态**：关切一律本机助手 Agent（`runAssistant`）；需跑命令时用 `exec` 等工具，**不为关切创建/绑定专用 PTY**；过程经 `agent:step` 进关切面板；`output` 只约束对外打扰

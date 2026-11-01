@@ -24,7 +24,11 @@ export class MemoryEventBus implements EventBus {
   private processing = false
 
   emit(event: SensorEvent): void {
-    this.recent.push(event)
+    let payloadChars: number
+    try { payloadChars = JSON.stringify(event.payload).length } catch { payloadChars = Infinity }
+    this.recent.push(payloadChars <= 4096 ? event : {
+      ...event, payload: { previewOnly: true, payloadChars, description: '此处为调试摘要；完整事件已交给执行链路。' }
+    })
     if (this.recent.length > MAX_RECENT_EVENTS) {
       this.recent.shift()
     }

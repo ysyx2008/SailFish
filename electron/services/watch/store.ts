@@ -8,6 +8,7 @@
 import Store from 'electron-store'
 import { createLogger } from '../../utils/logger'
 import { normalizeWatchDefinition } from '../../utils/normalize'
+import { WatchState } from './state'
 import { WAKEUP_AGENT_KEY } from '@shared/types'
 import type {
   WatchDefinition,
@@ -78,7 +79,7 @@ export class WatchStore {
       skills: params.skills,
       execution: params.execution,
       output: params.output,
-      state: params.state,
+      state: params.state === undefined ? undefined : WatchState.validate(params.state),
       priority: params.priority ?? 'normal',
       createdAt: now,
       updatedAt: now,
@@ -100,12 +101,14 @@ export class WatchStore {
     const watches = this.getAll()
     const existing = watches.find(w => w.id === watch.id)
     if (existing) return existing
+    if (watch.state !== undefined) watch = { ...watch, state: WatchState.validate(watch.state) }
     watches.push(watch)
     this.store.set('watches', watches)
     return watch
   }
 
   update(id: string, updates: Partial<Omit<WatchDefinition, 'id' | 'createdAt'>>): WatchDefinition | null {
+    if (updates.state !== undefined) updates = { ...updates, state: WatchState.validate(updates.state) }
     const watches = this.getAll()
     const index = watches.findIndex(w => w.id === id)
     if (index === -1) return null
@@ -308,7 +311,10 @@ export class WatchStore {
   }
 
   importData(data: Partial<WatchStoreSchema>): void {
-    if (data.watches) this.store.set('watches', data.watches)
+    if (data.watches) {
+      const watches = data.watches.map(watch => watch.state === undefined ? watch : { ...watch, state: WatchState.validate(watch.state) })
+      this.store.set('watches', watches)
+    }
     if (data.history) this.store.set('history', data.history)
     if (Array.isArray(data.continueWhenAwake)) {
       this.store.set('continueWhenAwake', data.continueWhenAwake.filter(id => typeof id === 'string'))
