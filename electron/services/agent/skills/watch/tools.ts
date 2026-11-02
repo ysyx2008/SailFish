@@ -4,6 +4,14 @@
  */
 
 import type { ToolDefinition } from '../../tools'
+import { WATCH_RUN_LIMIT_MIN_SEC, WATCH_RUN_LIMIT_MAX_SEC, WATCH_RUN_LIMIT_DEFAULT_SEC } from '@sailfish/shared-types'
+
+const timeoutMinutesParameter = {
+  type: 'integer',
+  minimum: WATCH_RUN_LIMIT_MIN_SEC / 60,
+  maximum: WATCH_RUN_LIMIT_MAX_SEC / 60,
+  description: `单次运行最长分钟数，${WATCH_RUN_LIMIT_MIN_SEC / 60}–${WATCH_RUN_LIMIT_MAX_SEC / 60} 的整数；创建时省略为 ${WATCH_RUN_LIMIT_DEFAULT_SEC / 60} 分钟，修改时省略保留原值，从下一次运行生效。`,
+}
 
 const watchToolDefs: ToolDefinition[] = [
   {
@@ -12,7 +20,7 @@ const watchToolDefs: ToolDefinition[] = [
       name: 'watch_list',
       description: `列出我当前所有的关切（关注点）。
 
-返回每个关切的名称、状态、触发方式、下次执行时间等。`,
+返回每个关切的名称、状态、触发方式、单次运行最长分钟数、下次执行时间等。`,
       parameters: {
         type: 'object',
         properties: {
@@ -118,6 +126,7 @@ const watchToolDefs: ToolDefinition[] = [
             items: { type: 'string' },
             description: '需要的技能列表（如 email、browser）'
           },
+          timeout_minutes: timeoutMinutesParameter,
           enabled: { type: 'boolean', description: '是否立即启用，默认 true' }
         },
         required: ['name', 'prompt', 'triggers']
@@ -165,6 +174,7 @@ const watchToolDefs: ToolDefinition[] = [
           },
           output: { type: 'string', enum: ['desktop', 'im', 'notification', 'log', 'silent'] },
           priority: { type: 'string', enum: ['high', 'normal', 'low'] },
+          timeout_minutes: timeoutMinutesParameter,
           enabled: { type: 'boolean' }
         },
         required: ['watch_id']

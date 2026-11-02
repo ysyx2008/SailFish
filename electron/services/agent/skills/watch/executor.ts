@@ -2,9 +2,10 @@
  * 关切技能执行器
  * 实现 Agent 对关切的完整 CRUD + 触发 + 历史查询
  */
+import { clampWatchRunLimitSec, WATCH_RUN_LIMIT_DEFAULT_SEC, WATCH_RUN_LIMIT_MIN_SEC, WATCH_RUN_LIMIT_MAX_SEC } from '@sailfish/shared-types'
 import { WatchState } from '../../../watch/state'
 import { getWatchService } from '../../../watch/watch.service'
-import type { WatchTrigger, WatchExecution, WatchOutput, WatchDefinition, CreateWatchParams } from '../../../watch/types'
+import type { WatchTrigger, WatchOutput, WatchDefinition, CreateWatchParams } from '../../../watch/types'
 import type { ToolResult, ToolExecutorConfig, AgentConfig } from '../../tools/types'
 
 export async function executeWatchTool(
@@ -61,6 +62,7 @@ async function listWatches(args: Record<string, unknown>): Promise<ToolResult> {
       return `- **${w.name}** [${status}]
   ID: ${w.id}
   触发: ${triggers}
+  单次最长: ${runLimitMinutes(w)} 分钟
   上次: ${lastStatus} | 下次: ${nextRun}
   指令: ${w.prompt.substring(0, 60)}${w.prompt.length > 60 ? '...' : ''}`
     }).join('\n\n')
@@ -90,7 +92,7 @@ async function createWatch(args: Record<string, unknown>): Promise<ToolResult> {
       triggers,
       description: (args.description as string)?.trim(),
       skills: args.skills as string[] | undefined,
-      execution: { type: 'local' } as WatchExecution,
+      execution: { type: 'local', timeout: parseTimeoutMinutes(args.timeout_minutes) },
       output,
       priority: (args.priority as CreateWatchParams['priority']) || 'normal',
       enabled: args.enabled as boolean ?? true,
@@ -104,7 +106,7 @@ async function createWatch(args: Record<string, unknown>): Promise<ToolResult> {
 
     return {
       success: true,
-      output: `✅ 关切创建成功\n名称：${watch.name}\nID：${watch.id}\n触发：${triggerDesc}\n下次执行：${nextRun}`
+      output: `✅ 关切创建成功\n名称：${watch.name}\nID：${watch.id}\n触发：${triggerDesc}\n单次最长：${runLimitMinutes(watch)} 分钟\n下次执行：${nextRun}`
     }
   } catch (error) {
     return { success: false, output: '', error: `创建关切失败: ${errMsg(error)}` }
@@ -128,10 +130,14 @@ async function updateWatch(args: Record<string, unknown>): Promise<ToolResult> {
     if (args.priority) updates.priority = args.priority as CreateWatchParams['priority']
     if (args.enabled !== undefined) updates.enabled = args.enabled as boolean
 
+    if (args.timeout_minutes !== undefined) {
+      updates.execution = { ...existing.execution, timeout: parseTimeoutMinutes(args.timeout_minutes) }
+    }
+
     const watch = service.update(watchId, updates)
     if (!watch) return { success: false, output: '', error: '更新失败' }
 
-    return { success: true, output: `✅ 关切 "${watch.name}" 已更新` }
+    return { success: true, output: `✅ 关切 "${watch.name}" 已更新\n单次最长：${runLimitMinutes(watch)} 分钟（从下一次运行生效）` }
   } catch (error) {
     return { success: false, output: '', error: `更新关切失败: ${errMsg(error)}` }
   }
@@ -260,6 +266,20 @@ async function updateWatchState(args: Record<string, unknown>): Promise<ToolResu
 }
 
 // ==================== 辅助函数 ====================
+
+function parseTimeoutMinutes(value: unknown): number | undefined {
+  if (value === undefined) return undefined
+  const min = WATCH_RUN_LIMIT_MIN_SEC / 60
+  const max = WATCH_RUN_LIMIT_MAX_SEC / 60
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`timeout_minutes 必须是 ${min}–${max} 的整数（分钟）`)
+  }
+  return value * 60
+}
+
+function runLimitMinutes(watch: WatchDefinition): number {
+  return clampWatchRunLimitSec(watch.execution.timeout ?? WATCH_RUN_LIMIT_DEFAULT_SEC) / 60
+}
 
 function parseTrigger(raw: Record<string, unknown>): WatchTrigger {
   const type = raw.type as string
