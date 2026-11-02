@@ -4,6 +4,7 @@
  * OOP 重构版本：AgentService 作为工厂和生命周期管理器
  * 实际执行逻辑在 Agent 基类和 SailFish 子类中
  */
+import { randomUUID } from 'crypto'
 import os from 'os'
 import type { AiService, AiMessage } from '../ai.service'
 import type { PtyService } from '../pty.service'
@@ -572,7 +573,7 @@ export class AgentService {
       return null
     }
 
-    const newSessionId = `session_${Date.now()}_fork_${Math.random().toString(36).slice(2, 8)}`
+    const newSessionId = `session_${Date.now()}_fork_${randomUUID()}`
     const forkOpts = {
       untilTaskCount: opts.untilTaskCount,
       titleSuffix: opts.titleSuffix ?? ''
@@ -652,7 +653,7 @@ export class AgentService {
       return null
     }
 
-    const newSessionId = `session_${Date.now()}_extract_${Math.random().toString(36).slice(2, 8)}`
+    const newSessionId = `session_${Date.now()}_extract_${randomUUID()}`
     const forkOpts = {
       anchorTaskIndex: opts.anchorTaskIndex,
       anchorTaskStepId: opts.anchorTaskStepId,

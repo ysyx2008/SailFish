@@ -78,7 +78,7 @@ const AI_RETRY = {
   SERVER_ERROR_MAX_RETRIES: 3, // 5xx 服务端错误最大重试次数
   SERVER_ERROR_BASE_DELAY: 3000, // 5xx 基础退避：3 秒
   MAX_DELAY_MS: 60000,       // 单次重试最大延迟：60 秒（防止指数退避无限增长）
-  MAX_RETRY_AFTER_MS: 120000, // Retry-After 最大接受值：120 秒（超过则不重试）
+  MAX_RETRY_AFTER_MS: 120000, // Retry-After 最大接受值：120 秒（超过则按上限等待）
   JITTER_FACTOR: 0.2,        // 退避抖动因子（±20%），避免 thundering herd
   // Node.js 系统错误码（err.code，稳定常量）。含 EPROTO：代理/VPN 切换时 TLS 握手失败常见
   RETRYABLE_ERROR_CODES: ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'EPIPE', 'EAI_AGAIN', 'EPROTO'] as const,
@@ -208,9 +208,11 @@ function parseRetryAfterMs(headers?: Record<string, string | string[] | undefine
   if (!header) return undefined
   const raw = String(header)
   const seconds = Number(raw)
-  if (!isNaN(seconds) && seconds > 0) return seconds * 1000
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.min(AI_RETRY.MAX_RETRY_AFTER_MS, seconds * 1000)
+  }
   const date = Date.parse(raw)
-  return isNaN(date) ? undefined : Math.max(1000, date - Date.now())
+  return isNaN(date) ? undefined : Math.min(AI_RETRY.MAX_RETRY_AFTER_MS, Math.max(1000, date - Date.now()))
 }
 
 /** 这次失败是不是「接口嫌太快」：等一等就能过的那种，不是欠费、额度用尽这类等也没用的。 */
@@ -2575,19 +2577,8 @@ export class AiService {
             ) {
               // Rate limit: 优先 Retry-After header，否则指数退避 + jitter
               rateLimitRetryCount++
-              const retryAfterHeader = res.headers['retry-after']
-              let retryAfterMs = calculateBackoff(AI_RETRY.RATE_LIMIT_BASE_DELAY, rateLimitRetryCount - 1)
-              if (retryAfterHeader) {
-                const seconds = Number(retryAfterHeader)
-                if (!isNaN(seconds) && seconds > 0) {
-                  retryAfterMs = seconds * 1000
-                } else {
-                  const date = Date.parse(retryAfterHeader)
-                  if (!isNaN(date)) {
-                    retryAfterMs = Math.max(1000, date - Date.now())
-                  }
-                }
-              }
+              const retryAfterMs = parseRetryAfterMs(res.headers)
+                ?? calculateBackoff(AI_RETRY.RATE_LIMIT_BASE_DELAY, rateLimitRetryCount - 1)
               const retryAfterSec = (retryAfterMs / 1000).toFixed(0)
               log.warn(`Rate limited (429), retrying in ${retryAfterSec}s (${rateLimitRetryCount}/${rateLimitMaxRetries})`)
               closeOpenReasoningBlock()

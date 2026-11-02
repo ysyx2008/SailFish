@@ -6,7 +6,7 @@ vi.mock('../ai-debug.service', () => ({
   getAiDebugService: () => new Proxy({}, { get: () => () => {} }),
 }))
 import type { AddressInfo } from 'net'
-import { AiService, type ChatStreamOptions } from '../ai.service'
+import { AiService, type ChatStreamOptions, type RetryInfo } from '../ai.service'
 import { getModelRequestBuffer, modelRequestKey } from '../model-request-buffer'
 
 type Reply = { delayMs?: number; status: number; headers?: Record<string, string>; body?: string }
@@ -57,7 +57,7 @@ function serviceFor(model: string, name = model) {
   return { ai, key: modelRequestKey(profile) }
 }
 
-function run(ai: AiService, options: ChatStreamOptions = {}, requestId?: string) {
+function run(ai: AiService, options: ChatStreamOptions = {}, requestId?: string, onRetry?: (info?: RetryInfo) => void) {
   return new Promise<{ done?: { aborted?: boolean; content?: string }; error?: string }>((resolve) => {
     void ai.chatWithToolsStream(
       [{ role: 'user', content: 'hi' }],
@@ -69,7 +69,7 @@ function run(ai: AiService, options: ChatStreamOptions = {}, requestId?: string)
       undefined,
       undefined,
       requestId,
-      () => {},
+      onRetry ?? (() => {}),
       undefined,
       undefined,
       options,
@@ -105,6 +105,38 @@ describe('AI 请求经过缓冲池', () => {
     expect(result.done?.content).toBe('ok')
     expect(getModelRequestBuffer().snapshot(key)).toMatchObject({ inFlight: 0, queued: 0, recovering: false })
   }, 10_000)
+
+  it.each([
+    ['超大秒数', '9999999999', 120_000],
+    ['毫秒换算溢出', '1e308', 120_000],
+    ['远期 HTTP 日期', 'Thu, 01 Jan 2099 00:00:00 GMT', 120_000],
+    ['普通秒数', '60', 60_000],
+    ['非有限秒数', 'Infinity', undefined],
+    ['非法头', 'not-a-date', undefined],
+  ])('%s：流式限流等待有上限、能立即停止', async (_, header, expectedDelay) => {
+    const model = `bounded-retry-${header}`
+    const { ai, key } = serviceFor(model)
+    scripts.set(model, [{ status: 429, headers: { 'Retry-After': header } }, okReply()])
+    let retrySeen!: (info?: RetryInfo) => void
+    const retry = new Promise<RetryInfo | undefined>(resolve => { retrySeen = resolve })
+    const pending = run(ai, {}, model, retrySeen)
+    try {
+      const info = await retry
+      expect(info?.reason).toBe('rate_limit')
+      if (expectedDelay !== undefined) expect(info?.delayMs).toBe(expectedDelay)
+      else {
+        expect(info?.delayMs).toBeGreaterThanOrEqual(4_000)
+        expect(info?.delayMs).toBeLessThanOrEqual(6_000)
+      }
+      expect(getModelRequestBuffer().snapshot(key)?.pausedForMs).toBeLessThanOrEqual(120_000)
+    } finally {
+      ai.abort(model)
+      expect((await pending).done?.aborted).toBe(true)
+      ai.dispose()
+    }
+    expect(scripts.get(model)).toHaveLength(1)
+    expect(getModelRequestBuffer().snapshot(key)).toMatchObject({ inFlight: 0, queued: 0 })
+  })
 
   it('服务端错误等重试时也放掉名额，到点再排', async () => {
     const { ai, key } = serviceFor('flaky-model')
