@@ -3,11 +3,11 @@ name: "CodeQL"
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "develop", "main", "master" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "develop", "main", "master" ]
   schedule:
-    - cron: '0 10 * * 1'  # 每周一早上10点定时扫一次
+    - cron: '0 10 * * 1'  # 每周一 UTC 10:00（北京时间 18:00）定时扫描
 
 jobs:
   analyze:

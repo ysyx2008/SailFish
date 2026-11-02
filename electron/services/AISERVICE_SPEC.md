@@ -185,6 +185,8 @@ AI API 的统一调用层。封装 OpenAI 兼容协议的 HTTP 请求，提供�
 
 ### 自动重试
 
+普通与流式请求统一接受秒数或 HTTP 日期形式的 `Retry-After`，最长等待 120 秒；无效或非有限值使用指数退避。等待期间仍可立即停止。
+
 | 错误类型 | 最大重试 | 退避策略 |
 |---|---|---|
 | 网络错误（`err.code`：ECONNRESET / EPROTO / ETIMEDOUT 等；含 TLS 握手中断） | 3 次 | 指数退避 + jitter，基础 2s。判定优先看 Node 系统错误码，不只扫 message（VPN/代理切换时 TLS 断开的 message 常不含错误码字样） |

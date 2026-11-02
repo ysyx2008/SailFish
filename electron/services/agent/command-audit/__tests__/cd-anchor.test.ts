@@ -264,14 +264,14 @@ describe('对得上真实的 shell', () => {
 
       const ok = `cd "${work}" && rm -f f.txt && ls f.txt 2>/dev/null || echo gone`
       expect((await level(ok)).level).toBe('safe')
-      const out = execFileSync('/bin/bash', ['-c', ok], { cwd: root }).toString()
+      const out = execFileSync('/bin/bash', ['-c', 'cd "$1" && rm -f f.txt && ls f.txt 2>/dev/null || echo gone', 'cd-anchor', work], { cwd: root }).toString()
       expect(out.trim()).toBe('gone') // ls 找不到文件才走 ||，说明 work 里的被删了
       expect(fs.existsSync(path.join(work, 'f.txt'))).toBe(false)
       expect(fs.existsSync(path.join(root, 'f.txt'))).toBe(true)
 
       const miss = `cd "${root}/not-here" && rm -f f.txt || echo failed`
       expect((await level(miss)).level).toBe('safe')
-      const out2 = execFileSync('/bin/bash', ['-c', miss], { cwd: root }).toString()
+      const out2 = execFileSync('/bin/bash', ['-c', 'cd "$1/not-here" && rm -f f.txt || echo failed', 'cd-anchor', root], { cwd: root }).toString()
       expect(out2.trim()).toBe('failed')
       expect(fs.existsSync(path.join(root, 'f.txt'))).toBe(true)
     } finally {
@@ -283,8 +283,7 @@ describe('对得上真实的 shell', () => {
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cd-anchor-miss-')))
     try {
       fs.writeFileSync(path.join(root, 'keep.txt'), 'x')
-      const cmd = `cd "${root}/not-here" && rm -f keep.txt`
-      try { execFileSync('/bin/bash', ['-c', cmd], { cwd: root, stdio: 'ignore' }) } catch { /* cd 失败退出非 0 */ }
+      try { execFileSync('/bin/bash', ['-c', 'cd "$1/not-here" && rm -f keep.txt', 'cd-anchor', root], { cwd: root, stdio: 'ignore' }) } catch { /* cd 失败退出非 0 */ }
       expect(fs.existsSync(path.join(root, 'keep.txt'))).toBe(true)
     } finally {
       fs.rmSync(root, { recursive: true, force: true })

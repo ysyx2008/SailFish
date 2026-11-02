@@ -9,6 +9,7 @@
  * 本模块只管"送达"，不管"联络是否知情"——暂存上下文（proactive-store）由调用方
  * 按语义自行决定写入内容与时机。
  */
+import { randomUUID } from 'crypto'
 import { COMPANION_AGENT_KEY } from '@shared/types'
 import { createLogger } from '../../utils/logger'
 import { getIMService } from '../im/im.service'
@@ -142,7 +143,7 @@ export async function deliverProactiveMessage(
   if ((deliveredVia.length > 0 || alwaysPersist) && opts?.historyService && !fromCompanion) {
     try {
       const ts = Date.now()
-      const uid = `proactive-${ts}-${Math.random().toString(36).slice(2, 8)}`
+      const uid = `proactive-${ts}-${randomUUID()}`
       opts.historyService.saveAgentRecord({
         id: `${uid}-session`,
         timestamp: ts,

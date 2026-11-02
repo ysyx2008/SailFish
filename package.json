@@ -133,7 +133,7 @@
     "strip-ansi": "^7.1.2",
     "telegraf": "^4.16.3",
     "tsdav": "^2.1.6",
-    "uuid": "^9.0.1",
+    "uuid": "^11.1.1",
     "virtua": "^0.53.3",
     "vue": "^3.5.44",
     "vue-i18n": "^11.4.14",
@@ -153,8 +153,8 @@
     "@types/uuid": "^9.0.8",
     "@types/yauzl": "^3.4.0",
     "@vitejs/plugin-vue": "^6.0.6",
-    "@vitest/coverage-v8": "^4.1.7",
-    "@vitest/ui": "^4.1.7",
+    "@vitest/coverage-v8": "^4.1.12",
+    "@vitest/ui": "^4.1.12",
     "@vue/eslint-config-prettier": "^9.0.0",
     "@vue/eslint-config-typescript": "^12.0.0",
     "concurrently": "^9.2.1",
@@ -173,7 +173,7 @@
     "vite": "^6.4.5",
     "vite-plugin-electron": "^0.29.1",
     "vite-plugin-electron-renderer": "^0.14.7",
-    "vitest": "^4.1.11",
+    "vitest": "^4.1.12",
     "vue-tsc": "^2.0.6",
     "web-tree-sitter": "0.25.10"
   },
@@ -186,8 +186,12 @@
     "axios": "^1.18.0",
     "postcss": "^8.5.23",
     "tar": "^7.5.15",
-    "minimatch": "^9.0.7",
-    "@tootallnate/once": "^3.0.1"
+    "minimatch": "^11.0.1",
+    "@tootallnate/once": "^3.0.1",
+    "image-size": "^2.0.3",
+    "katex": "^0.18.2",
+    "postcss-selector-parser": "^6.1.5",
+    "uuid": "$uuid"
   },
   "author": {
     "name": "旗鱼",
