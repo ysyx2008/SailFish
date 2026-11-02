@@ -253,7 +253,7 @@ scenario('十层组长边界及逐级交差，组长不能给手下指定远程�
     const mainSystem = llm.requests.find(r => r.who === 'main')?.body.messages.filter(m => m.role === 'system').map(m => String(m.content)).join('\n') ?? ''
     const bottomRequest = llm.requests.find(r => r.who === leads.at(-1) && r.hasTools)
     const dispatchSchema = bottomRequest?.body.tools.find(tool => tool.function?.name === 'dispatch_agents')?.function
-    check('秘书提示词与工具说明使用同一十层上限', mainSystem.includes('最多10层') && JSON.stringify(dispatchSchema ?? {}).includes('组织最多 10 层'))
+    check('秘书提示词与工具说明使用同一十层上限', mainSystem.includes('最多连续10层负责人') && JSON.stringify(dispatchSchema ?? {}).includes('最多连续10层负责人'))
     check('全部做完，秘书收到交差', Object.values(children).every((c) => c.state.status === 'completed') && result.out.includes('秘书收到'),
       Object.values(children).map((c) => `${c.state.name}:${c.state.status}`).join(' ') + ' | ' + result.out.slice(-300))
     const warnings = logWarnings(env.dataDir)
@@ -799,6 +799,79 @@ scenario('组长唤醒权限不丢；跨枝重名用括号后缀并保持真实�
       return requests.length >= 3 && requests.every(entry => toolNamesOf(entry).includes('dispatch_agents'))
     }))
     check('唤醒看板链路没有相关异常日志', logWarnings(env.dataDir).length === 0, logWarnings(env.dataDir).join('\n'))
+  } finally { await llm.close() }
+})
+
+// 负责人同群不改变管理关系：真实模型请求、群聊、下派及历史快照。
+scenario('秘书让两位负责人同群协调，各自下派且保持直属关系', async () => {
+  const names = ['研发负责人', '测试负责人', '开发成员', '测试成员']
+  const env = sandbox(0, 'sft-org-coordination', tempDirs)
+  const dispatched = new Set()
+  const spoke = new Set()
+  let resuming = false
+  let resumedMain = false
+  let resumedLead = false
+  const llm = await startMockLlm({ respond: (_body, entry) => {
+    if (!entry.hasTools) return say('好')
+    const who = whoAsks(entry, names)
+    entry.who = who
+    if (resuming && who === 'main' && !resumedMain) {
+      resumedMain = true
+      return callTool('followup_agent', { name: '研发负责人', message: '在原协调群向测试负责人说明恢复完成' })
+    }
+    if (resuming && who === '研发负责人' && !resumedLead) {
+      resumedLead = true
+      return callTool('team_say', { to: ['测试负责人'], message: '负责人恢复完成，原群继续协调' })
+    }
+    if (!dispatched.has(who)) {
+      dispatched.add(who)
+      if (who === 'main') return callTool('dispatch_agents', { team: '负责人协调', tasks: [
+        { name: '研发负责人', lead: true, description: '管理研发', prompt: '在自己名下派开发成员，与测试负责人在协调群交接' },
+        { name: '测试负责人', lead: true, description: '管理测试', prompt: '在自己名下派测试成员，与研发负责人在协调群交接' },
+      ] })
+      if (who === '研发负责人' || who === '测试负责人') return callTool('dispatch_agents', { tasks: [
+        { name: who === '研发负责人' ? '开发成员' : '测试成员', description: '执行核对', prompt: '独立完成核对并交差' },
+      ] })
+    }
+    if (who === '研发负责人' && !spoke.has(who)) {
+      spoke.add(who)
+      return callTool('team_say', { to: ['测试负责人'], message: '研发核对已安排，请协调测试' })
+    }
+    return say(`${who}完成核对`)
+  } })
+  env.env.SFT_API_URL = `http://127.0.0.1:${llm.port}/v1`
+  try {
+    const result = await runPlain(['让两位负责人同群协调，各自派一位执行成员', '--free'], env)
+    check('同群负责人场景正常退出', result.code === 0, result.err.slice(-500))
+    const { sessions, children } = readOrg(env.dataDir)
+    check('两位负责人和两位下属均真实开工', names.every(n => children[n]), Object.keys(children).join())
+    check('入群负责人仍直接向秘书汇报', ['研发负责人', '测试负责人'].every(n => children[n]?.state.lead && !children[n]?.state.parent && children[n]?.state.team === '负责人协调'))
+    check('下属只归自己的负责人', children['开发成员']?.state.parent === '研发负责人' && children['测试成员']?.state.parent === '测试负责人')
+    const ids = new Set(Object.values(children).map(c => c.state.teamId))
+    check('四人继承同一个团队归属', ids.size === 1 && !![...ids][0])
+    for (const name of names) {
+      const request = llm.requests.find(r => r.hasTools && r.who === name)
+      const tools = toolNamesOf(request ?? { body: {} })
+      check(`${name}的工具权限符合真实身份`, name.endsWith('负责人') ? tools.includes('dispatch_agents') && tools.includes('team_say') : !tools.includes('dispatch_agents'))
+    }
+    const chatRoot = path.join(env.dataDir, 'history/expert-teams')
+    const chat = fs.existsSync(chatRoot) ? fs.readdirSync(chatRoot, { recursive: true }).filter(f => String(f).endsWith('.jsonl')).map(f => fs.readFileSync(path.join(chatRoot, String(f)), 'utf8')).join('\n') : ''
+    check('负责人的协调消息实际进入群聊并保存', chat.includes('研发核对已安排，请协调测试') && chat.includes('研发负责人'))
+    const sessionDir = sessions[0]
+    const meta = sessionDir && readJson(path.join(env.dataDir, 'history/agent', path.basename(path.dirname(sessionDir)), path.basename(sessionDir), 'meta.json'))
+    const org = Object.values(meta?.organizations ?? {}).find(o => o.total === 4)
+    check('历史快照保留四人及直属关系', !!org && org.members.filter(m => !m.parent).length === 2 && org.members.some(m => m.name === '开发成员' && m.parent === '研发负责人'))
+    resuming = true
+    const firstRequests = llm.requests.length
+    const resumed = await runPlain([], { ...env, env: { ...env.env, RESUME_SESSION: path.basename(sessionDir), RESUME_LINE: '叫醒原负责人继续协调' } }, 120_000, RUNNER)
+    check('新进程可以叫醒原群内负责人', resumed.code === 0 && resumedLead, resumed.err.slice(-500))
+    const resumedRequest = llm.requests.slice(firstRequests).find(r => r.hasTools && r.who === '研发负责人')
+    check('负责人冷恢复后同时保留下派和群聊工具', ['dispatch_agents', 'team_say'].every(t => toolNamesOf(resumedRequest ?? { body: {} }).includes(t)))
+    const restored = readOrg(env.dataDir).children
+    check('冷恢复不新增成员也不改变团队和管理关系', Object.keys(restored).length === 4 && restored['研发负责人']?.state.team === '负责人协调' && restored['研发负责人']?.state.teamId === [...ids][0] && restored['开发成员']?.state.parent === '研发负责人')
+    const restoredChat = fs.readdirSync(chatRoot, { recursive: true }).filter(f => String(f).endsWith('.jsonl')).map(f => fs.readFileSync(path.join(chatRoot, String(f)), 'utf8')).join('\n')
+    check('冷恢复后消息继续写入原协调群', restoredChat.includes('负责人恢复完成，原群继续协调'))
+    check('日志无组织相关警告', logWarnings(env.dataDir).length === 0, logWarnings(env.dataDir).slice(0, 3).join('\n'))
   } finally { await llm.close() }
 })
 

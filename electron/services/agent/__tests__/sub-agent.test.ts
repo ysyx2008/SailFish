@@ -244,34 +244,54 @@ describe('dispatch_agents 异步派出', () => {
     expect(roster.list()).toHaveLength(0)
   })
 
-  it('秘书不能在一次派出里同时带团和指定组长', async () => {
+  it('秘书可以让负责人和普通成员同群，下派与群聊不改变管理关系', async () => {
     const roster = new SubAgentRoster()
-    const executor = createExecutor(roster, stubChild('ok'))
-    const result = await dispatchSubAgents({
-      team: '研发团',
-      tasks: [
-        { description: '定路线', prompt: '定路线', role: '技术负责人', lead: true },
-        { description: '对比', prompt: '对比', role: '选型' },
-        { description: '估算', prompt: '估算', role: '估算' },
-      ],
-    }, defaultConfig, executor)
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('只派组长')
-    expect(roster.list()).toHaveLength(0)
+    const seats = new Map<string, Parameters<NonNullable<ChildAgentHandle['becomeLead']>>[0]>()
+    const executor = createExecutor(roster, name => {
+      const child = { ...stubChild('ok', 10), becomeLead: (seat: Parameters<NonNullable<ChildAgentHandle['becomeLead']>>[0]) => seats.set(name, seat) }
+      return child
+    })
+    const result = await dispatchSubAgents({ team: '项目协调', tasks: [
+      { name: '研发负责人', description: '组织研发', prompt: '组织研发', lead: true },
+      { name: '汇总', description: '汇总结果', prompt: '负责汇总', role: '汇总负责人' },
+      { name: '审核', description: '审核结果', prompt: '给出验收意见', reviewer: true },
+    ] }, defaultConfig, executor)
+    expect(result.success).toBe(true)
+    expect(roster.list()).toHaveLength(3)
+    expect(workspaceOf(roster).organizationView().members.every(member => member.parent === undefined)).toBe(true)
+    expect(new Set(roster.list().map(member => member.teamId)).size).toBe(1)
+    expect(roster.list().every(member => member.team === '项目协调')).toBe(true)
+    expect([...seats.keys()]).toEqual(['研发负责人'])
+    expect(roster.get('汇总')?.lead).toBeUndefined()
+    expect(roster.get('审核')?.reviewer).toBe(true)
+    const seat = seats.get('研发负责人')!
+    expect(seat.depth).toBe(1)
+    const branch = new SubAgentRoster()
+    branch.attachLedger(seat.ledger, seat.name, seat.depth, seat.teamId)
+    const branchResult = await dispatchSubAgents({ team: '研发协作', tasks: [
+      { name: '实施', description: '实施', prompt: '实施' },
+      { name: '测试', description: '测试', prompt: '测试' },
+    ] }, defaultConfig, createExecutor(branch, () => stubChild('ok', 10)))
+    expect(branchResult.success).toBe(true)
+    expect(workspaceOf(roster).organizationView(seat.teamId).members.filter(member => ['实施', '测试'].includes(member.name)).map(member => [member.parent, member.teamId, member.team])).toEqual([['研发负责人', seat.teamId, '研发协作'], ['研发负责人', seat.teamId, '研发协作']])
+    expect(branch.targetIssue('汇总')).toMatchObject({ kind: 'foreign' })
+    expect(branch.memberNames()).toEqual(['实施', '测试'])
+    branch.abortAll()
+    roster.abortAll()
   })
 
-  it('秘书不能把组长装进一个上级团，组长应该直管', async () => {
+  it('秘书可以给两位负责人建立协调群，两人保持直属且都获得下派权限', async () => {
     const roster = new SubAgentRoster()
-    const executor = createExecutor(roster, stubChild('ok'))
-    const result = await dispatchSubAgents({
-      team: '项目组',
-      tasks: [
-        { description: '带研发组', prompt: '带研发组', role: '研发组长', lead: true },
-        { description: '带运营组', prompt: '带运营组', role: '运营组长', lead: true },
-      ],
-    }, defaultConfig, executor)
-    expect(result.success).toBe(false)
-    expect(roster.list()).toHaveLength(0)
+    const leads: string[] = []
+    const executor = createExecutor(roster, name => ({ ...stubChild('ok', 10), becomeLead: () => { leads.push(name) } }))
+    const result = await dispatchSubAgents({ team: '负责人协调', tasks: [
+      { name: '研发', description: '带研发组', prompt: '带研发组', lead: true },
+      { name: '运营', description: '带运营组', prompt: '带运营组', lead: true },
+    ] }, defaultConfig, executor)
+    expect(result.success).toBe(true)
+    expect(leads).toEqual(['研发', '运营'])
+    expect(roster.list().every(member => member.lead && member.team === '负责人协调')).toBe(true)
+    roster.abortAll()
   })
 
   it('秘书可以一次派两位组长，组长自己组人', async () => {

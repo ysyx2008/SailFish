@@ -1291,12 +1291,6 @@ export async function dispatchSubAgents(
     return { success: false, output: '', error: parsed.error }
   }
   const { tasks: parsedTasks, team } = parsed
-  // 设计里组织是「秘书只指定组长，组长自己组人」：秘书这一批只派组长、不带 team，
-  // 组长直接归秘书管；带 team 的这次由秘书当团长，组长会变成秘书团里的成员，
-  // 组织图上就多了一层。团里的人由组长自己用 team 派。
-  if (roster.owner === undefined && team && parsedTasks.some(task => task.lead)) {
-    return { success: false, output: '', error: t('org.lead_own_team') }
-  }
   if (executor.isSubAgent) {
     const remoteAsked = parsedTasks.some(task => task.hosts || task.remoteCommands) || args.remote_commands !== undefined
     if (remoteAsked) return { success: false, output: '', error: t('org.lead_no_remote') }

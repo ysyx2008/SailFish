@@ -1294,7 +1294,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
       type: 'function',
       function: {
         name: 'dispatch_agents',
-        description: `派出这场任务里的同事并行干活：不带 role 的是伙计，带 role 的是专家；role 选填，建议填写岗位或专业视角，便于辨认分工。派出的都立刻开工，立刻返回每个人的名字。两种写法：tasks 每人各写一份指令；batch 一份共同指令加一批条目，每个条目派一个人。同一次可以两种一起用。再带 team，这次 tasks 里的成员（${MIN_TEAM_SIZE} 到 ${MAX_TEAM_SIZE} 位，role 仍选填，不和 batch 同用）组成协作群，在群里点名交接，你是组长，群里的规矩在派出后的回执里。同时向模型发几个请求由系统按接口的承受情况调节，暂时发不出去的排队，轮到了再发。每个伙计各自占用对话上下文和费用。一场任务里没做完的伙计最多 ${MAX_LIVE_CHILDREN} 个，这次要派的加上没做完的超过这个数时，整批不派。
+        description: `派出这场任务里的同事并行干活。role 是选填的岗位或专业视角，建议填写以便辨认分工；填写后显示为专家，不填的是伙计。派出的都立刻开工，立刻返回每个人的名字。tasks 每人各写一份指令；batch 用一份共同指令加一批条目，每个条目派一个人，两种写法可以同用。每次新派默认创建独立团队，continue_team 指定已有成员真名时加入其所属团队；负责人下派继承团队归属。team 仅表示本次 tasks 成员的协作群名，群内 ${MIN_TEAM_SIZE}–${MAX_TEAM_SIZE} 位被派成员，不和 batch 同用。派出者管理自己派出的人并负责群内协调；lead:true 的成员可以继续派人，也可以参加本次协作群，入群不改变上下级或团队归属。群内规矩在派出后的回执里。同时向模型发几个请求由系统按接口的承受情况调节，暂时发不出去的排队，轮到了再发。每个成员各自占用对话上下文和费用。一场任务里没做完的成员最多 ${MAX_LIVE_CHILDREN} 个，这次要派的加上没做完的超过这个数时，整批不派。
 
 伙计也能在已存的 SSH 主机上后台跑命令：给伙计写 hosts（list_ssh_sessions 返回的 sessionId），并列出他要在远程跑的命令：大家共有的写在 remote_commands，只有这个伙计要跑的写在他自己的 remote_commands（不同的机器要跑不同命令时，各伙计各写各的）。命令不限只读。严格和宽松下，派出前弹卡等用户点头；替我审批下，由运维专家看这一批主机和命令，认为可以做的直接做，该问用户的才弹卡，不该做的整批不派；自由模式不问人，专家认为不该直接做的整批不派。整批不派时，回执里写明原因。关切、唤醒里派不出去。伙计只能在自己的主机上原样跑属于他的那份命令，不开终端窗。`,
         parameters: {
@@ -1307,7 +1307,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
                 properties: {
                   name: { type: 'string', description: SUB_AGENT_NAME_DESCRIPTION },
                   role: { type: 'string', description: `选填的岗位或专业视角，建议填写，几个字，最长 ${MAX_ROLE_CHARS} 个字。填写后显示为专家角色标签，也写入当前成员身份；不填时不自动补专业角色。名字和角色都不能用「${TEAM_LEADER}」。负责人、协作群成员和验收人都可以不填 role；下派权限由 lead 决定，入群由 team 决定，验收资格由 reviewer 决定。` },
-                  lead: { type: 'boolean', description: `true 时指定为组长，role 可不填；省略 lead 或设为 false 时没有下级管理权限。组长自己也有派人、再交代、等待、打断这几样，只能用在他名下的人身上；他名下没做完的人不会让他收工。组织最多 ${MAX_ORG_DEPTH} 层，已经在第 ${MAX_ORG_DEPTH} 层的组长不能再指定组长。没做完的人全组织合计仍受上面那个数限制。组长本身是一个会调用模型的智能体，他名下每个人也各自调用模型。要搭组织时，秘书这一批只派组长、不带 team（一次可以指定多位），组长自己用 team 组人；带 team 的这次由秘书当团长，组长会成为秘书团里的成员，而不是直管` },
+                  lead: { type: 'boolean', description: `true 时授予成员下派及管理自己下属的权限，role 可不填；省略或设为 false 时没有下级管理权限。汇总职责和角色名称不授予此权限。该成员仍向派出者汇报，可以参加本次 team 协作群。负责人可以派人、再交代、等待、打断，只能管理自己名下的人；名下有人没做完时不会收工。最多连续${MAX_ORG_DEPTH}层负责人，第${MAX_ORG_DEPTH}层仍可派执行成员，不能再指定负责人。所有未完成成员共用全局人数上限。负责人和他派出的每个人都各自调用模型。` },
                   reviewer: { type: 'boolean', description: '当验收人，只在带 team 时有意义。验收人可以在群里对交上来的东西给「通过」或「打回」的结论，结论记在群里、写进团停下时交给组长的那段话；它只是意见，不拦着团收工。团里不能人人都是验收人' },
                   description: { type: 'string', description: '任务简述（一句话，用于进度展示）' },
                   prompt: { type: 'string', description: '详细任务指令' },
@@ -1319,7 +1319,7 @@ local_path 填相对路径时也归一到 workspace 内；填绝对路径才落�
               },
               description: '每人各写一份指令'
             },
-            team: { type: 'string', description: `本团队内的协作群名，最长 ${MAX_TEAM_NAME_CHARS} 个字` },
+            team: { type: 'string', description: `本次 tasks 成员的协作群名，最长 ${MAX_TEAM_NAME_CHARS} 个字；可包含普通成员和有下派权限的负责人，入群不改变上下级或团队归属。` },
             continue_team: { type: 'string', description: '继续已有团队时填写该团队任一成员的真名；秘书省略时新建独立团队，历史成员不自动加入。组长下派自动归入当前团队，不填写此项。给已有成员续交代不改变所属团队' },
             batch: {
               type: 'object',

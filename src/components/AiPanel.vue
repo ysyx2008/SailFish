@@ -38,7 +38,7 @@ import SubAgentDock from './SubAgentDock.vue'
 import { toolDisplayName } from '../utils/tool-display'
 import ExpertTeamChat from './ExpertTeam/ExpertTeamChat.vue'
 import { teamCards } from '../utils/team-view'
-import OrganizationCard from './Organization/OrganizationCard.vue'
+import TeamDispatchCard from './Organization/TeamDispatchCard.vue'
 import OrganizationChart from './Organization/OrganizationChart.vue'
 import ImageContextMenu from './ImageContextMenu.vue'
 import AttachmentContextMenu from './AttachmentContextMenu.vue'
@@ -2918,10 +2918,13 @@ watch(() => props.tabId, async (newTabId, oldTabId) => {
                     <div v-else-if="item.step!.type === 'error'" class="step-text">{{ item.step!.content }}</div>
                     <div v-else class="step-text markdown-content" v-html="renderMarkdown(item.step!.content)"></div>
                     <!-- 并行子 Agent 卡片组 -->
-                    <OrganizationCard
+                    <TeamDispatchCard
                       v-if="teamCardViews.has(item.step!.id)"
                       :organization="teamCardViews.get(item.step!.id)!"
-                      @open="openOrganization(item.step!.id)"
+                      :step-id="item.step!.id"
+                      :steps="agentState?.steps ?? []"
+                      :session-id="agentState?.sessionId"
+                      @open="openOrganization(item.step!.id, $event)"
                     />
                     <div v-if="item.step!.type === 'user_supplement' && splitSentMessage(item.step!.content, item.step!.attachments).rest.length > 0" class="message-attachments">
                       <span
