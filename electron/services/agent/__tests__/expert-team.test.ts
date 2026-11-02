@@ -552,7 +552,7 @@ describe('dispatch_agents 工具说明里的数字各归各处', () => {
   it('团名那栏只讲团名的字数，人数写在工具说明里（被模型读成团名字数过三次）', () => {
     expect(props.team.description).toContain('最长 40 个字')
     expect(props.team.description).not.toMatch(/15|位/)
-    expect(tool.function.description).toContain('2 到 15 位')
+    expect(tool.function.description).toContain('2–15 位')
   })
 
   it('角色那栏写明字数上限', () => {
@@ -567,25 +567,22 @@ describe('伙计和专家的区别写给秘书看（用户说「专家团」却�
   const props = (tool.function.parameters as { properties: Record<string, any> }).properties
 
   it('系统说明把两种人并列讲：各自带不带 role、界面上看到什么；用户的话指的是什么', () => {
-    expect(prompt).toContain('派出的人有两种')
-    expect(prompt).toContain('伙计：不带 role')
-    expect(prompt).toContain('没有额外岗位标签')
-    expect(prompt).toContain('专家：带 role')
-    expect(prompt).toContain('显示为角色标签')
-    expect(prompt).toContain('用户能看到完整群聊')
+    expect(prompt).toContain('不填的是伙计，不自动补专业角色')
+    expect(prompt).toContain('填写后显示为专家角色标签')
+    expect(prompt).toContain('用户可查看完整群聊')
   })
 
   it('角色只说明岗位；下派、入群和验收资格独立，不替用户猜他想要什么', () => {
-    expect(prompt).toContain('也写入当前成员身份')
-    expect(prompt).toContain('分别由 lead、team 和 reviewer 决定')
-    expect(prompt).toContain('取决于 prompt')
+    expect(prompt).toContain('并写入成员身份')
+    expect(prompt).toContain('分别由 role、lead、team 和 reviewer 表达')
+    expect(prompt).toContain('由 prompt 交代')
     expect(prompt).not.toContain('他想看到的是')
   })
 
   it('独立判断仍可派专家，岗位建议填写但允许省略', () => {
-    expect(prompt).toContain('独立判断那一步派不带 team 的专家，一样有角色标签')
-    expect(prompt).toContain('建议填写以便辨认分工')
-    expect(prompt).toContain('负责人、协作群成员和验收人都可以不填')
+    expect(prompt).toContain('入群不改变上下级或团队归属')
+    expect(prompt).toContain('汇总职责和角色名称不授予管理权限')
+    expect(prompt).toContain('role 是选填的岗位或专业视角')
     expect(prompt).toContain('未指定为组长的成员不能再分派子智能体')
     expect(prompt).not.toContain('每一位都要带 role')
   })
@@ -596,11 +593,11 @@ describe('伙计和专家的区别写给秘书看（用户说「专家团」却�
   })
 
   it('工具说明建议填role，明确群内也选填且lead省略不授管理权限', () => {
-    expect(tool.function.description.startsWith('派出这场任务里的同事并行干活：不带 role 的是伙计，带 role 的是专家')).toBe(true)
+    expect(tool.function.description).toContain('填写后显示为专家，不填的是伙计')
     expect(props.tasks.items.properties.role.description).toContain('建议填写')
     expect(props.tasks.items.properties.role.description).toContain('负责人、协作群成员和验收人都可以不填 role')
-    expect(props.tasks.items.properties.lead.description).toContain('省略 lead 或设为 false 时没有下级管理权限')
-    expect(tool.function.description).toContain('role 仍选填')
+    expect(props.tasks.items.properties.lead.description).toContain('省略或设为 false 时没有下级管理权限')
+    expect(tool.function.description).toContain('role 是选填的岗位或专业视角')
     expect(JSON.stringify(props)).not.toMatch(/每一项都要带|只有带 role 的专家能当|时也必填/)
   })
 
